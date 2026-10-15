@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SchemaCAD v3</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f4c400'/%3E%3Cpath d='M-4 20L20 -4h8L0 24zM4 36L36 4v8L12 36z' fill='%232f9e58'/%3E%3C/svg%3E">
+<style>
+/*CSS*/
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><span class="brand-name">SchemaCAD</span></div>
+    <button class="btn icon only-narrow" id="btn-left" title="Werkzeuge und Symbole" aria-label="Werkzeuge und Symbole"></button>
+    <div class="filechip"><span id="file-name">Unbenannt</span><span id="dirty" class="dirty" hidden title="Ungespeicherte Änderungen"></span></div>
+    <div class="pvbar" id="pv-bar" role="group" aria-label="Stringplan: Daten der Datei und Druck" hidden>
+      <button class="btn" id="btn-pvmod" data-pop="mod" title="Module: Modultypen dieser Datei" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="pvmod"></span><span class="lbl">Module</span></button>
+      <button class="btn" id="btn-pvwr" data-pop="wr" title="Wechselrichter: Anlage, Datenblätter, Tmin" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="pvwr"></span><span class="lbl">Wechselrichter</span></button>
+      <button class="btn" id="btn-pvdruck" data-pop="druck" title="Druck: Papier, Massstab, Plankopf" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="print"></span><span class="lbl" id="pv-druck-lbl">Druck</span></button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn icon" id="btn-undo" title="Rückgängig (⌘Z)" aria-label="Rückgängig"></button>
+    <button class="btn icon" id="btn-redo" title="Wiederholen (⇧⌘Z)" aria-label="Wiederholen"></button>
+    <span class="sep"></span>
+    <button class="btn" id="btn-search" title="Suchen und Ersetzen (⌘F)"><span class="ic" data-ic="search"></span><span class="lbl">Suchen</span></button>
+    <button class="btn" id="btn-new" title="Neues Dokument: Schema, Disposition oder Stringplan"><span class="ic" data-ic="new"></span><span class="lbl">Neu</span></button>
+    <button class="btn" id="btn-open" title="Öffnen (⌘O)"><span class="ic" data-ic="open"></span><span class="lbl">Öffnen</span></button>
+    <button class="btn" id="btn-save" title="Speichern (⌘S)"><span class="ic" data-ic="save"></span><span class="lbl">Speichern</span></button>
+    <button class="btn" id="btn-handover" title="Disposition als Ansicht mit Massstab auf ein Schemablatt legen" hidden><span class="ic" data-ic="handover"></span><span class="lbl">An Schema</span></button>
+    <div class="menuwrap">
+      <button class="btn primary" id="btn-export" title="Exportieren: DXF, PDF, Listen" aria-haspopup="menu" aria-expanded="false" aria-controls="export-menu"><span class="ic" data-ic="export"></span><span class="lbl">Exportieren</span><span class="caret" aria-hidden="true">▾</span></button>
+      <div class="menu" id="export-menu" role="menu" aria-label="Exportieren" hidden>
+        <button class="mi" role="menuitem" id="btn-dxf" tabindex="-1"><span class="ic" data-ic="export"></span><span class="mt"><span class="mh">DXF dieses Blatt</span><span class="ms">Aktuelles Blatt als DXF-Datei</span></span></button>
+        <button class="mi" role="menuitem" id="btn-dxf-all" tabindex="-1" hidden><span class="ic" data-ic="sheets"></span><span class="mt"><span class="mh">DXF alle Blätter</span><span class="ms">Jedes Blatt als eigene DXF-Datei</span></span></button>
+        <button class="mi" role="menuitem" id="btn-pdf" tabindex="-1" title="Im Druckdialog als Ziel „Als PDF sichern“ wählen"><span class="ic" data-ic="pdf"></span><span class="mt"><span class="mh">PDF alle Blätter</span><span class="ms">Eine PDF über den Druckdialog</span></span></button>
+        <button class="mi" role="menuitem" id="btn-legpdf" tabindex="-1" title="Im Druckdialog als Ziel „Als PDF sichern“ wählen"><span class="ic" data-ic="list"></span><span class="mt"><span class="mh">Sicherungslegende (PDF)</span><span class="ms">Nur die Legende, A4 hoch</span></span></button>
+        <button class="mi" role="menuitem" id="btn-lists" tabindex="-1"><span class="ic" data-ic="list"></span><span class="mt"><span class="mh">Listen (CSV)</span><span class="ms">Sicherungslegende und Stückliste für Excel</span></span></button>
+      </div>
+    </div>
+    <button class="btn icon only-narrow" id="btn-right" title="Eigenschaften" aria-label="Eigenschaften"></button>
+  </header>
+
+  <aside id="left" aria-label="Werkzeuge und Symbole"></aside>
+
+  <main id="stage">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg" tabindex="0" aria-label="Zeichenfläche">
+      <defs><pattern id="gridpat" patternUnits="userSpaceOnUse" width="2.5" height="2.5"><circle cx="0" cy="0" r="0.17" fill="#8d99a6"/></pattern></defs>
+      <g id="world"><g id="sheet"></g><g id="items"></g><g id="overlay"></g></g>
+    </svg>
+    <div id="sheetbar" role="tablist" aria-label="Blätter"></div>
+    <div id="zoombar" role="group" aria-label="Zoom">
+      <button class="btn icon" id="zoom-out" title="Verkleinern (−)" aria-label="Verkleinern"></button>
+      <button class="btn zoomval" id="zoom-val" title="Blatt einpassen (F)">100%</button>
+      <button class="btn icon" id="zoom-in" title="Vergrössern (+)" aria-label="Vergrössern"></button>
+    </div>
+    <input id="texteditor" type="text" hidden autocomplete="off" spellcheck="false" aria-label="Text">
+  </main>
+
+  <aside id="right" aria-label="Eigenschaften"></aside>
+
+  <div class="menu pv-pop" id="pv-pop" role="dialog" aria-label="Stringplan" tabindex="-1" hidden></div>
+  <div class="menu up" id="sheet-menu" role="dialog" aria-label="Blätter" hidden>
+    <input id="sheet-find" type="text" placeholder="Blatt suchen: Nummer oder Titel" aria-label="Blatt suchen" autocomplete="off" spellcheck="false">
+    <div class="slist"></div>
+  </div>
+  <div class="menu up" id="add-menu" role="menu" aria-label="Neues Blatt" hidden>
+    <button class="mi" role="menuitem" data-new="sheet" tabindex="-1"><span class="ic" data-ic="new"></span><span class="mt"><span class="mh">Neues Blatt</span><span class="ms">Schemablatt mit Grundverkabelung</span></span></button>
+    <button class="mi" role="menuitem" data-new="dispo" tabindex="-1"><span class="ic" data-ic="sheets"></span><span class="mt"><span class="mh">Neue Disposition</span><span class="ms">Verteileraufbau mit Montageplatten</span></span></button>
+    <button class="mi" role="menuitem" data-new="pv" tabindex="-1"><span class="ic" data-ic="pdf"></span><span class="mt"><span class="mh">Neuer Stringplan</span><span class="ms">PV-Strangplan auf einem PDF-Dachplan</span></span></button>
+    <button class="mi" role="menuitem" data-new="deck" tabindex="-1" hidden><span class="ic" data-ic="sheets"></span><span class="mt"><span class="mh">Titelseite und Inhalt</span><span class="ms">Gelöschte Titelseite und Inhaltsverzeichnis wieder einfügen</span></span></button>
+    <button class="mi" role="menuitem" data-new="pvtab" tabindex="-1"><span class="ic" data-ic="sheets"></span><span class="mt"><span class="mh">Stringübersicht</span><span class="ms">Alle Strings mit Spannungsprüfung</span></span></button>
+  </div>
+
+  <footer id="statusbar">
+    <div id="hint" class="hint"></div>
+    <div class="spacer"></div>
+    <label class="gridctl"><input type="checkbox" id="grid-on" checked><span>Raster</span></label>
+    <select id="grid-size" aria-label="Rasterweite">
+      <option value="1">1 mm</option>
+      <option value="2.5" selected>2,5 mm</option>
+      <option value="5">5 mm</option>
+    </select>
+    <label class="gridctl" title="Bemassung der Disposition ein- oder ausschalten (Y)" style="display:none"><input type="checkbox" id="dims-on" checked><span>Masse</span></label>
+    <label class="gridctl" title="Stärkerer Fang auf die Mitte jeder Spalte und Zeile. Alt halten schaltet ihn kurz aus."><input type="checkbox" id="mag-on" checked><span>Feldmitte</span></label>
+    <div id="coords" class="coords">x 0,0  y 0,0 mm</div>
+  </footer>
+</div>
+<div id="toasts" aria-live="polite"></div>
+<div id="printroot" aria-hidden="true"></div>
+  <div id="modal-root"></div>
+<script>
+/*JS*/
+</script>
+</body>
+</html>

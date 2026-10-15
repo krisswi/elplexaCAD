@@ -1,0 +1,21 @@
+{
+  "name": "schemacad",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-semi-condensed": "^5.3.0",
+    "@tarikjabiri/dxf": "^2.9.0",
+    "esbuild": "^0.28.2",
+    "pdfjs-dist": "6.4.299"
+  },
+  "type": "module",
+  "private": true
+}

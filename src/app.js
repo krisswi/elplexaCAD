@@ -26,7 +26,7 @@ import { makeDispo } from "./dispoedit.js";
 import { toast, openModal, confirmDialog, formDialog, chooseDialog, makeMenu } from "./dialogs.js";
 import { fieldHTML, actions, head, dupDel, textPanelHTML } from "./panel.js";
 import { startDialog } from "./start.js";
-import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings } from "./pv.js";
+import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel } from "./pv.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
 import { cloudMenu } from "./cloud.js";
@@ -81,7 +81,7 @@ const selectedItems = () => S.model.items.filter((it) => S.sel.has(it.id));
 const nextId = () => S.doc.nextId++;
 const snapshot = () => JSON.stringify({ sheets: S.doc.sheets, nextId: S.doc.nextId, pv: S.doc.pv, noTitle: S.doc.noTitle, noToc: S.doc.noToc, info: S.doc.info }); // pv: Modultypen (Stringplan)
 const docText = (noAssets = false) => serializeModel({ ...S.doc, active: S.active, ...(usedCustom(S.doc).length ? { symbols: usedCustom(S.doc) } : {}) }, { noAssets });
-const PV = makePv({ S, $, TOOLS, toast, change, openModal, chooseDialog, formDialog, confirmDialog, setTool, renderSheet, renderItems, renderOverlay, updateHint, applyView, fitView, nextId, markDirty, renderLeft, renderRight, download: (...a) => download(...a) });
+const PV = makePv({ S, $, TOOLS, toast, change, openModal, chooseDialog, formDialog, confirmDialog, setTool, renderSheet, renderItems, renderOverlay, updateHint, applyView, fitView, nextId, markDirty, renderLeft, renderRight, download: (...a) => download(...a), openEditor: (...a) => openEditor(...a) });
 const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp: dispoApplyDp, cabAct: dispoCabAct, cornerKey: dispoCornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
   makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, snapBase, change, moveItem, setTool, afterSheetChange, sheetLabel, nextSheetNo, makeSheet });
 
@@ -810,7 +810,10 @@ function addAbgang(tpl, col) {
   change(() => { const b = abgangItems(tpl, col, S.model.items, nextId); S.model.items.push(...b.items); });
 }
 function addTerminals(x, y) { change(() => S.model.items.push({ id: nextId(), ...newTerminals(x, y) })); }
+// Stringplan „Module einschränken“ (5bc): die Auswahl sind Module für die Autoverkabelung, nicht zum Bearbeiten
+const pickMode = () => isPv() && PV.picking();
 function deleteSelected() {
+  if (pickMode()) return;
   if (!S.sel.size) { hideDimSel(); return; } // gewähltes automatisches Mass der Disposition ausblenden
   change(() => {
     const gone = new Set([...S.sel, ...linkedTerminals(S.model.items, S.sel).map((t) => t.id), ...wmParts(S.model.items, S.sel).map((t) => t.id)]);
@@ -846,6 +849,7 @@ function cloneItems(src, selIds, dx, dy) {
   return ids;
 }
 function duplicateSelected() {
+  if (pickMode()) return;
   const sel = selectedItems();
   if (!sel.length) return;
   const d = S.grid.on ? Math.max(5, S.grid.size) : 5;
@@ -853,6 +857,7 @@ function duplicateSelected() {
 }
 // Zwischenablage (nur in dieser Sitzung, auch für andere Blätter)
 function copySelected() {
+  if (pickMode()) return;
   const sel = selectedItems();
   if (!sel.length) return;
   S.clip = { items: JSON.parse(JSON.stringify([...sel, ...followers(sel), ...dispoExtras(sel)])), sel: new Set(sel.map((i) => i.id)), sheet: S.active, pasted: 0, kind: S.model.kind || "schema" };
@@ -867,6 +872,7 @@ function pasteClip() {
   change(() => { S.sel = cloneItems(c.items, c.sel, k * d, -k * d); });
 }
 function nudge(dx, dy) {
+  if (pickMode()) return;
   const items = selectedItems();
   if (!items.length) return;
   const links = wireLinks([...items, ...followers(items)]);
@@ -1017,8 +1023,8 @@ stage.addEventListener("pointerdown", (e) => {
     S.sel.clear(); S.dimSel = autoDimPick(w.x, w.y); renderRight(); renderOverlay();
   } else if (massAt(w.x, w.y) && !hitTest(w.x, w.y)) { /* Mass: Doppelklick öffnet die Eingabe, die Auswahl bleibt */
   } else if (isPv() && S.tool === "select" && !e.shiftKey && !add && PV.gripAt(w)) {
-    const g = PV.gripAt(w); // Punkt einer Dachlinie oder Sperrfläche ziehen
-    S.drag = { type: "pvvertex", it: g.it, i: g.i, px: sx, py: sy, started: false, snap: snapshot() };
+    const g = PV.gripAt(w); // Punkt einer Dachlinie, Sperrfläche oder Leitung ziehen, oder Text eines Punkts (label)
+    S.drag = { type: "pvvertex", it: g.it, i: g.i, label: !!g.label, px: sx, py: sy, started: false, snap: snapshot() };
   } else if (S.tool === "select" && !e.shiftKey && vertexAt(w.x, w.y)) {
     const v = vertexAt(w.x, w.y);
     S.drag = { type: "vertex", w: v.w, i: v.i, pts: v.w.pts.map((p) => [...p]), px: sx, py: sy, started: false, snap: snapshot() };
@@ -1120,7 +1126,7 @@ stage.addEventListener("pointermove", (e) => {
     }
   } else if (d && d.type === "pvvertex") {
     if (!d.started && Math.hypot(sx - d.px, sy - d.py) > 3) { d.started = true; updateHint(); }
-    if (d.started) { d.it.pts[d.i] = [S.mouse.x, S.mouse.y]; renderItems(); }
+    if (d.started) { PV.dragGrip(d, S.mouse); renderItems(); }
   } else if (d && d.type === "band") { d.x1 = w.x; d.y1 = w.y; }
   if (!d && isPv()) PV.hover(S.mouse); // String: ⌥ halten und über Module fahren (Schritt 5c)
   if (!d) { const ha = isDispo() && handleAt(w.x, w.y); svg.style.cursor = ha ? HANDLE_CURSOR[ha.h] : isPv() && S.tool === "select" && PV.gripAt(w) ? "move" : ""; }
@@ -1158,6 +1164,7 @@ stage.addEventListener("dblclick", (e) => {
   const hit = isPv() ? hitTest(w.x, w.y, PV.layerPick()) : hitTest(w.x, w.y);
   if (!hit) return;
   if (hit.type === "text") openEditor(hit.x, hit.y, hit);
+  else if (hit.type === "pvpoint") openEditor(...pointLabel(hit), hit); // Punkt mit Beschriftung (5ay)
   else if (hit.type === "symbol") { const i = rightEl.querySelector("input[data-attr]"); if (i) { i.focus(); i.select(); } }
   else if (hit.type === "device") { const i = rightEl.querySelector('input[data-dp="bmk"]'); if (i) { i.focus(); i.select(); } }
 });
@@ -1234,7 +1241,7 @@ window.addEventListener("keydown", (e) => {
     case "Delete": case "Backspace": e.preventDefault(); deleteSelected(); break;
     case "Enter": if (S.wireDraft) finishWire(); else if (PV.cancel() || draftFinish()) { renderOverlay(); updateHint(); } break;
     case "Escape":
-      if (PV.cancel() || dimCancel() || draftEsc()) { renderOverlay(); updateHint(); }
+      if (PV.cancel(true) || dimCancel() || draftEsc()) { renderOverlay(); updateHint(); } // true: Leitung im Entstehen verwerfen (5ax)
       else if (S.wireDraft) { S.wireDraft.pts.length >= 2 ? finishWire() : (cancelDraft(), renderOverlay(), updateHint()); }
       else if (S.tool !== "select") setTool("select");
       else if (S.sel.size) { S.sel.clear(); renderRight(); renderOverlay(); }
@@ -1455,7 +1462,7 @@ window.addEventListener("resize", () => { applyView(); });
 window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 // ---------- Dateien (Code in files.js) ----------
-const { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend } = makeFiles({ S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv: PV });
+const { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend } = makeFiles({ S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv: PV, sheetLabel });
 
 // Titelseite: Änderung eintragen oder löschen, Logo laden (PNG, JPEG, SVG bis MAX_LOGO) oder entfernen
 function deckAction(b) {

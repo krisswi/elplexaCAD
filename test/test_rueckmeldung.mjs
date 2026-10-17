@@ -4,7 +4,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import { newDoc, newSheet, parseModel, serializeModel } from "../src/model.js";
 import { renumberAll } from "../src/numbering.js";
-import { SYMBOL_BY_NAME, WM_X, WM_PIN_Y, WM_BOX_Y } from "../src/symbols.js";
+import { SYMBOL_BY_NAME, WM_X, WM2_BOX, WM2_TAPS } from "../src/symbols.js";
 import { splitWandler, routeWm } from "../src/wandler.js";
 import { termItems, termNumbers, termTexts } from "../src/terminals.js";
 import { exportDxf } from "../src/dxf.js";
@@ -36,28 +36,43 @@ assert.strictEqual(ownDoc.sheets[0].items.find((i) => i.id === 5).manual, true);
 assert.strictEqual(ob(2).attrs.BMK, "3T7");
 console.log("BMK ok");
 
-// 3. Wandlermessung: altes Symbol wird beim Öffnen in Wandlerteil, Zähler und 10 Leitungen zerlegt
+// 3. Wandlermessung nach BKW (CJ 17.10.): das Palettensymbol wird in Einzelteile zerlegt, alles einzeln bearbeitbar
 const wd = newDoc(), ws = wd.sheets[0];
 ws.items.push(sym(1, "ZAEHLER_4P_W", 50, 190, { attrs: { BMK: "1P1", ZAEHLERNR: "123", WANDLER: "300/5A" }, manual: true }));
 wd.nextId = 2;
 const wb = parseModel(serializeModel(wd)), items = wb.sheets[0].items;
-assert.strictEqual(items.length, 12);
-const [tr, box] = items;
-assert.strictEqual(tr.sym, "ZW_WANDLER"); assert.strictEqual(tr.id, 1); assert.deepStrictEqual(tr.attrs, { FBMK: "F?", FSTROM: "10A", QI: "Strompfad 4 mm²", QU: "Spannungspfad 2,5 mm²", QK: "Steuerleiter 1,5 mm²" });
-assert.strictEqual(tr.manual, undefined);
-assert.strictEqual(box.sym, "ZW_ZAEHLER"); assert.strictEqual(box.of, 1); assert.strictEqual(box.manual, true);
+const count = (s) => items.filter((i) => i.sym === s).length;
+assert.deepStrictEqual(["ZW_CT", "ZW_SICH", "ZW_PK", "ZW_PK1", "ZW_ZAEHLER2"].map(count), [3, 3, 3, 1, 1]);
+assert.ok(!items.some((i) => i.of !== undefined || i.wm !== undefined || i.sym === "ZAEHLER_4P_W"), "keine verknüpften Teile mehr");
+const box = items.find((i) => i.sym === "ZW_ZAEHLER2");
+assert.strictEqual(box.manual, true);
 assert.deepStrictEqual(box.attrs, { BMK: "1P1", ZAEHLERNR: "123", WANDLER: "300/5A", TEXT: "Wirk-/Blindenergiezähler kombiniert" });
-assert.deepStrictEqual([box.x, box.y], [50, 190 + WM_BOX_Y]);
-const wires = items.slice(2);
-assert.ok(wires.every((w, i) => w.type === "wire" && w.of === 1 && w.wm === i && w.pts[0][0] === 50 + WM_X[i] && w.pts[0][1] === 190 + WM_PIN_Y && w.pts[1][1] === 190 + WM_BOX_Y));
+assert.deepStrictEqual([box.x, box.y], [50 + WM2_BOX.x, 190 + WM2_BOX.y]);
+assert.strictEqual(SYMBOL_BY_NAME.ZW_ZAEHLER2.pins.length, 15, "10 Klemmen plus 5 unbeschriftete");
+const sichs = items.filter((i) => i.sym === "ZW_SICH");
+assert.deepStrictEqual(sichs.map((i) => i.attrs), [{ FBMK: "F?", FSTROM: "10A" }, { FBMK: "", FSTROM: "" }, { FBMK: "", FSTROM: "" }]);
+const wires = items.filter((i) => i.type === "wire"), texts = items.filter((i) => i.type === "text");
+assert.ok(wires.length > 30 && texts.length > 40 && texts.some((t) => t.r === 90 && t.s === "braun (1)"));
 assert.ok(wb.nextId > Math.max(...items.map((i) => i.id)), "neue IDs unter nextId");
-// Pins: Leitungsenden liegen auf den Pins beider Teile
-const pins = (it) => SYMBOL_BY_NAME[it.sym].pins.map((p) => [it.x + p.x, it.y + p.y]);
+// Leitungsenden liegen auf Anschlüssen (Symbole), auf den Hauptlinien (Abgriffe) oder sind Striche/Trennstelle
+const pins = items.filter((i) => i.type === "symbol").flatMap((it) => SYMBOL_BY_NAME[it.sym].pins.map((p) => [it.x + p.x, it.y + p.y]));
 const has = (list, p) => list.some((q) => Math.abs(q[0] - p[0]) < 1e-6 && Math.abs(q[1] - p[1]) < 1e-6);
-assert.ok(wires.every((w) => has(pins(tr), w.pts[0]) && has(pins(box), w.pts[1])));
-// Speichern und Laden der neuen Form verlustfrei, Version 10
+const long = wires.filter((w) => w.pts.length > 2 || Math.abs(w.pts[0][1] - w.pts[1][1]) > 2);
+assert.ok(long.every((w) => has(pins, w.pts.at(-1)) && (has(pins, w.pts[0]) || has(WM2_TAPS.map((p) => [50 + p.x, 190 + p.y]), w.pts[0]))), "Leitungen verbinden Anschlüsse");
+// Zum Zähler: 10 Leitungen, S1 und S2 knicken nach links, U gerade; jede Kreuzung höchstens einmal (S1 über U)
+const toBox = wires.filter((w) => Math.abs(w.pts.at(-1)[1] - box.y) < 1e-6);
+assert.strictEqual(toBox.length, 10);
+const segs = toBox.flatMap((w, k) => w.pts.slice(1).map((q, i) => ({ k, a: w.pts[i], b: q })));
+let cross = 0;
+for (const h of segs) for (const v of segs) {
+  if (h.k === v.k || h.a[1] !== h.b[1] || v.a[0] !== v.b[0]) continue;
+  const x = v.a[0], y = h.a[1];
+  if (x > Math.min(h.a[0], h.b[0]) && x < Math.max(h.a[0], h.b[0]) && y > Math.min(v.a[1], v.b[1]) && y < Math.max(v.a[1], v.b[1])) cross++;
+}
+assert.strictEqual(cross, 3, "je Aussenleiter eine Kreuzung S1/U");
+// Speichern und Laden verlustfrei, Version 14
 const txt = serializeModel(wb);
-assert.strictEqual(JSON.parse(txt).version, 10);
+assert.strictEqual(JSON.parse(txt).version, 14);
 assert.deepStrictEqual(parseModel(txt).sheets[0].items, items);
 // Leitungen gestaffelt: nach rechts verschoben kreuzen und überdecken sie sich nicht
 const a = (i) => [50 + WM_X[i], 165], b = (i, dx) => [50 + WM_X[i] + dx, 150];
@@ -76,15 +91,16 @@ assert.deepStrictEqual(routeWm([0, 10], [0, 0], 3), [[0, 10], [0, 0]], "gerade b
 // Zerlegen auch bei gedrehtem Symbol und mehrfach ohne Doppel
 const rs = [sym(7, "ZAEHLER_4P_W", 100, 100, { rot: 90 })];
 let n = 50; splitWandler(rs, () => n++);
-assert.strictEqual(rs.length, 12); assert.deepStrictEqual([rs[1].x, rs[1].y], [100 - WM_BOX_Y, 100]);
+const rb = rs.find((i) => i.sym === "ZW_ZAEHLER2");
+assert.deepStrictEqual([rb.x, rb.y, rb.rot], [100 - WM2_BOX.y, 100 + WM2_BOX.x, 90]);
+assert.ok(rs.filter((i) => i.type === "text" && i.s.startsWith("braun (")).every((t) => t.r === 180));
 assert.strictEqual(splitWandler(rs, () => n++), false);
-// Zähler bekommt automatisch P, Sicherungen tragen BMK und Nennstrom
+// Zähler bekommt automatisch P
 const auto = parseModel(serializeModel(wd).replace('"manual": true', '"manual": false').replace('"BMK": "1P1"', '"BMK": "P?"'));
 auto.sheets[0].meta.BLATT = "4"; renumberAll(auto);
-assert.match(auto.sheets[0].items[1].attrs.BMK, /^4P\d$/);
-assert.ok(SYMBOL_BY_NAME.ZW_WANDLER.attrs.some((x) => x.tag === "FBMK") && SYMBOL_BY_NAME.ZW_WANDLER.attrs.some((x) => x.tag === "FSTROM"));
+assert.match(auto.sheets[0].items.find((i) => i.sym === "ZW_ZAEHLER2").attrs.BMK, /^4P\d$/);
 const dxf = exportDxf(wb.sheets[0]);
-assert.ok(dxf.includes("ZW_WANDLER") && dxf.includes("ZW_ZAEHLER") && dxf.includes("Wandlermessung"));
+assert.ok(dxf.includes("ZW_PK") && dxf.includes("ZW_ZAEHLER2") && dxf.includes("braun (1)"));
 console.log("Wandlermessung ok");
 
 // 4. Blattreihenfolge: Titelseite, Inhalt, Schema, Legende, Disposition, Stringplan, Stringübersicht

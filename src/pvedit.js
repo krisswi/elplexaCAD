@@ -25,6 +25,8 @@ const ICON = {
   auto: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h14a3.5 3.5 0 010 7H7a3.5 3.5 0 000 7h14"/><path d="M18 16l3 3-3 3"/></svg>',
   spa: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5"/><path d="M5.5 8.5l7 7M12.5 8.5l-7 7M16 12h6"/></svg>',
   scale: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h18M3 14v3M7.5 15.5V17M12 14v3M16.5 15.5V17M21 14v3"/><path d="M7 5v6M12 6.5v.01M12 9.5v.01M16 5v6"/></svg>',
+  line: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19V9h9V4h9" stroke-width="3" stroke-linejoin="miter"/></svg>',
+  point: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="17" r="2.6" fill="currentColor"/><path d="M11 9h10M11 13h7"/></svg>',
   fix: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/></svg>',
 };
 const FIX_COLOR = "#c2410c", MEASURE_COLOR = "#9b3d8f";
@@ -36,11 +38,11 @@ const DRAW_TOOLS = { "pv-roof": "Dachlinie", "pv-keepout": "Sperrfläche" };
 const PLAN_TOOLS = ["pv-measure", "pv-fix", "pv-rotate"]; // nur bei aktiver Ebene Hintergrund sichtbar
 const MOD_TOOLS = { "pv-module": "Modul", "pv-field": "Modulfeld" }; // Module liegen immer auf der Ebene Module (Annahme Claude)
 const MOD_COLOR = "#1f4e79", MOD_FILL = "#dbe6f1"; // Modul auf einer Sperrfläche: KEEPOUT_COLOR
-const WIRE_TOOLS = { "pv-string": "String", "pv-spa": "SPA" }; // Strings und SPA liegen immer auf der Ebene Verkabelung (wie Module auf Module)
+const WIRE_TOOLS = { "pv-string": "String", "pv-spa": "SPA", "pv-line": "Leitung", "pv-point": "Punkt" }; // Strings, SPA, Leitungen und Punkte liegen immer auf der Ebene Verkabelung (wie Module auf Module)
 // Werkzeuge je Ebene (Schritt 5b, CJ 14.10.): links erscheinen nur die Werkzeuge der aktiven Ebene
-const toolLayer = (t) => (PLAN_TOOLS.includes(t) ? "bg" : DRAW_TOOLS[t] ? "dach" : MOD_TOOLS[t] ? "module" : WIRE_TOOLS[t] ? "kabel" : null);
-// Tasten für Werkzeuge (Schritt 5d, Vorschlag Claude): M und F sind schon belegt (Blatt anheften, Einpassen)
-const TOOL_KEYS = { s: "pv-string", p: "pv-spa", e: "pv-module", b: "pv-field" };
+const toolLayer = (t) => (PLAN_TOOLS.includes(t) ? "bg" : DRAW_TOOLS[t] ? "dach" : MOD_TOOLS[t] ? "module" : WIRE_TOOLS[t] || t === "pv-autopick" ? "kabel" : null); // pv-autopick: Module für die Autoverkabelung wählen (5bc)
+// Tasten für Werkzeuge (Schritt 5d, Vorschlag Claude): M und F sind schon belegt (Blatt anheften, Einpassen). K Leitung (Kabelweg), O Punkt (5ax, 5ay, Wahl Claude: frei)
+const TOOL_KEYS = { s: "pv-string", p: "pv-spa", e: "pv-module", b: "pv-field", k: "pv-line", o: "pv-point" };
 const keyOf = (t) => Object.keys(TOOL_KEYS).find((k) => TOOL_KEYS[k] === t)?.toUpperCase() ?? "";
 const MARK_R = 216; // Kreis für + und − (5ar, CJ 15.10.: leicht grösser, 1,2 × von 180 mm)
 // Füllmuster (5h): massstäblich in mm, dezent, damit Module lesbar bleiben. Masse und Farben Annahme Claude.
@@ -67,7 +69,7 @@ export function makePv(c) {
   const types = () => S.doc.pv?.moduleTypes ?? [];
   // Einstellungen für neue Module (nur in der Sitzung): Modultyp, Lage, Feldgrösse, Abstände in mm
   // gq/gl: Abstand quer bzw. längs zum Modul (5y, CJ 15.10.).
-  const opt = { mt: null, quer: false, cols: 5, rows: 2, gq: P.GAP, gl: P.GAP };
+  const opt = { mt: null, quer: false, cols: 5, rows: 2, gq: P.GAP, gl: P.GAP, lw: P.LINE_W, lcol: P.LINE_COL }; // lw, lcol: neue Leitungen (5ax)
   let corner = P.CORNERS[0]; // Bezugsecke neuer Module, Tab wechselt (5x, CJ 15.10.), bleibt in der Sitzung
   // Tab bzw. Shift+Tab bei Modul oder Modulfeld: nächste bzw. vorherige Ecke. Rückgabe: Taste behandelt?
   function cornerKey(back) {
@@ -81,6 +83,15 @@ export function makePv(c) {
   let draft = null; // Messstrecke oder Kante zum Drehen: erster Punkt (Welt)
   let path = null; // Dachlinie oder Sperrfläche im Entstehen: { type, pts, sheet, layer }
   let wire = null; // String im Entstehen: { sheet, name, mods: [ids] }
+  let lpath = null; // Leitung im Entstehen (5ax): { sheet, pts }
+  let autoSet = null; // Autoverkabelung eingeschränkt (5bc): { sheet, ids: Set }, nur in der Sitzung
+  const picking = () => S.tool === "pv-autopick";
+  // Erlaubte Module des offenen Stringplans (gelöschte fallen weg), null = keine Einschränkung
+  function autoIds() {
+    if (autoSet?.sheet !== S.model) return null;
+    const ids = new Set(S.model.items.filter((m) => m.type === "pvmodule" && autoSet.ids.has(m.id)).map((m) => m.id));
+    return ids.size ? ids : null;
+  }
   let sname = null; // Bezeichnung für den nächsten String, null = Vorschlag (P.nextName)
   const nextName = () => sname ?? P.nextName(S.model);
   // Aktive Ebene (Schritt 3c, wie AutoCAD): neue Objekte landen darauf. Seit 5q (CJ 15.10.) in der Datei gespeichert, eine für die ganze Datei:
@@ -157,7 +168,7 @@ export function makePv(c) {
   // Objekte des Stringplans: Dach unten, Beschriftung oben. Ausgeblendete Ebenen fehlen.
   // H = Teile, die nicht gezeichnet werden (Druckteile 5l, seit 5ai auch am Bildschirm).
   function itemsSVG(sh = S.model, H = new Set(sh.hide ?? [])) {
-    const vis = sh.items.filter((it) => P.visible(sh, it) && !H.has(it.type === "pvmodule" ? "mod" : it.type)); // Typen keepout, spa, text heissen wie die Teile
+    const vis = sh.items.filter((it) => P.visible(sh, it) && !H.has(P.partOf(it)));
     let s = "";
     const pid = `pvfill${++fillSeq}-`, pats = new Map(); // je Füllung und Richtung ein Muster
     const url = (it) => { const k = `${it.fill}@${it.fdir || 0}`; if (!pats.has(k)) pats.set(k, [pid + pats.size, it.fill, it.fdir || 0]); return `url(#${pats.get(k)[0]})`; };
@@ -172,8 +183,10 @@ export function makePv(c) {
     const tint = new Map(); // Module eines Strings leicht eingefärbt (auch wenn die Verkabelung ausgeblendet ist)
     for (const st of P.strings(sh)) for (const id of st.mods) tint.set(id, P.stringColor(st.name));
     for (const it of vis) if (it.type === "pvmodule") s += modSVG(P.modRect(it), P.onKeepout(sh, it), modRot(it), tint.get(it.id));
-    for (const it of vis) if (it.type === "pvstring" && !(wire?.edit === it.id && wire.sheet === sh)) s += stringSVG(it.name, P.strPts(it, sh.items), "", H); // String in Bearbeitung: Vorschau im Overlay
+    for (const it of vis) if (it.type === "pvline") s += lineSVG(it.pts, it.w, it.col); // Leitungen über den Modulen, unter den Strings
+    for (const it of vis) if (it.type === "pvstring" && !(wire?.edit === it.id && wire.sheet === sh)) s += stringSVG(it.name, P.strPts(it, sh.items), "", H, sh.strk || 1); // String in Bearbeitung: Vorschau im Overlay
     for (const it of vis) if (it.type === "spa") s += spaSVG(it.x, it.y);
+    for (const it of vis) if (it.type === "pvpoint") s += pointSVG(it);
     return s + R.itemsSVG(vis.filter((it) => it.type === "text"), "schema");
   }
   function pathSVG(type, pts, closed, extra = "", fill = "") {
@@ -191,14 +204,22 @@ export function makePv(c) {
   // Text in der Welt (y nach oben), Höhe h in mm
   const wText = (x, y, str, h, color, anchor = "middle", cls = "") => `<text${cls ? ` class="${cls}"` : ""} x="${R.f(x)}" y="${R.f(-y)}" transform="scale(1 -1)" font-size="${h}" font-weight="600" text-anchor="${anchor}" dominant-baseline="central" fill="${color}" style="font-family:var(--sheet-font)">${R.esc(str)}</text>`;
   // String: Kabellinie durch die Modulmitten, + am ersten Modul, − am letzten (CJ 14.10.), Bezeichnung neben dem +
-  function stringSVG(name, pts, extra = "", H = new Set()) {
+  // k = Grösse der Beschriftung (5bb, Blattfeld strk), Bezeichnung und + − im gleichen Verhältnis
+  function stringSVG(name, pts, extra = "", H = new Set(), k = 1) {
     if (!pts.length) return "";
-    const col = P.stringColor(name), one = pts.length === 1, d = one ? MARK_R * 1.3 : 0; // ein Modul: + links, − rechts
-    const mark = ([x, y], sign, cls) => `<circle class="${cls}" cx="${R.f(x)}" cy="${R.f(y)}" r="${MARK_R}" fill="#fff" stroke="${col}" stroke-width="1.6"/>` + wText(x, y, sign, MARK_R * 1.6, col);
+    const col = P.stringColor(name), one = pts.length === 1, mr = MARK_R * k, d = one ? mr * 1.3 : 0; // ein Modul: + links, − rechts
+    const mark = ([x, y], sign, cls) => `<circle class="${cls}" cx="${R.f(x)}" cy="${R.f(y)}" r="${R.f(mr)}" fill="#fff" stroke="${col}" stroke-width="1.6"/>` + wText(x, y, sign, mr * 1.6, col);
     const a = [pts[0][0] - d, pts[0][1]], e = [pts.at(-1)[0] + d, pts.at(-1)[1]];
     return `<g class="pv-string" data-name="${R.esc(name)}" ${extra}>`
       + (one || H.has("str") ? "" : `<polyline points="${pts.map((p) => R.f(p[0]) + "," + R.f(p[1])).join(" ")}" fill="none" stroke="${col}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`)
-      + (H.has("pm") ? "" : mark(a, "+", "pv-plus") + mark(e, "−", "pv-minus")) + (H.has("name") ? "" : wText(a[0] - MARK_R * 1.4, a[1] + MARK_R * 1.4, name, P.PV_NAME_H, col, "end", "pv-name")) + "</g>";
+      + (H.has("pm") ? "" : mark(a, "+", "pv-plus") + mark(e, "−", "pv-minus")) + (H.has("name") ? "" : wText(a[0] - mr * 1.4, a[1] + mr * 1.4, name, P.PV_NAME_H * k, col, "end", "pv-name")) + "</g>";
+  }
+  // Leitung (5ax): massstäblich breit (style, damit weder Bildschirm noch Druck die Linienbreite ersetzen), Ecken spitz wie ein Kabelkanal
+  const lineSVG = (pts, w, col, extra = "") => `<polyline class="pv-line" points="${pts.map((p) => R.f(p[0]) + "," + R.f(p[1])).join(" ")}" fill="none" stroke="${col}" style="stroke-width:${R.f(w)};vector-effect:none" stroke-linejoin="miter" stroke-linecap="butt" ${extra}/>`;
+  // Punkt mit Beschriftung (5ay): gefüllter Kreis, Text daneben (verschiebbar über ox/oy)
+  function pointSVG(it, extra = "") {
+    const [lx, ly] = P.pointLabel(it);
+    return `<g class="pv-point" ${extra}><circle cx="${R.f(it.x)}" cy="${R.f(it.y)}" r="${P.PT_R}" fill="${ROOF_COLOR}" stroke="none"/>${it.s ? wText(lx, ly, it.s, it.h ?? P.PV_TEXT_H, ROOF_COLOR, "start") : ""}</g>`;
   }
   // SPA: Kreis mit Kreuz und Beschriftung (Platzhalter bis Phase 2)
   function spaSVG(x, y, extra = "") {
@@ -211,7 +232,7 @@ export function makePv(c) {
     const t = curType();
     if (!t) return [];
     const size = P.modSize(t, opt.quer), field = S.tool === "pv-field", [gx, gy] = P.gapsXY(opt.quer, opt.gq, opt.gl);
-    return P.fieldAt(p, field ? opt.cols : 1, field ? opt.rows : 1, size, gx, gy, corner, bg()?.rot || 0).map((q) => ({ type: "pvmodule", mt: t.id, x: q.x, y: q.y, quer: opt.quer, ...(q.rot ? { rot: q.rot } : {}) })); // 5x, 5aa
+    return P.fieldAt(p, field ? opt.cols : 1, field ? opt.rows : 1, size, gx, gy, corner).map((q) => ({ type: "pvmodule", mt: t.id, x: q.x, y: q.y, quer: opt.quer })); // 5x; seit 5az (CJ 17.10.) ohne Drehung des Plans
   }
   function overlaySVG() {
     const z = S.view.z;
@@ -224,7 +245,10 @@ export function makePv(c) {
       const r = 4 / z; // erster Punkt: hier klicken schliesst
       s += `<rect x="${path.pts[0][0] - r}" y="${path.pts[0][1] - r}" width="${2 * r}" height="${2 * r}" fill="#fff" stroke="${SNAP_COLOR}" stroke-width="1.4" pointer-events="none"/>`;
     }
-    if (S.tool === "select") for (const it of gripItems()) for (const [x, y] of it.pts) {
+    if (lpath && lpath.sheet === S.model) s += lineSVG(S.mouse ? [...lpath.pts, [S.mouse.x, S.mouse.y]] : lpath.pts, opt.lw, opt.lcol, 'opacity="0.75" pointer-events="none"'); // Leitung im Entstehen
+    if (S.tool === "pv-line" && !lpath && S.mouse) s += lineSVG([[S.mouse.x - opt.lw, S.mouse.y], [S.mouse.x + opt.lw, S.mouse.y]], opt.lw, opt.lcol, 'opacity="0.55" pointer-events="none"');
+    if (S.tool === "pv-point" && S.mouse) s += pointSVG({ x: S.mouse.x, y: S.mouse.y, s: "" }, 'opacity="0.55" pointer-events="none"');
+    if (S.tool === "select") for (const it of gripItems()) for (const [x, y] of it.pts ?? [P.pointLabel(it)]) { // Punkt (5ay): Griff am Textanfang
       const r = GRIP_PX / z;
       s += `<rect class="pv-grip" x="${x - r}" y="${y - r}" width="${2 * r}" height="${2 * r}" fill="#fff" stroke="${SNAP_COLOR}" stroke-width="1.4" pointer-events="none"/>`;
     }
@@ -232,20 +256,22 @@ export function makePv(c) {
       for (const m of newModules(S.mouse)) s += modSVG(P.modRect(m), false, `opacity="0.55" pointer-events="none" ${modRot(m)}`);
       if (curType()) s += `<circle class="pv-anchor" cx="${R.f(S.mouse.x)}" cy="${R.f(S.mouse.y)}" r="${R.f(4 / z)}" fill="${SNAP_COLOR}" pointer-events="none"/>`; // Bezugsecke (5x)
     }
+    const lim = (S.tool === "pv-string" && auto) && autoIds(); // 5bc: erlaubte Module hervorheben
+    if (lim) for (const m of S.model.items) if (lim.has(m.id)) { const b = P.modRect(m); s += `<rect class="pv-allowed" x="${R.f(b.x0)}" y="${R.f(b.y0)}" width="${R.f(b.x1 - b.x0)}" height="${R.f(b.y1 - b.y0)}" ${modRot(m)} fill="${SNAP_COLOR}" fill-opacity="0.18" stroke="${SNAP_COLOR}" stroke-width="2" pointer-events="none"/>`; }
     if (S.tool === "pv-string") { // String im Entstehen (auch ohne Maus über dem Plan) und Modul unter dem Mauszeiger
       const m = S.mouse && modAt(S.mouse), own = wire?.sheet === S.model ? wire : null, col = P.stringColor(own?.name ?? nextName());
       const b = m && P.modRect(m);
       if (m) s += `<rect class="pv-hover" x="${R.f(b.x0)}" y="${R.f(b.y0)}" width="${R.f(b.x1 - b.x0)}" height="${R.f(b.y1 - b.y0)}" ${modRot(m)} fill="none" stroke="${P.stringOf(S.model, m.id) ? KEEPOUT_COLOR : col}" stroke-width="2.4" pointer-events="none"/>`;
       if (own) {
         const pts = P.strPts(own);
-        s += stringSVG(own.name, own.front ? [...pts].reverse() : pts, 'opacity="0.8" pointer-events="none"'); // am Anfang einfügen: + bleibt vorne
+        s += stringSVG(own.name, own.front ? [...pts].reverse() : pts, 'opacity="0.8" pointer-events="none"', undefined, S.model.strk || 1); // am Anfang einfügen: + bleibt vorne
         const q = pts[own.at - 1] ?? pts.at(-1); // Linie ab der Einfügestelle (5e)
         if (q && S.mouse) s += `<line x1="${R.f(q[0])}" y1="${R.f(q[1])}" x2="${R.f(S.mouse.x)}" y2="${R.f(S.mouse.y)}" stroke="${col}" stroke-width="1.6" stroke-dasharray="6 4" pointer-events="none"/>`;
         if (S.mouse) s += wText(S.mouse.x + 14 / z, S.mouse.y - 14 / z, String(own.mods.length), 13 / z, col, "start", "pv-count"); // Zähler neben dem Mauszeiger (5c)
       }
     }
     if (S.tool === "pv-spa" && S.mouse) s += spaSVG(S.mouse.x, S.mouse.y, 'opacity="0.55" pointer-events="none"');
-    if (S.mouse && (DRAW_TOOLS[S.tool] || MOD_TOOLS[S.tool] || S.tool === "pv-spa" || S.drag?.type === "pvvertex" && S.drag.started)) s += snapMarker(S.mouse, z);
+    if (S.mouse && (DRAW_TOOLS[S.tool] || MOD_TOOLS[S.tool] || S.tool === "pv-spa" || S.tool === "pv-line" || S.tool === "pv-point" || S.drag?.type === "pvvertex" && S.drag.started && !S.drag.label)) s += snapMarker(S.mouse, z);
     return s;
   }
   // Fangsymbol: Quadrat = Endpunkt, Kreis mit Kreuz = Schnittpunkt, Dreieck = Mitte, Kreuz = Kante, kleiner Punkt = Raster
@@ -273,22 +299,31 @@ export function makePv(c) {
   function snap(w) {
     if (PLAN_TOOLS.includes(S.tool) || S.tool === "pv-string") return { x: w.x, y: w.y };
     const grid = S.grid.on ? S.grid.size : 0, tol = SNAP_PX / S.view.z, d = S.drag?.type === "pvvertex" ? S.drag : null;
+    if (d?.label) return { x: w.x, y: w.y }; // Text eines Punkts frei ziehen (5ay)
     if (d) return P.snapPv(S.model, w, { grid, tol, alt: S.alt, skip: d.it.id, extra: d.it.pts.filter((_, k) => k !== d.i), ortho: S.shift ? prevPt(d.it, d.i) : undefined });
-    const drawing = !!DRAW_TOOLS[S.tool] || !!MOD_TOOLS[S.tool] || S.tool === "pv-spa" || S.tool === "text", own = path?.sheet === S.model;
+    const drawing = !!DRAW_TOOLS[S.tool] || !!MOD_TOOLS[S.tool] || S.tool === "pv-spa" || S.tool === "pv-line" || S.tool === "pv-point" || S.tool === "text", own = path?.sheet === S.model, lown = lpath?.sheet === S.model;
+    if (lown) return P.snapPv(S.model, w, { grid, tol, alt: S.alt, extra: lpath.pts, ortho: S.shift ? lpath.pts.at(-1) : undefined }); // Leitung: Shift 0°, 45°, 90° wie beim Dach (5ax)
     return P.snapPv(S.model, w, { grid, tol: drawing ? tol : 0, alt: S.alt, extra: own ? path.pts : [], ortho: own && S.shift && DRAW_TOOLS[S.tool] ? path.pts.at(-1) : undefined });
   }
   // Bezugspunkt für Shift beim Ziehen: vorheriger Punkt; beim ersten Punkt der letzte (geschlossen) bzw. der zweite (offen)
   const prevPt = (it, i) => it.pts[i > 0 ? i - 1 : P.isClosed(it) ? it.pts.length - 1 : 1];
-  // Gewählte Dachobjekte mit Griffen (nur auf freier Ebene)
-  const gripItems = () => S.model.items.filter((it) => S.sel.has(it.id) && P.PV_TYPES.has(it.type) && P.pickable(S.model, it));
-  // Griff unter dem Mauszeiger: { it, i } oder null
+  // Gewählte Objekte mit Griffen (nur auf freier Ebene): Dachobjekte und Leitungen an jedem Punkt, Punkte am Textanfang (5ax, 5ay)
+  const gripItems = () => S.model.items.filter((it) => S.sel.has(it.id) && (P.PV_TYPES.has(it.type) || it.type === "pvline" || it.type === "pvpoint") && P.pickable(S.model, it));
+  // Griff unter dem Mauszeiger: { it, i } oder { it, label: true } (Text eines Punkts) oder null
   function gripAt(w) {
     const tol = (GRIP_PX + 2) / S.view.z, items = gripItems();
     for (let k = items.length - 1; k >= 0; k--) {
-      const i = items[k].pts.findIndex((p) => Math.hypot(p[0] - w.x, p[1] - w.y) <= tol);
-      if (i >= 0) return { it: items[k], i };
+      const it = items[k];
+      if (it.type === "pvpoint") { const [x, y] = P.pointLabel(it); if (Math.hypot(x - w.x, y - w.y) <= tol) return { it, label: true }; continue; }
+      const i = it.pts.findIndex((p) => Math.hypot(p[0] - w.x, p[1] - w.y) <= tol);
+      if (i >= 0) return { it, i };
     }
     return null;
+  }
+  // Griff ziehen (app.js, Zieh-Art pvvertex): Punkt eines Linienzugs oder Textanfang eines Punkts auf m
+  function dragGrip(d, m) {
+    if (!d.label) { d.it.pts[d.i] = [m.x, m.y]; return; }
+    d.it.ox = Math.round((m.x - d.it.x) * 1000) / 1000; d.it.oy = Math.round((m.y - d.it.y) * 1000) / 1000;
   }
 
   // ---------- Werkzeuge ----------
@@ -298,6 +333,9 @@ export function makePv(c) {
     if (MOD_TOOLS[S.tool]) { placeModules(snap(w)); return true; }
     if (S.tool === "pv-string") { if (e?.shiftKey) unwire(w); else stringClick(w); return true; }
     if (S.tool === "pv-spa") { const p = snap(w); if (layerFree("kabel")) change(() => S.model.items.push({ id: c.nextId(), type: "spa", x: p.x, y: p.y })); return true; }
+    if (S.tool === "pv-line") { addLinePoint(snap(w)); return true; }
+    if (picking()) { pickDown(w); return true; }
+    if (S.tool === "pv-point") { placePoint(snap(w)); return true; }
     if (S.tool === "pv-pmid") { change(() => { S.model.pmid = [Math.round(w.x), Math.round(w.y)]; }); setTool("select"); toast("Druckmitte gesetzt. Oben unter „Druck“ zurück auf automatisch."); return true; } // 5ao
     if (!PLAN_TOOLS.includes(S.tool)) return false;
     if (!lay("bg").show || lay("bg").lock) { layerFree("bg"); return true; }
@@ -318,6 +356,31 @@ export function makePv(c) {
     if (n) toast(`${n === 1 ? "Ein Modul liegt" : `${n} Module liegen`} auf einer Sperrfläche (rot markiert).`, "error");
   }
 
+  // ---------- Leitungen und Punkte (5ax, 5ay, CJ 17.10.) ----------
+  // Leitung: Klicks setzen Punkte, Klick auf den letzten Punkt (Doppelklick) oder Eingabetaste beendet, Esc bricht ab.
+  function addLinePoint(p) {
+    if (lpath && lpath.sheet !== S.model) lpath = null;
+    if (!lpath) { if (!layerFree("kabel")) return; lpath = { sheet: S.model, pts: [[p.x, p.y]] }; }
+    else if (Math.hypot(lpath.pts.at(-1)[0] - p.x, lpath.pts.at(-1)[1] - p.y) <= 3 / S.view.z) { finishLine(); return; } // zweiter Klick des Doppelklicks
+    else lpath.pts.push([p.x, p.y]);
+    c.renderOverlay(); c.updateHint();
+  }
+  // Übernimmt die Leitung ab zwei Punkten. Gibt zurück, ob ein Entwurf da war.
+  function finishLine() {
+    const d = lpath; lpath = null;
+    if (!d) return false;
+    if (d.pts.length >= 2 && S.doc.sheets.includes(d.sheet)) change(() => d.sheet.items.push({ id: c.nextId(), type: "pvline", pts: d.pts, w: opt.lw, col: opt.lcol }));
+    c.renderOverlay(); c.updateHint();
+    return true;
+  }
+  // Punkt setzen, danach gleich die Beschriftung eingeben (leer = Punkt ohne Text)
+  function placePoint(p) {
+    if (!layerFree("kabel")) return;
+    const it = { id: c.nextId(), type: "pvpoint", x: p.x, y: p.y, s: "" };
+    change(() => S.model.items.push(it));
+    c.openEditor(...P.pointLabel(it), it);
+  }
+
   // ---------- Verkabelung (Schritt 5) ----------
   // Oberstes sichtbares Modul unter dem Punkt
   const modAt = (w) => S.model.items.findLast((it) => it.type === "pvmodule" && P.visible(S.model, it) && R.hitItem(it, w.x, w.y, 0));
@@ -325,6 +388,7 @@ export function makePv(c) {
   function stringClick(w) {
     if (!layerFree("kabel")) return;
     const m = modAt(w);
+    if (auto && m && autoIds() && !autoIds().has(m.id)) { toast("Dieses Modul ist nicht unter den gewählten Modulen. Ein grün markiertes Modul als Start anklicken.", "error"); return; } // 5bc
     if (auto && m) { auto = false; c.updateHint(); c.renderLeft(); c.renderRight(); autoWire(m); return; }
     if (!m) { toast("Ein Modul anklicken. Die Reihenfolge der Klicks ist die Reihenfolge im String, das erste Modul ist +.", "error"); return; }
     if (wire && wire.sheet !== S.model) finishString();
@@ -377,13 +441,35 @@ export function makePv(c) {
     if (!Number.isInteger(n) || !Number.isInteger(k) || n < 1 || k < 1) { toast("Bitte ganze Zahlen ab 1 eingeben.", "error"); return; }
     if (an && n > names.length) { toast(`WR ${r[0]} hat nur ${names.length} freie Strings.`, "error"); return; }
     autoOpt = [an ? autoOpt[0] : nv, kv, dir];
-    const list = P.autoStrings(S.model, m.id, n, k, dir);
+    const list = P.autoStrings(S.model, m.id, n, k, dir, autoIds() ?? undefined); // 5bc: nur gewählte Module
     if (!list.length) { toast(`Zu wenige freie Module für einen String mit ${k} Modulen.`, "error"); return; }
     change(() => list.forEach((mods, i) => S.model.items.push({ id: c.nextId(), type: "pvstring", name: names ? names[i] : i ? P.nextName(S.model) : name.trim(), mods })));
     sname = null;
     if (list.length < n) toast(`Nur ${list.length} von ${n} Strings angelegt, es fehlen freie Module.`, "error");
     else toast(`${n} String${n > 1 ? "s" : ""} mit je ${k} Modulen angelegt.`);
   }
+  // 5bc: Wahlmodus. Klick auf ein Modul schaltet es um, Rahmen auf freier Fläche ergänzt (app.js „band“ mit layerPick = Module).
+  // Die Wahl liegt solange in S.sel (Auswahl-Rahmen sichtbar); Löschen, Verschieben und Kopieren sind dabei gesperrt (app.js pickMode).
+  function pickDown(w) {
+    const m = modAt(w);
+    if (m) { if (S.sel.has(m.id)) S.sel.delete(m.id); else S.sel.add(m.id); c.renderRight(); c.renderOverlay(); return; }
+    S.drag = { type: "band", x0: w.x, y0: w.y, x1: w.x, y1: w.y, base: new Set(S.sel) };
+  }
+  const pickMods = () => S.model.items.filter((it) => it.type === "pvmodule" && P.visible(S.model, it));
+  function startPick() {
+    const ids = autoIds();
+    setActive("kabel"); setTool("pv-autopick");
+    S.sel = new Set(ids ?? []);
+    c.renderRight(); c.renderOverlay(); c.renderLeft();
+  }
+  function endPick(apply) {
+    const ids = new Set([...S.sel].filter((id) => S.model.items.some((m) => m.id === id && m.type === "pvmodule")));
+    if (apply) autoSet = ids.size ? { sheet: S.model, ids } : null;
+    setTool("pv-string"); auto = true; // setTool leert die Auswahl
+    c.renderLeft(); c.renderRight(); c.renderOverlay(); c.updateHint();
+    if (apply) toast(ids.size ? `Autoverkabelung auf ${ids.size} Module eingeschränkt.` : "Keine Module gewählt: Autoverkabelung wieder über alle Module.");
+  }
+
   // Neuen String im Entstehen anlegen. Ungültige Bezeichnung: Meldung (beim Überfahren nur einmal je Bezeichnung).
   let badName = null;
   function startWire(quiet) {
@@ -526,6 +612,39 @@ export function makePv(c) {
       if (nv !== S.model.north) change(() => { if (nv === undefined) delete S.model.north; else S.model.north = nv; });
       return;
     }
+    if (k === "lw" || k === "selw") { // Breite der Leitung in mm im Planmass (5ax)
+      const n = Number(v.trim().replace(",", "."));
+      if (!(n > 0)) { toast("Bitte eine Breite grösser als 0 mm eingeben (Planmass, z. B. 50).", "error"); c.renderRight(); return; }
+      if (k === "lw") { opt.lw = n; c.renderOverlay(); return; }
+      const ls = S.model.items.filter((it) => S.sel.has(it.id) && it.type === "pvline");
+      if (ls.some((l) => l.w !== n)) change(() => { for (const l of ls) l.w = n; });
+      return;
+    }
+    if (k === "lcol" || k === "selcol") { // Farbe der Leitung (5ax)
+      if (!/^#[0-9a-f]{6}$/i.test(v)) return;
+      if (k === "lcol") { opt.lcol = v.toLowerCase(); c.renderOverlay(); return; }
+      const ls = S.model.items.filter((it) => S.sel.has(it.id) && it.type === "pvline");
+      if (ls.some((l) => l.col !== v.toLowerCase())) change(() => { for (const l of ls) l.col = v.toLowerCase(); });
+      return;
+    }
+    if (k === "th") { // Texthöhe der gewählten Texte und Punkte (5ba), mm im Planmass
+      const n = Number(v.trim().replace(",", "."));
+      if (!(n > 0)) { toast("Bitte eine Texthöhe grösser als 0 mm eingeben (Planmass, z. B. 250).", "error"); c.renderRight(); return; }
+      const ts = S.model.items.filter((it) => S.sel.has(it.id) && (it.type === "text" || it.type === "pvpoint"));
+      if (ts.some((t) => (t.h ?? P.PV_TEXT_H) !== n)) change(() => { for (const t of ts) { if (t.type === "pvpoint" && n === P.PV_TEXT_H) delete t.h; else t.h = n; } });
+      return;
+    }
+    if (k === "strk") { // Grösse der Stringbeschriftung in % (5bb), je Stringplan
+      const n = Number(v.trim().replace(",", ".").replace("%", "")) / 100;
+      if (!(n >= P.STRK_MIN && n <= P.STRK_MAX)) { toast("Bitte 25 bis 400 % eingeben.", "error"); c.renderRight(); return; }
+      if (n !== (S.model.strk || 1)) change(() => { if (n === 1) delete S.model.strk; else S.model.strk = n; });
+      return;
+    }
+    if (k === "pts") { // Beschriftung des gewählten Punkts (5ay)
+      const pt = S.model.items.find((it) => S.sel.has(it.id) && it.type === "pvpoint");
+      if (pt && pt.s !== v.trim()) change(() => { pt.s = v.trim(); });
+      return;
+    }
     if (k === "mppt" || k === "str") { // Anlage je Datei (5k): MPPT bzw. Strings je MPPT eines WR
       const n = v.trim() === "" ? 0 : Number(v.trim()), i = Number(el.dataset.wr);
       if (!Number.isInteger(n) || n < 0 || n > 99) { toast("Bitte eine ganze Zahl von 0 bis 99 eingeben.", "error"); c.renderRight(); return; }
@@ -579,8 +698,13 @@ export function makePv(c) {
     c.renderOverlay(); c.updateHint();
     return true;
   }
-  // Esc, Eingabetaste, Werkzeugwechsel: Linienzug übernehmen (offen), Messstrecke verwerfen
-  const cancel = () => { const had = !!draft || auto, wasAuto = auto; draft = null; auto = false; if (wasAuto) { c.renderLeft(); c.renderRight(); } return finishString() || finishPath(false) || had; };
+  // Esc, Eingabetaste, Werkzeugwechsel: Linienzug übernehmen (offen), Messstrecke verwerfen. Leitung (5ax): Esc (abort) verwirft, sonst übernehmen.
+  const cancel = (abort) => {
+    if (abort && lpath) { lpath = null; c.renderOverlay(); c.updateHint(); return true; }
+    if (abort && picking()) { endPick(false); return true; } // Esc im Wahlmodus (5bc): zurück zur Autoverkabelung, Einschränkung wie vorher
+    const had = !!draft || auto, wasAuto = auto; draft = null; auto = false; if (wasAuto) { c.renderLeft(); c.renderRight(); }
+    return finishString() || finishPath(false) || finishLine() || had;
+  };
 
   async function finishMeasure(a, e) {
     const b = bg(), pa = P.worldToPage(b, a.x, a.y), pe = P.worldToPage(b, e.x, e.y);
@@ -603,7 +727,7 @@ export function makePv(c) {
   // Plan drehen: Kante a→b soll waagrecht oder senkrecht liegen. Der Winkel lässt sich im Dialog ändern (auch frei eingeben).
   async function finishRotate(a, e) {
     const d = P.alignAngle([a.x, a.y], [e.x, e.y]);
-    const r = await formDialog("Plan drehen", "Drehung um den Fixpunkt in Grad, positiv = gegen den Uhrzeigersinn. Der Vorschlag legt die angeklickte Kante waagrecht oder senkrecht. Objekte drehen mit.", [{ label: "Drehung in Grad", value: String(Math.round(d * 100) / 100).replace(".", ",") }], "Drehen");
+    const r = await formDialog("Plan drehen", "Drehung um den Fixpunkt in Grad, positiv = gegen den Uhrzeigersinn. Der Vorschlag legt die angeklickte Kante waagrecht oder senkrecht. Dachlinien und Sperrflächen drehen mit, Module, Strings, SPA, Leitungen, Punkte und Texte bleiben.", [{ label: "Drehung in Grad", value: String(Math.round(d * 100) / 100).replace(".", ",") }], "Drehen");
     if (!r) return;
     const deg = parseFloat(r[0].replace(/\s/g, "").replace(",", "."));
     if (!Number.isFinite(deg)) { toast("Bitte einen Winkel eingeben, z. B. 12,5.", "error"); return; }
@@ -704,9 +828,14 @@ export function makePv(c) {
       auto = true; c.renderLeft(); c.renderRight(); c.updateHint(); return;
     }
     if (el.dataset.pvact === "active") { setActive(el.dataset.layer); return; }
+    if (el.dataset.pvact === "autopick") { startPick(); return; } // 5bc
+    if (el.dataset.pvact === "autodone") { endPick(true); return; }
+    if (el.dataset.pvact === "autonone") { S.sel.clear(); c.renderRight(); c.renderOverlay(); return; }
+    if (el.dataset.pvact === "autoclear") { autoSet = null; c.renderRight(); c.renderOverlay(); toast("Einschränkung aufgehoben: Autoverkabelung über alle Module."); return; }
     if (el.dataset.pvact === "pmid") { setTool("pv-pmid"); return; } // Druckmitte per Klick (5ao)
     if (el.dataset.pvact === "pmidauto") { change(() => { delete S.model.pmid; }); return; }
     if (el.dataset.pvact === "strclear") { clearWiring(); return; }
+    if (el.dataset.pvact === "ptreset") { resetLabel(); return; } // Text zurück neben den Punkt (5ay)
     const st = S.model.items.find((it) => S.sel.has(it.id) && it.type === "pvstring");
     if (el.dataset.pvact === "strrev" && st) { change(() => st.mods.reverse()); return; } // + und − tauschen (5e)
     if ((el.dataset.pvact === "strapp" || el.dataset.pvact === "strfront") && st) { // Module anhängen oder einfügen (5e): String wie beim Zeichnen weiterführen
@@ -752,6 +881,7 @@ export function makePv(c) {
     if (S.doc.sheets.some((sh) => sh.kind === "pv" && sh.hide)) change(() => { for (const sh of S.doc.sheets) if (sh.kind === "pv") delete sh.hide; });
   }
   const pickable = () => S.model.items.filter((it) => P.pickable(S.model, it));
+  function resetLabel() { const pt = S.model.items.find((it) => S.sel.has(it.id) && it.type === "pvpoint"); if (pt && pt.ox !== undefined) change(() => { delete pt.ox; delete pt.oy; }); }
   // Verkabelung löschen (5m): markierte Strings, ohne Markierung alle Strings des offenen Stringplans (5aj, CJ 15.10.). Ein Rückgängig-Schritt.
   async function clearWiring() {
     finishString(); auto = false;
@@ -804,7 +934,7 @@ export function makePv(c) {
     if (act() === "bg") h += (bg()?.asset ? `<button class="tool" data-pvact="scale">${ICON.scale}<span>Massstab eingeben</span></button>` : "") + toolBtn("pv-measure", ICON.measure, "Massstab messen") + toolBtn("pv-fix", ICON.fix, "Fixpunkt setzen") + toolBtn("pv-rotate", ICON.rotate, "Plan drehen");
     if (act() === "dach") h += sec("Dach") + toolBtn("pv-roof", ICON.roof, "Dachlinie") + toolBtn("pv-keepout", ICON.keepout, "Sperrfläche");
     if (act() === "module") h += sec("Module") + toolBtn("pv-module", ICON.module, "Modul") + toolBtn("pv-field", ICON.field, "Modulfeld");
-    if (act() === "kabel") h += sec("Verkabelung") + toolBtn("pv-string", ICON.string, "String", undefined, S.tool === "pv-string" && !auto) + `<button class="tool" data-pvact="auto" aria-pressed="${auto}" title="Autoverkabelung: erstes Modul anklicken, dann Anzahl und Richtung wählen">${ICON.auto}<span>Autoverkabelung</span></button>` + toolBtn("pv-spa", ICON.spa, "SPA") + `<button class="tool" data-pvact="strclear" title="Markierte Strings, ohne Markierung alle Strings dieses Stringplans">${R.icons.trash}<span>Verkabelung löschen</span></button>`;
+    if (act() === "kabel") h += sec("Verkabelung") + toolBtn("pv-string", ICON.string, "String", undefined, S.tool === "pv-string" && !auto) + `<button class="tool" data-pvact="auto" aria-pressed="${auto || picking()}" title="Autoverkabelung: erstes Modul anklicken, dann Anzahl und Richtung wählen">${ICON.auto}<span>Autoverkabelung</span></button>` + toolBtn("pv-spa", ICON.spa, "SPA") + toolBtn("pv-line", ICON.line, "Leitung") + toolBtn("pv-point", ICON.point, "Punkt") + `<button class="tool" data-pvact="strclear" title="Markierte Strings, ohne Markierung alle Strings dieses Stringplans">${R.icons.trash}<span>Verkabelung löschen</span></button>`;
     h += `</section><section class="section"><h2 class="section-title">Ebenen</h2>`;
     for (const [k, name] of P.LAYERS) {
       const n = P.DRAW_LAYERS.indexOf(k) + 1; // ⌘1 bis ⌘5
@@ -819,6 +949,7 @@ export function makePv(c) {
   // Rechte Leiste. null = app.js zeigt die Standardleiste (Text, Mehrfachauswahl).
   function panelHTML(sel, { head, fieldHTML, META_FIELDS, dupDel }) {
     const b = bg(), note = (t) => `<p class="note">${t}</p>`;
+    if (picking()) return pickPanel(head); // 5bc: vor allem anderen, die Auswahl sind hier Module
     if (sel.length === 1 && P.PV_TYPES.has(sel[0].type)) {
       const it = sel[0], n = it.pts.length;
       const turned = Math.abs(Math.round((it.fdir || 0) / 90)) % 2 === 1, zg = it.fill?.startsWith("ziegel");
@@ -829,10 +960,17 @@ export function makePv(c) {
     }
     if (sel.length && sel.every((it) => it.type === "pvmodule")) return modPanel(sel, head, dupDel);
     if (sel.length === 1 && sel[0].type === "pvstring") return strPanel(sel[0], head);
+    if (sel.length && sel.every((it) => it.type === "pvline")) return linePanel(sel, head, dupDel);
+    if (sel.length === 1 && sel[0].type === "pvpoint") return head("Punkt", "Ebene Verkabelung") + `<div class="field"><label>Beschriftung</label><input type="text" data-pvopt="pts" value="${R.esc(sel[0].s)}" autocomplete="off" spellcheck="false"></div>`
+      + thField(sel) + note("Doppelklick auf den Punkt ändert den Text. Griff am Text ziehen setzt ihn frei neben den Punkt.") + (sel[0].ox !== undefined ? `<div class="row"><button class="btn outline small" data-pvact="ptreset">Text zurück neben den Punkt</button></div>` : "") + dupDel();
+    if (sel.length === 1 && sel[0].type === "text") return head("Text", `Ebene ${layerName(P.layerOf(sel[0]))}`) + fieldHTML("Inhalt", 'data-text="s"', sel[0].s) + thField(sel) + dupDel(); // 5ba
+    if (sel.length > 1 && sel.every((it) => it.type === "text" || it.type === "pvpoint")) return head(`${sel.length} Texte und Punkte`, "Texthöhe für alle") + thField(sel) + dupDel();
     if (sel.length === 1 && sel[0].type === "spa") return head("SPA", "Ebene Verkabelung") + note("Potentialanschluss, Platzhalter bis Phase 2 (Unterkonstruktion).") + dupDel();
     if (sel.length) return null;
     if (MOD_TOOLS[S.tool]) return toolPanel(head);
-    if (S.tool === "pv-string" && auto) return head("Autoverkabelung", "Neue Strings auf der Ebene Verkabelung") + note("Erstes Modul anklicken (+ des ersten Strings). Danach Anzahl Strings, Module je String und Richtung wählen. Ein Schritt rückgängig.") + note(S.doc.pv?.anlage ? "Bezeichnungen aus der Anlage (oben „Wechselrichter“)." : "Ohne Anlage: Bezeichnungen fortlaufend ab dem nächsten freien String.");
+    if (S.tool === "pv-line") return head("Leitung", "Neue Leitungen auf der Ebene Verkabelung") + lineFields("lw", "lcol", opt.lw, opt.lcol) + note("Breite im Planmass: 50 mm sind bei 1:100 auf dem Papier 0,5 mm.");
+    if (S.tool === "pv-point") return head("Punkt", "Neue Punkte auf der Ebene Verkabelung") + note("Klick setzt den Punkt, danach die Beschriftung eingeben (Eingabetaste). Leer = Punkt ohne Text.");
+    if (S.tool === "pv-string" && auto) return head("Autoverkabelung", "Neue Strings auf der Ebene Verkabelung") + limitHTML() + note("Erstes Modul anklicken (+ des ersten Strings). Danach Anzahl Strings, Module je String und Richtung wählen. Ein Schritt rückgängig.") + note(S.doc.pv?.anlage ? "Bezeichnungen aus der Anlage (oben „Wechselrichter“)." : "Ohne Anlage: Bezeichnungen fortlaufend ab dem nächsten freien String.");
     if (S.tool === "pv-string") return stringToolPanel(head);
     let h = head("Stringplan", "PV-Strangplan, Einheit mm");
     h += `<h3 class="pv-title">Plan</h3>`;
@@ -867,6 +1005,7 @@ export function makePv(c) {
     const no = S.model.north, turned = P.northOnPaper(S.model);
     h += `<div class="field"><label>Nordrichtung in Grad (im Uhrzeigersinn ab oben im Plan)</label><input type="text" data-pvopt="north" value="${no === undefined ? "" : P.fmtNum(no)}" placeholder="leer = kein Nordpfeil" autocomplete="off" spellcheck="false"></div>`; // 5aq
     if (turned !== null && bg()?.rot) h += `<p class="note">Der Nordpfeil dreht mit dem Plan und zeigt im Druck ${P.fmtNum(turned)}°.</p>`;
+    h += strkField(); // 5bb
     h += `<p class="note">Auf Druck und Bildschirm (Plankopf, Nordpfeil und Massstabsleiste nur im Druck):</p>`;
     for (const [k, l] of P.PRINT_PARTS) h += `<label class="chk"><input type="checkbox" data-pvopt="pr" data-part="${k}"${(S.model.hide ?? []).includes(k) ? "" : " checked"}> ${l}</label>`;
     return h;
@@ -919,7 +1058,34 @@ export function makePv(c) {
     if (field) h += num("cols", "Spalten", 1) + num("rows", "Reihen", 1) + num("gq", "Abstand quer zum Modul in mm (zwischen den langen Seiten)", 1) + num("gl", "Abstand längs zum Modul in mm (zwischen den kurzen Seiten)", 1); // 5y
     h += neu;
     const [w, hh] = P.modSize(t, opt.quer), [gx, gy] = P.gapsXY(opt.quer, opt.gq, opt.gl), W = field ? opt.cols * w + (opt.cols - 1) * gx : w, H = field ? opt.rows * hh + (opt.rows - 1) * gy : hh;
-    return h + note(`${field ? `${opt.cols * opt.rows} Module, ` : ""}${fmtMm(W)} × ${fmtMm(H)} mm. Klick setzt die Ecke ${P.cornerName(corner)} (Punkt). Tab wechselt die Ecke, Shift+Tab zurück.${bg()?.rot ? ` Module folgen der Drehung des Plans (${P.fmtDeg(bg().rot)}).` : ""}`);
+    return h + note(`${field ? `${opt.cols * opt.rows} Module, ` : ""}${fmtMm(W)} × ${fmtMm(H)} mm. Klick setzt die Ecke ${P.cornerName(corner)} (Punkt). Tab wechselt die Ecke, Shift+Tab zurück.`);
+  }
+  // Leitung (5ax): Breite und Farbe, für neue Leitungen (lw, lcol) oder die gewählten (selw, selcol)
+  const lineFields = (kw, kc, w, col) => `<div class="field"><label>Breite in mm (Planmass)</label><input type="text" inputmode="decimal" data-pvopt="${kw}" value="${w === undefined ? "" : fmtMm(w)}" placeholder="(verschieden)" autocomplete="off" spellcheck="false"></div>`
+    + `<div class="field"><label>Farbe</label><input type="color" data-pvopt="${kc}" value="${col ?? P.LINE_COL}"></div>`;
+  function linePanel(ls, head, dupDel) {
+    const one = ls[0], n = ls.length, same = (k) => ls.every((l) => l[k] === one[k]);
+    return head(n === 1 ? "Leitung" : `${n} Leitungen`, `Ebene Verkabelung${n === 1 ? `, ${one.pts.length} Punkte` : ""}`) + lineFields("selw", "selcol", same("w") ? one.w : undefined, same("col") ? one.col : undefined)
+      + `<p class="note">${n === 1 ? `Länge ${fmtMm(P.pathLen(one))} mm. ` : ""}Griffe ziehen verschiebt einzelne Punkte (Shift = 0°, 45° oder 90°).</p>` + dupDel();
+  }
+  // 5ba: Texthöhe der Auswahl in mm im Planmass, leer bei verschiedenen Höhen
+  function thField(sel) {
+    const hs = new Set(sel.map((t) => t.h ?? P.PV_TEXT_H)), h = hs.size === 1 ? [...hs][0] : undefined, den = P.paperOf(S.model).den;
+    return `<div class="field"><label>Texthöhe in mm (Planmass)</label><input type="text" inputmode="decimal" data-pvopt="th" value="${h === undefined ? "" : fmtMm(h)}" placeholder="(verschieden)" autocomplete="off" spellcheck="false"></div>`
+      + `<p class="note">${h === undefined ? "Gilt für alle gewählten." : `Auf dem Papier ${fmtMm(h / den)} mm bei ${P.fmtDen(den)}.`}</p>`;
+  }
+  // 5bb: Grösse der Stringbeschriftung (Bezeichnung, + und −) in %, für diesen Stringplan
+  const strkField = () => `<div class="field"><label>Stringbeschriftung (Bezeichnung, + und −) in %</label><input type="text" inputmode="decimal" data-pvopt="strk" value="${fmtMm((S.model.strk || 1) * 100)}" autocomplete="off" spellcheck="false"></div>`;
+  // 5bc: Einschränkung der Autoverkabelung (Zeile im Fenster Autoverkabelung)
+  function limitHTML() {
+    const ids = autoIds();
+    return `<p class="note" data-pvlimit>${ids ? `Eingeschränkt auf ${ids.size} Module (grün).` : "Alle freien Module."}</p><div class="row"><button class="btn outline small" data-pvact="autopick">Module einschränken</button>${ids ? `<button class="btn outline small" data-pvact="autoclear">Einschränkung aufheben</button>` : ""}</div>`;
+  }
+  function pickPanel(head) {
+    const n = [...S.sel].filter((id) => S.model.items.some((m) => m.id === id && m.type === "pvmodule")).length;
+    return head("Module einschränken", "Für die Autoverkabelung") + `<p class="note" data-pvpickcount><b>${n} Modul${n === 1 ? "" : "e"} gewählt.</b></p>`
+      + `<p class="note">Module anklicken (nochmals = abwählen) oder einen Rahmen ziehen, ⌘A wählt alle. Ohne Wahl verkabelt die Autoverkabelung wie bisher alle freien Module.</p>`
+      + `<div class="row"><button class="btn primary small" data-pvact="autodone">Übernehmen</button><button class="btn outline small" data-pvact="autonone"${n ? "" : " disabled"}>Alle abwählen</button></div>`;
   }
   // Werkzeug String: Bezeichnung des nächsten Strings, Liste der Strings auf dem Plan
   const swatch = (name) => `<span class="pv-swatch" style="background:${P.stringColor(name)}"></span>`;
@@ -929,7 +1095,7 @@ export function makePv(c) {
     let h = (own?.edit ? head(`String ${own.name} bearbeiten`, own.front ? "Module am Anfang einfügen (vor dem +)" : "Module anhängen oder einfügen") : head("String", "Neue Strings auf der Ebene Verkabelung")) + nameField("sname", name);
     if (n) h += `<p class="note">${swatch(name)}WR ${n.wr}, MPPT ${n.mppt}, String ${n.str}${own ? `, ${own.mods.length} Modul${own.mods.length === 1 ? "" : "e"} angeklickt` : ""}</p>`;
     h += `<p class="note">${own?.front ? "Module vom bisherigen + weg anklicken, das zuletzt angeklickte wird das neue +." : "Module der Reihe nach anklicken, das erste ist +, das letzte −."} Klick auf ein Modul im String: weitere Module danach einfügen. Shift + Klick nimmt ein Modul heraus.</p>`;
-    h += head("Strings auf diesem Plan");
+    h += strkField() + head("Strings auf diesem Plan");
     h += list.length ? list.map((st) => `<p class="note">${swatch(st.name)}${R.esc(st.name)}: ${st.mods.length} Module</p>`).join("") : `<p class="note">Noch keine.</p>`;
     return h;
   }
@@ -967,9 +1133,13 @@ export function makePv(c) {
     if (S.tool === "pv-fix") return "Fixpunkt: einen markanten Punkt anklicken, der auch im nächsten Planstand vorkommt (z. B. Dachecke).";
     if (DRAW_TOOLS[S.tool]) return path ? `${DRAW_TOOLS[S.tool]} auf Ebene ${layerName(path.layer)}: weitere Punkte klicken, Shift = 0°, 45° oder 90°. Klick auf den ersten Punkt schliesst, Eingabetaste oder Esc beendet. Fang: Ecke ▢, Schnitt ⊗, Mitte △, Kante ✕, Alt schaltet ihn aus.` : `${DRAW_TOOLS[S.tool]} auf Ebene ${layerName(act())}: ersten Punkt klicken. Fängt auf Ecken, Schnittpunkte, Mitten und Kanten der Dachlinien und auf das Raster ab Fixpunkt.`;
     if (MOD_TOOLS[S.tool]) return curType() ? `${MOD_TOOLS[S.tool]} auf Ebene Module: Klick setzt die Ecke ${P.cornerName(corner)}. Tab wechselt die Ecke, jetzt: ${P.cornerName(corner)}. Fängt auf Ecken von Dach und Modulen, sonst Raster, Alt schaltet den Fang aus. Einstellungen rechts.` : "Zuerst rechts einen Modultyp anlegen.";
-    if (S.tool === "pv-string" && auto) return "Autoverkabelung: erstes Modul anklicken (+ des ersten Strings). Esc bricht ab.";
+    if (picking()) return "Module einschränken: Module anklicken oder Rahmen ziehen, ⌘A alle. Rechts „Übernehmen“, Esc bricht ab.";
+    if (S.tool === "pv-string" && auto) return `Autoverkabelung: erstes Modul anklicken (+ des ersten Strings)${autoIds() ? ", nur grün markierte Module" : ""}. Esc bricht ab.`;
     if (S.tool === "pv-string") return wire ? `String ${wire.name}: nächstes Modul anklicken oder ⌥ halten und darüberfahren (zurück auf das vorletzte nimmt das letzte heraus). Klick auf ein Modul im String fügt danach ein, Shift + Klick nimmt es heraus. Nochmals auf das zuletzt gesetzte Modul, Eingabetaste oder Esc beendet.` : `String ${nextName()} auf Ebene Verkabelung: erstes Modul (+) anklicken, dann die weiteren der Reihe nach, oder ⌥ halten und über die Module fahren. Shift + Klick nimmt ein Modul aus seinem String. Bezeichnung rechts.`;
+    if (S.tool === "pv-line") return lpath ? "Leitung: weitere Punkte klicken, Shift = 0°, 45° oder 90°. Doppelklick oder Eingabetaste beendet, Esc bricht ab. Fang: Ecke ▢, Schnitt ⊗, Mitte △, Kante ✕, Alt schaltet ihn aus." : "Leitung auf Ebene Verkabelung: ersten Punkt klicken. Breite und Farbe rechts. Fängt auf Ecken von Dach, Modulen und Leitungen, sonst Raster.";
+    if (S.tool === "pv-point") return "Punkt auf Ebene Verkabelung: Klick setzt den Punkt, dann die Beschriftung eingeben. Doppelklick auf einen Punkt (Auswahl) ändert den Text.";
     if (S.tool === "pv-spa") return "SPA auf Ebene Verkabelung: Klick setzt den Punkt. Fängt auf Ecken von Dach und Modulen, sonst Raster, Alt schaltet den Fang aus.";
+    if (S.drag?.label) return "Text ziehen: frei, ohne Fang.";
     if (S.drag?.type === "pvvertex") return "Punkt ziehen: fängt wie beim Zeichnen, Shift = 0°, 45° oder 90° zum vorherigen Punkt, Alt ohne Fang.";
     if (S.tool === "text") return `Text auf Ebene ${layerName(act())}: klicken setzt einen Text, die Eingabetaste bestätigt.`;
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
@@ -995,10 +1165,10 @@ export function makePv(c) {
   const TAB_OPTS = new Set(["tmin", "wr"]), DOC_OPTS = new Set(["mppt", "str"]);
   return { isPv, activeLayer: act, setActive: tab(setActive, () => {}), sheetSVG: tab(sheetSVG, () => `<rect class="dispo-bg" x="-1e6" y="-1e6" width="2e6" height="2e6"/>`),
     itemsSVG: tab(() => itemsSVG() + printFrameSVG(), () => PR.tableScreenSVG(S.model, S.doc)), overlaySVG: tab(overlaySVG, () => ""), bounds: tab(bounds, () => PR.tableScreenBounds(S.model, S.doc)), snap: tab(snap, (w) => ({ x: w.x, y: w.y })),
-    gripAt: tab(gripAt, () => null), pointerDown: tab(pointerDown, () => true), hover: tab(hover, () => {}), toolKey: tab(toolKey, () => false), cornerKey: tab(cornerKey, () => false), cancel, action: (el) => (TAB_ACTS.has(el.dataset.pvact) ? TAB.action(el) : DOC_ACTS.has(el.dataset.pvact) ? action(el) : tab(action, TAB.action)(el)),
-    option: (el) => (TAB_OPTS.has(el.dataset.pvopt) ? TAB.option(el) : DOC_OPTS.has(el.dataset.pvopt) ? option(el) : tab(option, TAB.option)(el)), popHTML, printLabel, pickable: tab(pickable, () => []), layerPick: tab(() => P.layerPick(S.model, act()), () => []),
+    gripAt: tab(gripAt, () => null), dragGrip, pointerDown: tab(pointerDown, () => true), hover: tab(hover, () => {}), toolKey: tab(toolKey, () => false), cornerKey: tab(cornerKey, () => false), cancel, action: (el) => (TAB_ACTS.has(el.dataset.pvact) ? TAB.action(el) : DOC_ACTS.has(el.dataset.pvact) ? action(el) : tab(action, TAB.action)(el)),
+    option: (el) => (TAB_OPTS.has(el.dataset.pvopt) ? TAB.option(el) : DOC_OPTS.has(el.dataset.pvopt) ? option(el) : tab(option, TAB.option)(el)), popHTML, printLabel, pickable: tab(pickable, () => []), layerPick: tab(() => (picking() ? pickMods() : P.layerPick(S.model, act())), () => []), picking,
     otherLayers: tab(() => P.otherLayers(S.model, act()), () => []), layerNote: (it) => { const l = P.layerOf(it); return `Liegt auf Ebene ${layerName(l)}. Wechseln mit ⌘${P.DRAW_LAYERS.indexOf(l) + 1}.`; },
-    leftHTML: tab(leftHTML, () => TAB.leftHTML(TOOLS, toolBtn)), panelHTML: tab(panelHTML, (sel, o) => TAB.panelHTML(o)), hint: tab(hint, TAB.hint), printPages, preparePrint, moveWr, resetPrintParts };
+    leftHTML: tab(leftHTML, () => TAB.leftHTML(TOOLS, toolBtn)), panelHTML: tab(panelHTML, (sel, o) => TAB.panelHTML(o)), hint: tab(hint, TAB.hint), printPages, preparePrint, moveWr, resetPrintParts, paperOf: (sh) => (sh.kind === "pvtab" ? PR.tabPaper(sh) : P.paperOf(sh)) };
 }
 
 const fmtMm = (v) => String(Math.round(v * 10) / 10).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, " ");

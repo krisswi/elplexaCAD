@@ -39,19 +39,18 @@ export function bgBox(bg) {
   const c = [[0, 0], [bg.w, 0], [bg.w, bg.h], [0, bg.h]].map(([u, v]) => pageToWorld(bg, u, v)), xs = c.map((p) => p.x), ys = c.map((p) => p.y);
   return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
 }
-// Plan drehen um den Fixpunkt. Die Objekte drehen mit, damit sie auf dem Plan bleiben (Annahme Claude). Rückgabe: neuer Winkel.
-// Module drehen zusätzlich um ihre Ecke unten links (Feld rot, Schritt 5f), sonst lägen sie verschoben auf dem Plan.
+// Plan drehen um den Fixpunkt (5az, CJ 17.10., ersetzt 5f): nur Hintergrund, Dachlinien und Sperrflächen (auch eigene Linien auf dem Hintergrund)
+// drehen mit, samt Füllmuster. Module, Strings, SPA, Leitungen, Punkte und Texte bleiben, wo und wie sie sind. Die Druckmitte bleibt auch (Annahme Claude:
+// sie gehört zum Inhalt). Rückgabe: neuer Winkel. Ältere Module mit rot (5f, 5aa) behalten ihre Drehung.
 const normDeg = (d) => (((d % 360) + 540) % 360) - 180; // −180 … 180
 export function rotatePlan(sheet, deg) {
   const r = normDeg((sheet.bg.rot || 0) + deg);
   if (Math.abs(r) < 1e-9) delete sheet.bg.rot; else sheet.bg.rot = Math.round(r * 1e6) / 1e6;
   for (const it of sheet.items) {
-    if (it.pts) it.pts = it.pts.map(([x, y]) => rotPt(x, y, deg).map(r3));
-    else if (isNum(it.x)) [it.x, it.y] = rotPt(it.x, it.y, deg).map(r3);
+    if (!PV_TYPES.has(it.type)) continue;
+    it.pts = it.pts.map(([x, y]) => rotPt(x, y, deg).map(r3));
     if (it.fill) { const f = normDeg((it.fdir || 0) + deg); if (Math.abs(f) < 1e-9) delete it.fdir; else it.fdir = Math.round(f * 1e6) / 1e6; } // Muster dreht mit (5i)
-    if (it.type === "pvmodule") { const m = normDeg((it.rot || 0) + deg); if (Math.abs(m) < 1e-9) delete it.rot; else it.rot = Math.round(m * 1e6) / 1e6; }
   }
-  if (sheet.pmid) sheet.pmid = rotPt(...sheet.pmid, deg).map(r3); // gesetzte Druckmitte bleibt auf derselben Planstelle (5ao)
   return sheet.bg.rot || 0;
 }
 // Drehung, die die Strecke a→b waagrecht oder senkrecht legt (die kleinere), in Grad
@@ -144,7 +143,7 @@ export const fmtDen = (den) => "1:" + String(Math.round(den * 10) / 10).replace(
 // und nichts Neues darauf. Hintergrund gesperrt: Plan laden, Massstab und Fixpunkt gesperrt.
 // sheet.layers fehlt, solange nichts umgeschaltet wurde (Dateien aus Schritt 2 bleiben beim Speichern gleich).
 export const LAYERS = [["bg", "Hintergrund"], ["dach", "Dach"], ["module", "Module"], ["kabel", "Verkabelung"], ["text", "Beschriftung"]];
-const LAYER_OF = { roofline: "dach", keepout: "dach", pvmodule: "module", pvstring: "kabel", spa: "kabel", text: "text" };
+const LAYER_OF = { roofline: "dach", keepout: "dach", pvmodule: "module", pvstring: "kabel", spa: "kabel", pvline: "kabel", pvpoint: "kabel", text: "text" }; // Leitung und Punkt (5ax, 5ay): Verkabelung
 export const layerOf = (it) => it.layer ?? LAYER_OF[it.type];
 // Ebenen, die aktiv sein können (⌘1 bis ⌘5, Reihenfolge der Liste). Auch der Hintergrund (CJ 14.10.): Plan-Werkzeuge und eigene Linien.
 export const DRAW_LAYERS = LAYERS.map(([k]) => k);
@@ -157,7 +156,8 @@ export function toggleLayer(sheet, l, key) {
 }
 // Druckteile (5l) gelten seit 5ai auch am Bildschirm (CJ 15.10.): sichtbar ist nur, was Ebene (Auge) und Druckteil beide erlauben.
 // Ganz weg: Module, Sperrflächen, SPA, Texte; Dachlinie ohne Linie nur, wenn auch ihre Füllung aus ist; String nur, wenn Linie, Bezeichnung und + − aus sind.
-const PART_OF = { pvmodule: "mod", keepout: "keepout", spa: "spa", text: "text" };
+const PART_OF = { pvmodule: "mod", keepout: "keepout", spa: "spa", pvline: "line", pvpoint: "point", text: "text" };
+export const partOf = (it) => PART_OF[it.type] ?? it.type; // Druckteil, das ein Objekt ganz ausblendet
 export function partShown(sheet, it) {
   const h = sheet.hide;
   if (!h) return true;
@@ -180,7 +180,7 @@ export function cleanLayers(raw) {
 // roofline: Linienzug (Umriss, Kanten), closed = geschlossen. keepout: Sperrfläche, immer geschlossen, mindestens 3 Punkte.
 // Sperrfläche = Bereich ohne Module. Ein Modul darauf wird nur gewarnt (CJ 14.10.), siehe onKeepout.
 export const PV_TYPES = new Set(["roofline", "keepout"]);
-export const PV_ITEMS = new Set([...PV_TYPES, "pvmodule", "pvstring", "spa"]); // alle Objekte, die nur auf einen Stringplan gehören
+export const PV_ITEMS = new Set([...PV_TYPES, "pvmodule", "pvstring", "spa", "pvline", "pvpoint"]); // alle Objekte, die nur auf einen Stringplan gehören
 export const isClosed = (it) => it.type === "keepout" || it.closed === true;
 // Füllmuster (Schritt 5h, CJ 15.10.): Feld fill an geschlossener Dachlinie, fehlt = keine Füllung.
 // Sperrfläche (5u, CJ 15.10.): immer eigene graue Kreuzschraffur, keine Wahl. Eine alte Füllung an der Sperrfläche fällt beim Laden weg.
@@ -196,6 +196,8 @@ export function cleanPvItem(it, id) {
   if (it.type === "pvmodule") return typeof it.mt === "string" && isNum(it.x) && isNum(it.y) ? { id, type: "pvmodule", mt: it.mt, x: it.x, y: it.y, quer: it.quer === true, ...(isNum(it.rot) && it.rot ? { rot: it.rot } : {}) } : null;
   if (it.type === "pvstring") return typeof it.name === "string" && Array.isArray(it.mods) && it.mods.length && it.mods.every(Number.isInteger) ? { id, type: "pvstring", name: it.name, mods: [...it.mods] } : null;
   if (it.type === "spa") return isNum(it.x) && isNum(it.y) ? { id, type: "spa", x: it.x, y: it.y } : null;
+  if (it.type === "pvline") return Array.isArray(it.pts) && it.pts.length >= 2 && it.pts.every(isPt) ? { id, type: "pvline", pts: it.pts.map((p) => [p[0], p[1]]), w: isNum(it.w) && it.w > 0 ? it.w : LINE_W, col: isCol(it.col) ? it.col.toLowerCase() : LINE_COL } : null;
+  if (it.type === "pvpoint") return isNum(it.x) && isNum(it.y) ? { id, type: "pvpoint", x: it.x, y: it.y, s: String(it.s ?? ""), ...(isNum(it.ox) && isNum(it.oy) ? { ox: it.ox, oy: it.oy } : {}), ...(isNum(it.h) && it.h > 0 ? { h: it.h } : {}) } : null;
   if (!PV_TYPES.has(it.type) || !Array.isArray(it.pts) || !it.pts.every(isPt)) return null;
   const pts = it.pts.map((p) => [p[0], p[1]]);
   if (pts.length < (it.type === "keepout" ? 3 : 2)) return null;
@@ -206,6 +208,24 @@ export function cleanPvItem(it, id) {
   if (o.fill && isNum(it.fdir) && it.fdir) o.fdir = it.fdir; // Richtung des Musters in Grad (5i), fehlt = 0
   return o;
 }
+// ---------- Leitungen und Punkte (5ax, 5ay, CJ 17.10.) ----------
+// Leitung (Kabelweg): { id, type: "pvline", pts, w, col }. Linienzug, w = Breite in mm im Planmass (Welt), col = Farbe "#rrggbb". Vorgabe gelb, 50 mm (CJ).
+// Gedruckt im Druckmassstab: 50 mm bei 1:100 = 0,5 mm auf dem Papier. Die Dicke folgt nicht der Druck-Linienbreite, sie ist massstäblich.
+// Punkt: { id, type: "pvpoint", x, y, s, ox?, oy?, h? }. s = Beschriftung (darf leer sein), ox/oy = Lage des Textanfangs relativ zum Punkt, fehlt = PT_OFF.
+// h = Texthöhe in mm im Planmass (5ba, CJ 17.10.), fehlt = PV_TEXT_H.
+export const LINE_W = 50, LINE_COL = "#f5c400"; // Gelb: Farbwert Annahme Claude
+export const PT_R = 75; // Punkt: Radius in mm (Annahme Claude: 1,5 mm Durchmesser bei 1:100)
+export const PT_OFF = [PT_R * 1.6, PT_R * 1.6]; // Text rechts oben neben dem Punkt
+const isCol = (v) => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+export const pointLabel = (it) => [it.x + (it.ox ?? PT_OFF[0]), it.y + (it.oy ?? PT_OFF[1])];
+// Umgebendes Rechteck: Punkt und Text (Textbreite geschätzt 0,6 × Höhe je Zeichen)
+export function pointBox(it) {
+  const th = it.h ?? PV_TEXT_H, [lx, ly] = pointLabel(it), tw = String(it.s ?? "").length * 0.6 * th, h = th / 2;
+  return { x0: Math.min(it.x - PT_R, lx), y0: Math.min(it.y - PT_R, ly - h), x1: Math.max(it.x + PT_R, lx + tw), y1: Math.max(it.y + PT_R, ly + h) };
+}
+// Treffer auf der Leitung: Abstand zur Mittellinie höchstens halbe Breite plus Toleranz
+export const hitLine = (it, x, y, tol) => edges(it).some((e) => { const q = nearestOnSeg(x, y, e); return Math.hypot(q[0] - x, q[1] - y) <= tol + it.w / 2; });
+
 // Kanten eines Linienzugs als Punktpaare
 export function edges(it) {
   const p = it.pts, out = [];
@@ -247,13 +267,14 @@ export function snapPv(sheet, w, { grid = 0, tol = 0, alt = false, extra = [], s
   if (alt) return { x: mx, y: my };
   const roof = sheet.items.filter((it) => PV_TYPES.has(it.type) && visible(sheet, it) && it.id !== skip);
   const mods = sheet.items.filter((it) => it.type === "pvmodule" && visible(sheet, it) && it.id !== skip).flatMap(modCorners);
+  const lpts = sheet.items.filter((it) => (it.type === "pvline" || it.type === "pvpoint") && visible(sheet, it) && it.id !== skip).flatMap((it) => it.pts ?? [[it.x, it.y]]); // 5ax, 5ay
   const best = (cands, kind) => {
     let hit = null, bd = tol;
     for (const c of cands) { const d = Math.hypot(c[0] - mx, c[1] - my); if (d <= bd) { bd = d; const [x, y] = on(c); hit = { x: r3(x), y: r3(y), snap: kind }; } }
     return hit;
   };
   const segs = roof.flatMap(edges), ax = u && [[mx - u[0] * tol, my - u[1] * tol], [mx + u[0] * tol, my + u[1] * tol]];
-  return best([...roof.flatMap((it) => it.pts), ...mods, ...extra], "end")
+  return best([...roof.flatMap((it) => it.pts), ...mods, ...lpts, ...extra], "end")
     || best(crossings(segs), "inter")
     || best(segs.map(([a, b]) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), "mid")
     || best(u ? segs.map((e) => segX(ax, e)).filter(Boolean) : segs.map((e) => nearestOnSeg(mx, my, e)), "edge")
@@ -466,7 +487,7 @@ export function fieldPositions(x, y, cols, rows, [w, h], gx, gy) {
 // hoch (lange Seite senkrecht): quer = waagrecht, längs = senkrecht; quer liegend umgekehrt.
 export const gapsXY = (quer, gq, gl) => (quer ? [gl, gq] : [gq, gl]);
 // Feld am Bezugspunkt p (5x, Ecke mit Tab wählbar): corner = [hx, vy], hx "l"/"r" = Bezugspunkt links/rechts, vy "b"/"t" = unten/oben.
-// rot = Drehung des Plans (5aa, CJ 15.10.): das Feld liegt im gedrehten Plan, jedes Modul bekommt rot. Rückgabe: [{ x, y, rot? }]
+// rot = gedrehtes Feld, jedes Modul bekommt rot (5aa). Seit 5az (CJ 17.10.) setzt der Editor neue Module ohne Drehung (rot 0). Rückgabe: [{ x, y, rot? }]
 export function fieldAt(p, cols, rows, size, gx, gy, corner = ["l", "b"], rot = 0) {
   const W = cols * size[0] + (cols - 1) * gx, H = rows * size[1] + (rows - 1) * gy;
   const ox = corner[0] === "r" ? -W : 0, oy = corner[1] === "t" ? -H : 0;
@@ -539,8 +560,10 @@ export function clearStrings(list) {
 // Autoverkabelung (Schritt 5j): ab Modul startId in Schlangenlinie über die freien Module, Reihen (dir "h") oder Spalten ("v").
 // Reihen/Spalten aus den Modulmitten, Toleranz halbe kurze Modulseite. In der Startreihe ab dem Startmodul zum entfernteren Ende,
 // danach Reihe für Reihe zum entfernteren Rand hin, jede Reihe in Gegenrichtung. Rückgabe: Listen von Modul-ids, nur volle Strings.
-export function autoStrings(sheet, startId, nStr, perStr, dir) {
+// allowed (5bc, CJ 17.10.): nur diese Modul-ids verkabeln (Set), fehlt oder leer = alle Module.
+export function autoStrings(sheet, startId, nStr, perStr, dir, allowed) {
   const used = new Set(strings(sheet).flatMap((s) => s.mods)), start = sheet.items.find((m) => m.id === startId);
+  if (allowed?.size) for (const m of sheet.items) if (m.type === "pvmodule" && !allowed.has(m.id)) used.add(m.id); // nicht erlaubt: wie schon verkabelt
   if (!start || used.has(startId)) return [];
   const a = dir === "v" ? 0 : 1, b = 1 - a; // a = Achse quer zur Reihe, b = entlang der Reihe
   const free = sheet.items.filter((m) => m.type === "pvmodule" && !used.has(m.id) && visible(sheet, m)).map((m) => ({ id: m.id, c: modCenter(m) }));
@@ -675,7 +698,7 @@ export function renumberWr(doc, order) {
   doc.pv = tidyPv(pv);
 }
 // Was auf den gedruckten Stringplan kommt (Schritt 5l). Blattfeld hide = ausgeschaltete Teile, fehlt = alles an.
-export const PRINT_PARTS = [["bg", "Hintergrundplan"], ["roof", "Dachlinien"], ["fill", "Füllung"], ["keepout", "Sperrflächen"], ["mod", "Module"], ["str", "Strings"], ["name", "Bezeichnungen"], ["pm", "+ und −"], ["spa", "SPA"], ["text", "Texte"], ["head", "Plankopf"], ["north", "Nordpfeil"], ["bar", "Massstabsleiste"]];
+export const PRINT_PARTS = [["bg", "Hintergrundplan"], ["roof", "Dachlinien"], ["fill", "Füllung"], ["keepout", "Sperrflächen"], ["mod", "Module"], ["str", "Strings"], ["name", "Bezeichnungen"], ["pm", "+ und −"], ["spa", "SPA"], ["line", "Leitungen"], ["point", "Punkte"], ["text", "Texte"], ["head", "Plankopf"], ["north", "Nordpfeil"], ["bar", "Massstabsleiste"]];
 // Nur im Druck (kein Objekt am Bildschirm): Plankopf, Nordpfeil, Massstabsleiste
 export const PRINT_ONLY = new Set(["head", "north", "bar"]);
 export function cleanHide(raw) {
@@ -688,6 +711,10 @@ export function cleanPaper(raw) {
   return { size: PAPERS[raw.size] ? raw.size : PAPER_DEF.size, quer: raw.quer !== false, den: isNum(raw.den) && raw.den > 0 ? raw.den : PAPER_DEF.den };
 }
 // Druckmitte (5ao, CJ 15.10.: per Klick im Plan): Blattfeld pmid = [x, y] in Welt-mm. Fehlt = Mitte der sichtbaren Objekte wie bisher.
+// Grösse der Stringbeschriftung (5bb, CJ 17.10.: an einer Stelle, Wahl Claude: je Stringplan): Blattfeld strk = Faktor für Bezeichnung und + −,
+// fehlt = 1 (wie 5ae). Am Bildschirm und im Druck gleich, weil beide in Plan-mm zeichnen. Erlaubt 0,25 bis 4.
+export const STRK_MIN = 0.25, STRK_MAX = 4;
+export const cleanStrk = (raw) => (isNum(raw) && raw >= STRK_MIN && raw <= STRK_MAX && raw !== 1 ? raw : undefined);
 export const cleanPmid = (raw) => (Array.isArray(raw) && raw.length === 2 && raw.every(isNum) ? [raw[0], raw[1]] : undefined);
 // Nordrichtung (5aq, CJ 15.10.): Blattfeld north = Winkel in Grad im Uhrzeigersinn ab oben, bezogen auf den Plan ohne Drehung (0 bis unter 360).
 // Fehlt = kein Nordpfeil. Der Pfeil auf dem Druck zeigt north − Drehung des Plans (Drehung im Gegenuhrzeigersinn, rotPt).

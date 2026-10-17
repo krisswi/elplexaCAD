@@ -259,7 +259,7 @@ const wandlerTop = () => {
   prims.push(dot(37.5, -15, 0.4), line(37.5, -15, 37.5, -32.5), line(36.4, -25, 38.6, -25), line(36.4, -27, 38.6, -27), vt(38.55, -20.5, 1.1, "blau"),
     ...rect(36.5, -32.5, 38.5, -40.5), ...screw(37.5, -33.6), ...screw(37.5, -39.4), line(37.5, -34.2, 37.5, -38.8), vt(37.5, -36.5, 1.1, "N"),
     line(35, -30.5, 35, -41.5), line(37.5, -40.5, 37.5, WM_PIN_Y), vt(38.55, -46.5, 1.1, "blau"), ...rect(-2.25, -30.5, 39.75, -41.5), text(-3.6, -42.3, 1.1, "5)"),
-    lt(-16, -30.5, 1.1, "Abdeckung plombierbar"), lt(-16, -35, 1.1, "Prüfklemmen, Abdeckung"), lt(-16, -36.7, 1.1, "plombierbar"),
+    lt(-16, -32.5, 1.1, "Abdeckung plombierbar"), lt(-16, -35, 1.1, "Prüfklemmen, Abdeckung"), lt(-16, -36.7, 1.1, "plombierbar"),
     lt(42, -17.5, 1.5, "Leiterquerschnitte:"), lt(42, -30, 1.2, "Anstelle der Aussenleiterfarben sind auch"), lt(42, -31.8, 1.2, "schwarze nummerierte Leiter (1 bis 6) möglich"),
     lt(42, -35, 1.2, "3) Lasche erst nach Zählermontage öffnen"), lt(42, -37, 1.2, "5) Leiterenden mit S1 bzw. S2 bezeichnen,"), lt(43.6, -38.8, 1.2, "sofern unnummeriert"));
   return prims;
@@ -285,14 +285,99 @@ export const WM_X = [0, 2.5, 7.5, 12.5, 15, 20, 25, 27.5, 32.5, 37.5];
 const WM_CTRL = [42.5, 45, 47.5], WM_CTRL_Y = 7.5; // Steuerleiter 1, 11, X: Anschlüsse über dem Zähler
 export const WM_PIN_Y = -57.5, WM_BOX_Y = -60; // Anschlüsse unter dem Leitertausch, Oberkante Zähler (Abstand beim Setzen)
 const WM_TAPS = [{ x: 0, y: 0 }, { x: 12.5, y: -5 }, { x: 25, y: -10 }, { x: 37.5, y: -15 }];
-// Palette und alte Dateien: ein Symbol mit allem. Beim Setzen zerlegt wandler.js es in Wandlerteil und Zähler (CJ 16.10.: Zähler verschiebbar).
-const zaehlerWandler = {
-  name: "ZAEHLER_4P_W", family: "ZAEHLER", poles: 4, lp: 3, nm: "w", vlabel: "Wandler (>80 A)", label: "Zähler mit Wandlermessung", layer: "SCH_SYMBOLE",
-  prims: [...wandlerTop(), ...WM_X.map((x) => line(x, WM_PIN_Y, x, WM_BOX_Y)), ...wmBoxPrims().map((p) => (p.t === "l" ? { ...p, y1: p.y1 + WM_BOX_Y, y2: p.y2 + WM_BOX_Y } : p.t === "c" ? { ...p, cy: p.cy + WM_BOX_Y } : { ...p, y: p.y + WM_BOX_Y })),
-    lt(-2.5, WM_BOX_Y - 18.5, 2, "Wandlermessung")],
-  pins: WM_TAPS,
-  attrs: [{ ...attrBMK("P?"), y: WM_BOX_Y - 1.5 }, { tag: "ZAEHLERNR", label: "Zählernummer", def: "", x: -14, y: WM_BOX_Y - 5, h: 2.5 }, { tag: "WANDLER", label: "Wandler", def: "150/5A", x: -14, y: WM_BOX_Y - 8.5, h: 2.5 }],
+// Wandlermessung nach BKW-Schema (CJ 17.10.: „Symbol zum Einfügen, danach alles bearbeitbar und löschbar, Wandler und Klemmen
+// bleiben ganz“). Das Palettensymbol ZAEHLER_4P_W wird beim Setzen in Einzelteile zerlegt (wandler.js): je Aussenleiter ein
+// Stromwandler ZW_CT, eine Sicherung ZW_SICH und ein Prüfklemmenblock ZW_PK (4 Klemmen mit Messbrücken), Prüfklemme N ZW_PK1,
+// Zähler ZW_ZAEHLER2 (Messwerke nach BKW, 10 Klemmen plus 5 unbeschriftete), dazu gewöhnliche Leitungen und Texte.
+// Ursprung = L1-Hauptlinie; L2, L3, N 5, 10, 15 mm darunter. Je Aussenleiter k ab u = 15k: Spannung u, S1 u+2,5, Mitte u+5, S2 u+7,5.
+// Am Zähler gilt S1, U, S2 (5 mm Teilung, ab x -5): U läuft gerade durch, S1 und S2 knicken nach links, S1 kreuzt U einmal (wie BKW).
+const ct = {
+  name: "ZW_CT", family: "ZWANDLER", poles: 2, label: "Stromwandler", layer: "SCH_SYMBOLE",
+  prims: [...rect(-1.8, 1.5, 4.3, -3.2, true), line(0.6, 0, 0.6, -1.2), line(0.6, -1.2, 1.9, -1.2), line(1.9, -1.2, 1.9, 0),
+    text(-0.9, 0.8, 0.9, "P1"), text(3.4, 0.8, 0.9, "P2"), circle(0, -2, 0.35), circle(2.5, -2, 0.35), line(0, -2.35, 0, -2.5), line(2.5, -2.35, 2.5, -2.5),
+    text(-1.05, -2.3, 0.9, "S1"), text(3.55, -2.3, 0.9, "S2")],
+  pins: [{ x: 0, y: -2.5 }, { x: 2.5, y: -2.5 }], attrs: [],
 };
+const sich = {
+  name: "ZW_SICH", family: "ZSICH", poles: 1, label: "Sicherung Spannungspfad", layer: "SCH_SYMBOLE",
+  prims: [line(0, 0, 0, -0.5), ...rect(-0.8, -0.5, 0.8, -4.5), line(0, -4.5, 0, -5)],
+  pins: [{ x: 0, y: 0 }, { x: 0, y: -5 }],
+  attrs: [{ tag: "FBMK", label: "BMK", def: "", x: -14, y: -0.5, h: 2.5 }, { tag: "FSTROM", label: "Nennstrom", def: "", x: -14, y: -3.5, h: 2.5 }],
+};
+// Prüfklemme: Gehäuse mit zwei Schrauben, durchverbunden. Messbrücke = Lasche über zwei Schrauben.
+const pkTerm = (x) => [...rect(x - 1, 0, x + 1, -8), ...screw(x, -1.1), ...screw(x, -6.9), line(x, -1.7, x, -6.3)];
+const strap = (x1, x2, y) => rect(x1, y + 0.5, x2, y - 0.5); // von Schraube zu Schraube
+// Block je Aussenleiter (BKW umgekehrt, Wandler oben): U, S1, Mitte, S2. Wandlerseite (oben) Brücke Mitte–S2, Zählerseite (unten) S1–Mitte.
+const pk = {
+  name: "ZW_PK", family: "ZPK", poles: 4, label: "Prüfklemmen mit Messbrücken", layer: "SCH_SYMBOLE",
+  prims: [...[0, 2.5, 5, 7.5].flatMap(pkTerm), ...strap(5, 7.5, -1.1), ...strap(2.5, 5, -6.9), ...rect(-2.5, 2, 10, -9)],
+  pins: [0, 2.5, 5, 7.5].flatMap((x) => [{ x, y: 0 }, { x, y: -8 }]), attrs: [],
+};
+const pk1 = {
+  name: "ZW_PK1", family: "ZPK", poles: 1, label: "Prüfklemme N", layer: "SCH_SYMBOLE",
+  prims: [...pkTerm(0), ...rect(-2.5, 2, 2.5, -9)], pins: [{ x: 0, y: 0 }, { x: 0, y: -8 }], attrs: [],
+};
+// Zähler nach BKW (umgekehrt): Klemmen oben (5 mm), je Messwerk Strompfad aussen über zwei Kreise, Spannungspfad in der Mitte
+// mit Widerstand (schräger Pfeil) und 90°-Kästchen. Rechts 5 kleine Klemmen ohne Beschriftung (CJ zeichnet sie situativ).
+const Z2_EXTRA = [47.5, 50, 52.5, 55, 57.5];
+const zaehler2Prims = () => {
+  const p = [...rect(-2.5, 0, 62.5, -17)];
+  for (let i = 0; i < 10; i++) p.push(line(5 * i, 0, 5 * i, -0.95), ...screw(5 * i, -1.5, 0.6));
+  for (const x of Z2_EXTRA) p.push(line(x, 0, x, -1.05), ...screw(x, -1.5, 0.45));
+  [0, 1, 2].forEach((k) => {
+    const a = 15 * k, c1 = a + 2.5, m = a + 5, c2 = a + 7.5, b = a + 10;
+    p.push(line(a, -2.1, a, -12.5), line(a, -12.5, c1 - 1, -12.5), circle(c1, -12.5, 1), circle(c2, -12.5, 1), line(c2 + 1, -12.5, b, -12.5), line(b, -12.5, b, -2.1),
+      ...rect(c1, -4, c2, -11.5), line(c1, -13.5, c1, -14.5), line(c2, -13.5, c2, -14.5), line(c1, -14.5, c2, -14.5),
+      line(m, -2.1, m, -6), ...rect(m - 0.6, -6, m + 0.6, -10), line(m, -10, m, -14.5), line(m - 1.2, -10.6, m + 1.2, -5.4), line(m - 1.2, -10.6, m - 1.7, -10.6),
+      ...rect(m + 0.9, -7.2, m + 2.3, -8.6), text(m + 1.6, -7.9, 0.6, "90°"));
+  });
+  p.push(lt(46, -6, 1.2, "Anschluss nach"), lt(46, -8, 1.2, "Schema auf"), lt(46, -10, 1.2, "Klemmendeckel"));
+  return p;
+};
+const zaehler2 = {
+  name: "ZW_ZAEHLER2", family: "ZAEHLER", poles: 4, label: "Zähler der Wandlermessung", layer: "SCH_SYMBOLE", prims: zaehler2Prims(),
+  pins: [...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => ({ x: 5 * i, y: 0 })), ...Z2_EXTRA.map((x) => ({ x, y: 0 }))],
+  attrs: [{ ...attrBMK("P?"), y: -1.5 }, { tag: "ZAEHLERNR", label: "Zählernummer", def: "", x: -14, y: -5, h: 2.5 }, { tag: "WANDLER", label: "Wandler", def: "150/5A", x: -14, y: -8.5, h: 2.5 },
+    { tag: "TEXT", label: "Text am Zähler", def: "Wirk-/Blindenergiezähler kombiniert", x: -2.5, y: -20, h: 2 }],
+};
+// Lage aller Teile (lokal zum Palettensymbol). Texte als Symboltexte (text = mittig, lt = linksbündig, vt = senkrecht mittig).
+export const WM2_BOX = { x: -5, y: -60 };
+export const WM2_TAPS = [{ x: 0, y: 0 }, { x: 15, y: -5 }, { x: 30, y: -10 }, { x: 42.5, y: -15 }];
+export function wm2Layout() {
+  const syms = [], wires = [], texts = [];
+  const lvS1 = -55, lvS2 = -52.5, pkTop = -32.5, pkBot = -40.5;
+  [0, 1, 2].forEach((k) => {
+    const y = -5 * k, u = 15 * k, s1 = u + 2.5, ln = u + 5, s2 = u + 7.5, col = WM_COL[k], zx = WM2_BOX.x + 15 * k;
+    syms.push({ sym: "ZW_CT", x: s1, y }, { sym: "ZW_SICH", x: u, y: -25, attrs: k ? {} : { FBMK: "F?", FSTROM: "10A" } }, { sym: "ZW_PK", x: u, y: pkTop });
+    wires.push([[u, y], [u, -25]], [[u, -30], [u, pkTop]], [[s1, y - 2.5], [s1, pkTop]], [[ln, y - 2.5], [ln, pkTop]],
+      [[s1, pkBot], [s1, lvS1], [zx, lvS1], [zx, WM2_BOX.y]], [[u, pkBot], [u, WM2_BOX.y]], [[s2, pkBot], [s2, lvS2], [zx + 10, lvS2], [zx + 10, WM2_BOX.y]],
+      [[s1 - 0.6, -42.6], [s1 + 0.6, -41.4]], [[s2 - 0.6, -42.6], [s2 + 0.6, -41.4]]); // „5)“: Leiterenden bezeichnen
+    texts.push(text(s1 + 0.7, -16.6, 0.9, String(2 * k + 1)), text(ln + 0.7, -16.6, 0.9, String(2 * k + 2)),
+      vt(u + 1.05, -20.5, 1.1, col), vt(s1 + 1.05, -20.5, 1.1, col), vt(ln + 1.05, -20.5, 1.1, col), text(s1 + 1.25, -31.2, 1.1, "3)"),
+      vt(u + 1.05, -46.5, 1.1, col), vt(s1 + 1.05, -46.5, 1.1, `${col} (${2 * k + 1})`), vt(s2 + 1.05, -46.5, 1.1, `${col} (${2 * k + 2})`));
+  });
+  // N: Abgriff, Trennstelle, Prüfklemme, zum Zähler
+  syms.push({ sym: "ZW_PK1", x: 42.5, y: pkTop }, { sym: "ZW_ZAEHLER2", x: WM2_BOX.x, y: WM2_BOX.y });
+  wires.push([[42.5, -15], [42.5, pkTop]], [[41.4, -25], [43.6, -25]], [[41.4, -27], [43.6, -27]], [[42.5, pkBot], [42.5, lvS2], [40, lvS2], [40, WM2_BOX.y]]);
+  texts.push(vt(43.55, -20.5, 1.1, "blau"), vt(43.55, -46.5, 1.1, "blau"), text(-3.6, -42.3, 1.1, "5)"),
+    lt(-16, -32.5, 1.1, "Abdeckung plombierbar"), lt(-16, -35, 1.1, "Prüfklemmen, Abdeckung"), lt(-16, -36.7, 1.1, "plombierbar"),
+    lt(48, -17.5, 1.5, "Leiterquerschnitte:"), lt(48, -20.5, 1.5, "Strompfad 4 mm²"), lt(48, -23, 1.5, "Spannungspfad 2,5 mm²"),
+    lt(48, -30, 1.2, "Anstelle der Aussenleiterfarben sind auch"), lt(48, -31.8, 1.2, "schwarze nummerierte Leiter (1 bis 6) möglich"),
+    lt(48, -35, 1.2, "3) Lasche erst nach Zählermontage öffnen"), lt(48, -37, 1.2, "5) Leiterenden mit S1 bzw. S2 bezeichnen,"), lt(49.6, -38.8, 1.2, "sofern unnummeriert"));
+  return { syms, wires, texts };
+}
+// Palettensymbol: Vorschau aus denselben Teilen. Beim Setzen zerlegt wandler.js es (alte Dateien mit ZAEHLER_4P_W ebenso).
+const zaehlerWandler = (() => {
+  const L = wm2Layout(), parts = [ct, sich, pk, pk1, zaehler2], by = Object.fromEntries(parts.map((q) => [q.name, q]));
+  const mv = (q, dx, dy) => (q.t === "l" ? { ...q, x1: q.x1 + dx, y1: q.y1 + dy, x2: q.x2 + dx, y2: q.y2 + dy } : q.t === "c" ? { ...q, cx: q.cx + dx, cy: q.cy + dy } : { ...q, x: q.x + dx, y: q.y + dy });
+  const prims = [...L.syms.flatMap((o) => by[o.sym].prims.map((q) => mv(q, o.x, o.y))), ...L.wires.flatMap((w) => w.slice(1).map((q, i) => line(w[i][0], w[i][1], q[0], q[1]))), ...L.texts];
+  return {
+    name: "ZAEHLER_4P_W", family: "ZAEHLER", poles: 4, lp: 3, nm: "w", vlabel: "Wandler (>80 A)", label: "Zähler mit Wandlermessung", layer: "SCH_SYMBOLE",
+    prims: [...prims, lt(WM2_BOX.x - 2.5, WM2_BOX.y - 20, 2, "Wirk-/Blindenergiezähler kombiniert")], pins: WM2_TAPS,
+    attrs: [{ ...attrBMK("P?"), x: WM2_BOX.x - 14, y: WM2_BOX.y - 1.5 }, { tag: "ZAEHLERNR", label: "Zählernummer", def: "", x: WM2_BOX.x - 14, y: WM2_BOX.y - 5, h: 2.5 }, { tag: "WANDLER", label: "Wandler", def: "150/5A", x: WM2_BOX.x - 14, y: WM2_BOX.y - 8.5, h: 2.5 }],
+  };
+})();
+// Ältere Stände (16.10.): Wandlerteil ZW_WANDLER und Zähler ZW_ZAEHLER bleiben für alte Dateien lesbar.
 // Wandlerteil: Abgriffe auf den Hauptlinien, unten 10 Anschlüsse. Sicherungen im Spannungspfad beschriftet wie eine Schmelzsicherung.
 const wmTrafo = {
   name: "ZW_WANDLER", family: "ZWANDLER", poles: 4, label: "Wandlermessung: Stromwandler und Spannungspfad", layer: "SCH_SYMBOLE", prims: wandlerTop(),
@@ -414,7 +499,7 @@ export const SYMBOLS = [
   ...[2, 4].map(fiVariant),
   ...["1PN", "2P", "3PN", "4P"].map(rcboVariant),
   ...["1P", "1PT", "3P", "3PT", "4P"].map(nhVariant),
-  nTrenner, hak, hakTncs, hakFeed, hpas, zaehlerVariant(2), zaehlerVariant(4), zaehlerWandler, wmTrafo, wmBox, tncTns, erde, ...[1, 2, 3, 4].map((n) => spdVariant(n)), spdVariant(2, true), spdVariant(4, true),
+  nTrenner, hak, hakTncs, hakFeed, hpas, zaehlerVariant(2), zaehlerVariant(4), zaehlerWandler, wmTrafo, wmBox, ct, sich, pk, pk1, zaehler2, tncTns, erde, ...[1, 2, 3, 4].map((n) => spdVariant(n)), spdVariant(2, true), spdVariant(4, true),
   ...[1, 2, 3, 4].map((n) => refVariant("OUT", n)),
   ...[1, 2, 3, 4].map((n) => refVariant("IN", n)),
   ...[1, 2, 3, 4].map((n) => edgeRef("OUT", n)),

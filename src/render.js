@@ -2,11 +2,11 @@
 import { SYMBOL_BY_NAME, localBBox, rotatePoint } from "./symbols.js";
 import { W, H, frameGeometry, titleBlockGeometry, META_FIELDS, META_H, TB_ORIGIN, metaText } from "./frame.js";
 import { LAYERS, WIRE_KINDS } from "./model.js";
-import { textBox } from "./geom.js";
+import { textBox, textItemBox } from "./geom.js";
 import { termItems, termTexts, termNumbers, termBBox, termPins } from "./terminals.js";
 import * as D from "./dispo.js";
 import { railStubs } from "./hauptlinien.js";
-import { PV_TYPES, hitPv, isClosed, modBox, hitMod, strPts, spaBox } from "./pv.js";
+import { PV_TYPES, hitPv, isClosed, modBox, hitMod, strPts, spaBox, pointBox, hitLine } from "./pv.js";
 export { textBox };
 
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -106,10 +106,11 @@ export function attrBoxes(it) {
 export function itemBBox(it) {
   if (it.type === "symbol") return symbolBBox(it, 0);
   if (it.type === "terminals") return termBBox(it);
-  if (it.type === "text") return textBox(it.x, it.y, it.h, it.s);
+  if (it.type === "text") return textItemBox(it);
   if (D.isPlanType(it.type)) return D.itemBBox(it);
   if (it.type === "pvmodule") return modBox(it);
   if (it.type === "spa") return spaBox(it);
+  if (it.type === "pvpoint") return pointBox(it);
   const pts = it.type === "pvstring" ? strPts(it) : it.pts; // String: Kabellinie durch die Modulmitten
   if (it.type === "pvstring" && pts.length === 1) return { x0: pts[0][0] - 300, y0: pts[0][1] - 300, x1: pts[0][0] + 300, y1: pts[0][1] + 300 }; // String aus einem Modul
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
@@ -129,12 +130,14 @@ function segDist(px, py, x1, y1, x2, y2) {
 
 export function hitItem(it, x, y, tol) {
   if (it.type === "symbol") return inBox(symbolBBox(it, 0.5), x, y, tol) || attrBoxes(it).some((b) => inBox(b, x, y, tol * 0.5));
-  if (it.type === "text") return inBox(textBox(it.x, it.y, it.h, it.s), x, y, tol);
+  if (it.type === "text") return inBox(textItemBox(it), x, y, tol);
   if (it.type === "terminals") return inBox(termBBox(it), x, y, tol);
   if (D.isPlanType(it.type)) return D.hitItem(it, x, y, tol);
   if (PV_TYPES.has(it.type)) return hitPv(it, x, y, tol);
   if (it.type === "pvmodule") return hitMod(it, x, y, tol);
   if (it.type === "spa") return inBox(spaBox(it), x, y, tol);
+  if (it.type === "pvpoint") return inBox(pointBox(it), x, y, tol);
+  if (it.type === "pvline") return hitLine(it, x, y, tol);
   const pts = it.type === "pvstring" ? strPts(it) : it.pts;
   if (pts.length === 1) return Math.hypot(x - pts[0][0], y - pts[0][1]) <= tol; // String aus einem Modul
   for (let i = 0; i + 1 < pts.length; i++) if (segDist(x, y, ...pts[i], ...pts[i + 1]) <= tol) return true;
@@ -282,7 +285,7 @@ export function itemsSVG(items, kind = "schema", o = {}) {
     else if (it.type === "wire") {
       const k = WIRE_KINDS[it.kind] || WIRE_KINDS.leitung;
       s += poly(it.pts, LAYERS[k.layer].css, k.dashed ? 'stroke-dasharray="7 4"' : "");
-    } else if (it.type === "text") s += txt(it.x, it.y, it.h, it.s);
+    } else if (it.type === "text") s += it.r ? `<text transform="translate(${f(it.x)},${f(it.y)}) rotate(${it.r}) scale(1,-1)" font-size="${it.h}" fill="${INK}" stroke="none">${esc(it.s)}</text>` : txt(it.x, it.y, it.h, it.s);
     else if (it.type === "terminals") s += terminalsSVG(it);
   }
   for (const t of railStubs(items)) s += poly([[t.x1, t.y1], [t.x2, t.y2]], LAYERS[(WIRE_KINDS[t.w.kind] || WIRE_KINDS.leitung).layer].css, ""); // Abschluss der Hauptlinie
@@ -300,7 +303,7 @@ export function selectionSVG(items) {
     const pts = it.type === "pvstring" ? strPts(it) : it.pts;
     if (pts?.length > 1) s += pePair((c) => `<polyline class="${c}" points="${[...pts, ...(isClosed(it) ? [pts[0]] : [])].map((p) => f(p[0]) + "," + f(p[1])).join(" ")}"/>`);
     else {
-      const b = it.type === "symbol" ? symbolBBox(it, 1) : it.type === "terminals" ? termBBox(it) : D.isPlanType(it.type) ? D.itemBBox(it) : it.type === "pvmodule" ? modBox(it) : it.type === "spa" ? spaBox(it) : pts ? itemBBox(it) : textBox(it.x, it.y, it.h, it.s);
+      const b = it.type === "symbol" ? symbolBBox(it, 1) : it.type === "terminals" ? termBBox(it) : D.isPlanType(it.type) ? D.itemBBox(it) : it.type === "pvmodule" ? modBox(it) : it.type === "spa" ? spaBox(it) : it.type === "pvpoint" ? pointBox(it) : pts ? itemBBox(it) : textBox(it.x, it.y, it.h, it.s);
       const g = it.type !== "symbol" ? { x0: b.x0 - 0.8, y0: b.y0 - 0.8, x1: b.x1 + 0.8, y1: b.y1 + 0.8 } : b;
       s += pePair((c) => rect(g, c));
     }

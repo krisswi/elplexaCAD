@@ -288,6 +288,10 @@ button { cursor: pointer; }
   .start-tile:active { transform: scale(.97); }
 }
 label.chk { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+/* PDF / Drucken: Blätter wählen (CJ 17.10.) */
+.print-list { max-height: 50vh; overflow: auto; margin: 4px 0 8px; }
+.print-list label.chk span:first-of-type { flex: 1; min-width: 0; }
+.print-list .print-paper { margin: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Titelseite (titel.js): mehrzeilige Felder, Zeilen im Änderungsindex, eingeklappte Projektangaben */
 .field textarea { width: 100%; min-height: 64px; padding: 7px 10px; border: 1px solid var(--panel-line); border-radius: var(--radius); background: #fff; font: inherit; resize: vertical; }
 .field textarea:focus { outline: 2px solid var(--pe-green); outline-offset: 1px; border-color: transparent; }

@@ -136,7 +136,7 @@ export function exportDxf(model) {
       const k = WIRE_KINDS[it.kind] || WIRE_KINDS.leitung;
       d.addLWPolyline(V(it.pts), { layerName: k.layer, ...(k.dashed ? { lineType: "DASHED" } : {}) });
     } else if (it.type === "text") {
-      d.addText(P(it.x, it.y), it.h, it.s, { layerName: "SCH_TEXT" });
+      d.addText(P(it.x, it.y), it.h, it.s, { layerName: "SCH_TEXT", ...(it.r ? { rotation: it.r } : {}) });
     } else if (it.type === "dispoview") {
       addPlan(d, D.viewPrims(it), D.viewMap(it));
       d.addText(P(it.x, it.y - 4.5), 2.5, D.viewCaption(it), { layerName: "SCH_TEXT" });

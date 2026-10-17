@@ -1,31 +1,41 @@
-// Wandlermessung (CJ 16.10.): das Symbol ZAEHLER_4P_W (Palette, alte Dateien, Vorlagen) wird in drei Teile zerlegt:
-// Wandlerteil ZW_WANDLER (Stromwandler, Spannungspfad mit Sicherungen, Prüfklemmen), Zähler ZW_ZAEHLER und 10 Leitungen dazwischen.
-// Zähler und Leitungen tragen of = Wandlerteil und folgen ihm. Der Zähler allein lässt sich frei verschieben, die Leitungen
+// Wandlermessung: das Palettensymbol ZAEHLER_4P_W wird beim Setzen in Einzelteile zerlegt (seit 17.10., splitWandler).
+// Stand 16.10. (alte Dateien): Wandlerteil ZW_WANDLER, Zähler ZW_ZAEHLER und 10 Leitungen; Zähler und Leitungen tragen of = Wandlerteil und folgen ihm. Der Zähler allein lässt sich frei verschieben, die Leitungen
 // knicken dann gestaffelt, damit sie sich nicht überdecken (wm = Nummer des Leiters von links).
-import { WM_X, WM_PIN_Y, WM_BOX_Y, SYMBOL_BY_NAME, rotatePoint } from "./symbols.js";
+import { WM_X, WM_PIN_Y, SYMBOL_BY_NAME, rotatePoint, wm2Layout } from "./symbols.js";
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const at = (it, x, y) => { const o = rotatePoint(x, y, it.rot || 0); return [r3(it.x + o.x), r3(it.y + o.y)]; };
 
-// Zerlegt alle ZAEHLER_4P_W eines Blatts. Gibt true zurück, wenn etwas geändert wurde.
+// Zerlegt alle ZAEHLER_4P_W eines Blatts in Einzelteile (CJ 17.10., BKW-Schema): Stromwandler, Sicherungen, Prüfklemmen und Zähler
+// als Symbole, alles andere als gewöhnliche Leitungen und Texte. Danach ist jedes Teil einzeln bearbeitbar und löschbar.
+// Gibt true zurück, wenn etwas geändert wurde.
 export function splitWandler(items, nextId) {
   let changed = false;
   for (let k = 0; k < items.length; k++) {
     const it = items[k];
     if (it.type !== "symbol" || it.sym !== "ZAEHLER_4P_W") continue;
-    const a = it.attrs || {};
-    const trafo = { ...it, sym: "ZW_WANDLER", attrs: Object.fromEntries(SYMBOL_BY_NAME.ZW_WANDLER.attrs.map((x) => [x.tag, x.def])) };
-    delete trafo.manual;
-    const [bx, by] = at(it, 0, WM_BOX_Y);
-    const box = { id: nextId(), type: "symbol", sym: "ZW_ZAEHLER", x: bx, y: by, rot: it.rot || 0, of: it.id,
-      attrs: { BMK: a.BMK ?? "P?", ZAEHLERNR: a.ZAEHLERNR ?? "", WANDLER: a.WANDLER ?? "150/5A", TEXT: SYMBOL_BY_NAME.ZW_ZAEHLER.attrs.find((x) => x.tag === "TEXT").def } };
-    if (it.manual) box.manual = true;
-    const wires = WM_X.map((x, i) => ({ id: nextId(), type: "wire", kind: "leitung", pts: [at(it, x, WM_PIN_Y), at(it, x, WM_BOX_Y)], of: it.id, wm: i }));
-    items.splice(k, 1, trafo, box, ...wires);
-    k += 1 + wires.length;
+    const a = it.attrs || {}, rot = it.rot || 0, L = wm2Layout(), out = [];
+    for (const o of L.syms) {
+      const def = SYMBOL_BY_NAME[o.sym], [x, y] = at(it, o.x, o.y);
+      const s = { id: nextId(), type: "symbol", sym: o.sym, x, y, rot, attrs: Object.fromEntries(def.attrs.map((d) => [d.tag, (o.attrs || {})[d.tag] ?? d.def])) };
+      if (o.sym === "ZW_ZAEHLER2") { for (const t of ["BMK", "ZAEHLERNR", "WANDLER"]) if (a[t] !== undefined) s.attrs[t] = a[t]; if (it.manual) s.manual = true; }
+      out.push(s);
+    }
+    for (const w of L.wires) out.push({ id: nextId(), type: "wire", kind: "leitung", pts: w.map(([x, y]) => at(it, x, y)) });
+    for (const t of L.texts) out.push(freeText(it, t, nextId()));
+    items.splice(k, 1, ...out);
+    k += out.length - 1;
     changed = true;
   }
   return changed;
+}
+
+// Symboltext (Mitte bzw. linksbündig, Mitte der Schrifthöhe) als freier Text (links, Grundlinie), Breite ca. 0,5 Texthöhe je Zeichen
+function freeText(it, t, id) {
+  const h = t.h, w = t.s.length * h * 0.5, r = t.r || 0;
+  const lx = r ? 0.35 * h : t.al === "l" ? 0 : -w / 2, ly = r ? -w / 2 : -0.35 * h; // r 90: Grundlinie rechts der Mitte, Text läuft nach oben
+  const [x, y] = at(it, t.x + lx, t.y + ly), rr = ((r + (it.rot || 0)) % 360 + 360) % 360;
+  return { id, type: "text", x, y, h, s: t.s, ...(rr ? { r: rr } : {}) };
 }
 
 export function splitWandlerDoc(doc) {

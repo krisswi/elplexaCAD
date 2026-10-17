@@ -64,7 +64,7 @@ with sync_playwright() as p:
         except Exception: check("Plan gerendert", False, str(page.evaluate("[...document.querySelectorAll('.toast')].map(t=>t.textContent)")) + str(errors))
     near = lambda a, b, t: abs(a - b) <= t
     # 5b: Werkzeug wählen; ist es nicht sichtbar, zuerst seine Ebene aktiv machen (⌘ + Zahl)
-    TOOL_KEY = {"pv-measure": 1, "pv-fix": 1, "pv-rotate": 1, "pv-roof": 2, "pv-keepout": 2, "pv-module": 3, "pv-field": 3, "pv-string": 4, "pv-spa": 4}
+    TOOL_KEY = {"pv-measure": 1, "pv-fix": 1, "pv-rotate": 1, "pv-roof": 2, "pv-keepout": 2, "pv-module": 3, "pv-field": 3, "pv-string": 4, "pv-spa": 4, "pv-line": 4, "pv-point": 4}
     def use(tool):
         if page.is_visible("#pv-pop"): page.keyboard.press("Escape")  # Fenster oben zu, sonst ruhen die Tastenkürzel
         if page.locator(f'[data-tool="{tool}"]').count() == 0: page.keyboard.press(f"Meta+{TOOL_KEY[tool]}"); page.wait_for_timeout(80)
@@ -401,7 +401,7 @@ with sync_playwright() as p:
     mods = lambda: [i for i in M()["items"] if i["type"] == "pvmodule"]
     mts = lambda: (D().get("pv") or {}).get("moduleTypes", [])
     # UI Schritt 6 Teil 2: Module, Wechselrichter und Druck in Fenstern oben (öffnet das Fenster bei Bedarf)
-    POPK = {"psize": "druck", "pquer": "druck", "pden": "druck", "north": "druck", "pr": "druck", "tmin": "wr", "wr": "wr", "mppt": "wr", "str": "wr"}
+    POPK = {"psize": "druck", "pquer": "druck", "pden": "druck", "north": "druck", "strk": "druck", "pr": "druck", "tmin": "wr", "wr": "wr", "mppt": "wr", "str": "wr"}
     def pop(kind):
         btn = {"mod": "#btn-pvmod", "wr": "#btn-pvwr", "druck": "#btn-pvdruck"}[kind]
         if not (page.is_visible("#pv-pop") and page.get_attribute(btn, "aria-expanded") == "true"): page.click(btn); page.wait_for_timeout(60)
@@ -635,7 +635,7 @@ with sync_playwright() as p:
     check("5e: mit ⌥ überfahren angehängt, Esc übernimmt", strs()[0]["mods"] == ids(fm[:4]), strs())
     page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
     check("5e: Rückgängig, alter String", strs()[0]["mods"] == ids(fm[:3]) and not errors, (strs(), errors))
-    # Schritt 5f: Modul auf eine Dachecke, Plan drehen, Modul bleibt auf derselben Planstelle und dreht mit
+    # 5az (CJ 17.10., ersetzt 5f): Modul auf eine Dachecke, Plan drehen: Dachlinie dreht, Modul bleibt wo und wie es ist
     page.keyboard.press("Escape")
     use("pv-roof"); click_px(0, 5500); click_px(2000, 5500); page.keyboard.press("Enter"); page.wait_for_timeout(80)
     corner = roofs()[-1]["pts"][0]; use("pv-module"); setopt("mt", mid); n2 = len(mods()); click_px(*corner)
@@ -644,11 +644,11 @@ with sync_playwright() as p:
     click_px(*ctr(fm[0])); click_px(ctr(fm[0])[0] + 1000, ctr(fm[0])[1] + 1000 * math.tan(math.radians(10))); page.wait_for_timeout(150)
     page.fill('.modal [data-f="0"]', "-10"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     m1 = next(m for m in mods() if m["id"] == m0["id"]); c1 = roofs()[-1]["pts"][0]
-    check("5f: Modul auf Dachecke, nach Drehen noch auf derselben Ecke und um −10° gedreht", near(m0["x"], corner[0], 0.01) and near(m0["y"], corner[1], 0.01) and m1.get("rot") == -10 and near(m1["x"], c1[0], 0.002) and near(m1["y"], c1[1], 0.002), (corner, m0, m1, c1))
-    check("5f: Modul gedreht gezeichnet", page.locator('#items .pv-module[transform^="rotate(-10 "]').count() >= 1)
+    check("5az: nach Drehen Modul unverändert (ohne rot), Dachecke gedreht", m1 == m0 and "rot" not in m1 and not near(c1[0], corner[0], 1) and M()["bg"].get("rot") == -10, (corner, m0, m1, c1))
+    check("5az: kein Modul gedreht gezeichnet", page.locator('#items .pv-module[transform^="rotate("]').count() == 0)
     for _ in range(3): page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
     page.keyboard.press("Escape")
-    check("5f: Rückgängig, alter Stand", mods()[n0:] == fm and len(mods()) == n2 and "rot" not in M()["bg"] and not errors, errors)
+    check("5az: Rückgängig, alter Stand", mods()[n0:] == fm and len(mods()) == n2 and "rot" not in M()["bg"] and not errors, errors)
     # Schritt 5g: Massstab nachträglich eingeben (Ebene Hintergrund), Objekte bleiben relativ zum Fixpunkt
     page.keyboard.press("Meta+1"); page.wait_for_timeout(80)
     bg0, it0 = M()["bg"], M()["items"]
@@ -1050,14 +1050,14 @@ with sync_playwright() as p:
     check("3d: Plan um −10° gedreht", M()["bg"].get("rot") == -10, M()["bg"])
     page.keyboard.press("Meta+3"); page.wait_for_timeout(60); use("pv-module"); n0 = len(mods()); alt_click(8000, 3000)
     nm = mods()[n0:]
-    check("5aa: neues Modul folgt der Drehung des Plans (rot −10, gedreht gezeichnet)", len(nm) == 1 and nm[0].get("rot") == -10 and page.locator('#items .pv-module[transform^="rotate(-10 "]').count() >= 2, nm)
+    check("5az: neues Modul im gedrehten Plan ohne Drehung (5aa aufgehoben)", len(nm) == 1 and "rot" not in nm[0] and page.locator('#items .pv-module[transform^="rotate("]').count() == 0, nm)
     page.keyboard.press("Meta+1"); page.wait_for_timeout(60); load(B, confirm=True)
     page.wait_for_selector(".modal [data-c]", timeout=10000); page.click(".modal [data-c]"); page.wait_for_timeout(300)
     check("5p: Plantausch übernimmt die Drehung (−10°)", M()["bg"].get("swap") is True and M()["bg"].get("rot") == -10 and M()["bg"]["name"] == "planB.pdf", M()["bg"])
     with page.expect_download() as d: page.click("#btn-save")
     fB2 = OUT / "pv_gruppeB.schemacad.json"; d.value.save_as(fB2); sB = json.loads(fB2.read_text())
     reopen(fB2)
-    check("5ab: gespeichert als Version 6, gedrehtes Modul bleibt beim Laden", sB["version"] == 6 and any(i.get("rot") == -10 for i in M()["items"] if i["type"] == "pvmodule"), sB["version"])
+    check("5ab: gespeichert als Version 6, Drehung des Plans bleibt beim Laden", sB["version"] == 6 and M()["bg"].get("rot") == -10, sB["version"])
     check("Gruppe B: keine JS-Fehler", not errors, errors)
 
     # ---------- Gruppe C: 5ac, 5ad, 5ae, 5ag, 5ah, 5ak, 5am (5al oben bei 5k) ----------
@@ -1171,11 +1171,187 @@ with sync_playwright() as p:
     for part in ("mod", "name", "head"): page.click(pop("druck") + f' [data-pvopt="pr"][data-part="{part}"]'); page.wait_for_timeout(60)
     hid = M().get("hide"); page.keyboard.press("Escape")
     page.evaluate("window.print = () => setTimeout(() => window.dispatchEvent(new Event('afterprint')), 50)")
-    page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_timeout(400)
+    page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_selector(".modal [data-ok]"); page.click(".modal [data-ok]"); page.wait_for_timeout(400)
+    for _ in range(5):  # je weiteres Papierformat eine Rückfrage
+        try: page.wait_for_selector(".modal [data-r='1']", timeout=1500)
+        except Exception: break
+        page.click(".modal [data-r='1']"); page.wait_for_timeout(200)
     check("5av: nach Druck/PDF alle Druckteile wieder an", hid == ["mod", "name", "head"] and "hide" not in M() and page.locator("#items .pv-module").count() == 3 and page.locator(pop("druck") + ' [data-pvopt="pr"]:not(:checked)').count() == 0, (hid, M().get("hide")))
     page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
     check("5av: Rückgängig holt die Auswahl zurück", M().get("hide") == ["mod", "name", "head"], M().get("hide"))
     check("5ar–5aw: keine JS-Fehler", not errors, errors)
+
+    # ---------- 5ax Leitungen, 5ay Punkte mit Beschriftung (CJ 17.10.) ----------
+    page.keyboard.press("Escape"); page.keyboard.press("Escape"); page.keyboard.press("f"); page.wait_for_timeout(150)
+    lines = lambda: [i for i in M()["items"] if i["type"] == "pvline"]
+    pts_ = lambda: [i for i in M()["items"] if i["type"] == "pvpoint"]
+    blur = lambda: page.evaluate("document.activeElement?.blur()")  # Eingabefeld rechts verlassen, sonst gehen Tasten ins Feld
+    bx, by = min(m["x"] for m in mods()), min(m["y"] for m in mods())
+    page.keyboard.press("k"); page.wait_for_timeout(80)
+    check("5ax: Taste K wählt Leitung, Ebene Verkabelung aktiv", page.get_attribute('[data-tool="pv-line"]', "aria-pressed") == "true" and page.get_attribute('[data-pvact="active"][data-layer="kabel"]', "aria-pressed") == "true" and 'data-pvopt="lw"' in page.inner_html("#right"))
+    alt_click(bx + 100, by + 100)
+    notoast(); X, Y = pt(bx + 1500, by + 300); page.keyboard.down("Alt"); page.keyboard.down("Shift"); page.mouse.move(X, Y); page.mouse.click(X, Y); page.keyboard.up("Shift"); page.keyboard.up("Alt"); page.wait_for_timeout(60)
+    X, Y = pt(bx + 1500, by + 1200); page.keyboard.down("Alt"); page.mouse.move(X, Y); page.mouse.dblclick(X, Y); page.keyboard.up("Alt"); page.wait_for_timeout(100)
+    L = lines()
+    check("5ax: Linienzug mit 3 Punkten, Doppelklick beendet, Vorgabe 50 mm gelb", len(L) == 1 and len(L[0]["pts"]) == 3 and L[0]["w"] == 50 and L[0]["col"] == "#f5c400", L)
+    check("5ax: Shift legt den zweiten Punkt waagrecht", len(L) == 1 and near(L[0]["pts"][1][1], L[0]["pts"][0][1], 1e-6), L)
+    check("5ax: Leitung massstäblich gezeichnet (stroke-width 50 mm im Plan)", page.locator("#items .pv-line").count() == 1 and "stroke-width:50" in (page.get_attribute("#items .pv-line", "style") or ""))
+    alt_click(bx + 200, by + 1600); alt_click(bx + 900, by + 1600); page.keyboard.press("Escape"); page.wait_for_timeout(80)
+    check("5ax: Esc bricht die Leitung ab", len(lines()) == 1, lines())
+    setopt("lw", "80"); alt_click(bx + 200, by + 1600); alt_click(bx + 900, by + 1600); page.keyboard.press("Enter"); page.wait_for_timeout(80)
+    check("5ax: Breite für neue Leitung wählbar, Eingabetaste beendet", len(lines()) == 2 and lines()[1]["w"] == 80, lines())
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(80); setopt("lw", "50"); blur()
+    page.keyboard.press("v"); page.wait_for_timeout(60); a0, a1 = L[0]["pts"][0], L[0]["pts"][1]
+    click_px((a0[0] + a1[0]) / 2, a0[1] + 10)
+    check("5ax: Leitung anklicken wählt sie, Breite und Farbe rechts", page.evaluate("window.__schemacad.sel") == [L[0]["id"]] and page.locator('#right [data-pvopt="selw"]').count() == 1 and page.locator('#right input[type="color"][data-pvopt="selcol"]').count() == 1, page.inner_text("#right"))
+    setopt("selw", "120"); page.wait_for_timeout(60)
+    page.fill('#right [data-pvopt="selcol"]', "#1f6fd1"); page.dispatch_event('#right [data-pvopt="selcol"]', "change"); page.wait_for_timeout(60); blur()
+    check("5ax: nachträglich Breite 120 mm und Farbe blau", lines()[0]["w"] == 120 and lines()[0]["col"] == "#1f6fd1", lines())
+    page.keyboard.press("Meta+z"); page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    check("5ax: Rückgängig: wieder 50 mm gelb", lines()[0]["w"] == 50 and lines()[0]["col"] == "#f5c400", lines())
+    click_px((a0[0] + a1[0]) / 2, a0[1] + 10); p2 = lines()[0]["pts"][2]
+    X, Y = pt(*p2); page.keyboard.down("Alt"); page.mouse.move(X, Y); page.mouse.down(); page.mouse.move(X + 40, Y + 10, steps=4); page.mouse.up(); page.keyboard.up("Alt"); page.wait_for_timeout(80)
+    q2 = lines()[0]["pts"][2]
+    check("5ax: Punkt der Leitung ziehbar", not near(q2[0], p2[0], 1) and len(lines()[0]["pts"]) == 3, (p2, q2))
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(60)
+    check("5ax: Rückgängig: Punkt zurück", lines()[0]["pts"][2] == p2)
+    page.keyboard.press("Delete"); page.wait_for_timeout(60); n_del = len(lines()); page.keyboard.press("Meta+z"); page.wait_for_timeout(60)
+    check("5ax: löschen und Rückgängig", n_del == 0 and len(lines()) == 1)
+    # 5ay: Punkt setzen, Text eingeben, Doppelklick ändert, Text ziehbar
+    page.keyboard.press("Escape"); page.keyboard.press("o"); page.wait_for_timeout(60)
+    alt_click(bx + 600, by + 1400); page.wait_for_timeout(80)
+    page.keyboard.type("Abzweigdose"); page.keyboard.press("Enter"); page.wait_for_timeout(100)
+    P_ = pts_()
+    check("5ay: Taste O, Klick setzt Punkt, Text dazu", len(P_) == 1 and P_[0]["s"] == "Abzweigdose" and "Abzweigdose" in page.text_content("#items .pv-point"), P_)
+    page.keyboard.press("v"); page.wait_for_timeout(60)
+    X, Y = pt(P_[0]["x"], P_[0]["y"]); page.mouse.dblclick(X, Y); page.wait_for_timeout(100)
+    page.keyboard.press("End"); page.keyboard.type(" 1"); page.keyboard.press("Enter"); page.wait_for_timeout(100)
+    check("5ay: Doppelklick bearbeitet den Text", pts_()[0]["s"] == "Abzweigdose 1", pts_())
+    click_px(P_[0]["x"], P_[0]["y"]); page.wait_for_timeout(60)
+    lx, ly = P_[0]["x"] + 120, P_[0]["y"] + 120  # PT_OFF = 1,6 × 75 mm
+    X, Y = pt(lx, ly); page.mouse.move(X, Y); page.mouse.down(); page.mouse.move(X + 60, Y + 30, steps=4); page.mouse.up(); page.wait_for_timeout(80)
+    q = pts_()[0]
+    check("5ay: Text am Griff ziehbar, Punkt bleibt", "ox" in q and q["ox"] > 120 and q["oy"] < 120 and q["x"] == P_[0]["x"] and q["y"] == P_[0]["y"], q)
+    page.click('#right [data-pvact="ptreset"]'); page.wait_for_timeout(60)
+    check("5ay: Text zurück neben den Punkt", "ox" not in pts_()[0], pts_())
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(60)
+    # Druck: Leitung und Punkt auf der Seite, Druckteile einzeln abwählbar
+    page.evaluate("window.__schemacad.preparePrint()"); page.evaluate("window.__schemacad.buildPrint()")
+    pr = page.evaluate("(()=>{const s=[...document.querySelectorAll('#printroot > svg')].find(s=>s.textContent.includes('Stringplan ·')&&s.querySelector('.pv-line')); if(!s) return null; const l=s.querySelector('.pv-line'); return {w:getComputedStyle(l).strokeWidth, txt:s.querySelector('.pv-point')?.textContent}})()")
+    page.evaluate("document.querySelector('#printroot').innerHTML=''")
+    check("5ax/5ay: Leitung massstäblich und Punkt mit Text im Druck", pr is not None and pr["w"] in ("50px", "50") and pr["txt"] == "Abzweigdose 1", pr)
+    for part in ("line", "point"): page.click(pop("druck") + f' [data-pvopt="pr"][data-part="{part}"]'); page.wait_for_timeout(60)
+    page.keyboard.press("Escape")
+    check("5ax/5ay: Druckteile Leitungen und Punkte ausblendbar", {"line", "point"} <= set(M().get("hide") or []) and page.locator("#items .pv-line, #items .pv-point").count() == 0, M().get("hide"))
+    page.keyboard.press("Meta+z"); page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    page.click('[data-pvact="layer"][data-layer="kabel"][data-key="show"]'); page.wait_for_timeout(60)
+    check("5ax/5ay: Auge Verkabelung blendet Leitungen und Punkte aus", page.locator("#items .pv-line, #items .pv-point").count() == 0)
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    with page.expect_download() as d: page.click("#btn-save")
+    fL = OUT / "pv_leitungen.schemacad.json"; d.value.save_as(fL); sL = json.loads(fL.read_text()); before = M()["items"]
+    reopen(fL)
+    check("5ax/5ay: Datei Version 13, Laden gibt Leitung und Punkt unverändert zurück", sL["version"] == 13 and [i for i in M()["items"] if i["type"] in ("pvline", "pvpoint")] == [i for i in before if i["type"] in ("pvline", "pvpoint")], sL["version"])
+    check("5ax/5ay: keine JS-Fehler", not errors, errors)
+
+    # ---------- Druck: Blätter wählen, Papier je Blatt (CJ 17.10.) ----------
+    mixdoc = {"format": "schemacad", "version": 6, "active": 0, "nextId": 10, "sheets": [
+      {"meta": {"BLATT": "1", "TITEL": "Hauptverteilung"}, "items": []},
+      {"kind": "pv", "sid": 2, "meta": {}, "items": [], "paper": {"size": "A3", "quer": True, "den": 100}},
+      {"kind": "pvtab", "meta": {}, "items": []}]}
+    fM = OUT / "druck_gemischt.schemacad.json"; fM.write_text(json.dumps(mixdoc)); reopen(fM)
+    page.evaluate("window.__prints = []; window.print = () => { window.__prints.push({ t: document.title, pages: [...document.querySelectorAll('#printroot > svg')].map(s => s.style.page || 'A4q') }); setTimeout(() => window.dispatchEvent(new Event('afterprint')), 20); }; 0")
+    page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_selector(".modal [data-psheet]")
+    labels = page.locator(".modal .print-list label").all_inner_texts(); nsh = len(D()["sheets"])
+    check("Druck: Fenster listet alle Blätter mit Papier, alle angehakt", len(labels) == nsh and page.locator(".modal [data-psheet]:checked").count() == nsh and any("A3 quer" in l and "Stringplan" in l for l in labels), labels)
+    check("Druck: Hinweis bei gemischtem Papier, Knopf zeigt Anzahl Drucke (A4 quer, A4 hoch Legende, A3 quer)", "Chrome druckt alle Seiten im Format der ersten" in page.inner_text(".modal [data-pmix]") and "3×" in page.inner_text(".modal [data-ok]"), page.inner_text(".modal"))
+    page.click(".modal [data-ok]"); asks = []
+    for _ in range(2):
+        page.wait_for_selector(".modal [data-r='1']", timeout=5000); asks.append(page.inner_text(".modal")); page.click(".modal [data-r='1']")
+    page.wait_for_timeout(300); pr = page.evaluate("window.__prints")
+    check("Druck: vor jedem weiteren Format fragt ein Fenster", "A4 hoch" in asks[0] and "A3 quer" in asks[1] and "Stringplan" in asks[1], asks)
+    check("Druck: drei Drucke in Dateireihenfolge, je Druck ein Papier, Stringübersicht bei A4 quer", len(pr) == 3 and all(x in ("A4q", "pA4q") for x in pr[0]["pages"]) and len(pr[0]["pages"]) >= 4 and set(pr[1]["pages"]) == {"pA4h"} and pr[2]["pages"] == ["pA3q"]
+          and [x["t"].rsplit("_", 1)[1] for x in pr] == ["A4-quer", "A4-hoch", "A3-quer"], pr)
+    check("Druck: danach leer, keine JS-Fehler", page.evaluate("document.querySelector('#printroot').innerHTML") == "" and not errors, errors)
+    # nur aktuelles Blatt: zum Stringplan, Schnellwahl
+    i_pv = next(k for k, sh in enumerate(D()["sheets"]) if sh.get("kind") == "pv")
+    page.click("#sheet-cur"); page.click(f'#sheet-menu [data-sheet="{i_pv}"]'); page.wait_for_timeout(200); page.keyboard.press("Escape")
+    page.evaluate("window.__prints = []")
+    page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_selector(".modal [data-pcur]"); page.click(".modal [data-pcur]")
+    check("Druck: „Nur aktuelles Blatt“ hakt nur den Stringplan an, ein Druck", page.locator(".modal [data-psheet]:checked").count() == 1 and page.locator(f'.modal [data-psheet="{i_pv}"]:checked').count() == 1 and page.inner_text(".modal [data-ok]") == "Drucken" and page.inner_text(".modal [data-pmix]") == "")
+    page.click(".modal [data-ok]"); page.wait_for_timeout(300); pr = page.evaluate("window.__prints")
+    check("Druck: nur der Stringplan in A3 quer, ohne Rückfrage", len(pr) == 1 and pr[0]["pages"] == ["pA3q"] and page.locator(".modal").count() == 0, pr)
+    page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_selector(".modal [data-pall]")
+    page.locator(".modal [data-psheet]").first.uncheck(); page.click(".modal [data-pall]")
+    ok_all = page.locator(".modal [data-psheet]:checked").count() == nsh
+    page.locator(".modal [data-psheet]").evaluate_all("bs => bs.forEach(b => { b.checked = false; b.dispatchEvent(new Event('change', { bubbles: true })); })")
+    check("Druck: „Alle“ hakt alles an, ohne Auswahl ist Drucken gesperrt", ok_all and page.is_disabled(".modal [data-ok]"))
+    page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    check("Druck: Abbrechen druckt nichts", len(page.evaluate("window.__prints")) == 1 and page.locator(".modal").count() == 0)
+    # PDF je Gruppe hat das eigene Papier (Headless-Chromium, preferCSSPageSize)
+    page.evaluate("window.__schemacad.buildPrint()"); page.emulate_media(media="print")
+    mb = [tuple(round(float(v) * 25.4 / 72) for v in m.decode().split()[2:4]) for m in re.findall(rb"/MediaBox \[([^\]]+)\]", page.pdf(prefer_css_page_size=True, print_background=True))]
+    page.emulate_media(media="screen"); page.evaluate("document.querySelector('#printroot').innerHTML=''")
+    check("Druck: Stringplan A3 quer, übrige A4 (quer bzw. Legende hoch)", (420, 297) in mb and all(x in ((297, 210), (210, 297), (420, 297)) for x in mb), mb)
+
+    # ---------- 5bc Autoverkabelung einschränken, 5bb Stringbeschriftung, 5ba Texthöhe (CJ 17.10.) ----------
+    rowdoc = {"format": "schemacad", "version": 6, "active": 0, "nextId": 50, "pv": {"moduleTypes": [{"id": "mA", "name": "T", "l": 1700, "b": 1000}]},
+      "sheets": [{"kind": "pv", "sid": 1, "meta": {}, "items": [{"id": 10 + i, "type": "pvmodule", "mt": "mA", "x": i * 1005, "y": 0, "quer": False} for i in range(10)]}]}
+    fR = OUT / "auto_eingeschraenkt.schemacad.json"; fR.write_text(json.dumps(rowdoc)); reopen(fR)
+    page.keyboard.press("Meta+4"); page.wait_for_timeout(80); page.keyboard.press("f"); page.wait_for_timeout(150)
+    mc = lambda i: (i * 1005 + 500, 850)
+    page.click('[data-pvact="auto"]'); page.wait_for_timeout(80)
+    check("5bc: Fenster Autoverkabelung mit Knopf „Module einschränken“, ohne Wahl alle", page.locator('#right [data-pvact="autopick"]').count() == 1 and "Alle freien Module" in page.inner_text("#right"))
+    page.click('#right [data-pvact="autopick"]'); page.wait_for_timeout(80)
+    for i in range(2, 8): click_px(*mc(i))
+    click_px(*mc(7))  # nochmals = abwählen
+    check("5bc: Module anklicken wählt sie, Zähler „5 Module gewählt“, hervorgehoben", "5 Module gewählt" in page.inner_text("#right") and len(page.evaluate("window.__schemacad.sel")) == 5, page.inner_text("#right"))
+    page.keyboard.press("Delete"); page.keyboard.press("ArrowLeft"); page.wait_for_timeout(80)
+    check("5bc: im Wahlmodus kein Löschen, kein Verschieben", len(mods()) == 10 and mods()[2]["x"] == 2010)
+    page.click('#right [data-pvact="autodone"]'); page.wait_for_timeout(100)
+    check("5bc: übernommen, zurück in der Autoverkabelung, 5 Module grün", "Eingeschränkt auf 5 Module" in page.inner_text("#right") and page.locator("#overlay .pv-allowed, svg .pv-allowed").count() == 5 and page.evaluate("window.__schemacad.sel") == [], page.inner_text("#right"))
+    notoast(); click_px(*mc(0)); page.wait_for_timeout(100)
+    check("5bc: Start ausserhalb der Wahl: Meldung, kein Dialog", "nicht unter den gewählten" in toasts() and page.locator(".modal").count() == 0, toasts())
+    click_px(*mc(2)); page.wait_for_selector('.modal [data-f="1"]')
+    page.fill('.modal [data-f="0"]', "3"); page.fill('.modal [data-f="1"]', "2"); page.click(".modal [data-ok]"); page.wait_for_timeout(150)
+    ss = [i for i in M()["items"] if i["type"] == "pvstring"]
+    check("5bc: verkabelt nur gewählte Module (2 Strings à 2, Meldung fehlende Module)", [st["mods"] for st in ss] == [[12, 13], [14, 15]] and "Nur 2 von 3" in toasts(), (ss, toasts()))
+    page.click('[data-pvact="auto"]'); page.wait_for_timeout(80); page.click('#right [data-pvact="autopick"]'); page.wait_for_timeout(80)
+    keep = len(page.evaluate("window.__schemacad.sel")); click_px(*mc(9)); page.keyboard.press("Escape"); page.wait_for_timeout(80)
+    check("5bc: Wahl zeigt die bisherige Einschränkung, Esc lässt sie unverändert", keep == 5 and "Eingeschränkt auf 5 Module" in page.inner_text("#right"), page.inner_text("#right"))
+    page.click('#right [data-pvact="autoclear"]'); page.wait_for_timeout(80)
+    check("5bc: Einschränkung aufheben", "Alle freien Module" in page.inner_text("#right") and page.locator(".pv-allowed").count() == 0)
+    page.keyboard.press("Escape"); page.keyboard.press("Escape")
+    # 5bb: Stringbeschriftung je Stringplan grösser, Bildschirm und Druck
+    r0 = float(page.get_attribute("#items .pv-plus", "r")); f0 = float(page.get_attribute("#items .pv-name", "font-size"))
+    setopt("strk", "150"); page.keyboard.press("Escape"); page.wait_for_timeout(80)
+    r1 = float(page.get_attribute("#items .pv-plus", "r")); f1 = float(page.get_attribute("#items .pv-name", "font-size"))
+    check("5bb: 150 %: Bezeichnung und + − im gleichen Verhältnis grösser", M().get("strk") == 1.5 and near(r1, r0 * 1.5, 0.01) and near(f1, f0 * 1.5, 0.01), (r0, r1, f0, f1))
+    page.evaluate("window.__schemacad.buildPrint()")
+    pf = page.evaluate("parseFloat(document.querySelector('#printroot .pv-name')?.getAttribute('font-size'))")
+    page.evaluate("document.querySelector('#printroot').innerHTML=''")
+    check("5bb: im Druck dieselbe Grösse (Plan-mm, Massstab wie Plan)", near(pf, f1, 0.01), pf)
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    check("5bb: Rückgängig: 100 %", "strk" not in M() and near(float(page.get_attribute("#items .pv-name", "font-size")), f0, 0.01))
+    # 5ba: Punkt und Text, Texthöhe einzeln und gemeinsam
+    page.keyboard.press("o"); alt_click(3000, 3500); page.keyboard.type("P1"); page.keyboard.press("Enter"); page.wait_for_timeout(80)
+    page.keyboard.press("t"); alt_click(3000, 4500); page.keyboard.type("Notiz"); page.keyboard.press("Enter"); page.wait_for_timeout(80)
+    page.keyboard.press("v"); pt0 = next(i for i in M()["items"] if i["type"] == "pvpoint"); tx0 = next(i for i in M()["items"] if i["type"] == "text")
+    click_px(pt0["x"], pt0["y"]); page.wait_for_timeout(60)
+    check("5ba: Punkt gewählt: Feld Texthöhe 250 mm", page.input_value('#right [data-pvopt="th"]') == "250" and "2,5 mm bei 1:100" in page.inner_text("#right"))
+    setopt("th", "500"); page.wait_for_timeout(60)
+    check("5ba: Punkt Texthöhe 500 mm, gezeichnet", next(i for i in M()["items"] if i["type"] == "pvpoint").get("h") == 500 and page.get_attribute("#items .pv-point text", "font-size") == "500")
+    page.evaluate("document.activeElement?.blur()")
+    X, Y = pt(tx0["x"] + 100, tx0["y"] + 100); page.keyboard.down("Meta"); page.mouse.click(X, Y); page.keyboard.up("Meta"); page.wait_for_timeout(80)
+    check("5ba: Punkt und Text gewählt: gemeinsames Feld leer (verschieden)", "2 Texte und Punkte" in page.inner_text("#right") and page.input_value('#right [data-pvopt="th"]') == "", page.inner_text("#right"))
+    setopt("th", "320"); page.wait_for_timeout(60)
+    hs = [i.get("h") for i in M()["items"] if i["type"] in ("text", "pvpoint")]
+    page.evaluate("window.__schemacad.buildPrint()")
+    pfs = page.evaluate("[...document.querySelectorAll('#printroot text')].filter(t => ['P1','Notiz'].includes(t.textContent)).map(t => t.getAttribute('font-size'))")
+    page.evaluate("document.querySelector('#printroot').innerHTML=''")
+    check("5ba: beide 320 mm, auch im Druck", hs == [320, 320] and sorted(pfs) == ["320", "320"], (hs, pfs))
+    page.evaluate("document.activeElement?.blur()"); page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    check("5ba: Rückgängig", [i.get("h") for i in M()["items"] if i["type"] in ("text", "pvpoint")] == [500, 250])
+    check("5ba–5bc: keine JS-Fehler", not errors, errors)
 
     # DXF und PDF für Stringpläne folgen später: Hinweis, kein Absturz
     page.click("#btn-export"); page.click("#btn-dxf"); page.wait_for_timeout(200)

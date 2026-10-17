@@ -14,7 +14,7 @@ const load = (txt) => parseModel(txt).sheets[0].items;
 // Textbox wie im Programm geschätzt (Zeichenbreite K.CHAR_W), gedreht = senkrecht
 const tbox = (t) => { const w = t.s.length * t.h * K.CHAR_W; return t.rot ? { x0: t.x - t.h / 2, x1: t.x + t.h / 2, y0: t.y - w / 2, y1: t.y + w / 2 } : { x0: t.x - w / 2, x1: t.x + w / 2, y0: t.y - t.h / 2, y1: t.y + t.h / 2 }; };
 const over = (a, b) => a.x0 < b.x1 - 0.01 && b.x0 < a.x1 - 0.01 && a.y0 < b.y1 - 0.01 && b.y0 < a.y1 - 0.01;
-assert.strictEqual(VERSION, 12);
+assert.ok(VERSION >= 12); // 13 seit 17.10.2026 (Stringplan: Leitungen und Punkte)
 
 // ---------- 1. Vertigroup NH1, NH2, NH3 ----------
 const V = K.NH_MAKERS.vertigroup.sizes;

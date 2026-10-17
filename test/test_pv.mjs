@@ -89,7 +89,7 @@ const plain = JSON.parse(serializeModel(newDoc()));
 assert.strictEqual(plain.version, 2); assert.strictEqual(plain.assets, undefined);
 // Unbekannte Objekte auf dem Stringplan werden abgelehnt, ebenso eine neuere Version
 assert.throws(() => parseModel(JSON.stringify({ ...o, sheets: [{ kind: "pv", meta: {}, items: [{ id: 1, type: "wire", kind: "leitung", pts: [[0, 0], [10, 0]] }] }] })), /Stringplan/);
-assert.throws(() => parseModel(JSON.stringify({ ...o, version: 13 })), /neueren Version/); // 6 = Stringplan (5ab), 7 = Hauptlinien neu, 8 = Schrank (Disposition)
+assert.throws(() => parseModel(JSON.stringify({ ...o, version: 15 })), /neueren Version/); // 6 = Stringplan (5ab), 7 = Hauptlinien neu, 8 = Schrank (Disposition)
 assert.deepStrictEqual(parseModel(JSON.stringify({ ...o, version: 4 })).sheets[1].bg, pv.bg); // 5ab: alte Dateien (Version 4) bleiben ladbar
 assert.deepStrictEqual(parseModel(JSON.stringify({ ...o, version: 5 })).sheets[1].bg, pv.bg);
 console.log("Dateiformat ok");
@@ -222,7 +222,7 @@ assert.strictEqual(P.alignAngle([0, 0], [5, 0]), 0);
 const sr = { bg: { w: 100, h: 50, fix: [0, 50] }, items: [{ id: 1, type: "roofline", pts: [[1000, 0], [0, 2000]], closed: false }, { id: 2, type: "text", x: 0, y: 500, h: 250, s: "T" }] };
 assert.strictEqual(P.rotatePlan(sr, 90), 90);
 assert.deepStrictEqual(sr.items[0].pts, [[0, 1000], [-2000, 0]]);
-assert.deepStrictEqual([sr.items[1].x, sr.items[1].y], [-500, 0]);
+assert.deepStrictEqual([sr.items[1].x, sr.items[1].y], [0, 500]); // Text bleibt (5az, CJ 17.10.)
 assert.strictEqual(P.rotatePlan(sr, 200), -70); // auf −180 … 180
 P.rotatePlan(sr, 70); assert.strictEqual(sr.bg.rot, undefined); // 0 = kein Feld
 assert.deepStrictEqual(sr.items[0].pts, [[1000, 0], [0, 2000]]);
@@ -281,21 +281,25 @@ assert.strictEqual(P.onKeepout(ko, mAt(-2000, -500, true)), false);
 assert.strictEqual(P.onKeepout({ items: [{ id: 1, type: "keepout", pts: [[100, 100], [200, 100], [150, 200]] }] }, mAt(0, 0)), true); // Sperrfläche ganz im Modul
 assert.strictEqual(P.onKeepout({ items: [{ id: 1, type: "keepout", pts: [[-100, -100], [5000, -100], [5000, 5000], [-100, 5000]] }] }, mAt(0, 0)), true); // Modul ganz innen
 console.log("Sperrfläche Warnung ok");
-// Schritt 5f: Plan drehen dreht Module um ihre Ecke mit, sie bleiben auf derselben Planstelle (auch Sperrflächen-Prüfung)
+// 5az (CJ 17.10., ersetzt 5f): Plan drehen dreht nur Dachlinien und Sperrflächen, Module bleiben wo und wie sie sind.
+// Ein Modul mit rot aus einer älteren Datei (5f) bleibt gedreht und wird gedreht geprüft.
 {
   const ov = { id: 4, type: "keepout", pts: [[1000, 100], [1500, 100], [1500, 500], [1000, 500]] }; // überlappt das Modul
   const sd = { bg: { w: 100, h: 50, fix: [0, 50] }, items: [{ id: 1, type: "roofline", pts: [[0, 0], [3000, 0]], closed: false }, { id: 2, ...mAt(0, 0) }, { id: 3, type: "keepout", pts: [[1200, 0], [2000, 0], [2000, 800], [1200, 800]] }, ov] };
   const m = sd.items[1], c0 = P.modCenter(m);
   assert.strictEqual(P.onKeepout(sd, m), true);
+  const k0 = JSON.stringify(sd.items[2].pts);
   P.rotatePlan(sd, 30);
-  assert.strictEqual(m.rot, 30); assert.deepStrictEqual([m.x, m.y], sd.items[0].pts[0]); // Ecke bleibt auf der Dachecke
-  const c1 = P.modCenter(m), cr = P.rotPt(c0[0], c0[1], 30); near(c1[0], cr[0], 1e-6); near(c1[1], cr[1], 1e-6); // Mitte auf derselben Planstelle
-  assert.ok(P.hitMod(m, ...P.rotPt(1000, 1600, 30))); assert.ok(!P.hitMod(m, 1000, 1600)); // Treffer im gedrehten Rechteck
-  const bb = P.modBox(m); near(bb.x0, -1700 * 0.5, 1e-6); near(bb.x1, 1100 * Math.cos(Math.PI / 6), 1e-6); // umgebendes Rechteck
-  assert.strictEqual(P.onKeepout(sd, m), true); assert.strictEqual(P.onKeepout({ items: [sd.items[2]] }, m), false); // gedreht: überlappt weiter bzw. weiter nicht
-  P.rotatePlan(sd, -30); assert.strictEqual(m.rot, undefined); assert.deepStrictEqual([m.x, m.y], [0, 0]);
+  assert.ok(!("rot" in m)); assert.deepStrictEqual([m.x, m.y], [0, 0]); assert.deepStrictEqual(P.modCenter(m), c0); // Modul bleibt
+  const r1 = P.rotPt(3000, 0, 30); near(sd.items[0].pts[1][0], r1[0], 1e-3); near(sd.items[0].pts[1][1], r1[1], 1e-3); // Dachlinie dreht
+  assert.notStrictEqual(JSON.stringify(sd.items[2].pts), k0); // Sperrfläche dreht
+  P.rotatePlan(sd, -30); assert.deepStrictEqual(sd.items[0].pts, [[0, 0], [3000, 0]]); JSON.parse(k0).flat().forEach((v, j) => near(sd.items[2].pts.flat()[j], v, 0.002)); // zurück, bis auf Rundung 0,001 mm
+  const old = { ...mAt(0, 0), rot: 30 }; // gedrehtes Modul aus einer älteren Datei
+  assert.ok(P.hitMod(old, ...P.rotPt(1000, 1600, 30))); assert.ok(!P.hitMod(old, 1000, 1600)); // Treffer im gedrehten Rechteck
+  const bb = P.modBox(old); near(bb.x0, -1700 * 0.5, 1e-6); near(bb.x1, 1100 * Math.cos(Math.PI / 6), 1e-6); // umgebendes Rechteck
+  const so = { items: [old] }; P.rotatePlan({ bg: {}, items: so.items }, 15); assert.strictEqual(old.rot, 30, "alte Drehung bleibt");
   assert.strictEqual(P.cleanPvItem({ ...mAt(0, 0), rot: 12.5 }, 5).rot, 12.5); assert.ok(!("rot" in P.cleanPvItem(mAt(0, 0), 5)));
-  console.log("Plan drehen mit Modulen 5f ok");
+  console.log("Plan drehen 5az: Module bleiben ok");
   // Schritt 5h: Füllung nur an Sperrfläche und geschlossener Dachlinie, unbekannte Werte fallen weg
   const kf = { type: "keepout", pts: [[0, 0], [1, 0], [1, 1]] }, rf = { type: "roofline", pts: [[0, 0], [1, 0], [1, 1]], closed: true };
   assert.ok(!("fill" in P.cleanPvItem({ ...kf, fill: "ziegel-rot" }, 1))); // 5u: Sperrfläche ohne Dachmuster (eigene Schraffur)
@@ -410,9 +414,9 @@ console.log("Datei Module ok");
   assert.deepStrictEqual(sh2.items.find((i) => i.type === "pvstring").mods, [1]);
   sh2.items = sh2.items.filter((i) => i.id !== 1); P.pruneStrings(sh2);
   assert.strictEqual(P.strings(sh2).length, 0);
-  // Plan drehen: SPA dreht mit, String hat keine eigenen Koordinaten
+  // Plan drehen (5az): SPA bleibt, String hat keine eigenen Koordinaten
   const sh3 = { bg: { w: 1, h: 1 }, items: [{ id: 11, type: "spa", x: 1000, y: 0 }, { id: 10, type: "pvstring", name: "1.1.1", mods: [] }] };
-  P.rotatePlan(sh3, 90); assert.deepStrictEqual([sh3.items[0].x, sh3.items[0].y], [0, 1000]); assert.deepStrictEqual(Object.keys(sh3.items[1]), ["id", "type", "name", "mods"]);
+  P.rotatePlan(sh3, 90); assert.deepStrictEqual([sh3.items[0].x, sh3.items[0].y], [1000, 0]); assert.deepStrictEqual(Object.keys(sh3.items[1]), ["id", "type", "name", "mods"]);
   // Datei: speichern → laden → speichern unverändert, String auf Schemablatt abgelehnt
   const d7 = newDoc(); const pv7 = newSheet("pv"); pv7.sid = 7; d7.sheets.push(pv7); d7.pv = { moduleTypes: [mtT] };
   pv7.items = JSON.parse(JSON.stringify(sh.items)); d7.nextId = 20;
@@ -659,7 +663,7 @@ console.log("Datei Module ok");
   const ft = P.fieldAt({ x: 0, y: 0 }, 2, 2, sz, 10, 5, ["l", "t"]);
   assert.deepStrictEqual(ft.map((q) => [q.x, q.y]), [[0, -3405], [1010, -3405], [0, -1700], [1010, -1700]]); // von oben: Feld hängt unter dem Punkt
   const fr = P.fieldAt({ x: 0, y: 0 }, 1, 1, sz, 0, 0, ["r", "t"]); assert.deepStrictEqual([fr[0].x, fr[0].y], [-1000, -1700]);
-  // 5aa: neue Module folgen der Drehung des Plans: rot am Modul, Feld im gedrehten Plan
+  // 5aa: fieldAt kann ein gedrehtes Feld (rot am Modul); der Editor nutzt es seit 5az nicht mehr
   const fd = P.fieldAt({ x: 100, y: 200 }, 2, 1, sz, 10, 5, ["l", "b"], 30);
   assert.strictEqual(fd[0].rot, 30); assert.deepStrictEqual([fd[0].x, fd[0].y], [100, 200]);
   const [ex, ey] = P.rotPt(1010, 0, 30); near(fd[1].x, 100 + ex, 1e-3); near(fd[1].y, 200 + ey, 1e-3);
@@ -709,9 +713,9 @@ console.log("Datei Module ok");
   P.toggleLayer(sh, "module", "show"); sh.hide = undefined; assert.ok(!P.visible(sh, mod), "Auge gilt weiter");
   console.log("5ai Druckteile am Bildschirm ok");
 
-  // 5ao: Druckmitte gespeichert, dreht mit dem Plan, Rundreise gleich
+  // 5ao: Druckmitte gespeichert, Rundreise gleich. Seit 5az bleibt sie beim Drehen wie die Module
   const d = newDoc(), pv = newSheet("pv"); pv.sid = 3; pv.bg = { w: 100, h: 100 }; pv.pmid = [1000, 0]; pv.north = 30; pv.hide = ["north"]; d.sheets.push(pv); d.nextId = 5;
-  P.rotatePlan(pv, 90); near(pv.pmid[0], 0, 1e-6); near(pv.pmid[1], 1000, 1e-6);
+  P.rotatePlan(pv, 90); assert.deepStrictEqual(pv.pmid, [1000, 0]);
   // 5aq: Nordpfeil dreht mit dem Plan (Plan +90° = im Gegenuhrzeigersinn → Pfeil 30 − 90 = 300°)
   assert.strictEqual(P.northOnPaper(pv), 300); assert.strictEqual(P.northOnPaper(newSheet("pv")), null, "ohne Nordrichtung kein Pfeil");
   assert.strictEqual(P.normNorth(-30), 330); assert.strictEqual(P.normNorth(360), 0);
@@ -763,5 +767,54 @@ console.log("Datei Module ok");
   assert.deepStrictEqual(doc.pv.wr, { 1: "w3", 2: "w1" }); assert.deepStrictEqual(doc.pv.anlage, [{ str: [1, 4] }, { str: [1] }, { str: [] }]);
   const d2 = { sheets: [], pv: { anlage: [{ str: [] }] } }; P.renumberWr(d2, []); assert.strictEqual(d2.pv, undefined, "letzter WR weg = keine Anlage");
   console.log("5as/5aw WR neu nummerieren ok");
+}
+{ // 5ax Leitungen, 5ay Punkte mit Beschriftung, 5az Plan drehen (CJ 17.10.)
+  const d = newDoc(), pv = newSheet("pv"); pv.sid = 4; pv.bg = { name: "", page: 1, w: 100, h: 100 }; d.sheets.push(pv); d.nextId = 20;
+  const ln = { id: 1, type: "pvline", pts: [[0, 0], [2000, 0], [2000, 1000]], w: 50, col: "#f5c400" }, pt = { id: 2, type: "pvpoint", x: 500, y: 500, s: "WR" };
+  const rf = { id: 3, type: "roofline", pts: [[0, 0], [1000, 0]], closed: false }, tx = { id: 4, type: "text", x: 100, y: 100, h: 250, s: "T" }, sp = { id: 5, type: "spa", x: 300, y: 0 };
+  pv.items.push(ln, pt, rf, tx, sp);
+  assert.strictEqual(P.layerOf(ln), "kabel"); assert.strictEqual(P.layerOf(pt), "kabel");
+  // Datei: Version 13, Rundreise gleich, ungültige Werte → Vorgabe
+  const t = serializeModel(d); assert.strictEqual(JSON.parse(t).version, 13); const r = parseModel(t);
+  assert.deepStrictEqual(r.sheets[1].items.slice(0, 2), [ln, pt]); assert.strictEqual(serializeModel(r), t, "Speichern → Laden → Speichern gleich");
+  assert.deepStrictEqual(P.cleanPvItem({ type: "pvline", pts: [[0, 0], [1, 1]], w: -3, col: "gelb" }, 7), { id: 7, type: "pvline", pts: [[0, 0], [1, 1]], w: P.LINE_W, col: P.LINE_COL });
+  assert.strictEqual(P.cleanPvItem({ type: "pvline", pts: [[0, 0]] }, 7), null, "Leitung braucht zwei Punkte");
+  assert.deepStrictEqual(P.cleanPvItem({ type: "pvpoint", x: 1, y: 2, s: 5, ox: 10 }, 8), { id: 8, type: "pvpoint", x: 1, y: 2, s: "5" }, "ox ohne oy fällt weg");
+  assert.strictEqual(P.cleanPvItem({ type: "pvline", pts: [[0, 0], [1, 1]], col: "#ABCDEF" }, 9).col, "#abcdef");
+  const d6 = newDoc(), p6 = newSheet("pv"); p6.sid = 1; d6.sheets.push(p6); assert.strictEqual(JSON.parse(serializeModel(d6)).version, 6, "ohne Leitung und Punkt wie bisher");
+  // Treffer: Leitung mit halber Breite, Punkt mit Text; Text versetzt
+  assert.ok(P.hitLine(ln, 1000, 25, 0) && P.hitLine(ln, 1000, 28, 4) && !P.hitLine(ln, 1000, 30, 4)); // 25 mm halbe Breite + 4 Toleranz
+  assert.deepStrictEqual(P.pointLabel(pt), [500 + P.PT_OFF[0], 500 + P.PT_OFF[1]]);
+  const b = P.pointBox(pt); assert.ok(b.x1 > 500 + P.PT_OFF[0] && b.x0 === 500 - P.PT_R);
+  assert.deepStrictEqual(P.pointLabel({ ...pt, ox: -800, oy: 0 }), [-300, 500]);
+  // Fang: Punkte von Leitungen und Punkten sind Endpunkte
+  assert.deepStrictEqual(P.snapPv(pv, { x: 2003, y: 998 }, { tol: 10 }), { x: 2000, y: 1000, snap: "end" });
+  assert.strictEqual(P.snapPv(pv, { x: 503, y: 498 }, { tol: 10 }).snap, "end");
+  // Druckteile: Leitungen und Punkte einzeln ausblendbar, Auge (Ebene Verkabelung) gilt
+  assert.strictEqual(P.partOf(ln), "line"); assert.strictEqual(P.partOf(pt), "point"); assert.strictEqual(P.partOf(rf), "roofline");
+  pv.hide = ["line"]; assert.ok(!P.visible(pv, ln) && P.visible(pv, pt)); pv.hide = ["point"]; assert.ok(P.visible(pv, ln) && !P.visible(pv, pt)); delete pv.hide;
+  assert.deepStrictEqual(P.cleanHide(["line", "point", "x"]), ["line", "point"]);
+  P.toggleLayer(pv, "kabel", "show"); assert.ok(!P.visible(pv, ln) && !P.visible(pv, pt)); P.toggleLayer(pv, "kabel", "show");
+  // 5az: Plan drehen dreht nur Dachlinien (und Sperrflächen); Leitung, Punkt, Text, SPA bleiben
+  const keep = JSON.stringify([ln, pt, tx, sp]);
+  P.rotatePlan(pv, 90); assert.strictEqual(pv.bg.rot, 90); assert.strictEqual(JSON.stringify([ln, pt, tx, sp]), keep);
+  assert.deepStrictEqual(rf.pts, [[0, 0], [0, 1000]]);
+  console.log("5ax Leitungen, 5ay Punkte, 5az Plan drehen ok");
+}
+{ // 5ba Texthöhe Punkt, 5bb Grösse Stringbeschriftung, 5bc Autoverkabelung eingeschränkt (CJ 17.10.)
+  assert.strictEqual(P.cleanPvItem({ type: "pvpoint", x: 0, y: 0, s: "A", h: 400 }, 1).h, 400); assert.ok(!("h" in P.cleanPvItem({ type: "pvpoint", x: 0, y: 0, h: -1 }, 1)));
+  const pb = P.pointBox({ x: 0, y: 0, s: "AB", h: 1000 }); assert.ok(pb.x1 >= P.PT_OFF[0] + 2 * 0.6 * 1000 - 1e-9, "Box mit eigener Texthöhe");
+  assert.strictEqual(P.cleanStrk(1.5), 1.5); assert.strictEqual(P.cleanStrk(1), undefined); assert.strictEqual(P.cleanStrk(9), undefined); assert.strictEqual(P.cleanStrk("2"), undefined);
+  const d = newDoc(), pv = newSheet("pv"); pv.sid = 5; pv.strk = 1.5; d.sheets.push(pv); d.nextId = 9;
+  const t = serializeModel(d); assert.strictEqual(JSON.parse(t).version, 13); const r = parseModel(t); assert.strictEqual(r.sheets[1].strk, 1.5); assert.strictEqual(serializeModel(r), t);
+  const bad = JSON.parse(t); bad.sheets[1].strk = 0.1; assert.ok(!("strk" in parseModel(JSON.stringify(bad)).sheets[1]));
+  // Autoverkabelung nur über erlaubte Module: 8 Module in einer Reihe, erlaubt 2 bis 6
+  P.setTypeSource(() => [{ id: "m1", name: "T", l: 1700, b: 1000 }]);
+  const sh = { items: Array.from({ length: 8 }, (_, i) => ({ id: i + 1, type: "pvmodule", mt: "m1", x: i * 1005, y: 0, quer: false })) };
+  const allowed = new Set([2, 3, 4, 5, 6]);
+  assert.deepStrictEqual(P.autoStrings(sh, 2, 3, 2, "h", allowed), [[2, 3], [4, 5]], "nur volle Strings aus erlaubten Modulen");
+  assert.deepStrictEqual(P.autoStrings(sh, 1, 1, 2, "h", allowed), [], "Start ausserhalb");
+  assert.deepStrictEqual(P.autoStrings(sh, 1, 1, 2, "h", new Set()), [[1, 2]], "leere Wahl = alle");
+  console.log("5ba Texthöhe, 5bb Stringbeschriftung, 5bc Autoverkabelung eingeschränkt ok");
 }
 console.log("ok");

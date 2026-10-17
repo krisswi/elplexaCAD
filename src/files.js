@@ -7,9 +7,10 @@ import * as D from "./dispo.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
 import { zipFiles } from "./zip.js";
+import { openModal } from "./dialogs.js";
 
 export function makeFiles(c) {
-  const { S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv } = c;
+  const { S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv, sheetLabel } = c;
   const hasFS = "showSaveFilePicker" in window && "showOpenFilePicker" in window;
   const safeName = (s) => s.replace(/[\\/:*?"<>|]+/g, "-").trim();
   function baseName() { const m = S.model.meta; return safeName((T.isDeck(S.model) ? "" : m.TITEL) || m.OBJEKT || "Schema") || "Schema"; }
@@ -75,12 +76,13 @@ export function makeFiles(c) {
     } catch (err) { if (err && err.name === "AbortError") return; toast("DXF-Export hat nicht geklappt: " + (err.message || err), "error"); }
   }
 
-  // Alle Blätter als eine PDF: eine Seite pro Blatt im Druckdialog (Ziel: Als PDF sichern). Gibt die Anzahl Seiten zurück.
-  // Stringplan: eigenes Papier und Massstab, Stringübersicht: A4 quer, eine oder mehrere Seiten (PV-Strings Schritt 7, pvprint.js).
-  // only: nur dieses Blatt (z. B. die Legende allein)
+  // Druckseiten in #printroot: eine Seite pro Blatt (Stringübersicht und Legende auch mehrere). Gibt die Anzahl Seiten zurück.
+  // Stringplan: eigenes Papier und Massstab, Stringübersicht: eigenes Papier (PV-Strings Schritt 7, pvprint.js).
+  // only: null = alle Blätter, ein Blatt oder eine Liste von Blättern (Reihenfolge immer wie in der Datei)
   function buildPrint(only = null) {
     closeEditor(true);
-    const pages = S.doc.sheets.filter((sh) => !only || sh === only).flatMap((sh, i) => {
+    const pick = only === null ? null : new Set(Array.isArray(only) ? only : [only]);
+    const pages = S.doc.sheets.map((sh, i) => [sh, i]).filter(([sh]) => !pick || pick.has(sh)).flatMap(([sh, i]) => {
       if (sh.kind === "pv" || sh.kind === "pvtab") return pv.printPages(sh, i);
       if (sh.kind === "legend") return L.printPages(S.doc, sh); // A4 hoch
       if (T.isDeck(sh)) return T.deckPrintPages(S.doc, sh);
@@ -94,14 +96,62 @@ export function makeFiles(c) {
     $("#printroot").innerHTML = pages.join("");
     return pages.length;
   }
+  // Papier eines Blatts im Druck: Stringplan und Stringübersicht ihr eigenes, Legende A4 hoch, alles andere A4 quer
+  function sheetPaper(sh) {
+    const p = sh.kind === "pv" || sh.kind === "pvtab" ? pv.paperOf(sh) : { size: "A4", quer: sh.kind !== "legend" };
+    return { key: p.size + (p.quer ? "q" : "h"), label: `${p.size} ${p.quer ? "quer" : "hoch"}` };
+  }
+  // Druck in Gruppen gleichen Papiers (CJ 17.10.: mit Schema und Stringplan in einer Datei kamen Stringplan und Stringübersicht in A4 quer).
+  // Chrome übernimmt im Druckdialog das Papier der ersten Seite für alle Seiten (Annahme Claude aus CJs Befund, Headless-Chromium mischt richtig).
+  // Darum je Papier ein eigener Druckdialog, in der Reihenfolge der Datei. Ab dem zweiten fragt ein Fenster, damit der Druck einen Klick als Auslöser hat.
+  // Rückgabe: Gruppen [{ key, label, sheets }]
+  function paperGroups(sheets) {
+    const groups = [];
+    for (const sh of S.doc.sheets.filter((x) => sheets.includes(x))) {
+      const p = sheetPaper(sh), g = groups.find((x) => x.key === p.key);
+      if (g) g.sheets.push(sh); else groups.push({ ...p, sheets: [sh] });
+    }
+    return groups;
+  }
+  async function printSheets(sheets, suffix = "") {
+    const groups = paperGroups(sheets), old = document.title, pvUsed = sheets.some((sh) => sh.kind === "pv" || sh.kind === "pvtab");
+    if (!groups.length) return;
+    if (pvUsed) await pv.preparePrint(); // PDF-Pläne der Stringpläne fertig rendern
+    const finish = () => { document.title = old; $("#printroot").innerHTML = ""; if (pvUsed) pv.resetPrintParts(); }; // 5av: Druckteile wieder an
+    for (let k = 0; k < groups.length; k++) {
+      const g = groups[k];
+      if (k && !(await confirmDialog("Nächstes Papierformat", `Druck ${k + 1} von ${groups.length}: ${g.label}, ${g.sheets.map((sh) => sheetLabel(sh, S.doc.sheets.indexOf(sh))).join(", ")}. Im Druckdialog wieder „Als PDF sichern“ wählen.`, "Drucken"))) break;
+      buildPrint(g.sheets);
+      document.title = baseName() + suffix + (groups.length > 1 ? `_${g.label.replace(" ", "-")}` : "");
+      await new Promise((res) => { const done = () => { window.removeEventListener("afterprint", done); setTimeout(res, 0); }; window.addEventListener("afterprint", done); window.print(); });
+    }
+    finish();
+  }
+  // Knopf PDF (CJ 17.10.): Blätter wählen, Vorgabe alle, Schnellwahl aktuelles Blatt. only: gleich drucken ohne Auswahl (Legende).
   async function printPdf(only = null) {
-    const old = document.title;
-    if (!only) await pv.preparePrint(); // PDF-Pläne der Stringpläne fertig rendern
-    buildPrint(only);
-    document.title = baseName() + (only ? "_Legende" : "");
-    const done = () => { document.title = old; $("#printroot").innerHTML = ""; window.removeEventListener("afterprint", done); if (!only) pv.resetPrintParts(); }; // 5av: Druckteile wieder an
-    window.addEventListener("afterprint", done);
-    window.print();
+    closeEditor(true);
+    if (only) { await printSheets([only], only.kind === "legend" ? "_Legende" : ""); return; }
+    const sh = S.doc.sheets, row = (s, i) => `<label class="chk"><input type="checkbox" data-psheet="${i}" checked> <span>${R.esc(sheetLabel(s, i))}${s.meta?.TITEL && s.meta.TITEL !== sheetLabel(s, i) ? ` · ${R.esc(s.meta.TITEL)}` : ""}</span><span class="note print-paper">${sheetPaper(s).label}</span></label>`;
+    const body = `<p>Welche Blätter? Reihenfolge wie in der Datei. Im Druckdialog „Als PDF sichern“ wählen.</p>`
+      + `<div class="row"><button class="btn outline small" data-pall>Alle</button><button class="btn outline small" data-pcur>Nur aktuelles Blatt</button></div>`
+      + `<div class="print-list">${sh.map(row).join("")}</div><p class="note" data-pmix></p>`
+      + `<div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>Drucken</button></div>`;
+    const root = $("#modal-root"), boxes = () => [...root.querySelectorAll("[data-psheet]")];
+    const chosen = () => boxes().filter((b) => b.checked).map((b) => sh[Number(b.dataset.psheet)]);
+    const mix = () => { // Hinweis bei mehreren Papierformaten, Knopf zeigt die Anzahl Druckdialoge
+      const g = paperGroups(chosen()), n = root.querySelector("[data-pmix]"), ok = root.querySelector("[data-ok]");
+      if (n) n.textContent = g.length > 1 ? `Verschiedene Papierformate (${g.map((x) => x.label).join(", ")}): Chrome druckt alle Seiten im Format der ersten. Darum ${g.length} Drucke nacheinander, je Format eine PDF.` : "";
+      if (ok) { ok.textContent = g.length > 1 ? `Drucken (${g.length}×)` : "Drucken"; ok.disabled = !g.length; }
+    };
+    const res = openModal("PDF / Drucken", body, (b, done) => {
+      if (b.dataset.pall !== undefined || b.dataset.pcur !== undefined) { boxes().forEach((x) => { x.checked = b.dataset.pall !== undefined || Number(x.dataset.psheet) === S.active; }); mix(); }
+      else if (b.dataset.ok !== undefined) done(chosen());
+      else if (b.dataset.c !== undefined) done(null);
+    }, null, "[data-ok]", "print-modal");
+    root.addEventListener("change", mix); mix();
+    const list = await res;
+    root.removeEventListener("change", mix);
+    if (list?.length) await printSheets(list);
   }
 
   async function saveDxfAll() {
@@ -130,6 +180,6 @@ export function makeFiles(c) {
     download(name, zipFiles(files), "application/zip");
     toast(`${files.length} DXF-Dateien als ZIP in den Download-Ordner geladen: ${name}`);
   }
-  const printLegend = () => printPdf(S.doc.sheets.find((sh) => sh.kind === "legend") || null);
-  return { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend };
+  const printLegend = () => { const l = S.doc.sheets.find((sh) => sh.kind === "legend"); if (l) printPdf(l); else toast("Diese Datei hat keine Legende."); };
+  return { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend, paperGroups };
 }

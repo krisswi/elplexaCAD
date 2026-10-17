@@ -36,46 +36,37 @@ with sync_playwright() as p:
     spd = [i for i in own() if i["sym"] == "SPD_4P"][0]
     check("SPD-BMK Blatt + T + Spalte", spd["attrs"]["BMK"].startswith(blatt + "T") and "-" not in spd["attrs"]["BMK"], spd["attrs"]["BMK"])
 
-    # 3. Wandlermessung: ein Klick setzt Wandlerteil, Zähler und 10 Leitungen
-    page.click('#left .var[data-sym="ZAEHLER_4P_W"]'); click(40, 185); page.keyboard.press("Escape")
-    tr = [i for i in own() if i["sym"] == "ZW_WANDLER"]; box = [i for i in own() if i["sym"] == "ZW_ZAEHLER"]
-    wires = [i for i in M()["items"] if i["type"] == "wire" and "wm" in i]
-    check("Wandlermessung in Teilen gesetzt", len(tr) == 1 and len(box) == 1 and len(wires) == 10, f"{len(tr)} {len(box)} {len(wires)}")
-    tr, box = tr[0], box[0]
-    check("Zähler gehört zum Wandlerteil", box.get("of") == tr["id"] and all(w["of"] == tr["id"] for w in wires))
+    # 3. Wandlermessung nach BKW (CJ 17.10.): ein Klick setzt Einzelteile, jedes Teil einzeln bearbeitbar und löschbar
+    n0 = len(M()["items"])
+    page.click('#left .var[data-sym="ZAEHLER_4P_W"]'); click(40, 190); page.keyboard.press("Escape")
+    cnt = lambda s: len([i for i in own() if i["sym"] == s])
+    check("Wandlermessung in Einzelteilen gesetzt", [cnt(s) for s in ["ZW_CT", "ZW_SICH", "ZW_PK", "ZW_PK1", "ZW_ZAEHLER2", "ZAEHLER_4P_W"]] == [3, 3, 3, 1, 1, 0],
+          str([cnt(s) for s in ["ZW_CT", "ZW_SICH", "ZW_PK", "ZW_PK1", "ZW_ZAEHLER2"]]))
+    box = [i for i in own() if i["sym"] == "ZW_ZAEHLER2"][0]
     check("Zähler-BMK automatisch mit P", box["attrs"]["BMK"].startswith(blatt + "P"), box["attrs"]["BMK"])
-    # Zähler wählen und nach rechts und unten schieben: Leitungen folgen, knicken gestaffelt
-    click(box["x"] + 17.5, box["y"] - 5)
-    check("Zähler gewählt", page.evaluate("window.__schemacad.sel") == [box["id"]], str(page.evaluate("window.__schemacad.sel")))
-    for _ in range(3): page.keyboard.press("ArrowRight")
-    for _ in range(2): page.keyboard.press("ArrowDown")
-    nb = [i for i in own() if i["sym"] == "ZW_ZAEHLER"][0]; ntr = [i for i in own() if i["sym"] == "ZW_WANDLER"][0]
-    check("Zähler verschoben, Wandlerteil bleibt", nb["x"] > box["x"] and nb["y"] < box["y"] and (ntr["x"], ntr["y"]) == (tr["x"], tr["y"]))
-    ws = sorted([i for i in M()["items"] if i["type"] == "wire" and "wm" in i], key=lambda w: w["wm"])
-    ends_ok = all(abs(w["pts"][-1][0] - (nb["x"] + (w["pts"][0][0] - tr["x"]))) < 1e-6 and abs(w["pts"][-1][1] - nb["y"]) < 1e-6 for w in ws)
-    check("Leitungen enden am verschobenen Zähler", ends_ok, str([w["pts"] for w in ws[:2]]))
-    jy = [w["pts"][1][1] for w in ws]
-    check("Jede Leitung knickt auf eigener Höhe", all(len(w["pts"]) == 4 for w in ws) and len(set(jy)) == 10, str(jy))
-    # Texte: Wandlermessung änderbar, Sicherungen mit BMK und Nennstrom
-    page.fill('[data-attr="TEXT"]', "Wandler 300/5"); page.keyboard.press("Tab"); page.wait_for_timeout(60)
-    check("Text im Zähler geändert", [i for i in own() if i["sym"] == "ZW_ZAEHLER"][0]["attrs"]["TEXT"] == "Wandler 300/5")
-    click(tr["x"] + 7.5, tr["y"] - 1)
-    check("Wandlerteil gewählt", page.evaluate("window.__schemacad.sel") == [tr["id"]], str(page.evaluate("window.__schemacad.sel")))
-    check("Felder Sicherung BMK und Nennstrom", page.locator('[data-attr="FBMK"]').count() == 1 and page.locator('[data-attr="FSTROM"]').input_value() == "10A")
-    page.fill('[data-attr="FBMK"]', "F11"); page.keyboard.press("Tab"); page.wait_for_timeout(60)
+    # Sicherung wählen und beschriften
+    f1 = [i for i in own() if i["sym"] == "ZW_SICH"][0]
+    click(f1["x"], f1["y"] - 2.5)
+    check("Sicherung gewählt", page.evaluate("window.__schemacad.sel") == [f1["id"]], str(page.evaluate("window.__schemacad.sel")))
     page.fill('[data-attr="FSTROM"]', "6A"); page.keyboard.press("Tab"); page.wait_for_timeout(60)
-    t2 = [i for i in own() if i["sym"] == "ZW_WANDLER"][0]
-    check("Sicherungen beschriftet", t2["attrs"]["FBMK"] == "F11" and t2["attrs"]["FSTROM"] == "6A", str(t2["attrs"]))
-    # Wandlerteil verschieben: Zähler und Leitungen kommen mit
-    click(tr["x"] + 7.5, tr["y"] - 1); page.keyboard.press("Shift+ArrowLeft")
-    t3 = [i for i in own() if i["sym"] == "ZW_WANDLER"][0]; b3 = [i for i in own() if i["sym"] == "ZW_ZAEHLER"][0]
-    check("Zähler folgt dem Wandlerteil", round(t3["x"] - t2["x"], 3) == round(b3["x"] - nb["x"], 3) != 0)
-    check("DXF enthält den Zähler", "ZW_ZAEHLER" in page.evaluate("window.__schemacad.exportDxf()"))
-    # Löschen nimmt Zähler und Leitungen mit, Rückgängig bringt sie zurück
-    page.keyboard.press("Delete")
-    check("Löschen entfernt alle Teile", not [i for i in M()["items"] if i.get("sym", "").startswith("ZW_") or "wm" in i])
+    check("Sicherung beschriftet", [i for i in own() if i["id"] == f1["id"]][0]["attrs"]["FSTROM"] == "6A")
+    # Zähler allein verschieben und löschen: der Rest bleibt
+    click(box["x"] + 12.5, box["y"] - 8)
+    check("Zähler gewählt", page.evaluate("window.__schemacad.sel") == [box["id"]], str(page.evaluate("window.__schemacad.sel")))
+    page.fill('[data-attr="TEXT"]', "Wandler 300/5"); page.keyboard.press("Tab"); page.wait_for_timeout(60)
+    check("Text am Zähler geändert", [i for i in own() if i["id"] == box["id"]][0]["attrs"]["TEXT"] == "Wandler 300/5")
+    n1 = len(M()["items"])
+    click(box["x"] + 12.5, box["y"] - 8); page.keyboard.press("Delete")
+    check("Nur der Zähler gelöscht", cnt("ZW_ZAEHLER2") == 0 and cnt("ZW_PK") == 3 and len(M()["items"]) == n1 - 1, f"{n1} {len(M()['items'])}")
     page.keyboard.press("Meta+z"); page.wait_for_timeout(60)
-    check("Rückgängig bringt die Teile zurück", len([i for i in M()["items"] if "wm" in i]) == 10)
+    check("Rückgängig bringt den Zähler zurück", cnt("ZW_ZAEHLER2") == 1)
+    # Eine Leitung einzeln löschen
+    wn = len([i for i in M()["items"] if i["type"] == "wire"])
+    click(box["x"] + 5, box["y"] + 10); page.keyboard.press("Delete")
+    check("Einzelne Leitung gelöscht", len([i for i in M()["items"] if i["type"] == "wire"]) == wn - 1)
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(60)
+    dxf = page.evaluate("window.__schemacad.exportDxf()")
+    check("DXF enthält Zähler und Prüfklemmen", "ZW_ZAEHLER2" in dxf and "ZW_PK" in dxf)
 
     # 5. Klemmenleiste ohne Klemmen
     t = [i for i in M()["items"] if i["type"] == "terminals"]

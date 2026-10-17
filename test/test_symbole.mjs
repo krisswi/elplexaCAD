@@ -62,9 +62,9 @@ assert.ok(hasTrenner("LS_2P") && hasTrenner("NH_4P") && !hasTrenner("FI_2P") && 
 // RCBO Standard C (CJ 16.10.), TN-C > TN-S mit Einspeisung von unten, HAK mit PEN-Aufteilung
 // Zähler mit Wandler: 3 Stromwandler, Anschlüsse wie 3P+N, Taste 1 führt auf 1P+N
 // Wandlermessung nach GEBNET, umgekehrt (CJ 16.10.): Abgriffe auf den Hauptlinien L1 bis N, 3 Wandler (gestrichelt), Zähler unten
-{ const w = SYMBOL_BY_NAME.ZAEHLER_4P_W; assert.deepStrictEqual(w.pins, [{ x: 0, y: 0 }, { x: 12.5, y: -5 }, { x: 25, y: -10 }, { x: 37.5, y: -15 }]); // GEBNET-Bild (16.10.): Leiter 2,5 mm
+{ const w = SYMBOL_BY_NAME.ZAEHLER_4P_W; assert.deepStrictEqual(w.pins, [{ x: 0, y: 0 }, { x: 15, y: -5 }, { x: 30, y: -10 }, { x: 42.5, y: -15 }]); // BKW-Schema (17.10.): Aussenleiter 15 mm
   assert.strictEqual(w.prims.filter((p) => p.t === "l" && p.d).length, 12); const tx = w.prims.filter((p) => p.t === "t").map((p) => p.s);
-  assert.ok(tx.some((s) => s.startsWith("Prüfklemmen")) && tx.includes("braun (1)") && tx.includes("grau (6)") && tx.includes("Steuerleiter hellgrau mit Nummern") && tx.includes("S1") && tx.includes("P2")); }
+  assert.ok(tx.some((s) => s.startsWith("Prüfklemmen")) && tx.includes("braun (1)") && tx.includes("grau (6)") && !tx.includes("Steuerleiter hellgrau mit Nummern") && tx.includes("S1") && tx.includes("P2")); }
 assert.strictEqual(SYMBOL_BY_NAME.ZAEHLER_4P.vlabel, "4-polig (3P+N)"); assert.strictEqual(K("ZAEHLER_4P_W", "3"), null); assert.strictEqual(K("ZAEHLER_4P_W", "1"), "ZAEHLER_2P"); assert.strictEqual(K("ZAEHLER_4P", "n"), null);
 assert.strictEqual(SYMBOL_BY_NAME.RCBO_1PN.attrs.find((a) => a.tag === "CHAR").def, "C");
 assert.strictEqual(SYMBOL_BY_NAME.TNC_TNS.pins.filter((p) => p.y === 0).length, 5); assert.strictEqual(SYMBOL_BY_NAME.TNC_TNS.pins.filter((p) => p.y === -20).length, 4);

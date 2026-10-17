@@ -81,16 +81,18 @@ function partSVG(doc, rows, { empty = !rows.length, tail = true } = {}) {
   y -= 7;
   const its = new Map((doc.pv?.invTypes ?? []).map((t) => [t.id, t]));
   for (const nr of P.wrNumbers(doc)) { s += txt(0, y, `WR ${nr}: ${invLine(its.get(doc.pv?.wr?.[nr]))}`); y -= LH; }
-  s += txt(0, y - 1, "Ergebnis nur als Hinweis, keine Freigabe. Geprüft: Spannung bei Tmin gegen Vmax und Systemspannung, Summe Isc je MPPT gegen Imax.", { fill: "#4a5562" });
+  s += txt(0, y - 1, "Ergebnis nur als Hinweis, keine Freigabe. Geprüft: Spannung bei Tmin gegen Vmax und Systemspannung, Summe Isc × 1,25 je MPPT gegen Isc max, Summe Impp je MPPT gegen Impp max.", { fill: "#4a5562" });
   return s;
 }
 // WR-Typ als eine Zeile
 export function invLine(t) {
   if (!t) return "kein Datenblatt zugeordnet";
   const v = (k, u, d = 0) => (t[k] ? `${P.fmtNum(t[k], d)} ${u}` : null);
-  return [t.name, `Vmax ${v("vmax", "V")}`, t.vmppMin && t.vmppMax ? `MPP ${P.fmtNum(t.vmppMin, 0)}–${v("vmppMax", "V")}` : null, t.imax ? `Imax ${v("imax", "A", 1)} je MPPT` : null, t.vstart ? `Start ${v("vstart", "V")}` : null, t.mppt ? `${t.mppt} MPPT` : null].filter(Boolean).join(", ");
+  return [t.name, `Vmax ${v("vmax", "V")}`, t.vmppMin && t.vmppMax ? `MPP ${P.fmtNum(t.vmppMin, 0)}–${v("vmppMax", "V")}` : null, t.iscMax ? `Isc max ${v("iscMax", "A", 1)}` : null, t.imppMax ? `Impp max ${v("imppMax", "A", 1)}` : null, t.vstart ? `Start ${v("vstart", "V")}` : null, t.mppt ? `${t.mppt} MPPT` : null].filter(Boolean).join(", ");
 }
 
+// Hinweis Tmin (5at, CJ 15.10.): Werte nach NIN SN 411000 7.12.5.1.2.1.1 (Angabe CJ, von Claude nicht nachgelesen). Nur Hinweis, nichts erzwungen.
+const TMIN_NOTE = `<p class="note pv-tmin-note">Tiefste Temperatur nach NIN SN 411000 7.12.5.1.2.1.1: bis 800 m ü. M. 0 °C (Neigung unter 15°) bzw. −5 °C (über 15°), über 800 bis 1500 m −15 °C, über 1500 m −25 °C. Abweichung nur mit Nachweis.</p>`;
 // Bedienung (bekommt die Editor-Funktionen über pvedit.js)
 export function makePvTab(c) {
   const { S, toast, change, formDialog, confirmDialog, pickFile } = c;
@@ -158,7 +160,7 @@ export function makePvTab(c) {
     + `<section class="section"><h2 class="section-title">Stringübersicht</h2><p class="note">Füllt sich automatisch aus den Strings aller Stringpläne. Tmin, Wechselrichter und Druck: oben in der Leiste.</p></section>`;
   // Teile für das Fenster Wechselrichter und Druck (UI Schritt 6 Teil 2, pvedit.js popHTML)
   const note = (t) => `<p class="note">${t}</p>`;
-  const tminHTML = () => { const tmin = S.doc.pv?.tmin; return `<div class="field"><label>Tmin in °C (tiefste Modultemperatur)</label><input type="text" data-pvopt="tmin" value="${tmin === undefined ? "" : P.fmtNum(tmin)}" placeholder="z. B. −20" autocomplete="off" spellcheck="false"></div>` + note("Gilt für die ganze Datei. Kein Vorgabewert, bitte für den Standort eingeben."); };
+  const tminHTML = () => { const tmin = S.doc.pv?.tmin; return `<div class="field"><label>Tmin in °C (tiefste Modultemperatur)</label><input type="text" data-pvopt="tmin" value="${tmin === undefined ? "" : P.fmtNum(tmin)}" placeholder="z. B. −20" autocomplete="off" spellcheck="false"></div>` + note("Gilt für die ganze Datei. Kein Vorgabewert, bitte für den Standort eingeben.") + TMIN_NOTE; };
   // Datenblatt (WR-Typ) für WR-Nummer nr
   const wrSelect = (nr) => { const cur = S.doc.pv?.wr?.[nr] ?? ""; return `<select data-pvopt="wr" data-nr="${nr}" aria-label="WR ${nr}: Datenblatt"><option value="">(kein Datenblatt)</option>${invTypes().map((t) => `<option value="${R.esc(t.id)}"${t.id === cur ? " selected" : ""}>${R.esc(t.name)}</option>`).join("")}</select>`; };
   function invCatHTML() {

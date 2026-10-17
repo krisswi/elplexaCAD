@@ -14,7 +14,7 @@ const s2 = newSheet(); s2.items.push(dev(5, "NH_3P", 50, 150, { STROM: "100A", G
 const dp = newSheet("dispo"); dp.sid = 50; d.sheets.push(dp);
 s2.meta.BLATT = "2"; d.nextId = 100;
 T.ensureDeck(d); renumberAll(d);
-const leg = d.sheets.at(-1);
+const leg = d.sheets.find((s) => s.kind === "legend"); // vor der Disposition (CJ 16.10.)
 assert.strictEqual(leg.kind, "legend"); assert.strictEqual(leg.meta.BLATT, "5", "nach dem letzten Schemablatt (3, 4)");
 const rows = L.legendRows(d);
 assert.deepStrictEqual(rows.map((r) => r.bmk), ["3F2", "3F4", "3F6", "4F2"], "sortiert nach Blatt und BMK");
@@ -45,17 +45,18 @@ pg = L.printPages(d, leg);
 assert.ok(pg.length > 1 && pg.every((p) => p.includes(L.NOTICE.slice(0, 30))), "Hinweis auf jeder Seite");
 console.log("Seiten ok");
 
-// Neues Schemablatt hinten angehängt: Legende wandert ans Ende, Nummer mit
+// Neues Schemablatt hinten angehängt: kommt vor die Legende, Legende vor die Disposition (CJ 16.10.), Nummer mit
 d.sheets.push(Object.assign(newSheet(), { meta: { ...newSheet().meta, BLATT: "9" } }));
 T.syncDeck(d);
-assert.strictEqual(d.sheets.at(-1).kind, "legend"); assert.strictEqual(d.sheets.at(-1).meta.BLATT, "10");
+const lg = d.sheets.findIndex((s) => s.kind === "legend");
+assert.strictEqual(d.sheets[lg - 1].meta.BLATT, "9"); assert.strictEqual(d.sheets[lg + 1].kind, "dispo"); assert.strictEqual(d.sheets[lg].meta.BLATT, "10");
 // Datei: Spalten bleiben, unbekannte fallen weg, fehlende = Vorgabe, altes cols wird umgerechnet
 leg.show = ["KABEL", "ORT", "XX"];
 const back = parseModel(serializeModel(d));
-assert.deepStrictEqual(back.sheets.at(-1).show, ["KABEL", "ORT"]);
-const o = JSON.parse(serializeModel(d)); delete o.sheets.at(-1).show;
-assert.deepStrictEqual(parseModel(JSON.stringify(o)).sheets.at(-1).show, ["BMK", "STROM", "NAME"]);
-o.sheets.at(-1).cols = ["IDN", "CHAR", "XX"];
-assert.deepStrictEqual(parseModel(JSON.stringify(o)).sheets.at(-1).show, ["BMK", "STROM", "CHAR", "IDN", "ORT"], "altes cols: BMK, Nennstrom, Ort dazu");
+assert.deepStrictEqual(back.sheets.find((s) => s.kind === "legend").show, ["KABEL", "ORT"]);
+const o = JSON.parse(serializeModel(d)); delete o.sheets.find((s) => s.kind === "legend").show;
+assert.deepStrictEqual(parseModel(JSON.stringify(o)).sheets.find((s) => s.kind === "legend").show, ["BMK", "STROM", "NAME"]);
+o.sheets.find((s) => s.kind === "legend").cols = ["IDN", "CHAR", "XX"];
+assert.deepStrictEqual(parseModel(JSON.stringify(o)).sheets.find((s) => s.kind === "legend").show, ["BMK", "STROM", "CHAR", "IDN", "ORT"], "altes cols: BMK, Nennstrom, Ort dazu");
 console.log("Datei ok");
 console.log("ok");

@@ -1,6 +1,8 @@
 // SchemaCAD: Editor. Zustand, Bedienung, Dateien.
 import { newDoc, newSheet, parseModel, serializeModel, WIRE_KINDS, LEGEND_KEYS } from "./model.js";
-import { SYMBOL_BY_NAME, FAMILIES, isDevice, anchorX } from "./symbols.js";
+import { SYMBOL_BY_NAME, FAMILIES, isDevice, anchorX, variantByKey, hasTrenner, bmkLetter } from "./symbols.js";
+import { splitWandlerDoc, routeWm, wmParts } from "./wandler.js";
+import { insertFeed } from "./eingang.js";
 import * as LIBS from "./library.js";
 import { usedCustom } from "./library.js";
 import { importDxfSymbol } from "./dxfimport.js";
@@ -9,8 +11,11 @@ import { renumberAll, deviceTerminals, linkedTerminals, columnHasTerminals, isRe
 import { BUNDLE_PRESETS, BUNDLE_LABELS, conductorKind, offsetPaths, snapToRails, snapToVerticals } from "./bundle.js";
 import { parseCable, newTerminals, termCount } from "./terminals.js";
 import { baseItems, hasBase, BASE_TAG } from "./template.js";
-import { W, H, META_FIELDS, COL_CENTERS, ROW_CENTERS } from "./frame.js";
+import { W, H, META_FIELDS, COL_CENTERS, ROW_CENTERS, colOf } from "./frame.js";
 import { exportDxf } from "./dxf.js";
+import { isGroupWire, mainSheets, mainState } from "./hauptlinien.js";
+import { makeTouch } from "./mobil.js";
+import { TEMPLATES, TEMPLATE_PREFIX, templateOf, abgangItems, CUSTOM, makeCustom, addCustom, removeCustom } from "./vorlagen.js";
 import * as R from "./render.js";
 import * as D from "./dispo.js";
 import { makeFiles } from "./files.js";
@@ -77,7 +82,7 @@ const nextId = () => S.doc.nextId++;
 const snapshot = () => JSON.stringify({ sheets: S.doc.sheets, nextId: S.doc.nextId, pv: S.doc.pv, noTitle: S.doc.noTitle, noToc: S.doc.noToc, info: S.doc.info }); // pv: Modultypen (Stringplan)
 const docText = (noAssets = false) => serializeModel({ ...S.doc, active: S.active, ...(usedCustom(S.doc).length ? { symbols: usedCustom(S.doc) } : {}) }, { noAssets });
 const PV = makePv({ S, $, TOOLS, toast, change, openModal, chooseDialog, formDialog, confirmDialog, setTool, renderSheet, renderItems, renderOverlay, updateHint, applyView, fitView, nextId, markDirty, renderLeft, renderRight, download: (...a) => download(...a) });
-const { newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
+const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp: dispoApplyDp, cabAct: dispoCabAct, cornerKey: dispoCornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
   makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, snapBase, change, moveItem, setTool, afterSheetChange, sheetLabel, nextSheetNo, makeSheet });
 
 function toWorld(sx, sy) { return { x: (sx - S.view.x) / S.view.z, y: H - (sy - S.view.y) / S.view.z }; }
@@ -96,7 +101,7 @@ function magnet(c, offX = 0) {
   if (Math.abs(gy - c.y) <= r) { out.y = round3(gy); out.magY = round3(gy); }
   return out;
 }
-const placeOffX = () => (S.placeSym === TERMINALS ? 0 : anchorX(SYMBOL_BY_NAME[S.placeSym]?.poles ?? 1));
+const placeOffX = () => (S.placeSym === TERMINALS || templateOf(S.placeSym) ? 0 : anchorX(SYMBOL_BY_NAME[S.placeSym]?.poles ?? 1));
 
 function snap(wx, wy, { pins = true, offX = 0, mag = false } = {}) {
   const c = snapBase(wx, wy, pins);
@@ -137,7 +142,7 @@ function pushUndo(snap = snapshot()) {
   updateUndoButtons();
 }
 function change(fn, { panel = true } = {}) { const snap = snapshot(); fn(); pushUndo(snap); afterChange(panel); }
-function afterChange(panel = true) { const cur = S.model; T.ensureDeck(S.doc, T.loadFirm(), { shift: false }); S.active = Math.max(0, S.doc.sheets.indexOf(cur)); renumberAll(S.doc); markDirty(); renderSheetBar(); renderItems(); renderOverlay(); if (panel) renderRight(); }
+function afterChange(panel = true) { const cur = S.model; splitWandlerDoc(S.doc); T.ensureDeck(S.doc, T.loadFirm(), { shift: false }); S.active = Math.max(0, S.doc.sheets.indexOf(cur)); renumberAll(S.doc); markDirty(); renderSheetBar(); renderItems(); renderOverlay(); if (panel) renderRight(); }
 function restore(json) {
   const k0 = S.model.kind;
   const o = JSON.parse(json);
@@ -176,7 +181,7 @@ function viewBounds() {
   if (S.model.kind === "legend") return L.bounds(S.doc);
   if (isDeck()) return T.deckBounds(S.doc, S.model);
   if (!isDispo()) return { x0: 0, y0: 0, x1: W, y1: H };
-  const b = D.contentBBox(S.model.items, S.model.dims !== false);
+  const b = D.contentBBox(S.model.items, D.planOpts(S.model));
   if (!b) return { x0: -50, y0: -50, x1: 750, y1: 550 };
   const pad = Math.max(40, Math.max(b.x1 - b.x0, b.y1 - b.y0) * 0.06);
   return { x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad };
@@ -201,7 +206,7 @@ function renderSheet() {
   pat.querySelector("circle").setAttribute("r", isDispo() || isPv() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
   gSheet.innerHTML = S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
-function renderItems() { $("#dims-on").checked = S.model.dims !== false; gItems.innerHTML = isDeck() ? "" : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, { dims: S.model.dims !== false }); }
+function renderItems() { $("#dims-on").checked = S.model.dims !== false; gItems.innerHTML = isDeck() ? "" : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
 const pickable = () => (isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
 
 function railMap() {
@@ -258,16 +263,18 @@ function renderOverlay() {
   if (hi) {
     const k = 8 / S.view.z;
     for (const p of D.handlePoints(hi)) s += `<rect class="dp-handle" x="${p.x - k / 2}" y="${p.y - k / 2}" width="${k}" height="${k}"/>`;
-    const live = D.massTargets(hi).filter((m) => hi.type === "rail" || S.model.dims === false);
-    s += D.primsSVG(live.map((m) => ({ k: "text", x: m.x, y: m.y, h: D.DIM_H, s: D.fmtMass(m.v), layer: "SCH_DISPO_MASS", anchor: m.anchor })));
+    const dh = D.planOpts(S.model).dimH;
+    s += D.primsSVG(D.massTargets(hi, dh).filter((m) => hi.type === "rail" || S.model.dims === false).map((m) => ({ k: "text", x: m.x, y: m.y, h: dh, s: D.fmtMass(m.v), layer: "SCH_DISPO_MASS", anchor: m.anchor })));
   }
+  if (isDispo()) s += dimOverlay(); // Werkzeug Bemassung, gewähltes automatisches Mass
   if (isDispo()) for (const l of S.guides) s += `<line class="dp-guide" x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}" stroke-dasharray="${5 / S.view.z} ${4 / S.view.z}"/>`;
   const showPins = S.tool === "wire";
   if (showPins) for (const p of R.allPins(S.model.items)) s += `<circle cx="${p.x}" cy="${p.y}" r="0.9" fill="#fff" stroke="#2f9e58" stroke-width="1.4"/>`;
   const placingDispo = S.tool === "place" && !!S.placeSym && S.placeSym.startsWith("D:");
-  if (S.tool === "place" && S.mouse && isDispo() && placingDispo) s += D.ghostSVG([newDispoItem(S.placeSym, S.mouse.x, S.mouse.y, S.mouse)]);
+  if (S.tool === "place" && S.mouse && isDispo() && placingDispo) s += placeGhost(S.mouse);
   else if (S.tool === "place" && S.mouse && !isDispo() && !placingDispo) {
     if (S.placeSym === TERMINALS) s += R.ghostSVG(newTerminals(S.mouse.x, S.mouse.y));
+    else if (templateOf(S.placeSym)) { let k = 0; const a = abgangItems(templateOf(S.placeSym), colOf(S.mouse.x), S.model.items, () => --k); if (a.items) s += `<g opacity="0.55">${R.itemsSVG(a.items)}</g>`; } // Abgang: Vorschau in der Spalte unter dem Zeiger
     else s += R.ghostSVG({ type: "symbol", sym: S.placeSym, x: S.mouse.x, y: S.mouse.y, rot: S.placeRot, attrs: Object.fromEntries(SYMBOL_BY_NAME[S.placeSym].attrs.map((a) => [a.tag, a.def])) });
   }
   if (S.wireDraft) {
@@ -301,12 +308,18 @@ function hintText() {
   if (isDeck()) return S.model.kind === "title" ? "Titelseite: Angaben rechts eintragen. Objekt, Auftrag, Schema, Gezeichnet und Datum gelten für alle Blätter." : "Inhaltsverzeichnis: wird automatisch erstellt. Klick auf eine Zeile springt zum Blatt.";
   if (isPv()) return PV.hint();
   if (isDispo()) {
-    if (S.tool === "place") return S.placeSym.startsWith("D:DEV:") ? "Gerät: Klicken setzt es. Auf einer Schiene rastet es in ½-TE-Schritten ein, rot umrandet heisst überlappt oder ragt über die Schiene. Esc beendet." : S.placeSym === "D:RAIL" ? "Schiene: Klicken setzt den Anfang auf Höhe der Mittellinie. Innerhalb einer Platte nimmt sie deren Breite mit 20 mm Rand links und rechts. Esc beendet." : "Platte: Klicken setzt die untere linke Ecke. Masse danach rechts einstellen. Esc beendet.";
+    if (S.tool === "place" && /^D:BAR:/.test(S.placeSym)) return S.dpDraft ? "Schiene: zweiter Klick setzt das Ende, waagrecht oder senkrecht nach dem grösseren Abstand. Esc bricht ab." : "Schiene N/PE/PEN: erster Klick setzt den Anfang auf der Mittellinie. Esc beendet.";
+    if (S.tool === "place" && S.placeSym === "D:CABLE") return "Zuleitung: Klicks setzen Punkte. Enter, Esc oder ein Klick auf den letzten Punkt beendet. Text rechts ändern.";
+    if (S.tool === "place" && S.placeSym === "D:TPL:AUEU") return "Systemauftrennung AÜU: Klick setzt den PEN-Anschluss unten. Ein Rückgängig-Schritt, danach jedes Teil einzeln verschiebbar. Esc beendet.";
+    if (S.tool === "place" && S.placeSym === "D:RAILF") return "Freie Schiene: Klicken setzt den Anfang auf der Mittellinie, ohne Plattenrand. Länge rechts oder mit den Griffen. Esc beendet.";
+    if (S.tool === "place") return S.placeSym.startsWith("D:DEV:") ? "Gerät: Klicken setzt es. Auf einer Schiene rastet es in ½-TE-Schritten ein, rot umrandet heisst überlappt oder ragt über die Schiene. Esc beendet." : S.placeSym === "D:RAIL" ? "Schiene: Klicken setzt den Anfang auf Höhe der Mittellinie. Innerhalb einer Platte nimmt sie deren Breite mit 20 mm Rand links und rechts. Esc beendet." : `Platte: Klicken setzt die Ecke ${plateCorner()}. Tab wechselt die Ecke, Shift+Tab zurück. Masse danach rechts einstellen. Esc beendet.`;
     if (S.tool === "text") return "Klicken setzt einen Text, die Eingabetaste bestätigt.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
+    if (S.tool === "dim") return S.dimDraft?.p2 ? "Bemassung: Klick setzt die Masslinie. Zwischen den Punkten = waagrecht bzw. senkrecht. Esc bricht ab." : S.dimDraft ? "Bemassung: zweiten Punkt klicken (Ecken, Kantenmitten, Kanten rasten ein, Alt = frei). Esc bricht ab." : "Bemassung: ersten Punkt klicken. Masse auswählen und mit Entf löschen, automatische Masse mit Entf ausblenden.";
     return "Klick wählt (Platte am Rand), Shift mehrere, Ziehen auf leerer Fläche wählt mit Rahmen. Griffe ändern die Grösse, Doppelklick auf ein Mass tippt es ein, Alt ohne Hilfslinien.";
   }
-  if (S.tool === "place") return S.placeSym === TERMINALS ? "Klemmenleiste: Klicken setzt die obere Kante auf die gewählte Stelle, die Klemmen hängen darunter. Esc beendet." : `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht, Esc beendet. Der Fang rastet auf Feldmitten ein, Alt schaltet ihn aus.`;
+  if (S.tool === "place" && templateOf(S.placeSym)) return `Abgang ${templateOf(S.placeSym).label}: Klicken in eine freie Spalte setzt Geräte, Leitungen zu den Hauptlinien und Klemmen mit Kabel. Esc beendet.`;
+  if (S.tool === "place") return S.placeSym === TERMINALS ? "Klemmenleiste: Klicken setzt die obere Kante auf die gewählte Stelle, die Klemmen hängen darunter. Esc beendet." : `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht${familyOf(S.placeSym)?.variants.length > 1 ? `, 1 bis 4 Polzahl, N Neutralleiter${hasTrenner(S.placeSym) ? ", T N-Trenner" : ""}` : ""}, Esc beendet. Der Fang rastet auf Feldmitten ein, Alt schaltet ihn aus.`;
   if (S.tool === "wire") return S.wireDraft ? "Klicken setzt einen Punkt. Nochmals auf den letzten Punkt klicken oder Eingabetaste beendet. Shift wechselt die Knickrichtung." : S.bundleN > 1 ? `Klicken startet ${S.bundleN} parallele Leiter. Der erste liegt auf dem Klickpunkt, die weiteren rechts oder darunter.` : "Klicken startet eine Leitung. Anschlusspunkte der Symbole rasten ein.";
   if (S.tool === "text") return "Klicken setzt einen Text, die Eingabetaste bestätigt.";
   if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
@@ -321,8 +334,9 @@ function renderLeft() {
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
   for (const t of TOOLS) h += `<button class="tool" data-tool="${t.id}" aria-pressed="${S.tool === t.id}">${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`;
-  h += `</section><section class="section"><h2 class="section-title">Symbole</h2>`;
-  for (const f of FAMILIES) {
+  h += `</section>` + abgangHTML() + `<section class="section"><h2 class="section-title">Symbole</h2>`;
+  for (const f of FAMILIES) { // Wunsch CJ 16.10.: jede Variante direkt wählbar, ein Klick setzt das Gerät
+    if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${f.variants.map(varTile).join("")}</div></div>`; continue; }
     const on = S.tool === "place" && f.variants.includes(S.placeSym);
     h += `<button class="sym" data-sym="${f.def}" aria-pressed="${on}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
   }
@@ -331,6 +345,35 @@ function renderLeft() {
   leftEl.innerHTML = h;
 }
 
+// Abgänge als Schnellzugriff über den Symbolen (CJ 16.10.): feste Vorlagen und eigene (aus der Auswahl gespeichert) als
+// Kacheln, eigene mit ×. „Auswahl als Abgang speichern“ nimmt die markierten Objekte samt Klemmen.
+function abgangHTML() {
+  const tile = (t) => {
+    const key = TEMPLATE_PREFIX + t.id, sym = SYMBOL_BY_NAME[t.custom ? t.thumb : t.devs.at(-1).sym];
+    const btn = `<button class="var abg" data-sym="${key}" aria-pressed="${S.tool === "place" && S.placeSym === key}" title="${R.esc(t.label + " – " + t.sub)}" aria-label="${R.esc(t.label)}"><span class="thumb">${sym ? R.thumbSVG(sym) : R.terminalsThumb()}</span><span class="vl">${R.esc(t.short ?? t.label)}</span></button>`;
+    return t.custom ? `<div class="abgwrap">${btn}<button class="abgdel" data-abgdel="${t.id}" title="Eigenen Abgang löschen" aria-label="Eigenen Abgang ${R.esc(t.label)} löschen">×</button></div>` : btn;
+  };
+  return `<section class="section"><h2 class="section-title">Abgänge</h2><div class="vargrid abggrid">${[...TEMPLATES, ...CUSTOM].map(tile).join("")}</div>`
+    + `<button class="btn outline small abgsave" data-abgsave>Auswahl als Abgang speichern</button></section>`;
+}
+async function saveAbgang() {
+  const sel = selectedItems();
+  if (!sel.length) { toast("Zuerst im Schema markieren, was zum Abgang gehört (Geräte, Leitungen, Klemmen).", "error"); return; }
+  const draft = makeCustom("", [...sel, ...followers(sel)]);
+  if (!draft) { toast("In der Auswahl ist kein Gerät, keine Leitung und keine Klemme.", "error"); return; }
+  const r = await formDialog("Zu Abgänge hinzufügen", "Die markierten Objekte werden als eigener Abgang gespeichert (in diesem Browser, für alle Dateien). Ein Klick in eine Spalte setzt ihn dort ein.", [{ label: "Name", value: draft.sub.split(",")[0] }], "Speichern");
+  if (!r) return;
+  draft.label = r[0].trim() || "Eigener Abgang";
+  if (!addCustom(draft)) toast("Speichern im Browser nicht möglich. Der Abgang gilt nur bis zum Neuladen.", "error"); else toast(`Abgang „${draft.label}“ gespeichert.`);
+  renderLeft();
+}
+
+// Kachel einer Polzahl-Variante: Vorschau und kurzer Text (z. B. "1P+N-Tr."), voller Name im Tooltip
+const shortVlabel = (sym) => (sym.vlabel ?? `${sym.poles}P`).replace(/ \(.*\)$/, "").replace(" + N-Trenner", "+N-Tr.").replace(/^(\d)-polig$/, "$1P");
+function varTile(name) {
+  const sym = SYMBOL_BY_NAME[name], on = S.tool === "place" && S.placeSym === name;
+  return `<button class="var" data-sym="${name}" aria-pressed="${on}" title="${R.esc(sym.label)}" aria-label="${R.esc(sym.label)}"><span class="thumb">${R.thumbSVG(sym)}</span><span class="vl">${R.esc(shortVlabel(sym))}</span></button>`;
+}
 const symSize = (sym) => { const b = R.localBBoxOf(sym); return `${Math.round(b.x1 - b.x0)} × ${Math.round(b.y1 - b.y0)} mm`; };
 function libraryHTML() {
   let h = `<section class="section"><h2 class="section-title">Bibliothek</h2><div class="libtools"><button class="btn outline small" data-libact="import">DXF-Symbol importieren</button><button class="btn outline small" data-libact="load">Bibliothek laden</button><button class="btn outline small" data-libact="cloud" title="Bibliotheken online laden oder speichern">Online</button></div>`;
@@ -404,8 +447,52 @@ const railEndSelect = (side, it) => {
   const opts = [["edge", "Blattrand, durchgehend"], ...Array.from({ length: 8 }, (_, i) => [`col:${i + 1}`, `Endet bei Spalte ${i + 1}`]), ["ref", "Verweis auf anderes Blatt"]];
   return `<div class="field"><label>${side === "l" ? "Anfang links" : "Ende rechts"}</label><select data-railend="${side}">${opts.map(([v, l]) => `<option value="${v}"${v === cur ? " selected" : ""}>${l}</option>`).join("")}</select></div>`;
 };
+// Grundverkabelung L1 bis N als Gruppe (hauptlinien.js): Anfang links und Ende rechts mit Ziel
+function mainPanelHTML() {
+  const m = S.model.main;
+  if (!m) return "";
+  const st = mainState(S.doc, S.model), lab = (sh) => sheetLabel(sh, S.doc.sheets.indexOf(sh));
+  const cols = (verb) => Array.from({ length: 8 }, (_, i) => [`col:${i + 1}`, `${verb} bei Spalte ${i + 1}`]);
+  const sel = (attr, label, cur, opts) => `<div class="field"><label>${label}</label><select ${attr}>${opts.map(([v, l]) => `<option value="${v}"${v === cur ? " selected" : ""}>${R.esc(l)}</option>`).join("")}</select></div>`;
+  const lOpts = [["auto", st.from ? `Kommt von ${lab(st.from)} (Verweis)` : "Kommt vom vorherigen Blatt (Verweis)"], ["start", "Beginnt am Blattrand, ohne Verweis"], ...cols("Beginnt"), ...(m.l === "feed" ? [["feed", "Eingangsverdrahtung (vom HAK)"]] : [])];
+  const rOpts = [["next", "Weiter auf das nächste Blatt"], ...mainSheets(S.doc).filter((sh) => sh !== S.model).map((sh) => [`sheet:${S.doc.sheets.indexOf(sh)}`, `Weiter auf ${lab(sh)}`]), ["end", "Endet am Blattrand"], ...cols("Endet")];
+  const curR = m.r === "sheet" ? `sheet:${S.doc.sheets.findIndex((sh) => sh.sid === m.to)}` : m.r;
+  const note = (m.l === "auto" && !st.from ? "Kein Blatt führt hierher: die Linien beginnen am Blattrand. " : "") + (st.to ? `Weiter auf ${lab(st.to)}.` : m.r === "next" || m.r === "sheet" ? "Kein freies Ziel: die Linien enden am Blattrand mit einem Strich." : "");
+  return sel("data-mainl", "Anfang links", m.l, lOpts) + sel("data-mainr", "Ende rechts", curR, rOpts) + (note ? `<p class="note">${R.esc(note)}</p>` : "");
+}
+// Kurzstand der Hauptlinien für die rechte Leiste (ohne Auswahl)
+function mainSummary() {
+  const m = S.model.main;
+  if (!m) return hasBase(S.model.items) ? "nur PE und weitere Linien" : "keine Grundverkabelung";
+  const st = mainState(S.doc, S.model), lab = (sh) => sheetLabel(sh, S.doc.sheets.indexOf(sh)), col = (v) => v.startsWith("col:") ? ` bei Spalte ${v.slice(4)}` : "";
+  return `${st.from ? "kommt von " + lab(st.from) : m.l === "feed" ? "Eingangsverdrahtung vom HAK" : "beginnt" + (col(m.l) || " am Blattrand")}, ${st.to ? "weiter auf " + lab(st.to) : "endet" + (col(m.r) || " am Blattrand")}`;
+}
+// Fenster oben für Schema und Disposition (UI Schritt 6, wie im Stringplan): Schriftfeld, Hauptlinien
+function sheetPopHTML(kind) {
+  const plus = (act, label, dis) => `<div class="row"><button class="btn outline small" data-act="${act}"${dis ? " disabled" : ""}>${R.icons.plus.replace("<svg", '<svg width="16" height="16"')}${label}</button></div>`;
+  if (kind === "ansicht") return ansichtHTML();
+  if (kind === "haupt") return head("Hauptlinien", "L1, L2, L3, N oben, PE unten") + (hasBase(S.model.items) ? "" : plus("base", "Grundverkabelung einfügen")) + plus("feed", "Eingangsverdrahtung einfügen", S.model.main?.l === "feed") + mainPanelHTML() + plus("addrail", "Weitere Hauptlinie", !hasBase(S.model.items));
+  if (isDispo()) return head("Schriftfeld", "Angaben dieser Disposition") + META_FIELDS.filter((f) => ["OBJEKT", "TITEL", "GEZEICHNET", "DATUM"].includes(f.tag)).map((f) => fieldHTML(f.label, `data-meta="${f.tag}"`, S.model.meta[f.tag] ?? "")).join("");
+  return head("Schriftfeld", "Angaben dieses Blatts") + META_FIELDS.filter((f) => !T.PROJECT_FIELDS.includes(f.tag)).map((f) => fieldHTML(f.label, `data-meta="${f.tag}"`, S.model.meta[f.tag] ?? "")).join("")
+    + `<details class="proj"><summary>Projektangaben (gelten für alle Blätter)</summary>${META_FIELDS.filter((f) => T.PROJECT_FIELDS.includes(f.tag)).map((f) => fieldHTML(f.label, `data-meta="${f.tag}"`, S.model.meta[f.tag] ?? "")).join("")}${T.titleOf(S.doc) ? `<div class="row"><button class="btn outline small" data-act="gotitle">Zur Titelseite</button></div>` : ""}</details>`;
+}
+// Ziel ändern: ein anderes Blatt, das schon auf dieses Ziel zeigte, geht wieder aufs nächste Blatt. Das Ziel nimmt die Linien an.
+function setMainEnd(t) {
+  const m = S.model.main;
+  if (!m) return;
+  change(() => {
+    if (t.dataset.mainl !== undefined) { m.l = t.value; return; }
+    delete m.to;
+    if (!t.value.startsWith("sheet:")) { m.r = t.value; return; }
+    const tg = S.doc.sheets[Number(t.value.slice(6))];
+    if (!tg?.main) return;
+    if (!tg.sid) tg.sid = nextId();
+    for (const sh of S.doc.sheets) if (sh !== S.model && sh.main?.r === "sheet" && sh.main.to === tg.sid) { sh.main.r = "next"; delete sh.main.to; }
+    Object.assign(m, { r: "sheet", to: tg.sid }); tg.main.l = "auto";
+  });
+}
 const kindSelect = (attr, value) => `<div class="field"><label>Art der Leitung</label><select ${attr}>${Object.entries(WIRE_KINDS).map(([k, v]) => `<option value="${k}"${k === value ? " selected" : ""}>${v.label}</option>`).join("")}</select></div>`;
-const poleSelect = (attr, family, value) => `<div class="field"><label>Polzahl</label><select ${attr}>${family.variants.map((v) => `<option value="${v}"${v === value ? " selected" : ""}>${SYMBOL_BY_NAME[v].poles}-polig</option>`).join("")}</select></div>`;
+const poleSelect = (attr, family, value) => `<div class="field"><label>Polzahl</label><select ${attr}>${family.variants.map((v) => `<option value="${v}"${v === value ? " selected" : ""}>${SYMBOL_BY_NAME[v].vlabel ?? SYMBOL_BY_NAME[v].poles + "-polig"}</option>`).join("")}</select></div>`;
 const bundleSelect = () => `<div class="field"><label>Anzahl Leiter pro Zug</label><select data-newbundle>${Object.entries(BUNDLE_LABELS).map(([n, l]) => `<option value="${n}"${Number(n) === S.bundleN ? " selected" : ""}>${l}</option>`).join("")}</select></div>`;
 function cableNote(it) {
   const c = parseCable(it.cable);
@@ -417,18 +504,26 @@ function cableNote(it) {
 // Fenster Module, Wechselrichter, Druck oben (Stringplan und Stringübersicht, UI Schritt 6 Teil 2). Hängt am Knopf, blockiert den Plan nicht.
 let pvPop = null, popKind = null;
 const popEl = $("#pv-pop");
-const popHTML = () => PV.popHTML(popKind, { head, fieldHTML, META_FIELDS });
+const SHEET_POPS = new Set(["blatt", "haupt", "ansicht"]);
+const popHTML = () => (SHEET_POPS.has(popKind) ? sheetPopHTML(popKind) : PV.popHTML(popKind, { head, fieldHTML, META_FIELDS }));
 function renderPvBar() {
-  const on = isPv();
-  $("#pv-bar").hidden = !on;
+  const on = isPv(), doc = !on && !isDeck(); // Schema und Disposition: Schriftfeld, Hauptlinien nur im Schema
+  $("#pv-bar").hidden = !on; $("#doc-bar").hidden = !doc; $("#btn-haupt").hidden = isDispo(); $("#btn-ansicht").hidden = !isDispo();
   if (!pvPop) return;
-  if (!on) { pvPop.hide(false); return; }
+  if (pvPop.open && (SHEET_POPS.has(popKind) ? !doc || (popKind === "haupt" && isDispo()) || (popKind === "ansicht" && !isDispo()) : !on)) { pvPop.hide(false); return; }
+  if (!on) { // live (z. B. Ziel der Hauptlinien), nicht während in einem Textfeld getippt wird
+    const ae = document.activeElement;
+    if (pvPop.open && !(popEl.contains(ae) && ae.type === "text")) { const y = popEl.scrollTop, had = popEl.contains(ae); popEl.innerHTML = popHTML(); popEl.scrollTop = y; if (had) popEl.focus(); }
+    return;
+  }
   const l = PV.printLabel(), b = $("#btn-pvdruck");
   $("#pv-druck-lbl").textContent = l.text; b.classList.toggle("warn", l.warn);
   b.title = `Druck: ${l.text}${l.warn ? ", Inhalt passt nicht aufs Papier" : ""}. Papier, Massstab, Plankopf`;
   if (pvPop.open) { const y = popEl.scrollTop, had = popEl.contains(document.activeElement); popEl.innerHTML = popHTML(); popEl.scrollTop = y; if (had) popEl.focus(); } // live, z. B. Passt-Hinweis
 }
-function renderRight() {
+// Mobilansicht: ohne Auswahl zeigt die Leiste unten einen Hinweis (body.nosel, style.css)
+function renderRight() { renderRightPanel(); document.body.classList.toggle("nosel", !S.sel.size && !(S.model.kind === "legend" && S.legSel != null)); }
+function renderRightPanel() {
   renderPvBar();
   const sel = selectedItems();
   if (isDeck()) { rightEl.innerHTML = S.model.kind === "legend" ? L.panelHTML(S.doc, S.model, S.legSel, { head, fieldHTML }) : T.deckPanelHTML(S.doc, S.model, { head, fieldHTML }); return; }
@@ -445,7 +540,8 @@ function renderRight() {
       const fam = familyOf(it.sym);
       if (fam && fam.variants.length > 1) h += poleSelect("data-sympoles", fam, it.sym);
       for (const a of sym.attrs) if (!a.auto) h += fieldHTML(a.label, `data-attr="${a.tag}"`, it.attrs[a.tag] ?? "");
-      if (isRef(it)) {
+      if (it.main) h += `<p class="note">Verweis der Grundverkabelung, wird automatisch gesetzt.</p>` + mainPanelHTML();
+      else if (isRef(it)) {
         const cur = it.link === undefined ? null : findItem(S.doc, it.link);
         h += `<p class="note">${cur ? "Verknüpft mit " + R.esc(refLabel(cur.item, cur.sheet)) + "." : "Noch nicht verknüpft."}</p>`;
         h += `<div class="row"><button class="btn outline small" data-act="relink">${cur ? "Verknüpfung ändern" : "Verknüpfen"}</button>${cur ? '<button class="btn outline small" data-act="unlink">Lösen</button>' : ""}</div>`;
@@ -458,12 +554,13 @@ function renderRight() {
       h += fieldHTML("Kabel", 'data-term="cable"', it.cable, 'placeholder="5x1.5mm2"');
       h += `<p class="note" data-cablenote>${R.esc(cableNote(it))}</p>`;
       h += fieldHTML("Bezeichnung (unter dem Kabel)", 'data-term="name"', it.name);
-      h += `<div class="field"><label>Letzte Klemme</label><select data-termpe><option value="last"${it.pe !== "none" ? " selected" : ""}>PE-Klemme (schraffiert)</option><option value="none"${it.pe === "none" ? " selected" : ""}>Normale Klemme</option></select></div>`;
+      h += `<div class="field"><label>Klemmen</label><select data-termdraw><option value="on"${it.noterm ? "" : " selected"}>Klemmen zeichnen</option><option value="off"${it.noterm ? " selected" : ""}>Keine Klemme (nur BMK, Kabel, Bezeichnung)</option></select></div>`;
+      if (!it.noterm) h += `<div class="field"><label>Letzte Klemme</label><select data-termpe><option value="last"${it.pe !== "none" ? " selected" : ""}>PE-Klemme (schraffiert)</option><option value="none"${it.pe === "none" ? " selected" : ""}>Normale Klemme</option></select></div>`;
       h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else if (it.type === "wire") {
       h += `<div class="prop-head"><h2>Leitung</h2><p>${it.pts.length - 1} Segment${it.pts.length === 2 ? "" : "e"}</p></div>`;
       h += kindSelect('data-wirekind', it.kind);
-      if (isRail(it)) h += `<p class="note">Hauptlinie ${R.esc(railName(it))}</p>` + railEndSelect("l", it) + railEndSelect("r", it);
+      if (isRail(it)) h += `<p class="note">Hauptlinie ${R.esc(railName(it))}${isGroupWire(S.model.items, it) ? ", Grundverkabelung L1 bis N gemeinsam" : ""}</p>` + (isGroupWire(S.model.items, it) ? mainPanelHTML() : railEndSelect("l", it) + railEndSelect("r", it));
       h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else {
       h += textPanelHTML(it);
@@ -475,11 +572,7 @@ function renderRight() {
     if (S.tool === "wire") h += `<div class="prop-head"><h2>Neue Leitung</h2></div>` + bundleSelect() + (S.bundleN === 1 ? kindSelect("data-newkind", S.wireKind) : `<p class="note">Leiter von oben links nach unten rechts: ${BUNDLE_PRESETS[S.bundleN].join(", ")}.</p>`);
     else if (S.tool === "place" && S.placeSym !== TERMINALS && familyOf(S.placeSym)?.variants.length > 1) h += `<div class="prop-head"><h2>Neues Symbol</h2></div>` + poleSelect("data-placepoles", familyOf(S.placeSym), S.placeSym);
     else if (S.tool === "text") h += `<div class="prop-head"><h2>Neuer Text</h2></div><div class="field"><label>Texthöhe in mm</label><input type="number" min="1" max="20" step="0.5" data-newth value="${S.textH}"></div>`;
-    h += `<div class="prop-head"><h2>Blatt</h2><p>Angaben im Schriftfeld</p></div>`;
-    for (const f of META_FIELDS) if (!T.PROJECT_FIELDS.includes(f.tag)) h += fieldHTML(f.label, `data-meta="${f.tag}"`, S.model.meta[f.tag] ?? "");
-    h += `<details class="proj"><summary>Projektangaben (gelten für alle Blätter)</summary>${META_FIELDS.filter((f) => T.PROJECT_FIELDS.includes(f.tag)).map((f) => fieldHTML(f.label, `data-meta="${f.tag}"`, S.model.meta[f.tag] ?? "")).join("")}${T.titleOf(S.doc) ? `<div class="row"><button class="btn outline small" data-act="gotitle">Zur Titelseite</button></div>` : ""}</details>`;
-    h += `<div class="prop-head"><h2>Grundverkabelung</h2><p>L1, L2, L3, N oben und PE unten</p></div>` + `<div class="row"><button class="btn outline small" data-act="base"${hasBase(S.model.items) ? " disabled" : ""}>${R.icons.plus.replace("<svg", '<svg width="16" height="16"')}Grundverkabelung einfügen</button></div>`;
-    h += `<div class="row"><button class="btn outline small" data-act="addrail"${hasBase(S.model.items) ? "" : " disabled"}>${R.icons.plus.replace("<svg", '<svg width="16" height="16"')}Weitere Hauptlinie</button></div>`;
+    h += head(sheetLabel(S.model, S.active), S.model.meta.TITEL || "ohne Blatttitel") + `<p class="note">Hauptlinien: ${R.esc(mainSummary())}.</p>`;
     h += `<div class="row"><button class="btn outline small danger" data-act="delsheet"${workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
   }
   rightEl.innerHTML = h;
@@ -496,7 +589,7 @@ function renderSheetBar() {
   $("#sheetbar").innerHTML = `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt (Bild auf)" aria-label="Vorheriges Blatt"${a === 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Liste aller Blätter (G)"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span><span class="of">${a + 1} von ${n}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt (Bild ab)" aria-label="Nächstes Blatt"${a === n - 1 ? " disabled" : ""}>›</button>`
-    + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neues Blatt. Gedrückt halten oder Rechtsklick: Blatt oder Disposition wählen" aria-label="Neues Blatt">${R.icons.plus}</button>`;
+    + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>`;
   if (keep) document.getElementById(keep)?.focus();
   if (open) renderSheetList();
 }
@@ -578,6 +671,9 @@ function addPvTab() {
   change(() => { const sh = newSheet("pvtab"); sh.meta.BLATT = "1"; S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear(); });
   afterSheetChange(k0);
 }
+// Plus-Knopf (CJ 16.10.): Blatt vom Typ des aktuellen Blatts. Stringplan und Stringübersicht → Stringplan, Titel, Inhalt, Legende → Schemablatt.
+const addKindLabel = () => ({ dispo: "Disposition", pv: "Stringplan", pvtab: "Stringplan" }[S.model.kind] || "Schemablatt");
+function addSameKind() { const k = S.model.kind; (k === "dispo" ? addDispo : k === "pv" || k === "pvtab" ? addPv : addSheet)(); }
 function addSheet() {
   setTool("select");
   const k0 = S.model.kind;
@@ -589,7 +685,7 @@ function nextSheetNo() {
   const nums = S.doc.sheets.filter((sh) => !sh.kind || sh.kind === "title" || sh.kind === "toc").map((sh) => parseInt(sh.meta.BLATT, 10)).filter(Number.isFinite);
   return String(nums.length ? Math.max(...nums) + 1 : S.doc.noTitle && S.doc.noToc ? 1 : 3); // erstes Schemablatt: Titelseite und Inhalt kommen dazu (Blatt 1 und 2)
 }
-function makeSheet(no) { const sh = newSheet(); sh.meta.BLATT = no; sh.items.push(...baseItems(nextId)); return sh; }
+function makeSheet(no, { base = true } = {}) { const sh = newSheet(); sh.meta.BLATT = no; if (base) sh.items.push(...baseItems(nextId)); return sh; } // base: false = ohne Grundverkabelung (Blatt aus „An Schema“, CJ 16.10.)
 // Titelseite oder Inhaltsverzeichnis löschen (CJ 15.10.). Merkt sich die Datei (noTitle, noToc), sonst kämen sie beim nächsten Schritt wieder.
 async function deleteDeck() {
   const k0 = S.model.kind, name = k0 === "title" ? "Titelseite" : "Inhaltsverzeichnis";
@@ -645,10 +741,11 @@ function setTool(id) {
   finishWire(); PV.cancel();
   closeEditor(false);
   S.tool = id; if (id !== "place") S.placeSym = null; if (id !== "select") S.sel.clear();
+  S.dimDraft = null; S.dimSel = null; draftCancel();
   svg.className.baseVal = id === "hand" ? "cursor-hand" : id === "select" ? "" : id === "text" ? "cursor-text" : "cursor-cross";
   renderLeft(); renderRight(); renderOverlay(); updateHint();
 }
-function startPlace(name) { finishWire(); closeEditor(false); S.tool = "place"; S.placeSym = name; S.placeRot = 0; S.sel.clear(); svg.className.baseVal = "cursor-cross"; renderLeft(); renderRight(); renderOverlay(); updateHint(); }
+function startPlace(name) { finishWire(); closeEditor(false); draftCancel(); S.tool = "place"; S.placeSym = name; S.placeRot = /^V(OUT|IN)_\dP$/.test(name) ? 90 : 0; /* Verweise waagrecht (CJ 16.10.) */ S.sel.clear(); svg.className.baseVal = "cursor-cross"; renderLeft(); renderRight(); renderOverlay(); updateHint(); }
 
 function simplify(pts) {
   const out = [];
@@ -706,19 +803,26 @@ function addSymbol(name, x, y, rot) {
   });
   if (placed && isRef(placed)) offerLink(S.model.items.find((i) => i.id === placed.id));
 }
+// Abgang aus einer Vorlage in Spalte col: ein Rückgängig-Schritt, BMK und Klemmen nummerieren sich danach (renumberAll)
+function addAbgang(tpl, col) {
+  const a = abgangItems(tpl, col, S.model.items, () => 0);
+  if (a.error) { toast(a.error, "error"); return; }
+  change(() => { const b = abgangItems(tpl, col, S.model.items, nextId); S.model.items.push(...b.items); });
+}
 function addTerminals(x, y) { change(() => S.model.items.push({ id: nextId(), ...newTerminals(x, y) })); }
 function deleteSelected() {
-  if (!S.sel.size) return;
+  if (!S.sel.size) { hideDimSel(); return; } // gewähltes automatisches Mass der Disposition ausblenden
   change(() => {
-    const gone = new Set([...S.sel, ...linkedTerminals(S.model.items, S.sel).map((t) => t.id)]);
+    const gone = new Set([...S.sel, ...linkedTerminals(S.model.items, S.sel).map((t) => t.id), ...wmParts(S.model.items, S.sel).map((t) => t.id)]);
     for (const it of S.model.items) if (it.rail !== undefined && gone.has(it.rail)) gone.add(it.id); // Verweise am Ende einer gelöschten Hauptlinie
     for (const it of S.model.items) if (gone.has(it.id) && isRef(it)) unlinkRef(S.doc, it);
     S.model.items = S.model.items.filter((i) => !gone.has(i.id)); S.sel.clear();
     if (isPv()) pruneStrings(S.model); // Stringplan: gelöschte Module verlassen ihren String
   });
 }
-// Zu einem Gerät gehörende Klemmenleisten folgen ihm seitlich
-const followers = (items) => { const ids = new Set(items.map((i) => i.id)); return linkedTerminals(S.model.items, ids).filter((t) => !ids.has(t.id)); };
+// Zu einem Gerät gehörende Klemmenleisten folgen ihm seitlich, Zähler und Leitungen der Wandlermessung ganz (wandler.js)
+const followers = (items) => { const ids = new Set(items.map((i) => i.id)); return [...linkedTerminals(S.model.items, ids), ...wmParts(S.model.items, ids)].filter((t) => !ids.has(t.id)); };
+const followDy = (t, dy) => (t.type === "terminals" ? 0 : dy);
 function rotateSelected() {
   if (S.tool === "place") { S.placeRot = (S.placeRot + 90) % 360; renderOverlay(); return; }
   const syms = selectedItems().filter((i) => i.type === "symbol");
@@ -731,14 +835,14 @@ function cloneItems(src, selIds, dx, dy) {
   for (const it of src) {
     if (it.type === "pvstring") continue; // Strings nicht kopieren: ein Modul gehört nur zu einem String
     const c = JSON.parse(JSON.stringify(it)); c.id = nextId(); idMap.set(it.id, c.id);
-    delete c.tag; delete c.link; delete c.ends; delete c.rail; delete c.side; delete c.rname;
+    delete c.tag; delete c.link; delete c.ends; delete c.rail; delete c.side; delete c.rname; delete c.main;
     if (c.bundle !== undefined) { if (!bundles.has(c.bundle)) bundles.set(c.bundle, nextId()); c.bundle = bundles.get(c.bundle); }
     if (c.pts) c.pts = c.pts.map((p) => [round3(p[0] + dx), round3(p[1] + dy)]);
     else { c.x = round3(c.x + dx); if (!(c.type === "terminals" && c.of !== undefined)) c.y = round3(c.y + dy); }
     S.model.items.push(c); copies.push(c);
     if (selIds.has(it.id)) ids.add(c.id);
   }
-  for (const c of copies) if (c.type === "terminals" && c.of !== undefined) { if (idMap.has(c.of)) c.of = idMap.get(c.of); else delete c.of; }
+  for (const c of copies) if (c.of !== undefined) { if (idMap.has(c.of)) c.of = idMap.get(c.of); else { delete c.of; delete c.wm; } }
   return ids;
 }
 function duplicateSelected() {
@@ -766,7 +870,7 @@ function nudge(dx, dy) {
   const items = selectedItems();
   if (!items.length) return;
   const links = wireLinks([...items, ...followers(items)]);
-  change(() => { items.forEach((it) => moveItem(it, dx, dy)); followers(items).forEach((t) => moveItem(t, dx, 0)); dispoExtras(items).forEach((it) => moveItem(it, dx, dy)); followWires(links); }, { panel: false });
+  change(() => { items.forEach((it) => moveItem(it, dx, dy)); followers(items).forEach((t) => moveItem(t, dx, followDy(t, dy))); dispoExtras(items).forEach((it) => moveItem(it, dx, dy)); followWires(links); }, { panel: false });
 }
 function moveItem(it, dx, dy) {
   if (it.type === "pvstring") return; // folgt seinen Modulen
@@ -793,6 +897,7 @@ function followWires(links) {
   for (const l of links) {
     const oa = off(l.a), ob = off(l.b);
     if (oa[0] === ob[0] && oa[1] === ob[1]) { l.w.pts = l.pts.map((p) => [round3(p[0] + oa[0]), round3(p[1] + oa[1])]); continue; }
+    if (l.w.wm !== undefined) { const a = l.pts[0], b = l.pts.at(-1); l.w.pts = routeWm([round3(a[0] + oa[0]), round3(a[1] + oa[1])], [round3(b[0] + ob[0]), round3(b[1] + ob[1])], l.w.wm); continue; } // Wandlermessung: gestaffelt
     let r = l.pts;
     if (oa[0] || oa[1]) r = moveEnd(r, oa, l.w, true);
     if (ob[0] || ob[1]) r = moveEnd(r.slice().reverse(), ob, l.w, true).reverse();
@@ -838,10 +943,11 @@ function groupIds(hit, single) {
   return S.model.items.filter((i) => i.type === "wire" && i.bundle === hit.bundle).map((i) => i.id);
 }
 
-function hitTest(x, y, items = pickable()) {
-  const tol = Math.max(0.9, 5 / S.view.z);
-  for (let i = items.length - 1; i >= 0; i--) if (items[i].type !== "plate" && R.hitItem(items[i], x, y, tol)) return items[i];
+function hitTest(x, y, items = pickable(), px = 5) { // px: Toleranz in Bildschirmpunkten (Finger: grösser)
+  const tol = Math.max(0.9, px / S.view.z);
+  for (let i = items.length - 1; i >= 0; i--) if (!D.isBack(items[i]) && R.hitItem(items[i], x, y, tol)) return items[i];
   for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "plate" && R.hitItem(items[i], x, y, tol)) return items[i];
+  for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "cabinet" && R.hitItem(items[i], x, y, tol)) return items[i]; // Schrank zuletzt
   return null;
 }
 
@@ -873,7 +979,23 @@ editor.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "
 editor.addEventListener("blur", () => closeEditor(true));
 
 // ---------- Zeiger ----------
+// Titelseite, Inhalt, Legende: nichts zeichnen. Inhalt: Zeile springt zum Blatt, Legende: Zeile wählt das Gerät
+function deckTap(target) {
+  const row = target.closest?.("[data-sheet]"), dev = target.closest?.("[data-dev]");
+  if (row) switchSheet(Number(row.dataset.sheet));
+  else if (S.model.kind === "legend") { S.legSel = dev ? Number(dev.dataset.dev) : null; renderSheet(); renderRight(); }
+}
+// Mobilansicht (mobil.js): Finger schiebt und zoomt, Antippen wählt (mit grösserer Toleranz), darunter die Felder
+const touch = makeTouch({ S, stage, pointerPos, zoomAt, applyView, renderOverlay, tap: (e) => {
+  if (!editor.hidden) closeEditor(true);
+  if (isDeck()) { deckTap(e.target); return; }
+  const { sx, sy } = pointerPos(e), w = toWorld(sx, sy);
+  const hit = isPv() ? hitTest(w.x, w.y, PV.layerPick(), 14) : hitTest(w.x, w.y, pickable(), 14);
+  S.sel = hit ? new Set(groupIds(hit, false)) : new Set();
+  renderRight(); renderOverlay();
+} });
 stage.addEventListener("pointerdown", (e) => {
+  if (touch.down(e)) return;
   if (e.target.closest("#zoombar, #sheetbar") || e.target === editor) return;
   if (!editor.hidden) closeEditor(true);
   svg.focus({ preventScroll: true });
@@ -881,12 +1003,7 @@ stage.addEventListener("pointerdown", (e) => {
   if (e.button === 1 || S.tool === "hand" || S.space) { S.drag = { type: "pan", sx, sy, vx: S.view.x, vy: S.view.y }; stage.setPointerCapture(e.pointerId); svg.classList.add("cursor-grabbing"); return; }
   if (e.button === 2) { if (S.wireDraft) finishWire(); else if (S.tool === "place") setTool("select"); return; }
   if (e.button !== 0) return;
-  if (isDeck()) { // Titelseite, Inhalt, Legende: nichts zeichnen. Inhalt: Zeile springt zum Blatt, Legende: Zeile wählt das Gerät
-    const row = e.target.closest?.("[data-sheet]"), dev = e.target.closest?.("[data-dev]");
-    if (row) switchSheet(Number(row.dataset.sheet));
-    else if (S.model.kind === "legend") { S.legSel = dev ? Number(dev.dataset.dev) : null; renderSheet(); renderRight(); }
-    return;
-  }
+  if (isDeck()) { deckTap(e.target); return; }
   stage.setPointerCapture(e.pointerId);
   const w = toWorld(sx, sy);
   const add = isPv() && (e.metaKey || e.ctrlKey); // Stringplan: ⌘ + Klick oder Rahmen ergänzt die Auswahl, nur aktive Ebene (5o)
@@ -894,8 +1011,10 @@ stage.addEventListener("pointerdown", (e) => {
   if (ha) {
     const o = JSON.parse(JSON.stringify(ha.it));
     S.drag = { type: "handle", it: ha.it, h: ha.h, orig: o, px: sx, py: sy, started: false, snap: snapshot(),
-      rails: ha.it.type === "plate" ? D.contained(S.model.items, ha.it).filter((i) => i.type === "rail").map((r) => ({ r, o: { ...r }, full: D.railIsFull(r, ha.it) })) : [],
-      plate: ha.it.type === "rail" ? plateAt(o.x + o.len / 2, o.y) : null };
+      rails: ha.it.type === "plate" ? D.contained(S.model.items, ha.it).filter((i) => i.type === "rail" && !i.free).map((r) => ({ r, o: { ...r }, full: D.railIsFull(r, ha.it) })) : [],
+      plate: ha.it.type === "rail" && !ha.it.free ? plateAt(o.x + o.len / 2, o.y) : null }; // freie Schiene: ohne Plattenrand
+  } else if (S.tool === "select" && !e.shiftKey && !hitTest(w.x, w.y) && autoDimPick(w.x, w.y)) { // automatisches Mass wählen (ausblenden mit Entf)
+    S.sel.clear(); S.dimSel = autoDimPick(w.x, w.y); renderRight(); renderOverlay();
   } else if (massAt(w.x, w.y) && !hitTest(w.x, w.y)) { /* Mass: Doppelklick öffnet die Eingabe, die Auswahl bleibt */
   } else if (isPv() && S.tool === "select" && !e.shiftKey && !add && PV.gripAt(w)) {
     const g = PV.gripAt(w); // Punkt einer Dachlinie oder Sperrfläche ziehen
@@ -904,6 +1023,7 @@ stage.addEventListener("pointerdown", (e) => {
     const v = vertexAt(w.x, w.y);
     S.drag = { type: "vertex", w: v.w, i: v.i, pts: v.w.pts.map((p) => [...p]), px: sx, py: sy, started: false, snap: snapshot() };
   } else if (S.tool === "select") {
+    S.dimSel = null;
     const hit = isPv() ? hitTest(w.x, w.y, PV.layerPick()) : hitTest(w.x, w.y); // Stringplan: Klick, Shift und ⌘ nur auf der aktiven Ebene (5s)
     const other = add && !hit && hitTest(w.x, w.y, PV.otherLayers());
     if (other) toast(PV.layerNote(other)); // ⌘ + Klick auf ein Objekt einer anderen Ebene (5w)
@@ -920,12 +1040,15 @@ stage.addEventListener("pointerdown", (e) => {
     }
     renderRight(); renderOverlay();
   } else if (isPv() && PV.pointerDown(w, e)) { /* Messstrecke, Fixpunkt, Werkzeuge des Stringplans */
+  } else if (S.tool === "dim" && isDispo()) {
+    dimDown(); renderOverlay(); renderRight();
   } else if (S.tool === "place" && isDispo()) {
     const c = dispoSnap(w.x, w.y);
-    addDispoItem(newDispoItem(S.placeSym, c.x, c.y, c));
+    if (placeDown(c)) { renderOverlay(); updateHint(); } else addDispoItem(newDispoItem(S.placeSym, c.x, c.y, c)); // Schienen N/PE/PEN, Zuleitung, Vorlage: eigene Klickfolge
   } else if (S.tool === "place") {
     const c = snap(w.x, w.y, { pins: false, mag: true, offX: placeOffX() });
-    if (S.placeSym === TERMINALS) addTerminals(c.x, c.y); else addSymbol(S.placeSym, c.x, c.y, S.placeRot);
+    if (templateOf(S.placeSym)) addAbgang(templateOf(S.placeSym), colOf(w.x));
+    else if (S.placeSym === TERMINALS) addTerminals(c.x, c.y); else addSymbol(S.placeSym, c.x, c.y, S.placeRot);
   } else if (S.tool === "wire") {
     let c = snap(w.x, w.y, { mag: true });
     // Pin eines mehrpoligen Geräts (Start oder Ende): alle Pole als Bündel, Alt = nur ein Leiter
@@ -946,6 +1069,7 @@ stage.addEventListener("pointerdown", (e) => {
 });
 
 stage.addEventListener("pointermove", (e) => {
+  if (touch.move(e)) return;
   const { sx, sy } = pointerPos(e);
   S.shift = e.shiftKey;
   const w = toWorld(sx, sy);
@@ -974,12 +1098,12 @@ stage.addEventListener("pointermove", (e) => {
         if (r) { it.x = r.x; it.y = r.y; S.guides = []; }
       }
       // Eine einzelne Schiene in einer Platte behält ihre Länge, bleibt aber innerhalb des 20-mm-Randes (höchstens Platte − 40 mm)
-      if (isDispo() && mover.length === 1 && mover[0].type === "rail") {
+      if (isDispo() && mover.length === 1 && mover[0].type === "rail" && !mover[0].free) {
         const it = mover[0], o = d.orig.get(it.id), pl = plateAt(it.x + o.len / 2, it.y), x = it.x;
         Object.assign(it, pl ? D.railClamp({ x: it.x, len: o.len }, pl) : { len: o.len });
         if (it.x !== x) S.guides = S.guides.filter((l) => l.y1 === l.y2); // am Rand begrenzt: senkrechte Hilfslinie stimmt nicht mehr
       }
-      for (const t of followers(mover)) { const o = d.orig.get(t.id); if (o) t.x = round3(o.x + dx); }
+      for (const t of followers(mover)) { const o = d.orig.get(t.id); if (!o) continue; if (o.pts) t.pts = o.pts.map((p) => [round3(p[0] + dx), round3(p[1] + dy)]); else { t.x = round3(o.x + dx); t.y = round3(o.y + followDy(t, dy)); } }
       followWires(d.links);
       renumberAll(S.doc);
       renderItems();
@@ -1016,14 +1140,14 @@ function endDrag(e) {
     if (b.x1 - b.x0 > 0.5 || b.y1 - b.y0 > 0.5) {
       // Eine Platte wird nur gewählt, wenn der Rahmen ihren Rand kreuzt oder sie ganz umschliesst. Ein Rahmen innerhalb der Platte wählt nur den Inhalt.
       const inside = (pb) => b.x0 >= pb.x0 && b.x1 <= pb.x1 && b.y0 >= pb.y0 && b.y1 <= pb.y1;
-      const hit = (isPv() ? PV.layerPick() : pickable()).filter((it) => R.boxesIntersect(R.itemBBox(it), b) && !(it.type === "plate" && inside(R.itemBBox(it)))).map((i) => i.id);
+      const hit = (isPv() ? PV.layerPick() : pickable()).filter((it) => R.boxesIntersect(R.itemBBox(it), b) && !(D.isBack(it) && inside(R.itemBBox(it)))).map((i) => i.id);
       S.sel = new Set([...d.base, ...hit]);
     }
     renderRight(); renderOverlay();
   }
 }
-stage.addEventListener("pointerup", endDrag);
-stage.addEventListener("pointercancel", endDrag);
+stage.addEventListener("pointerup", (e) => { if (!touch.up(e)) endDrag(e); });
+stage.addEventListener("pointercancel", (e) => { if (!touch.up(e)) endDrag(e); });
 stage.addEventListener("pointerleave", () => { if (!S.drag) { S.mouse = null; renderOverlay(); } });
 stage.addEventListener("contextmenu", (e) => e.preventDefault());
 stage.addEventListener("dblclick", (e) => {
@@ -1045,6 +1169,26 @@ stage.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 // ---------- Tastatur ----------
+// Tasten 1 bis 4 und N (CJ 16.10.): beim Setzen die Variante des neuen Symbols, sonst die des einen gewählten Symbols
+function poleKey(key) {
+  if (isPv() || isDispo()) return false;
+  if (S.tool === "place") {
+    if (S.placeSym === TERMINALS || templateOf(S.placeSym)) return false;
+    const v = variantByKey(S.placeSym, key);
+    if (!v) return (key === "t" || key === "T") && hasTrenner(S.placeSym); // T nicht als Text-Werkzeug, wenn die Familie einen N-Trenner kennt
+    S.placeSym = v; renderLeft(); renderRight(); renderOverlay(); updateHint();
+    return true;
+  }
+  const sel = selectedItems();
+  if (S.tool !== "select" || sel.length !== 1 || sel[0].type !== "symbol") return false;
+  const one = sel[0], v = variantByKey(one.sym, key);
+  if (!v) return (key === "t" || key === "T") && hasTrenner(one.sym);
+  pushUndo(); one.sym = v;
+  for (const tt of linkedTerminals(S.model.items, new Set([one.id]))) if (!parseCable(tt.cable)) tt.n = SYMBOL_BY_NAME[one.sym].poles + 1;
+  afterChange();
+  return true;
+}
+
 window.addEventListener("keydown", (e) => {
   if ($("#modal-root .modal-back")) return; // Dialog offen: keine Tastenkürzel
   const t = e.target;
@@ -1069,7 +1213,9 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Shift") { S.shift = true; renderOverlay(); }
   if (e.key === "Alt") S.alt = true;
   if (isPv() && e.key === "Tab" && !mod && !e.altKey && PV.cornerKey(e.shiftKey)) { e.preventDefault(); return; } // Bezugsecke bei Modul und Modulfeld (5x)
+  if (isDispo() && e.key === "Tab" && !mod && !e.altKey && dispoCornerKey(e.shiftKey)) { e.preventDefault(); renderRight(); renderOverlay(); updateHint(); return; } // Bezugsecke neuer Platten (CJ 16.10.)
   if (isPv() && !mod && !e.altKey && PV.toolKey(e.key)) return; // S, P, E, B: Werkzeuge des Stringplans (Schritt 5d)
+  if (!mod && !e.altKey && poleKey(e.key)) { e.preventDefault(); return; } // 1 bis 4 und N: Polzahl (CJ 16.10.)
   switch (e.key) {
     case "v": case "V": setTool("select"); break;
     case "l": case "L": if (!isDispo() && !isPv()) setTool("wire"); break;
@@ -1079,15 +1225,16 @@ window.addEventListener("keydown", (e) => {
     case "r": case "R": rotateSelected(); break;
     case "y": case "Y": if (!mod) toggleDims(); break;
     case "m": case "M": if (!mod) togglePin(S.active); break;
+    case "b": case "B": if (!mod && isDispo()) setTool("dim"); break;
     case "g": case "G": if (!mod) { e.preventDefault(); gotoSheet({ instant: true }); } break;
     case "PageUp": e.preventDefault(); stepSheet(-1); break;
     case "PageDown": e.preventDefault(); stepSheet(1); break;
     case "+": case "=": { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.25); break; }
     case "-": { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 0.8); break; }
     case "Delete": case "Backspace": e.preventDefault(); deleteSelected(); break;
-    case "Enter": if (S.wireDraft) finishWire(); else if (PV.cancel()) { renderOverlay(); updateHint(); } break;
+    case "Enter": if (S.wireDraft) finishWire(); else if (PV.cancel() || draftFinish()) { renderOverlay(); updateHint(); } break;
     case "Escape":
-      if (PV.cancel()) { renderOverlay(); updateHint(); }
+      if (PV.cancel() || dimCancel() || draftEsc()) { renderOverlay(); updateHint(); }
       else if (S.wireDraft) { S.wireDraft.pts.length >= 2 ? finishWire() : (cancelDraft(), renderOverlay(), updateHint()); }
       else if (S.tool !== "select") setTool("select");
       else if (S.sel.size) { S.sel.clear(); renderRight(); renderOverlay(); }
@@ -1122,6 +1269,16 @@ leftEl.addEventListener("click", async (e) => {
     if (sym && await confirmDialog("Symbol entfernen?", `„${sym.label}“ wird aus der Bibliothek entfernt. Bereits gezeichnete Symbole in Dateien bleiben erhalten.`, "Entfernen")) { LIBS.removeSymbol(sym); renderLeft(); }
     return;
   }
+  if (e.target.closest("[data-abgsave]")) { saveAbgang(); return; }
+  const ad = e.target.closest("[data-abgdel]");
+  if (ad) {
+    const t = CUSTOM.find((x) => x.id === ad.dataset.abgdel);
+    if (t && await confirmDialog("Abgang löschen?", `„${t.label}“ wird aus den eigenen Abgängen entfernt. Bereits gezeichnete Abgänge bleiben.`, "Löschen")) {
+      if (S.placeSym === TEMPLATE_PREFIX + t.id) setTool("select");
+      removeCustom(t.id); renderLeft();
+    }
+    return;
+  }
   const pva = e.target.closest("[data-pvact]");
   if (pva) { PV.action(pva); return; }
   const t = e.target.closest("[data-tool]"), s = e.target.closest("[data-sym]");
@@ -1137,15 +1294,16 @@ onPanel("input", (e) => {
   const t = e.target, one = selectedItems()[0];
   if (t.dataset.attr && one) {
     firstEdit(); one.attrs[t.dataset.attr] = t.value;
-    if (t.dataset.attr === "BMK" && isDevice(SYMBOL_BY_NAME[one.sym])) { one.manual = t.value.trim() !== ""; renumberAll(S.doc); }
+    if (t.dataset.attr === "BMK" && bmkLetter(SYMBOL_BY_NAME[one.sym])) { one.manual = t.value.trim() !== ""; renumberAll(S.doc); }
   }
   else if (t.dataset.meta) { firstEdit(); const tt = T.titleOf(S.doc); (T.PROJECT_FIELDS.includes(t.dataset.meta) ? (tt ? [tt] : S.doc.sheets) : [S.model]).forEach((sh) => { sh.meta[t.dataset.meta] = t.value; }); /* ohne Titelseite: auf alle Blätter */ T.syncDeck(S.doc); renderSheet(); if (t.dataset.meta === "BLATT") { renumberAll(S.doc); renderSheetBar(); renderItems(); } }
   else if (t.dataset.info && S.model.kind === "title") { firstEdit(); S.model.info[t.dataset.info] = t.value; if (t.dataset.info.startsWith("FIRMA")) T.saveFirm(S.model.info); renderSheet(); }
   else if (t.dataset.rev && S.model.kind === "title") { firstEdit(); const [i, k] = t.dataset.rev.split(":"); S.model.info.revs[Number(i)][k] = t.value; renderSheet(); }
-  else if ((t.dataset.lattr || t.dataset.lterm) && S.legSel !== null) { // Legende: Werte des gewählten Geräts ändern
+  else if ((t.dataset.lattr || t.dataset.lterm || t.dataset.lbez !== undefined) && S.legSel !== null) { // Legende: Werte des gewählten Geräts ändern
     const f = findItem(S.doc, S.legSel); if (!f) return;
     firstEdit();
-    if (t.dataset.lattr) { f.item.attrs[t.dataset.lattr] = t.value; if (t.dataset.lattr === "BMK") { f.item.manual = t.value.trim() !== ""; renumberAll(S.doc); } }
+    if (t.dataset.lbez !== undefined) { const tt = f.sheet.items.find((i) => i.type === "terminals" && i.of === f.item.id); if (tt) tt.name = t.value; else if (t.value.trim()) f.item.bez = t.value; else delete f.item.bez; } // mit Klemmen: Bezeichnung der Klemmenleiste, sonst nur Legende
+    else if (t.dataset.lattr) { f.item.attrs[t.dataset.lattr] = t.value; if (t.dataset.lattr === "BMK") { f.item.manual = t.value.trim() !== ""; renumberAll(S.doc); } }
     else { const tt = f.sheet.items.find((i) => i.type === "terminals" && i.of === f.item.id); if (!tt) return; tt[t.dataset.lterm] = t.value; if (t.dataset.lterm === "cable") { const c = parseCable(t.value); if (c) tt.n = c.n; } }
     renderSheet();
   }
@@ -1166,7 +1324,7 @@ onPanel("input", (e) => {
     if (numeric && !Number.isFinite(v)) return;
     if (["w", "h", "len", "te"].includes(key) && !(v > 0)) return;
     firstEdit();
-    if (one.type === "plate" && key === "w") setPlateW(one, v); else one[key] = v;
+    if (one.type === "plate" && key === "w") setPlateW(one, v); else if (!dispoApplyDp(one, key, t)) one[key] = v;
   }
   else if (t.dataset.dpnew) {
     const k = t.dataset.dpnew;
@@ -1185,6 +1343,7 @@ onPanel("change", (e) => {
     if (!on && S.model.show.length === 1) { t.checked = true; toast("Mindestens eine Spalte bleibt angehakt."); return; }
     change(() => { S.model.show = LEGEND_KEYS.filter((c) => (c === k ? on : S.model.show.includes(c))); }); renderSheet(); return;
   }
+  if (t.dataset.mainl !== undefined || t.dataset.mainr !== undefined) { setMainEnd(t); return; }
   if (t.dataset.railend !== undefined && one && isRail(one)) {
     pushUndo(); let refId = null;
     const side = t.dataset.railend;
@@ -1192,6 +1351,8 @@ onPanel("change", (e) => {
     if (refId) { const ref = S.model.items.find((i) => i.id === refId); if (ref) offerLink(ref); }
     return;
   }
+  if (t.dataset.dpnum && isDispo()) { if (!setDimNum(t.dataset.dpnum, parseFloat(t.value))) toast("Wert ausserhalb des Bereichs.", "error"); return; } // Fenster „Ansicht“: Masstext
+  if (t.dataset.dpview && isDispo()) { const k = t.dataset.dpview; change(() => { if (t.checked) delete S.model[k]; else S.model[k] = false; }, { panel: false }); return; } // Fenster „Ansicht“: Masse, Türen
   if (t.dataset.dpdims !== undefined && one && one.type === "dispoview") { pushUndo(); if (t.checked) one.dims = true; else delete one.dims; afterChange(); }
   else if (t.dataset.dpden !== undefined && one && one.type === "dispoview") { pushUndo(); one.den = Number(t.value); afterChange(); }
   else if (t.dataset.wirekind !== undefined && one) { pushUndo(); one.kind = t.value; afterChange(false); }
@@ -1204,6 +1365,8 @@ onPanel("change", (e) => {
   }
   else if (t.dataset.placepoles !== undefined) { S.placeSym = t.value; renderLeft(); renderRight(); renderOverlay(); updateHint(); }
   else if (t.dataset.termpe !== undefined && one) { pushUndo(); one.pe = t.value; afterChange(false); }
+  else if (t.dataset.termdraw !== undefined && one?.type === "terminals") { pushUndo(); if (t.value === "off") one.noterm = true; else delete one.noterm; afterChange(); }
+  else if (t.dataset.dp === "maker" && one?.type === "part" && isDispo()) renderRight(); // NH: Liste der Grössen folgt dem Hersteller
   if (t.tagName === "SELECT") t.blur();
 });
 onPanel("click", (e) => {
@@ -1213,8 +1376,10 @@ onPanel("click", (e) => {
   if (pva) { if (pva.dataset.pvact === "pmid") pvPop.hide(false); PV.action(pva); return; } // Stringplan: Modultypen, Katalog. Druckmitte setzen schliesst das Fenster.
   const b = e.target.closest("[data-act]");
   if (!b) return;
+  if (b.dataset.act.startsWith("dp")) { dispoAct(b.dataset.act, b); return; } // Zählerplatte bestücken, Masse aus-/einblenden
+  if (b.dataset.act.startsWith("cab")) { dispoCabAct(b.dataset.act, b, selectedItems()[0]); return; } // Schrank: Feld anfügen, löschen, Montageplatten
   const one = selectedItems()[0];
-  ({ rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
+  ({ rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
 });
 
 let addHeld = false, addTimer = 0; // langes Drücken auf + öffnet die Auswahl statt ein Blatt anzulegen
@@ -1222,7 +1387,7 @@ $("#sheetbar").addEventListener("click", (e) => {
   const step = e.target.closest("[data-step]");
   if (step) stepSheet(Number(step.dataset.step));
   else if (e.target.closest("[data-gosheet]")) sheetMenu.toggle($("#sheet-cur"));
-  else if (e.target.closest("[data-addsheet]")) { if (addHeld) addHeld = false; else if (addMenu.open) addMenu.hide(false); else addSheet(); }
+  else if (e.target.closest("[data-addsheet]")) { if (addHeld) addHeld = false; else if (addMenu.open) addMenu.hide(false); else addSameKind(); }
 });
 $("#sheetbar").addEventListener("pointerdown", (e) => {
   const b = e.target.closest("#sheet-add");
@@ -1253,13 +1418,25 @@ $("#btn-lists").addEventListener("click", () => { closeEditor(true); download(`$
 $("#btn-handover").addEventListener("click", handOver);
 
 pvPop = makeMenu(popEl, { left: true, form: true, beforeShow: () => closeEditor(true), onOpen: () => popEl.focus() });
-for (const b of document.querySelectorAll("#pv-bar [data-pop]")) b.addEventListener("click", () => {
+for (const b of document.querySelectorAll("#pv-bar [data-pop], #doc-bar [data-pop]")) b.addEventListener("click", () => {
   if (pvPop.open && pvPop.anchorId() === b.id) { pvPop.hide(); return; }
-  popKind = b.dataset.pop; popEl.setAttribute("aria-label", { mod: "Module", wr: "Wechselrichter", druck: "Druck" }[popKind]);
+  popKind = b.dataset.pop; popEl.setAttribute("aria-label", { mod: "Module", wr: "Wechselrichter", druck: "Druck", blatt: "Schriftfeld", haupt: "Hauptlinien", ansicht: "Ansicht" }[popKind]);
   popEl.innerHTML = popHTML(); popEl.scrollTop = 0;
   if (pvPop.open) pvPop.hide(false);
   pvPop.show(b);
 });
+// WR verschieben per Drag and Drop im Fenster Wechselrichter (5aw, CJ 15.10.): Griff „⠿ WR n“ auf eine andere WR-Zeile ziehen
+const WR_DT = "text/x-schemacad-wr", wrDropOff = () => popEl.querySelectorAll(".pv-wr.drop, .pv-wr.dragging").forEach((x) => x.classList.remove("drop", "dragging"));
+popEl.addEventListener("dragstart", (e) => { const g = e.target.closest?.("[data-wrdrag]"); if (!g) return; e.dataTransfer.setData(WR_DT, g.dataset.wrdrag); e.dataTransfer.effectAllowed = "move"; g.closest(".pv-wr").classList.add("dragging"); });
+popEl.addEventListener("dragover", (e) => {
+  const r = e.target.closest?.(".pv-wr");
+  if (!r || !e.dataTransfer.types.includes(WR_DT)) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = "move";
+  for (const x of popEl.querySelectorAll(".pv-wr.drop")) if (x !== r) x.classList.remove("drop");
+  r.classList.add("drop");
+});
+popEl.addEventListener("drop", (e) => { const r = e.target.closest?.(".pv-wr"), from = Number(e.dataTransfer.getData(WR_DT)); if (!r || !from) return; e.preventDefault(); wrDropOff(); PV.moveWr(from, Number(r.dataset.wrrow)); });
+popEl.addEventListener("dragend", wrDropOff);
 const exportMenu = makeMenu($("#export-menu"), { beforeShow: () => closeEditor(true) });
 $("#btn-export").addEventListener("click", (e) => exportMenu.toggle(e.currentTarget));
 $("#btn-export").addEventListener("keydown", (e) => { if (e.key === "ArrowDown") { e.preventDefault(); exportMenu.show(e.currentTarget); } });
@@ -1344,6 +1521,13 @@ async function addRail() {
     S.model.items.push({ id: nextId(), type: "wire", kind: r[1], pts: [[RAIL_X0, y], [RAIL_X1, y]], tag: "grund" });
     S.model.items.push({ id: nextId(), type: "text", x: 12, y: y - 1, h: 2.5, s: r[0].trim(), tag: "grund" });
   });
+}
+// Eingangsverdrahtung (eingang.js): HAK, Zuleitung, NH, SPD, HPAS, Erde in einem Rückgängig-Schritt
+function addFeed() {
+  const test = JSON.parse(JSON.stringify(S.model)), msg = insertFeed(test, () => 0);
+  if (msg) { toast(msg, "error"); return; }
+  change(() => insertFeed(S.model, nextId));
+  toast("Eingangsverdrahtung eingefügt. Alles lässt sich einzeln bearbeiten, ⌘Z nimmt sie zurück.");
 }
 function insertBase() {
   if (hasBase(S.model.items)) return;

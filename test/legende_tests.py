@@ -66,7 +66,7 @@ with sync_playwright() as p:
     # Zeile wählen, Wert ändern wirkt aufs Gerät
     bx = rows.nth(1).bounding_box(); page.mouse.click(bx["x"] + bx["width"] / 2, bx["y"] + bx["height"] / 2); page.wait_for_timeout(120)
     check("Zeile gewählt: Felder des LS rechts, Zeile hervorgehoben", page.locator('input[data-lattr="STROM"]').count() == 1 and page.locator('#sheet .leg-row rect[fill="#fff4cc"]').count() == 1)
-    fill('input[data-lattr="STROM"]', "16A"); fill('input[data-lterm="name"]', "Küche")
+    fill('input[data-lattr="STROM"]', "16A"); fill('input[data-lbez]', "Küche")
     ls = [i for i in D()["sheets"][2]["items"] if i.get("sym") == "LS_1P"][0]
     tl = [i for i in D()["sheets"][2]["items"] if i["type"] == "terminals" and i.get("of") == ls["id"]]
     check("Nennstrom 16A und Bezeichnung Küche im Schema", ls["attrs"]["STROM"] == "16A" and tl and tl[0]["name"] == "Küche" and "Küche" in page.text_content("#sheet"), [ls["attrs"], tl])

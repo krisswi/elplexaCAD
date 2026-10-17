@@ -348,16 +348,19 @@ export function typeFromForm(vals, id, inv = false) {
 }
 
 // ---------- Wechselrichter (Schritt 6) ----------
-// WR-Typ (Katalog im Dokument, doc.pv.invTypes): { id, name, vmax, vmppMin?, vmppMax?, imax?, vstart?, mppt? }. Pflicht: Name und Vmax (Annahme Claude:
-// ohne Vmax keine Spannungsprüfung). Vmax = max. Eingangsspannung in V, imax = max. Eingangsstrom je MPPT in A, mppt = Anzahl MPPT.
+// WR-Typ (Katalog im Dokument, doc.pv.invTypes): { id, name, vmax, vmppMin?, vmppMax?, iscMax?, imppMax?, vstart?, mppt? }. Pflicht: Name und Vmax (Annahme Claude:
+// ohne Vmax keine Spannungsprüfung). Vmax = max. Eingangsspannung in V, mppt = Anzahl MPPT.
+// 5au (CJ 15.10.): getrennt iscMax = max. Kurzschlussstrom je MPPT, imppMax = max. Arbeitsstrom je MPPT, beide in A. Das alte Feld imax
+// (bis 15.10.) wird beim Laden als iscMax übernommen (bisher wurde Isc × 1,25 dagegen geprüft).
 // Zuordnung: die WR-Nummer aus der Bezeichnung (2 in 2.1.1) zeigt über doc.pv.wr auf einen WR-Typ (CJ 14.10.: Typ im Katalog + Zuordnung).
 // MPP-Bereich und Startspannung werden nur erfasst, geprüft wird später (CJ 14.10.).
-export const IT_FIELDS = [["name", "Name", ""], ["vmax", "Vmax (max. Eingangsspannung)", "V"], ["vmppMin", "MPP-Spannung von", "V"], ["vmppMax", "MPP-Spannung bis", "V"], ["imax", "Imax je MPPT", "A"], ["vstart", "Startspannung", "V"], ["mppt", "Anzahl MPPT", ""]];
+export const IT_FIELDS = [["name", "Name", ""], ["vmax", "Vmax (max. Eingangsspannung)", "V"], ["vmppMin", "MPP-Spannung von", "V"], ["vmppMax", "MPP-Spannung bis", "V"], ["iscMax", "Isc max je MPPT", "A"], ["imppMax", "Impp max je MPPT", "A"], ["vstart", "Startspannung", "V"], ["mppt", "Anzahl MPPT", ""]];
 export function cleanInvType(raw, id = raw?.id) {
   if (!raw || typeof raw !== "object" || typeof id !== "string" || !id) return null;
   const name = String(raw.name ?? "").trim(), o = { id, name };
   if (!name || !(isNum(raw.vmax) && raw.vmax > 0) || (raw.mppt !== undefined && !(Number.isInteger(raw.mppt) && raw.mppt > 0))) return null;
-  for (const [k] of IT_FIELDS.slice(1)) if (isNum(raw[k]) && raw[k] > 0) o[k] = raw[k];
+  const src = raw.iscMax === undefined && raw.imax !== undefined ? { ...raw, iscMax: raw.imax } : raw; // altes Feld imax (5au)
+  for (const [k] of IT_FIELDS.slice(1)) if (isNum(src[k]) && src[k] > 0) o[k] = src[k];
   return o;
 }
 
@@ -378,8 +381,10 @@ export const fmtNum = (v, d = 1) => String(Math.round(v * 10 ** d) / 10 ** d).re
 const pct = (v, max) => `${fmtNum((v / max) * 100)} %`; // eine Nachkommastelle, damit 999,3 V nicht als 100 % erscheint
 // Alle Strings aller Stringpläne der Datei (CJ 14.10.: eine Übersicht für alle), sortiert nach WR, MPPT, String.
 // Zeile: { si, name, wr, mppt, str, n, types, voc, vt, isc, inv, lvl, notes: [{ t, lvl }] }. voc = STC, vt = bei Tmin (null = nicht berechenbar).
-// Strom (CJ 14.10.): Summe Isc der Strings am selben WR-Eingang (WR.MPPT, über alle Pläne) gegen Imax je MPPT. Isc eines Strings = grösstes Isc
-// seiner Module × 1,25 (5ak, CJ 15.10.), auch ohne Tmin.
+// Strom (CJ 14.10.): Summe Isc der Strings am selben WR-Eingang (WR.MPPT, über alle Pläne) gegen Isc max je MPPT. Isc eines Strings = grösstes Isc
+// seiner Module × 1,25 (5ak, CJ 15.10.), auch ohne Tmin. Überschreiten = Fehler.
+// Impp (5au, CJ 15.10.): Summe Impp (grösstes Impp der Module, ohne Faktor) je WR-Eingang gegen Impp max. Überschreiten = Warnung „Ertragseinbusse möglich“.
+// Ohne Impp max im WR-Typ keine Impp-Prüfung und kein Hinweis (Feld freiwillig, Annahme Claude).
 export function stringReport(doc) {
   const pv = doc.pv ?? {}, mts = new Map((pv.moduleTypes ?? []).map((t) => [t.id, t])), its = new Map((pv.invTypes ?? []).map((t) => [t.id, t])), tmin = pv.tmin;
   const rows = [], seen = new Map();
@@ -404,7 +409,8 @@ export function stringReport(doc) {
       if (vt !== null && vsys === null) note("Systemspannung fehlt im Modultyp", "info");
       else if (vt !== null && level(vt, vsys, false) === "bad") note(`Über Systemspannung ${fmtNum(vsys, 0)} V`, "bad");
       const isc = ts.length && ts.every((t) => isNum(t.isc)) ? Math.max(...ts.map((t) => t.isc)) * ISC_FACTOR : null;
-      rows.push({ si, name: s.name, ...p, n: s.mods.length, types: names, voc, vt, isc, inv, notes });
+      const impp = ts.length && ts.every((t) => isNum(t.impp)) ? Math.max(...ts.map((t) => t.impp)) : null;
+      rows.push({ si, name: s.name, ...p, n: s.mods.length, types: names, voc, vt, isc, impp, inv, notes });
       if (!seen.has(s.name)) seen.set(s.name, `Stringplan ${sh.meta?.BLATT || si + 1}`);
     }
   });
@@ -415,10 +421,14 @@ export function stringReport(doc) {
   for (const g of groups.values()) {
     const inv = g[0].inv;
     if (!inv) continue;
-    if (!inv.imax) { for (const r of g) r.notes.push({ t: "Imax fehlt im WR-Typ, Strom nicht geprüft", lvl: "info" }); continue; }
-    if (g.some((r) => r.isc === null)) { for (const r of g) r.notes.push({ t: "Isc fehlt im Modultyp, Strom nicht geprüft", lvl: "info" }); continue; }
-    const sum = g.reduce((a, r) => a + r.isc, 0);
-    if (level(sum, inv.imax, false) === "bad") for (const r of g) r.notes.push({ t: `Über Imax: Isc × 1,25${g.length > 1 ? ` von ${g.length} Strings` : ""} ${fmtNum(sum)} A, Imax ${fmtNum(inv.imax)} A`, lvl: "bad" });
+    const von = g.length > 1 ? ` von ${g.length} Strings` : "", add = (t, lvl) => { for (const r of g) r.notes.push({ t, lvl }); };
+    if (!inv.iscMax) add("Isc max fehlt im WR-Typ, Strom nicht geprüft", "info");
+    else if (g.some((r) => r.isc === null)) add("Isc fehlt im Modultyp, Strom nicht geprüft", "info");
+    else { const sum = g.reduce((a, r) => a + r.isc, 0); if (sum > inv.iscMax) add(`Über Isc max: Isc × 1,25${von} ${fmtNum(sum)} A, max ${fmtNum(inv.iscMax)} A`, "bad"); }
+    if (!inv.imppMax) continue;
+    if (g.some((r) => r.impp === null)) { add("Impp fehlt im Modultyp, Impp nicht geprüft", "info"); continue; }
+    const si = g.reduce((a, r) => a + r.impp, 0);
+    if (si > inv.imppMax) add(`Ertragseinbusse möglich: Impp ${fmtNum(si)} A, Impp max ${fmtNum(inv.imppMax)} A`, "warn");
   }
   for (const r of rows) r.lvl = r.notes.reduce((a, x) => (LV[x.lvl] > LV[a] ? x.lvl : a), "ok");
   return rows;
@@ -645,6 +655,24 @@ export function anlageFree(wr) {
   if (!list) return [];
   const used = new Set(doc.sheets.filter((sh) => sh.kind === "pv").flatMap((sh) => strings(sh).map((s) => s.name)));
   return anlageNames(list, wr).filter((n) => !used.has(n));
+}
+// WR neu nummerieren (5as löschen, 5aw verschieben, CJ 15.10.): order[k] = alte WR-Nummer, die neu Nummer k + 1 bekommt.
+// Strings aller Stringpläne werden umbenannt (2.1.3 → 1.1.3), Zuordnung Datenblatt und Anlage ziehen mit. Strings einer alten Nummer,
+// die in order fehlt, werden gelöscht (Module bleiben). Bezeichnungen, die nicht WR.MPPT.String sind, bleiben. Ändert doc direkt.
+export function renumberWr(doc, order) {
+  const map = new Map(order.map((old, k) => [old, k + 1]));
+  for (const sh of doc.sheets) {
+    if (sh.kind !== "pv") continue;
+    sh.items = sh.items.filter((it) => { const p = it.type === "pvstring" && parseName(it.name); return !p || map.has(p.wr); });
+    for (const it of strings(sh)) { const p = parseName(it.name); if (p) it.name = `${map.get(p.wr)}.${p.mppt}.${p.str}`; }
+  }
+  const pv = (doc.pv ??= {}), a = pv.anlage ?? [], wr = {};
+  for (const [old, nr] of map) if (pv.wr?.[old]) wr[nr] = pv.wr[old];
+  pv.wr = wr;
+  const len = Math.max(0, ...order.map((old, k) => (old <= a.length ? k + 1 : 0)));
+  const list = order.slice(0, len).map((old) => ({ str: [...(a[old - 1]?.str ?? [])] }));
+  pv.anlage = list.length ? list : undefined;
+  doc.pv = tidyPv(pv);
 }
 // Was auf den gedruckten Stringplan kommt (Schritt 5l). Blattfeld hide = ausgeschaltete Teile, fehlt = alles an.
 export const PRINT_PARTS = [["bg", "Hintergrundplan"], ["roof", "Dachlinien"], ["fill", "Füllung"], ["keepout", "Sperrflächen"], ["mod", "Module"], ["str", "Strings"], ["name", "Bezeichnungen"], ["pm", "+ und −"], ["spa", "SPA"], ["text", "Texte"], ["head", "Plankopf"], ["north", "Nordpfeil"], ["bar", "Massstabsleiste"]];

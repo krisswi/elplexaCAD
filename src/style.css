@@ -84,12 +84,25 @@ button { cursor: pointer; }
 .sym .thumb svg { width: 44px; height: 44px; }
 .sym .name { font-weight: 500; line-height: 1.25; font-size: 13.5px; }
 .sym .sub { font-size: 12.5px; color: var(--muted); line-height: 1.25; }
+.symfam { padding: 8px 8px 6px; }
+.symfam > .name { display: block; font-weight: 500; line-height: 1.25; font-size: 13.5px; margin-bottom: 6px; }
+.vargrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 4px; }
+.var { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 2px 3px; border: 1px solid transparent; border-radius: 8px; background: transparent; min-width: 0; transition: transform 120ms ease-out; }
+.var:hover { background: var(--hover); }
+.var:active { transform: scale(0.97); }
+.var[aria-pressed="true"] { border-color: var(--ink); background: #fff; }
+.var .thumb { width: 40px; height: 40px; border-radius: 6px; background: #fff; border: 1px solid var(--panel-line); display: grid; place-items: center; }
+.var .thumb svg { width: 34px; height: 34px; }
+.var .vl { font-size: 11.5px; line-height: 1.2; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.var[aria-pressed="true"] .vl { color: var(--ink); font-weight: 500; }
 
 .field { margin-bottom: 12px; }
 .field label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted); }
-.field input[type="text"], .field input[type="number"], .field select { width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--panel-line); border-radius: var(--radius); background: #fff; }
-.field input:focus, .field select:focus { outline: 2px solid var(--pe-green); outline-offset: 1px; border-color: transparent; }
+.field input[type="text"], .field input[type="number"], .field select, .line-row input { width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--panel-line); border-radius: var(--radius); background: #fff; }
+.field input:focus, .field select:focus, .line-row input:focus { outline: 2px solid var(--pe-green); outline-offset: 1px; border-color: transparent; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.line-row { flex-wrap: nowrap; align-items: center; }
+.line-row input { flex: 1; min-width: 0; }
 .prop-head { margin: 0 0 14px; }
 .prop-head h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.25; }
 .prop-head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
@@ -162,9 +175,11 @@ button { cursor: pointer; }
 .sel-b { stroke: var(--pe-green); stroke-dasharray: 7 7; }
 .dp-guide { stroke: var(--pe-green); stroke-width: 1px; opacity: .85; pointer-events: none; }
 .dp-handle { fill: #fff; stroke: var(--pe-green); stroke-width: 1.5px; pointer-events: none; }
+.dp-snap { fill: none; stroke: var(--pe-green); stroke-width: 1.5px; pointer-events: none; }
+.dp-dimsel { stroke: var(--pe-green); opacity: .45; stroke-linecap: round; pointer-events: none; }
 #texteditor.mass { min-width: 72px; width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
 .wire-handle { fill: #fff; stroke: var(--pe-green); stroke-width: 1.4px; pointer-events: none; }
-.thumb svg line, .thumb svg circle { vector-effect: non-scaling-stroke; }
+.thumb svg line, .thumb svg circle, .thumb svg rect { vector-effect: non-scaling-stroke; }
 .sym > span:last-child { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
 
 @media (max-width: 600px) {
@@ -178,12 +193,12 @@ button { cursor: pointer; }
 .note { margin: -4px 0 12px; font-size: 12.5px; line-height: 1.35; color: var(--muted); }
 .pv-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 #sheetbar { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 2px; max-width: calc(100% - 200px); padding: 4px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 12px; box-shadow: 0 2px 10px rgba(23, 33, 43, .12); }
-.sheettab { height: 32px; min-width: 32px; padding: 0 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; white-space: nowrap; font-weight: 500; }
+.sheettab { display: inline-flex; align-items: center; justify-content: center; line-height: 1; height: 32px; min-width: 32px; padding: 0 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; white-space: nowrap; font-weight: 500; }
 .sheettab:hover { background: var(--hover); }
 .sheettab:disabled { opacity: .35; cursor: default; }
-.sheettab.nav { padding: 0 9px; color: var(--muted); }
+.sheettab.nav { padding: 0 9px 2px; color: var(--muted); font-size: 20px; } /* ‹ › sitzen in der Schrift tief: grösser und leicht angehoben (CJ 16.10.: Mitte) */
 /* Mitte: Blatt und Position, kürzt lange Namen statt die Leiste zu verbreitern */
-.sheettab.cur { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; padding: 0 10px; }
+.sheettab.cur { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 0 10px; }
 .sheettab.cur .cl { overflow: hidden; text-overflow: ellipsis; }
 .sheettab.cur .of { font-weight: 400; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .sheettab.cur .caret { margin-left: -2px; }
@@ -215,6 +230,7 @@ button { cursor: pointer; }
 #printroot text { font-family: var(--sheet-font); }
 #printroot .paper { filter: none; }
 #printroot [stroke-width] { stroke-width: var(--pw, 0.35) !important; }
+#printroot .dp-cable { stroke-width: calc(var(--pw, 0.35) * 2.5) !important; } /* Zuleitung in der Disposition kräftig */
 @page { size: A4 landscape; margin: 0; }
 /* Stringplan und Stringübersicht (PV-Strings Schritt 7): Papier je Seite (pvprint.js), Linien 0,25 mm, Strings 0,5 mm */
 @page pA4q { size: 297mm 210mm; margin: 0; } @page pA4h { size: 210mm 297mm; margin: 0; }
@@ -303,6 +319,32 @@ details.proj[open] summary { margin-bottom: 8px; }
 .pv-wr { padding-top: 10px; border-top: 1px solid var(--panel-line); }
 .pv-wr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 13.5px; font-weight: 600; }
 .pv-wr-head .btn { height: 26px; padding: 0 9px; }
+.pv-wr-grip { cursor: grab; user-select: none; padding: 2px 4px 2px 0; }
+.pv-wr.dragging { opacity: 0.5; }
+.pv-wr.drop { box-shadow: inset 0 2px 0 var(--pe-green); }
 .pv-wr-grid { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: 8px; }
 .pv-wr-grid .field input[type="text"] { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 860px) { .pvbar { margin-left: 0; } }
+
+/* Mobilansicht (UI Schritt 5, mobil.js): bis 600 px Schema oben, Felder zum Bearbeiten darunter. Kein Zeichnen, keine Werkzeuge. */
+@media (max-width: 600px) {
+  #app { height: 100dvh; grid-template-rows: 52px minmax(0, 56fr) minmax(0, 44fr); grid-template-areas: "top" "stage" "right"; }
+  #right { display: block; position: static; width: auto; z-index: auto; box-shadow: none; border-left: 0; border-top: 1px solid var(--panel-line); padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); }
+  #left, body.show-left #left, #statusbar, #btn-left, #btn-right { display: none !important; }
+  #sheetbar { bottom: 56px; }
+  body.nosel #right::before { content: "Gerät antippen, hier unten bearbeiten. Ein Finger schiebt, zwei Finger zoomen."; display: block; margin-bottom: 10px; font-size: 12.5px; color: var(--muted); }
+  /* 16 px: iOS zoomt beim Antippen eines Feldes sonst die ganze Seite */
+  #right input, #right select, #right textarea, .pv-pop input, .pv-pop select { font-size: 16px; }
+  #right .btn { height: 40px; }
+}
+
+/* Abgänge als Schnellzugriff über den Symbolen (CJ 16.10.) */
+.abggrid { margin-bottom: 8px; }
+.abg .vl { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-align: center; }
+.abgwrap { position: relative; min-width: 0; display: grid; }
+.abgdel { position: absolute; top: 0; right: 0; width: 18px; height: 18px; border: 0; border-radius: 50%; background: var(--panel, #fff); color: var(--muted); font-size: 13px; line-height: 1; opacity: 0; transition: opacity 120ms ease-out; }
+.abgwrap:hover .abgdel, .abgdel:focus-visible { opacity: 1; }
+@media (hover: none) { .abgdel { opacity: 1; } }
+.abgdel:hover { background: var(--hover); color: var(--ink); }
+.abgsave { width: 100%; }
+

@@ -18,7 +18,9 @@ export function parseCable(s) {
 export const termCount = (it) => (parseCable(it.cable)?.n ?? Math.max(1, Math.min(MAX_TERMINALS, it.n || 1)));
 
 // Die einzelnen Klemmen als Symbolobjekte (Blöcke KLEMME_R und KLEMME_PE)
+// noterm (CJ 16.10.): Leiste ohne Klemmen, nur BMK, Kabel und Bezeichnung (z. B. Abgang mit Verweis)
 export function termItems(it) {
+  if (it.noterm) return [];
   const n = termCount(it);
   const out = [];
   for (let i = 0; i < n; i++) {
@@ -30,6 +32,7 @@ export function termItems(it) {
 
 // Klemmennummern, zentriert in der Klemme (Höhe 2.2). Die PE-Klemme trägt „PE“.
 export function termNumbers(it) {
+  if (it.noterm) return [];
   const n = termCount(it);
   const out = [];
   for (let i = 0; i < n; i++) out.push({ x: it.x + i * T_PITCH, y: it.y - T_H / 2, h: 2.2, s: it.pe !== "none" && i === n - 1 ? "PE" : String(i + 1) });

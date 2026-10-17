@@ -1,22 +1,33 @@
-// Automatische Nummerierung: Blatt + F + Spalte (10F2), übereinander .1, .2 (erstes ohne Punkt). Klemmen: X statt F.
-import { SYMBOL_BY_NAME, isDevice, anchorX } from "./symbols.js";
+// Automatische Nummerierung: Blatt + Kennbuchstabe + Spalte (10F2), übereinander .1, .2 (oberstes ohne Punkt). Klemmen: X statt F.
+// Kennbuchstabe je Familie (BMK_LETTER): Schutzgeräte F, SPD T, Zähler P. Gezählt wird je Spalte und Buchstabe (SPD 3T2 und LS 3F2 in derselben Spalte).
+import { SYMBOL_BY_NAME, isDevice, anchorX, bmkLetter } from "./symbols.js";
 import { colOf, rowOf } from "./frame.js";
 import { newTerminals, termCount } from "./terminals.js";
+import { syncMains } from "./hauptlinien.js";
 
 const centerX = (it) => it.x + anchorX(SYMBOL_BY_NAME[it.sym].poles);
 
 // Setzt BMK der Schutzgeräte und der zugehörigen Klemmenleisten. Gibt true zurück, wenn etwas geändert wurde.
 export function renumber(model) {
+  let changed0 = false;
   const sheet = String(model.meta.BLATT ?? "").trim();
-  const devs = model.items.filter((i) => i.type === "symbol" && isDevice(SYMBOL_BY_NAME[i.sym]) && !i.manual);
+  const devs = model.items.filter((i) => i.type === "symbol" && SYMBOL_BY_NAME[i.sym] && bmkLetter(SYMBOL_BY_NAME[i.sym]) && !i.manual);
+  // Klemmen gehören immer zum untersten Gerät der Spalte (CJ 16.10.: RCD und LS übereinander, Klemmen beim LS)
+  const all = model.items.filter((i) => i.type === "symbol" && isDevice(SYMBOL_BY_NAME[i.sym])), lowest = new Map();
+  for (const d of all) { const c = colOf(centerX(d)), l = lowest.get(c); if (!l || d.y < l.y || (d.y === l.y && d.x < l.x)) lowest.set(c, d); }
+  for (const t of model.items) {
+    const d = t.type === "terminals" && t.of !== undefined && all.find((i) => i.id === t.of), low = d && lowest.get(colOf(centerX(d)));
+    if (low && low !== d) { t.of = low.id; changed0 = true; }
+  }
   const cols = new Map();
-  for (const d of devs) { const c = colOf(centerX(d)); (cols.get(c) || cols.set(c, []).get(c)).push(d); }
-  let changed = false;
-  for (const [c, list] of cols) {
+  for (const d of devs) { const k = colOf(centerX(d)) + bmkLetter(SYMBOL_BY_NAME[d.sym]); (cols.get(k) || cols.set(k, []).get(k)).push(d); }
+  let changed = changed0;
+  for (const [k, list] of cols) {
+    const c = parseInt(k, 10), letter = k.slice(String(c).length);
     list.sort((a, b) => b.y - a.y || a.x - b.x); // oben zuerst
     list.forEach((d, i) => {
       const suffix = i ? "." + i : "";
-      const bmk = `${sheet}F${c}${suffix}`;
+      const bmk = `${sheet}${letter}${c}${suffix}`;
       if (d.attrs.BMK !== bmk) { d.attrs.BMK = bmk; changed = true; }
       for (const t of model.items) {
         if (t.type === "terminals" && t.of === d.id && !t.manual) {
@@ -89,5 +100,6 @@ export function updateRefs(doc) {
 
 export function renumberAll(doc) {
   for (const sheet of doc.sheets) renumber(sheet);
+  syncMains(doc); // Grundverkabelung: Verweise zum nächsten Blatt
   updateRefs(doc);
 }

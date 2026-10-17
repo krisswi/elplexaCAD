@@ -8,7 +8,7 @@ import { LEGEND_KEYS } from "./model.js";
 import { txt, line, lines, INK, MUTED, SOFT } from "./titel.js";
 
 export const PW = 210, PH = 297; // A4 hoch
-export const BLUE = "#2556b8"; // wie die Netzlinien (SCH_NETZ)
+export const BLUE = "#2556b8"; // FI-Blau der Legende (die Netzlinien sind seit 16.10. schwarz)
 export const NOTICE = "Fehlerstromschutzschalter müssen regelmässig geprüft werden (1x pro Jahr Prüftaste drücken).";
 const RCD = new Set(["FI", "RCBO"]);
 
@@ -27,7 +27,7 @@ export const COLS = [
   { key: "ORT", label: "Ort", w: 17, v: (r) => r.ort },
 ];
 export const OPT_LABEL = { BMK: "BMK (Betriebsmittelkennzeichen)", STROM: "Nennstrom", ORT: "Ort (Blatt.Feld)", CHAR: "Charakteristik", IDN: "Bemessungsfehlerstrom IΔn", GERAET: "Gerät", POLE: "Pole", GROESSE: "Baugrösse (NH)", NAME: "Bezeichnung (Verbraucher)", KABEL: "Kabel", KLEMMEN: "Klemmenleiste" };
-const shortLabel = (sym) => ({ LS: "LS", FI: "RCD", RCBO: "RCBO", NH: "NH-Sicherung" }[sym.family] + ` ${sym.poles}-polig`);
+const shortLabel = (sym) => ({ LS: "LS", FI: "RCD", RCBO: "RCBO", NH: "NH-Sicherung" }[sym.family] + ` ${sym.vlabel ?? sym.poles + "-polig"}`);
 
 // Eine Zeile je Schutzgerät (LS, FI, RCBO, NH) aller Schemablätter, sortiert nach Blatt und BMK
 export function legendRows(doc) {
@@ -39,7 +39,7 @@ export function legendRows(doc) {
       if (!sym || !isDevice(sym)) continue;
       const a = it.attrs, t = sh.items.find((i) => i.type === "terminals" && i.of === it.id);
       rows.push({ id: it.id, si, blatt: String(sh.meta.BLATT ?? ""), ort: `${sh.meta.BLATT || si + 1}.${fieldOf(it)}`, bmk: a.BMK ?? "", strom: a.STROM ?? "", char: a.CHAR ?? "", idn: a.IDN ?? "", groesse: a.GROESSE ?? "",
-        geraet: shortLabel(sym), pole: sym.poles, name: t?.name ?? "", kabel: t?.cable ?? "", klemmen: t?.bmk ?? "", rcd: RCD.has(sym.family) });
+        geraet: shortLabel(sym), pole: sym.poles, name: t?.name || it.bez || "", kabel: t?.cable ?? "", klemmen: t?.bmk ?? "", rcd: RCD.has(sym.family) });
     }
   });
   const nat = (a, b) => String(a).localeCompare(String(b), "de", { numeric: true });
@@ -128,8 +128,11 @@ export function panelHTML(doc, sheet, sel, { head, fieldHTML }) {
     const sh = doc.sheets[r.si], it = sh.items.find((i) => i.id === r.id), sym = SYMBOL_BY_NAME[it.sym], t = sh.items.find((i) => i.type === "terminals" && i.of === it.id);
     h += head(r.bmk || "Gerät", `${sym.label}, Ort ${r.ort}`);
     for (const a of sym.attrs) if (!a.auto) h += fieldHTML(a.label, `data-lattr="${a.tag}"`, it.attrs[a.tag] ?? "");
-    if (t) h += fieldHTML("Bezeichnung (Verbraucher)", 'data-lterm="name"', t.name) + fieldHTML("Kabel", 'data-lterm="cable"', t.cable, 'placeholder="5x1.5mm2"');
-    else h += `<p class="note">Ohne Klemmenleiste: Bezeichnung und Kabel stehen dort.</p>`;
+    // Bezeichnung immer beschreibbar (CJ 16.10.): mit Klemmenleiste die Bezeichnung unter dem Kabel (gilt auch im Schema),
+    // ohne Klemmen (z. B. RCD über dem LS, die Klemmen gehören zum unteren Gerät) eine eigene Bezeichnung nur für die Legende.
+    h += fieldHTML("Bezeichnung", "data-lbez", t ? t.name : it.bez || "", 'placeholder="z. B. Steckdosen Küche"');
+    if (!t) h += `<p class="note">Die Klemmen dieser Spalte gehören zum unteren Gerät. Diese Bezeichnung steht nur in der Legende.</p>`;
+    if (t) h += fieldHTML("Kabel", 'data-lterm="cable"', t.cable, 'placeholder="5x1.5mm2"');
     h += `<div class="row"><button class="btn outline small" data-deck="godev">Zum Gerät im Schema</button></div>`;
   } else {
     h += `<p class="note">Klick auf eine Zeile wählt das Gerät. Hier änderst du dann seine Werte, sie gelten auch im Schema.</p>`;

@@ -1,13 +1,16 @@
 // Datenmodell (internes JSON-Format). Koordinaten in mm, y nach oben, Ursprung unten links auf dem Blatt.
 import { META_FIELDS } from "./frame.js";
-import { SYMBOL_BY_NAME } from "./symbols.js";
+import { SYMBOL_BY_NAME, bmkLetter, isDevice } from "./symbols.js";
 import { registerDocSymbols } from "./library.js";
 import { parseCable, MAX_TERMINALS } from "./terminals.js";
 import { DISPO_LAYERS, PLAN_TYPES, cleanPlanItem } from "./dispo.js";
+import { syncMains, cleanMain } from "./hauptlinien.js";
+import { splitWandlerDoc } from "./wandler.js";
 import { cleanAssets, cleanBg, usedAssets, cleanLayers, cleanPvItem, cleanLayerId, cleanPvDoc, PV_ITEMS, checkStrings, cleanPaper, anlageFromSheet, tidyPv, cleanHide, cleanPmid, cleanNorth } from "./pv.js";
 
 export const FORMAT = "schemacad";
-export const VERSION = 6; // 6: mit Stringplan (seit 15.10.2026, Umbau 5ab: gedrehte Module, ältere Stände lehnen ab). 5: mit Titelseite und Inhaltsverzeichnis (kind "title", "toc", titel.js). höchste lesbare Version. 2: mehrere Blätter (sheets), Version 1 (ein Blatt) wird beim Öffnen umgewandelt. 3: wie 2, mit Blättern vom Typ Disposition (nur dann wird 3 geschrieben). 4: mit Stringplan (kind "pv", PDF unter assets) oder Stringübersicht (kind "pvtab").
+export const VERSION = 12; // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
+// 10: // 10: Wandlermessung in Teilen (ZW_WANDLER, ZW_ZAEHLER, Leitungen mit of/wm) oder Klemmenleiste ohne Klemmen (noterm), seit 16.10.2026. // 9: Disposition mit NH-Hersteller (maker), Textzeilen (lines) oder Textgrösse (tf) (seit 16.10.2026; Stände mit 8 lehnen ab, statt die Angaben still zu verlieren). 8: Disposition mit Schrank, Teilen oder neuen Geräteangaben (seit 16.10.2026, schrank.js; ältere Stände lehnen ab statt still zu verlieren). 7: 7: Hauptlinien neu (seit 16.10.2026, Blatt main, Gruppenverweise mit main; ältere Stände lehnen ab, sonst entstünden doppelte Verweise). 6: mit Stringplan (seit 15.10.2026, Umbau 5ab: gedrehte Module, ältere Stände lehnen ab). 5: mit Titelseite und Inhaltsverzeichnis (kind "title", "toc", titel.js). höchste lesbare Version. 2: mehrere Blätter (sheets), Version 1 (ein Blatt) wird beim Öffnen umgewandelt. 3: wie 2, mit Blättern vom Typ Disposition (nur dann wird 3 geschrieben). 4: mit Stringplan (kind "pv", PDF unter assets) oder Stringübersicht (kind "pvtab").
 
 export const WIRE_KINDS = {
   leitung: { label: "Leitung", layer: "SCH_LEITUNG", dashed: false },
@@ -20,7 +23,7 @@ export const WIRE_KINDS = {
 export const LAYERS = {
   SCH_RAHMEN: { color: 7, css: "#17212b" },
   SCH_SCHRIFTFELD: { color: 7, css: "#17212b" },
-  SCH_NETZ: { color: 5, css: "#2556b8" },
+  SCH_NETZ: { color: 7, css: "#17212b" }, // schwarz wie die übrigen Leitungen (CJ 16.10., vorher blau)
   SCH_SYMBOLE: { color: 7, css: "#17212b" },
   SCH_LEITUNG: { color: 7, css: "#17212b" },
   SCH_PE: { color: 3, css: "#1b8a4b" },
@@ -61,13 +64,16 @@ export function parseModel(text) {
     const m = newSheet(KINDS.includes(rs.kind) ? rs.kind : "schema");
     if (m.kind === "title") m.info = cleanInfo(rs.info); // Titelseite: Bauherr, Firma, Logo, Änderungsindex
     if (m.kind === "legend") m.show = cleanShow(rs.show, rs.cols); // Legende: angehakte Spalten (legende.js)
-    if (m.kind === "dispo") { m.sid = isNum(rs.sid) ? rs.sid : 0; if (rs.dims === false) m.dims = false; }
+    if (m.kind === "dispo") { m.sid = isNum(rs.sid) ? rs.sid : 0; if (rs.dims === false) m.dims = false; if (rs.doors === false) m.doors = false; // Fenster „Ansicht“
+      if (isNum(rs.dimH) && rs.dimH > 0) m.dimH = rs.dimH; if (isNum(rs.dimP) && rs.dimP > 0) m.dimP = rs.dimP; // Masstext im Plan und auf dem Schema (seit 16.10.2026)
+      if (Array.isArray(rs.dimsOff) && rs.dimsOff.length) m.dimsOff = rs.dimsOff.filter((k) => typeof k === "string"); } // ausgeblendete automatische Masse
     if (m.kind === "pv") { m.sid = isNum(rs.sid) ? rs.sid : 0; const bg = cleanBg(rs.bg, assets); if (bg) m.bg = bg; const ly = cleanLayers(rs.layers); if (ly) m.layers = ly; }
     if (m.kind === "pv") { const pa = cleanPaper(rs.paper); if (pa) m.paper = pa; } // Papier und Druckmassstab (Schritt 7)
     if (m.kind === "pv") { const hi = cleanHide(rs.hide); if (hi) m.hide = hi; } // Druckteile (5l)
     if (m.kind === "pv") { const pm = cleanPmid(rs.pmid), no = cleanNorth(rs.north); if (pm) m.pmid = pm; if (no !== undefined) m.north = no; } // Druckmitte (5ao), Nordrichtung (5aq)
     if (m.kind === "pvtab") { const pa = cleanPaper(rs.paper); if (pa) m.paper = { size: pa.size, quer: pa.quer }; } // Papier der Stringübersicht (5ap), Massstab immer 1:1
     if (rs.pin === true) m.pin = true;
+    if (!m.kind) { if (isNum(rs.sid)) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); } if (rs.main) m.main = cleanMain(rs.main); } // Hauptlinien (hauptlinien.js): Ziel über sid
     Object.assign(m.meta, rs.meta || {});
     doc.sheets.push(m);
     maxId = parseItems(rs.items || [], m, maxId);
@@ -86,6 +92,7 @@ export function parseModel(text) {
   if (oldAn) doc.pv = tidyPv({ ...pv, anlage: oldAn }); else if (pv) doc.pv = pv; // Katalog: Modultypen (Schritt 4), WR-Typen, Zuordnung und Tmin (Schritt 6)
   doc.nextId = Math.max(maxId + 1, Number(o.nextId) || 1);
   doc.active = Math.max(0, Math.min(doc.sheets.length - 1, Number(o.active) || 0));
+  splitWandlerDoc(doc); // alte Wandlermessung (ein Symbol) in Wandlerteil, Zähler und Leitungen zerlegen
   if (o.noTitle === true) doc.noTitle = true; // Titelseite gelöscht (CJ 15.10.), kommt nicht von selbst wieder
   if (o.noToc === true) doc.noToc = true;
   if (o.info && !doc.sheets.some((s) => s.kind === "title")) doc.info = cleanInfo(o.info); // Angaben einer weggefallenen Titelseite (Gruppe D)
@@ -93,6 +100,7 @@ export function parseModel(text) {
   // Verweise: Verknüpfung nur behalten, wenn die Gegenseite existiert und zurückzeigt
   const all = new Map(doc.sheets.flatMap((s) => s.items).map((i) => [i.id, i]));
   for (const i of all.values()) if (i.link !== undefined && all.get(i.link)?.link !== i.id) delete i.link;
+  syncMains(doc); // alte Dateien: Hauptlinien umrechnen
   return doc;
 }
 
@@ -135,19 +143,26 @@ function parseItems(list, m, maxId) {
       const v = { id, type: "dispoview", x: it.x, y: it.y, den: it.den, bx: it.bx, by: it.by, bw: it.bw, bh: it.bh, title: String(it.title ?? ""), items: inner.items };
       if (isNum(it.src)) v.src = it.src;
       if (it.dims === true) v.dims = true;
+      if (it.doors === false) v.doors = false;
+      if (isNum(it.dimP) && it.dimP > 0) v.dimP = it.dimP;
+      if (Array.isArray(it.off) && it.off.length) v.off = it.off.filter((k) => typeof k === "string");
       m.items.push(withTag(v, it));
     } else if (it.type === "symbol" && SYMBOL_BY_NAME[it.sym] && isNum(it.x) && isNum(it.y)) {
       const attrs = {};
       for (const a of SYMBOL_BY_NAME[it.sym].attrs) attrs[a.tag] = String((it.attrs || {})[a.tag] ?? a.def);
       const o = { id, type: "symbol", sym: it.sym, x: it.x, y: it.y, rot: ((Number(it.rot) || 0) % 360 + 360) % 360, attrs };
-      if (it.manual === true) o.manual = true;
+      if (it.manual === true || ownBmk(o, m.meta.BLATT)) o.manual = true;
       if (isNum(it.link)) o.link = it.link;
+      if (it.main === "l" || it.main === "r") o.main = it.main; // Verweis der Grundverkabelung (hauptlinien.js)
+      if (typeof it.bez === "string" && it.bez) o.bez = it.bez; // Bezeichnung in der Legende für Geräte ohne eigene Klemmen, z. B. RCD über dem LS (CJ 16.10.)
+      if (isNum(it.of)) o.of = it.of; // Zähler der Wandlermessung gehört zum Wandlerteil (wandler.js)
       if (isNum(it.rail)) { o.rail = it.rail; o.side = it.side === "l" ? "l" : "r"; o.rname = String(it.rname ?? ""); }
       m.items.push(withTag(o, it));
     } else if (it.type === "wire" && Array.isArray(it.pts) && it.pts.length >= 2 && it.pts.every((p) => Array.isArray(p) && isNum(p[0]) && isNum(p[1]))) {
       const w = { id, type: "wire", kind: WIRE_KINDS[it.kind] ? it.kind : "leitung", pts: it.pts.map((p) => [p[0], p[1]]) };
       if (isNum(it.bundle)) w.bundle = it.bundle;
-      if (it.ends && typeof it.ends === "object") { const ok = (v) => (typeof v === "string" && /^(edge|ref|col:[1-8])$/.test(v) ? v : "edge"); w.ends = { l: ok(it.ends.l), r: ok(it.ends.r) }; }
+      if (isNum(it.of) && Number.isInteger(it.wm) && it.wm >= 0) { w.of = it.of; w.wm = it.wm; } // Leiter der Wandlermessung (wandler.js)
+      if (it.ends && typeof it.ends === "object") { const ok = (v) => (typeof v === "string" && /^(edge|ref|end|col:[1-8])$/.test(v) ? v : "edge"); w.ends = { l: ok(it.ends.l), r: ok(it.ends.r) }; }
       m.items.push(withTag(w, it));
     } else if (it.type === "text" && isNum(it.x) && isNum(it.y)) {
       const t = { id, type: "text", x: it.x, y: it.y, h: isNum(it.h) && it.h > 0 ? it.h : 2.5, s: String(it.s ?? "") };
@@ -159,6 +174,7 @@ function parseItems(list, m, maxId) {
       const t = { id, type: "terminals", x: it.x, y: it.y, cable, n, name: String(it.name ?? ""), bmk: String(it.bmk ?? ""), pe: it.pe === "none" ? "none" : "last" };
       if (isNum(it.of)) t.of = it.of;
       if (it.manual === true) t.manual = true;
+      if (it.noterm === true) t.noterm = true; // keine Klemmen zeichnen, BMK, Kabel und Bezeichnung bleiben (CJ 16.10.)
       m.items.push(withTag(t, it));
     } else {
       throw new Error("Die Datei enthält ein unbekanntes oder defektes Objekt (id " + id + ").");
@@ -167,10 +183,18 @@ function parseItems(list, m, maxId) {
   return maxId;
 }
 
+// SPD und Zähler haben erst seit 16.10.2026 eine automatische BMK: ein früher von Hand eingetragener Wert bleibt (gilt als manuell),
+// wenn er weder die Vorgabe (F?, P?) noch die automatische Form (Blatt, Buchstabe, Spalte) hat.
+function ownBmk(o, blatt) {
+  const sym = SYMBOL_BY_NAME[o.sym], letter = bmkLetter(sym), v = String(o.attrs.BMK ?? "").trim();
+  if (!letter || isDevice(sym) || !v || v === sym.attrs.find((a) => a.tag === "BMK")?.def) return false;
+  const esc = String(blatt ?? "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return !new RegExp(`^${esc}${letter}\\d+(\\.\\d+)?$`).test(v);
+}
 const withTag = (o, src) => { if (typeof src.tag === "string" && src.tag) o.tag = src.tag; return o; };
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 
-// Version 3 nur, wenn eine Disposition vorkommt, 5 mit Titelseite, 6 immer mit Stringplan oder Stringübersicht (5ab, CJ 15.10.; vorher 4).
+// Version 7, sobald ein Schemablatt Hauptlinien hat (Gruppe L1 bis N). Sonst: Version 3 nur, wenn eine Disposition vorkommt, 5 mit Titelseite, 6 immer mit Stringplan oder Stringübersicht (5ab, CJ 15.10.; vorher 4).
 // So bleiben Dateien ohne Stringplan mit älteren Ständen lesbar. Dateien mit Version 4 und 5 werden weiter gelesen.
 // PDF-Dateien (assets) nur, wenn ein Blatt darauf zeigt. noAssets: ohne PDF (Zwischenspeicher im Browser ist zu klein).
 export function serializeModel(m, { noAssets = false } = {}) {
@@ -178,5 +202,12 @@ export function serializeModel(m, { noAssets = false } = {}) {
   const usesDispo = sheets.some((sh) => sh.kind === "dispo" || sh.items.some((i) => i.type === "dispoview"));
   const usesPv = sheets.some((sh) => sh.kind === "pv" || sh.kind === "pvtab"), usesDeck = sheets.some((sh) => ["title", "toc", "legend"].includes(sh.kind));
   const { assets: _a, ...rest } = m, assets = noAssets ? {} : usedAssets(m);
-  return JSON.stringify({ ...rest, version: usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
+  const usesSchrank = sheets.some((sh) => [...sh.items, ...sh.items.flatMap((i) => (i.type === "dispoview" ? i.items : []))].some((i) => i.type === "cabinet" || i.type === "part" || i.type === "dim" || (i.type === "device" && (i.top || i.l2 || i.n))))
+    || sheets.some((sh) => sh.dimH || sh.dimP || sh.dimsOff || sh.items.some((i) => i.type === "dispoview" && (i.dimP || i.off))); // Bemassung einstellbar (16.10.2026)
+  const usesV9 = sheets.some((sh) => [...sh.items, ...sh.items.flatMap((i) => (i.type === "dispoview" ? i.items : []))].some((i) => i.tf || (i.type === "part" && (i.maker || i.lines)))); // NH-Hersteller, Textzeilen, Textgrösse (16.10.2026)
+  const usesV10 = sheets.some((sh) => sh.items.some((i) => i.noterm || i.of !== undefined && i.type !== "terminals")); // Wandlermessung in Teilen, Klemmen ausgeblendet (16.10.2026)
+  const usesV11 = sheets.some((sh) => sh.main?.l === "feed" || sh.items.some((i) => i.sym === "HAK_TNCS_1" || i.sym === "HPAS_1P"));
+  const usesV12 = sheets.some((sh) => [...sh.items, ...sh.items.flatMap((i) => (i.type === "dispoview" ? i.items : []))].some((i) => i.free || i.beschr || i.type === "cable"
+    || (i.type === "part" && (i.kind === "BAR" || i.maker === "vgw" || (i.maker === "vertigroup" && /^\d-\d$/.test(i.size)))))); // Disposition 16.10.2026 (Bau-Chat Dispo)
+  return JSON.stringify({ ...rest, version: usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
 }

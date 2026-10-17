@@ -33,7 +33,7 @@ const tocSheet = (meta) => ({ meta: { ...meta, TITEL: "Inhaltsverzeichnis", BLAT
 export function ensureDeck(doc, firm = null, { shift = true } = {}) {
   const sh = doc.sheets, work = sh.filter((s) => !isDeck(s)), schema = work.some((s) => !s.kind);
   const want = [schema && !doc.noTitle && "title", schema && !doc.noToc && "toc"].filter(Boolean);
-  const done = want.every((k, i) => sh[i]?.kind === k) && sh.filter(isDeck).length === want.length + (schema ? 1 : 0) && (!schema || sh.at(-1)?.kind === "legend");
+  const done = want.every((k, i) => sh[i]?.kind === k) && sh.filter(isDeck).length === want.length + (schema ? 1 : 0) && (!schema || sh.some((s) => s.kind === "legend"));
   if (done) { syncDeck(doc); return ""; }
   const oldTitle = sh.find((s) => s.kind === "title");
   const src = work.find((s) => !s.kind) || work[0] || { meta: {} };
@@ -65,12 +65,15 @@ const pick = (m) => Object.fromEntries(PROJECT_FIELDS.map((k) => [k, m[k] ?? ""]
 const label = (k) => ({ OBJEKT: "Objekt", AUFTRAG: "Auftrag", SCHEMA: "Schema", GEZEICHNET: "Gezeichnet", DATUM: "Datum" }[k]);
 
 // Projektangaben der Titelseite auf alle Blätter, Titelseite und Inhalt mit fester Nummer und festem Titel.
-// Legende: ans Ende (neue Blätter werden hinten angehängt, der Aufrufer rechnet den aktiven Index nach), Nummer = letztes Schemablatt + 1.
+// Feste Blattreihenfolge (CJ 16.10.): Titelseite, Inhalt, Schemablätter, Legende, Disposition, Stringpläne, Stringübersicht.
+// Innerhalb eines Typs bleibt die Reihenfolge. Neue Blätter werden hinten angehängt und hier einsortiert, der Aufrufer rechnet den
+// aktiven Index nach. Legende: Nummer = letztes Schemablatt + 1.
 // Ohne Titelseite (gelöscht) setzt die App die Projektangaben direkt auf allen Blättern (app.js).
+export const SHEET_ORDER = ["title", "toc", "schema", "legend", "dispo", "pv", "pvtab"];
 export function syncDeck(doc) {
-  const li = doc.sheets.findIndex((s) => s.kind === "legend");
-  if (li >= 0 && li !== doc.sheets.length - 1) doc.sheets.push(...doc.sheets.splice(li, 1));
-  const leg = doc.sheets.at(-1);
+  const rank = (s) => SHEET_ORDER.indexOf(s.kind || "schema");
+  doc.sheets = doc.sheets.map((s, i) => [s, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map((e) => e[0]);
+  const leg = doc.sheets.find((s) => s.kind === "legend");
   if (leg?.kind === "legend") {
     const nums = doc.sheets.filter((s) => !s.kind || s.kind === "title" || s.kind === "toc").map((s) => parseInt(s.meta.BLATT, 10)).filter(Number.isFinite);
     Object.assign(leg.meta, { TITEL: "Sicherungslegende", BLATT: String(Math.max(0, ...nums) + 1) });

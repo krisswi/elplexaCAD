@@ -89,7 +89,7 @@ const plain = JSON.parse(serializeModel(newDoc()));
 assert.strictEqual(plain.version, 2); assert.strictEqual(plain.assets, undefined);
 // Unbekannte Objekte auf dem Stringplan werden abgelehnt, ebenso eine neuere Version
 assert.throws(() => parseModel(JSON.stringify({ ...o, sheets: [{ kind: "pv", meta: {}, items: [{ id: 1, type: "wire", kind: "leitung", pts: [[0, 0], [10, 0]] }] }] })), /Stringplan/);
-assert.throws(() => parseModel(JSON.stringify({ ...o, version: 7 })), /neueren Version/); // 6 = Stringplan (5ab)
+assert.throws(() => parseModel(JSON.stringify({ ...o, version: 13 })), /neueren Version/); // 6 = Stringplan (5ab), 7 = Hauptlinien neu, 8 = Schrank (Disposition)
 assert.deepStrictEqual(parseModel(JSON.stringify({ ...o, version: 4 })).sheets[1].bg, pv.bg); // 5ab: alte Dateien (Version 4) bleiben ladbar
 assert.deepStrictEqual(parseModel(JSON.stringify({ ...o, version: 5 })).sheets[1].bg, pv.bg);
 console.log("Dateiformat ok");
@@ -456,10 +456,14 @@ console.log("Datei Module ok");
   assert.strictEqual(P.level(949.9, 1000), "ok"); assert.strictEqual(P.level(950, 1000), "warn"); assert.strictEqual(P.level(1000, 1000), "warn");
   assert.strictEqual(P.fmtNum(999.2565), "999,3"); assert.strictEqual(P.fmtNum(-20), "−20");
   // WR-Typ aus dem Formular, Pflicht Name und Vmax, Anzahl MPPT ganzzahlig
-  const w1 = P.typeFromForm(["WR A", "1000", "160", "850", "16", "180", "2"], "w1", true).type;
-  assert.deepStrictEqual(w1, { id: "w1", name: "WR A", vmax: 1000, vmppMin: 160, vmppMax: 850, imax: 16, vstart: 180, mppt: 2 });
+  const w1 = P.typeFromForm(["WR A", "1000", "160", "850", "16", "", "180", "2"], "w1", true).type;
+  assert.deepStrictEqual(w1, { id: "w1", name: "WR A", vmax: 1000, vmppMin: 160, vmppMax: 850, iscMax: 16, vstart: 180, mppt: 2 });
+  // 5au: altes Feld imax wird als Isc max übernommen (Datei, Katalog), neues Feld hat Vorrang
+  assert.deepStrictEqual(P.cleanInvType({ id: "w0", name: "Alt", vmax: 1000, imax: 16 }), { id: "w0", name: "Alt", vmax: 1000, iscMax: 16 });
+  assert.deepStrictEqual(P.cleanInvType({ id: "w0", name: "Alt", vmax: 1000, imax: 16, iscMax: 20, imppMax: 15 }), { id: "w0", name: "Alt", vmax: 1000, iscMax: 20, imppMax: 15 });
+  assert.deepStrictEqual(P.parseCatalog(JSON.stringify({ format: "schemacad-katalog", invTypes: [{ name: "K", vmax: 800, imax: 12 }] }), "invTypes").map(({ id: _, ...t }) => t), [{ name: "K", vmax: 800, iscMax: 12 }]);
   assert.match(P.typeFromForm(["WR B", ""], "w2", true).error, /Vmax/);
-  assert.match(P.typeFromForm(["WR B", "1000", "", "", "", "", "1,5"], "w2", true).error, /MPPT/);
+  assert.match(P.typeFromForm(["WR B", "1000", "", "", "", "", "", "1,5"], "w2", true).error, /MPPT/);
   assert.deepStrictEqual(P.typeFromForm(["WR B", "600"], "w2", true).type, { id: "w2", name: "WR B", vmax: 600 });
   // Modultyp mit Systemspannung (neues Feld am Ende)
   const mA = P.typeFromForm(["Test 49,5", "1700", "1000", "", "", "49,5", "10", "", "", "−0,27", "1000"], "mA").type;
@@ -481,9 +485,9 @@ console.log("Datei Module ok");
   assert.strictEqual(rep[1].lvl, "bad"); assert.ok(rep[1].notes.some((n) => n.t === "Über Vmax 1000 V"));
   assert.ok(rep[1].notes.some((n) => n.t === "Über Systemspannung 1000 V"));
   // Strom: 1.1.1 und 1.1.2 parallel an WR 1 MPPT 1, Summe Isc 20 A > Imax 16 A; 1.2.1 allein 10 A ok
-  assert.ok(rep[0].notes.some((n) => n.t === "Über Imax: Isc × 1,25 von 2 Strings 25 A, Imax 16 A" && n.lvl === "bad")); // 5ak: 2 × 10 A × 1,25
+  assert.ok(rep[0].notes.some((n) => n.t === "Über Isc max: Isc × 1,25 von 2 Strings 25 A, max 16 A" && n.lvl === "bad")); // 5ak: 2 × 10 A × 1,25
   near(rep[2].isc, 12.5, 1e-12); // 1.2.1 allein 12,5 A < 16 A
-  assert.ok(!rep[2].notes.some((n) => /Imax/.test(n.t)));
+  assert.ok(!rep[2].notes.some((n) => /Isc max|Impp/.test(n.t)));
   assert.strictEqual(rep[2].lvl, "ok"); assert.strictEqual(rep[2].si, 2); // 10 × 55,51 = 555,1 V
   assert.ok(rep[3].notes.some((n) => n.t === "WR 2 ohne Datenblatt") && rep[3].lvl === "info");
   assert.deepStrictEqual(P.wrNumbers(doc), [1, 2]);
@@ -492,17 +496,26 @@ console.log("Datei Module ok");
   assert.ok(rep.find((r) => r.name === "1.3.1").notes.some((n) => n.t === "MPPT 3 gibt es nicht (2 MPPT)" && n.lvl === "bad"));
   assert.ok(rep.filter((r) => r.name === "1.1.1")[1].notes.some((n) => n.t === "Bezeichnung auch auf Stringplan 1"));
   // 5am: kein „knapp“ beim Strom (Imax 26 A, 25 A = 96 %) und bei der Systemspannung (999,3 V von 1000 V), nur bei Vmax
-  doc.pv.invTypes = [{ ...w1, imax: 26 }]; s2.items.find((i) => i.id === 903).name = "2.1.1"; rep = P.stringReport(doc);
-  assert.ok(!rep[0].notes.some((n) => /Imax|Strom/.test(n.t)) && !rep[0].notes.some((n) => /Systemspannung/.test(n.t)));
+  doc.pv.invTypes = [{ ...w1, iscMax: 26 }]; s2.items.find((i) => i.id === 903).name = "2.1.1"; rep = P.stringReport(doc);
+  assert.ok(!rep[0].notes.some((n) => /Isc max|Strom|Impp/.test(n.t)) && !rep[0].notes.some((n) => /Systemspannung/.test(n.t)));
   assert.strictEqual(rep[0].lvl, "warn"); assert.ok(rep[0].notes.some((n) => n.t === "Knapp: 99,9 % von Vmax"));
   assert.strictEqual(P.level(25, 26, false), "ok"); assert.strictEqual(P.level(26.1, 26, false), "bad");
-  doc.pv.invTypes = [{ ...w1, imax: 24 }]; rep = P.stringReport(doc); // 5ak: 25 A über 24 A (ohne Zuschlag wären es 20 A)
-  assert.ok(rep[0].notes.some((n) => n.t.startsWith("Über Imax") && n.lvl === "bad"));
-  doc.pv.tmin = undefined; rep = P.stringReport(doc); assert.ok(rep[0].notes.some((n) => n.t.startsWith("Über Imax")), "Strom auch ohne Tmin"); doc.pv.tmin = -20;
+  doc.pv.invTypes = [{ ...w1, iscMax: 24 }]; rep = P.stringReport(doc); // 5ak: 25 A über 24 A (ohne Zuschlag wären es 20 A)
+  assert.ok(rep[0].notes.some((n) => n.t.startsWith("Über Isc max") && n.lvl === "bad"));
+  doc.pv.tmin = undefined; rep = P.stringReport(doc); assert.ok(rep[0].notes.some((n) => n.t.startsWith("Über Isc max")), "Strom auch ohne Tmin"); doc.pv.tmin = -20;
   // Fehlende Angaben: Tk, Systemspannung, Imax
   doc.pv.moduleTypes = [{ id: "mA", name: "ohne", l: 1, b: 1, voc: 49.5, isc: 10 }]; doc.pv.invTypes = [{ id: "w1", name: "W", vmax: 1000 }]; rep = P.stringReport(doc);
-  assert.ok(rep[0].notes.some((n) => n.t === "Tk Voc fehlt im Modultyp") && rep[0].notes.some((n) => n.t === "Imax fehlt im WR-Typ, Strom nicht geprüft"));
+  assert.ok(rep[0].notes.some((n) => n.t === "Tk Voc fehlt im Modultyp") && rep[0].notes.some((n) => n.t === "Isc max fehlt im WR-Typ, Strom nicht geprüft"));
   doc.pv.moduleTypes = [mA];
+  // 5au Impp ohne Faktor gegen Impp max: 1.1.1 + 1.1.2 je 9,5 A = 19 A; über 18 A = Warnung, 19 A = ok; Isc bleibt Fehler
+  doc.pv.moduleTypes = [{ ...mA, impp: 9.5 }]; doc.pv.invTypes = [{ ...w1, iscMax: 30, imppMax: 18 }]; rep = P.stringReport(doc);
+  assert.ok(rep[0].notes.some((n) => n.t === "Ertragseinbusse möglich: Impp 19 A, Impp max 18 A" && n.lvl === "warn") && !rep[0].notes.some((n) => /Isc max/.test(n.t)));
+  assert.ok(!rep[2].notes.some((n) => /Impp/.test(n.t)), "1.2.1 allein 9,5 A ok");
+  doc.pv.invTypes = [{ ...w1, iscMax: 30, imppMax: 19 }]; rep = P.stringReport(doc); assert.ok(!rep[0].notes.some((n) => /Impp/.test(n.t)), "gleich = ok");
+  doc.pv.invTypes = [{ ...w1, iscMax: 24, imppMax: 18 }]; rep = P.stringReport(doc);
+  assert.ok(rep[0].notes.some((n) => n.lvl === "bad" && n.t.startsWith("Über Isc max")) && rep[0].notes.some((n) => n.lvl === "warn" && n.t.startsWith("Ertragseinbusse")));
+  doc.pv.moduleTypes = [mA]; rep = P.stringReport(doc); assert.ok(rep[0].notes.some((n) => n.t === "Impp fehlt im Modultyp, Impp nicht geprüft" && n.lvl === "info"));
+  doc.pv.invTypes = [w1]; rep = P.stringReport(doc); assert.ok(!rep[0].notes.some((n) => /Impp/.test(n.t)), "ohne Impp max keine Impp-Prüfung");
   // Tabelle: eine Zeile je String, Urteil als Klasse
   const svg = T.tableSVG(doc);
   assert.strictEqual((svg.match(/class="pvtab-row"/g) || []).length, 4);
@@ -734,5 +747,21 @@ console.log("Datei Module ok");
   assert.strictEqual(hoch.reduce((n, x) => n + rows(x), 0), 40, "jede Zeile einmal");
   const b = PR.tableScreenBounds(ts, big); assert.strictEqual(b.x1, 220); near(b.y0, -(hoch.length * 297 + (hoch.length - 1) * 20) - 10);
   console.log("5an Stringübersicht mit Rahmen und Plankopf, 5ap Papier ok");
+}
+{ // 5as/5aw: WR neu nummerieren (löschen, verschieben), Strings aller Pläne, Zuordnung und Anlage ziehen mit
+  const doc = newDoc(), a = newSheet("pv"), b = newSheet("pv"); a.sid = 1; b.sid = 2; doc.sheets.push(a, b);
+  a.items.push({ id: 1, type: "pvstring", name: "1.1.1", mods: [] }, { id: 2, type: "pvstring", name: "2.1.1", mods: [] }, { id: 3, type: "pvstring", name: "3.2.4", mods: [] }, { id: 4, type: "pvstring", name: "frei", mods: [] });
+  b.items.push({ id: 5, type: "pvstring", name: "3.1.1", mods: [] }, { id: 6, type: "pvmodule", mt: "m", x: 0, y: 0 });
+  doc.pv = { invTypes: [{ id: "w1", name: "A", vmax: 1000 }, { id: "w3", name: "C", vmax: 800 }], wr: { 1: "w1", 3: "w3" }, anlage: [{ str: [1] }, { str: [] }, { str: [1, 4] }] };
+  const names = () => doc.sheets.flatMap((sh) => P.strings(sh).map((s) => s.name));
+  const d1 = JSON.parse(JSON.stringify(doc)); P.renumberWr(d1, [1, 3]); // WR 2 löschen: WR 3 wird WR 2
+  assert.deepStrictEqual(d1.sheets.flatMap((sh) => P.strings(sh).map((s) => s.name)), ["1.1.1", "2.2.4", "frei", "2.1.1"]);
+  assert.deepStrictEqual(d1.pv.wr, { 1: "w1", 2: "w3" }); assert.deepStrictEqual(d1.pv.anlage, [{ str: [1] }, { str: [1, 4] }]);
+  assert.strictEqual(d1.sheets.at(-1).items.filter((it) => it.type === "pvmodule").length, 1, "Module bleiben");
+  P.renumberWr(doc, [3, 1, 2]); // WR 3 nach vorne
+  assert.deepStrictEqual(names(), ["2.1.1", "3.1.1", "1.2.4", "frei", "1.1.1"]);
+  assert.deepStrictEqual(doc.pv.wr, { 1: "w3", 2: "w1" }); assert.deepStrictEqual(doc.pv.anlage, [{ str: [1, 4] }, { str: [1] }, { str: [] }]);
+  const d2 = { sheets: [], pv: { anlage: [{ str: [] }] } }; P.renumberWr(d2, []); assert.strictEqual(d2.pv, undefined, "letzter WR weg = keine Anlage");
+  console.log("5as/5aw WR neu nummerieren ok");
 }
 console.log("ok");

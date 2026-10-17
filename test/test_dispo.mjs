@@ -132,7 +132,8 @@ assert.deepStrictEqual(D.mergePoints([0, 100], () => 500), [0, 100], "Anfang und
   const its = [pl, ...rl, dv(10, 0, 3), dv(11, 52.5, 1)];
   const texts = (o) => D.planPrims(its, o).filter((p) => p.k === "text" && p.layer === "SCH_DISPO_MASS").map((p) => p.s);
   assert.deepStrictEqual(texts({ dims: false }), [], "ohne Masse keine Massprimitive");
-  const t = texts({ dims: true });
+  const t = texts({ dims: true, dimH: 10 }); // Zusammenfassen geprüft mit der früheren Texthöhe 10 mm
+  assert.ok(texts({ dims: true }).includes("52,5"), "Vorgabe 5 mm (16.10.): kleine Masse bleiben einzeln");
   for (const v of ["250", "400", "80", "120"]) assert.ok(t.includes(v), v);
   assert.ok(t.includes("70") && t.includes("180"), "Geräteblock 0..70 (3 TE + 1 TE aneinander) und Rest 180: " + t);
   assert.ok(D.planPrims(its, { dims: false }).some((p) => p.s === "Z  250 × 400") && D.planPrims(its, { dims: true }).some((p) => p.s === "Z"), "Plattenmass im Namen nur ohne Bemassung");

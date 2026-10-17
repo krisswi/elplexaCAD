@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>SchemaCAD v3</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f4c400'/%3E%3Cpath d='M-4 20L20 -4h8L0 24zM4 36L36 4v8L12 36z' fill='%232f9e58'/%3E%3C/svg%3E">
 <style>
@@ -19,6 +19,11 @@
       <button class="btn" id="btn-pvmod" data-pop="mod" title="Module: Modultypen dieser Datei" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="pvmod"></span><span class="lbl">Module</span></button>
       <button class="btn" id="btn-pvwr" data-pop="wr" title="Wechselrichter: Anlage, Datenblätter, Tmin" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="pvwr"></span><span class="lbl">Wechselrichter</span></button>
       <button class="btn" id="btn-pvdruck" data-pop="druck" title="Druck: Papier, Massstab, Plankopf" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="print"></span><span class="lbl" id="pv-druck-lbl">Druck</span></button>
+    </div>
+    <div class="pvbar" id="doc-bar" role="group" aria-label="Daten des Blatts" hidden>
+      <button class="btn" id="btn-blatt" data-pop="blatt" title="Schriftfeld: Blatttitel, Blatt, Index und Projektangaben" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="frame"></span><span class="lbl">Schriftfeld</span></button>
+      <button class="btn" id="btn-haupt" data-pop="haupt" title="Hauptlinien: Grundverkabelung, Anfang und Ende, Ziel" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="rails"></span><span class="lbl">Hauptlinien</span></button>
+      <button class="btn" id="btn-ansicht" data-pop="ansicht" title="Ansicht der Disposition: Bemassung und Türen ein- oder ausblenden" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop" hidden><span class="ic" data-ic="eye"></span><span class="lbl">Ansicht</span></button>
     </div>
     <div class="spacer"></div>
     <button class="btn icon" id="btn-undo" title="Rückgängig (⌘Z)" aria-label="Rückgängig"></button>

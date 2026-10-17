@@ -40,7 +40,7 @@ with sync_playwright() as p:
     # Neue Disposition
     check("Start ist ein Schemablatt", kind() == "schema" and page.locator('[data-tool="wire"]').count() == 1)
     add_dispo(); page.wait_for_timeout(150)
-    check("Disposition ist aktiv", kind() == "dispo" and len(D()["sheets"]) == 5 and D()["sheets"][3]["kind"] == "dispo" and D()["sheets"][3]["sid"] > 0)
+    check("Disposition ist aktiv", kind() == "dispo" and len(D()["sheets"]) == 5 and D()["sheets"][4]["kind"] == "dispo" and D()["sheets"][4]["sid"] > 0)
     check("Tab heisst Dispo 1", "Dispo 1" in page.inner_text("#sheetbar"))
     check("Palette der Disposition, keine Leitung", page.locator('[data-sym="D:PLATE:zaehler"]').count() == 1 and page.locator('[data-sym="D:DEV:NTR"]').count() == 1 and page.locator('[data-tool="wire"]').count() == 0)
     check("Raster hat 10 mm, Feldmitte ausgeblendet", page.locator('#grid-size option[value="10"]').count() == 1 and not page.locator("#mag-on").is_visible() and page.is_visible("#btn-handover"))
@@ -103,8 +103,8 @@ with sync_playwright() as p:
     check("Vorschlag Massstab 1:5 (Platz im Rahmen)", page.eval_on_selector('.modal [data-f="1"]', "e => e.value") == "5", page.eval_on_selector('.modal [data-f="1"]', "e => e.value"))
     page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     sch = D()["sheets"][2]; views = [i for i in sch["items"] if i["type"] == "dispoview"]
-    n_src = len(D()["sheets"][3]["items"])
-    check("Schemablatt hat eine Ansicht 1:5 mit allen Bauteilen", kind() == "schema" and len(views) == 1 and views[0]["den"] == 5 and len(views[0]["items"]) == n_src == 8 and views[0]["src"] == D()["sheets"][3]["sid"], views)
+    n_src = len(D()["sheets"][4]["items"])
+    check("Schemablatt hat eine Ansicht 1:5 mit allen Bauteilen", kind() == "schema" and len(views) == 1 and views[0]["den"] == 5 and len(views[0]["items"]) == n_src == 8 and views[0]["src"] == D()["sheets"][4]["sid"], views)
     v = views[0]
     check("Ansicht liegt im Blattrahmen", v["x"] >= 10 and v["y"] >= 25 and v["x"] + v["bw"] / 5 <= 287 and v["y"] + v["bh"] / 5 <= 200, (v["x"], v["y"], v["bw"], v["bh"]))
     check("Ansicht gezeichnet mit Beschriftung", "Massstab 1:5" in items_html())
@@ -118,7 +118,7 @@ with sync_playwright() as p:
     # Einfügen zwischen Blatttypen ist gesperrt
     page.keyboard.press("Control+c"); page.keyboard.press("Escape")
     n0 = len(M()["items"])
-    go(3); page.wait_for_timeout(150)
+    go(4); page.wait_for_timeout(150)
     check("Wechsel zur Disposition stellt Palette um", kind() == "dispo" and page.locator('[data-sym="D:RAIL"]').count() == 1)
     page.keyboard.press("Control+v"); page.wait_for_timeout(100)
     check("Einfügen einer Schema-Ansicht in die Disposition abgelehnt", len(M()["items"]) == 8 and page.locator(".toast.error").count() >= 1)
@@ -149,7 +149,7 @@ with sync_playwright() as p:
     dl.value.save_as(OUT / "doc.schemacad.json")
     import json
     saved = json.loads((OUT / "doc.schemacad.json").read_text())
-    check("Datei hat Version 5 (mit Titelseite)", saved["version"] == 5)
+    check("Datei hat Version 8 (Ansicht mit Masstext dimP seit 16.10.)", saved["version"] == 8)
     before_doc = D()
     page.click("#btn-new"); page.wait_for_timeout(100); page.click('[data-start="schema"]')
     if page.locator(".modal").count(): page.click('.modal [data-r="1"]')
@@ -159,7 +159,7 @@ with sync_playwright() as p:
     check("Round-Trip gleich (2 Blätter, Ansicht, Disposition)", D()["sheets"] == before_doc["sheets"] and len(D()["sheets"]) == 5)
 
     # Erneut übergeben ersetzt die Ansicht
-    go(3); page.wait_for_timeout(150)
+    go(4); page.wait_for_timeout(150)
     place("LS2", 130, 300); page.keyboard.press("Escape")
     page.click("#btn-handover"); page.wait_for_timeout(150)
     check("Dialog nennt die bestehende Ansicht", "bestehende Ansicht wird ersetzt" in page.inner_text('.modal [data-f="0"]'))
@@ -167,23 +167,23 @@ with sync_playwright() as p:
     views = [i for i in D()["sheets"][2]["items"] if i["type"] == "dispoview"]
     check("Ansicht ersetzt, nicht verdoppelt, neues Gerät drin", len(views) == 1 and len(views[0]["items"]) == 9, [len(v["items"]) for v in views])
     # Übergabe auf ein neues Blatt mit eigener Blattnummer, ein Schritt rückgängig
-    go(3); page.wait_for_timeout(150); page.keyboard.press("Escape")
+    go(4); page.wait_for_timeout(150); page.keyboard.press("Escape")
     page.click("#btn-handover"); page.wait_for_timeout(150)
     check("Dialog bietet Neues Blatt und schlägt die nächste Nummer vor", page.locator('.modal [data-f="0"] option[value="new"]').count() == 1 and page.input_value('.modal [data-f="2"]') == "4", page.input_value('.modal [data-f="2"]'))
     page.select_option('.modal [data-f="0"]', "new"); page.fill('.modal [data-f="2"]', "77"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     sh = D()["sheets"]
-    check("Neues Schemablatt 77 mit Grundverkabelung und Ansicht, aktiv", len(sh) == 6 and sh[4].get("kind") is None and sh[4]["meta"]["BLATT"] == "77" and len([i for i in sh[4]["items"] if i["type"] == "dispoview"]) == 1 and len(sh[4]["items"]) == 11 and D()["active"] == 4, [len(sh), sh[-1]["meta"].get("BLATT"), len(sh[-1]["items"])])
+    check("Neues Schemablatt 77 ohne Grundverkabelung (CJ 16.10.), nur die Ansicht, aktiv", len(sh) == 6 and sh[3].get("kind") is None and sh[3]["meta"]["BLATT"] == "77" and len([i for i in sh[3]["items"] if i["type"] == "dispoview"]) == 1 and len(sh[3]["items"]) == 1 and "main" not in sh[3] and D()["active"] == 3, [len(sh), sh[-1]["meta"].get("BLATT"), len(sh[-1]["items"])])
     page.keyboard.press("Control+z"); page.wait_for_timeout(150)
     check("Rückgängig entfernt das neue Blatt", len(D()["sheets"]) == 5)
 
     # PDF
     n = page.evaluate("window.__schemacad.buildPrint()")
     svgs = page.evaluate("[...document.querySelectorAll('#printroot svg')].map(s => s.getAttribute('viewBox'))")
-    check("PDF: eine Seite je Blatt, Disposition eingepasst", n == 5 and len(svgs) == 5 and svgs[:3] == ["0 0 297 210"] * 3 and svgs[3] != "0 0 297 210" and svgs[4] == "0 0 210 297", svgs)
+    check("PDF: eine Seite je Blatt, Disposition eingepasst", n == 5 and len(svgs) == 5 and svgs[:3] == ["0 0 297 210"] * 3 and svgs[3] == "0 0 210 297" and svgs[4] != "0 0 297 210", svgs)
     page.evaluate("document.querySelector('#printroot').innerHTML = ''")
 
     # Disposition löschen
-    go(3); page.wait_for_timeout(100)
+    go(4); page.wait_for_timeout(100)
     page.keyboard.press("Escape")
     page.click('[data-act="delsheet"]'); page.wait_for_timeout(100); page.click('.modal [data-r="1"]'); page.wait_for_timeout(150)
     check("Disposition gelöscht, zurück im Schema", kind() == "schema" and len(D()["sheets"]) == 4 and page.locator('[data-tool="wire"]').count() == 1)
@@ -266,7 +266,7 @@ with sync_playwright() as p:
     page.fill("#texteditor", "200"); page.keyboard.press("Enter"); page.wait_for_timeout(100)
     check("Schienenlänge eingetippt: 200", rails()[0] == (20, 200, 110), rails())
     page.keyboard.press("Escape")
-    X, Y = pt(200, -18); page.mouse.dblclick(X, Y); page.wait_for_timeout(100)
+    X, Y = pt(200, -9); page.mouse.dblclick(X, Y); page.wait_for_timeout(100)
     check("Doppelklick auf die Bemassung der Plattenbreite", page.is_visible("#texteditor") and page.input_value("#texteditor") == "400", page.input_value("#texteditor"))
     page.fill("#texteditor", "500"); page.keyboard.press("Enter"); page.wait_for_timeout(100)
     check("Plattenbreite eingetippt: 500, volle Schienen 460, gekürzte bleibt 200", plate() == (0, 0, 500, 450) and rails() == [(20, 200, 110), (20, 460, 200), (20, 460, 290)], (plate(), rails()))

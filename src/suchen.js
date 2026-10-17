@@ -60,7 +60,7 @@ export function openSearch(ctx) {
     <div class="field"><label>Bereich</label><select data-s="scope"><option value="bmk">Nur BMK</option><option value="alle">Alle Texte</option></select></div>
     <label class="chk"><input type="checkbox" data-s="case"> Gross-/Kleinschreibung beachten</label>
     <div class="hits" data-s="hits"></div>
-    <div class="actions"><button class="btn outline" data-s="close">Schliessen</button><button class="btn" data-s="next">Weiter</button><button class="btn primary" data-s="all">Alle ersetzen</button></div>`;
+    <div class="actions"><button class="btn outline" data-s="close">Schliessen</button><button class="btn outline" data-s="all">Alle ersetzen</button><button class="btn primary" data-s="next" title="Nächster Treffer (Enter)">Weiter</button></div>`;
   root.appendChild(box);
   const g = (k) => box.querySelector(`[data-s=${k}]`);
   let hits = [], cur = -1;

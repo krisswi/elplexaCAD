@@ -24,13 +24,17 @@ with sync_playwright() as p:
     M = lambda: page.evaluate("window.__schemacad.model")
     def go(i): page.click("#sheet-cur"); page.click(f'#sheet-menu [data-sheet="{i}"]')  # Blatt über die Blattliste wählen
     def add_dispo(): page.click("#sheet-add", button="right"); page.click('[data-new="dispo"]')
-    of = lambda t: [i for i in M()["items"] if i["type"] == t]
+    def meta(tag, v, proj=False):  # Schriftfeld seit UI Schritt 6 im Fenster oben (Knopf „Schriftfeld“), danach schliessen
+        if page.is_hidden("#pv-pop"): page.click("#btn-blatt"); page.wait_for_timeout(60)
+        if proj and not page.locator("#pv-pop details.proj").evaluate("e => e.open"): page.click("#pv-pop details.proj summary")
+        page.locator(f'#pv-pop input[data-meta="{tag}"]').fill(v); page.keyboard.press("Escape"); page.wait_for_timeout(80)
+    of = lambda t: [i for i in M()["items"] if i["type"] == t and not i.get("main")]  # ohne die automatischen Verweise der Grundverkabelung
 
     # Grundverkabelung beim Start
     m = M(); base = [i for i in m["items"] if i.get("tag") == "grund"]
     check("Grundverkabelung ohne Klemmen", len(base) == 10 and len(of("terminals")) == 0)
     check("5 Leiterlinien (L1,L2,L3,N,PE)", sorted(i["kind"] for i in of("wire")) == ["netz", "netz", "netz", "neutral", "pe"])
-    check("Button Grundverkabelung gesperrt", page.is_disabled('[data-act="base"]'))
+    page.click("#btn-haupt"); check("Fenster Hauptlinien: Grundverkabelung vorhanden, kein Einfügen-Knopf", page.locator('#pv-pop [data-act="base"]').count() == 0 and page.locator("#pv-pop [data-mainr]").count() == 1); page.keyboard.press("Escape")
     check("Blatt startet sauber", not page.evaluate("!document.querySelector('#dirty').hidden"))
     page.screenshot(path="shots/01_start.png")
 
@@ -107,7 +111,7 @@ with sync_playwright() as p:
     # Nummerierung, Stapel, Verschieben, Fang (auf frischem Blatt)
     page.click("#btn-new"); page.wait_for_timeout(100); page.click('[data-start="schema"]')
     if page.locator(".modal").count(): page.click('.modal [data-r="1"]')
-    page.locator('input[data-meta="BLATT"]').fill("10"); page.locator("#svg").focus()
+    meta("BLATT", "10")
     bm = lambda: sorted((i["y"], i["attrs"]["BMK"]) for i in of("symbol"))
     page.click('[data-sym="LS_4P"]'); click(100, 160); click(100, 120); page.keyboard.press("Escape")
     check("Stapel: oben 10F3, darunter 10F3.1", bm() == [(120, "10F3.1"), (160, "10F3")], bm())
@@ -172,9 +176,9 @@ with sync_playwright() as p:
     page.keyboard.press("v")
     # Abzweig an der Grundverkabelung: jeder Leiter endet auf seiner Schiene (L1 links/oben, N rechts/unten)
     n1 = len(of("wire")); page.keyboard.press("l"); page.select_option('[data-newbundle]', "4")
-    click(262, 100); click(262, 190); click(262, 190)
+    click(247.5, 70); click(247.5, 190); click(247.5, 190)  # links vom abgehenden Verweis (Hauptlinien enden bei x 265)
     nb = of("wire")[n1:]
-    check("Abzweig: 4 Leiter enden auf Schiene L1, L2, L3, N", len(nb) == 4 and [w["pts"][-1][1] for w in nb] == [190, 185, 180, 175] and [w["pts"][-1][0] for w in nb] == [262.5, 267.5, 272.5, 277.5], [w["pts"] for w in nb])
+    check("Abzweig: 4 Leiter enden auf Schiene L1, L2, L3, N", len(nb) == 4 and [w["pts"][-1][1] for w in nb] == [190, 185, 180, 175] and [w["pts"][-1][0] for w in nb] == [247.5, 252.5, 257.5, 262.5], [w["pts"] for w in nb])
     page.keyboard.press("Escape"); page.select_option('[data-newbundle]', "1") if page.locator('[data-newbundle]').count() else None
     n2 = len(of("wire")); page.keyboard.press("l"); page.select_option('[data-newbundle]', "4")
     click(200, 190); click(240, 120); click(240, 120)
@@ -223,21 +227,21 @@ with sync_playwright() as p:
     # Weitere Hauptlinie
     page.keyboard.press("v"); page.keyboard.press("Control+a"); page.keyboard.press("Escape"); page.mouse.click(5, 450); page.wait_for_timeout(100)
     nrail = len([w for w in of("wire") if w.get("tag") == "grund"])
-    page.click('[data-act="addrail"]'); page.wait_for_timeout(100)
+    page.click("#btn-haupt"); page.click('#pv-pop [data-act="addrail"]'); page.wait_for_timeout(100)
     page.fill('.modal [data-f="0"]', "L1_ST"); page.click(".modal [data-ok]"); page.wait_for_timeout(100)
     nr = [w for w in of("wire") if w.get("tag") == "grund"]
     check("Weitere Hauptlinie L1_ST unter N", len(nr) == nrail + 1 and 170 in [w["pts"][0][1] for w in nr] and any(t["s"] == "L1_ST" for t in of("text")), [w["pts"][0][1] for w in nr])
     # Mehrblatt und Verweise
     page.click("#btn-new"); page.wait_for_timeout(100); page.click('[data-start="schema"]')
     if page.locator(".modal").count(): page.click('.modal [data-r="1"]')
-    page.locator('input[data-meta="BLATT"]').fill("58"); page.locator("#svg").focus()
+    meta("BLATT", "58")
     D = lambda: page.evaluate("window.__schemacad.doc")
-    refs = lambda: [(k, i) for k, sh in enumerate(D()["sheets"]) for i in sh["items"] if i["type"] == "symbol" and i["sym"][0] == "V" and not i.get("rname")]
+    refs = lambda: [(k, i) for k, sh in enumerate(D()["sheets"]) for i in sh["items"] if i["type"] == "symbol" and i["sym"][0] == "V" and not i.get("rname") and not i.get("main")]
     page.click('[data-sym="VOUT_4P"]'); click(100, 150); page.wait_for_timeout(100); page.keyboard.press("Escape")
     check("keine Rückfrage ohne offene Gegenseite", page.locator(".modal").count() == 0)
     check("Verweis abgehend ist offen", refs()[0][1]["attrs"]["ZIEL"] == "offen")
     page.click("[data-addsheet]"); page.wait_for_timeout(100)
-    check("Blatt 59 mit Grundverkabelung", len(D()["sheets"]) == 5 and D()["sheets"][3]["meta"]["BLATT"] == "59" and len(M()["items"]) == 10)
+    check("Blatt 59 mit Grundverkabelung und ankommendem Verweis", len(D()["sheets"]) == 5 and D()["sheets"][3]["meta"]["BLATT"] == "59" and len(M()["items"]) == 11 and any(i.get("main") == "l" for i in M()["items"]))
     page.click('[data-sym="VIN_4P"]'); click(100, 100); page.wait_for_timeout(100)
     check("Rückfrage mit einem offenen Gegenstück", page.locator(".modal .choice").count() == 1, page.locator(".modal .choice").all_inner_texts())
     check("Rückfrage nennt Blatt und Feld", "Blatt 58, Feld B3" in page.locator(".modal .choice").inner_text())
@@ -259,9 +263,11 @@ with sync_playwright() as p:
     page.keyboard.press("Escape")
     check("Button Alle Blätter sichtbar bei 2 Blättern", page.locator("#btn-dxf-all").get_attribute("hidden") is None)
     page.click("#btn-export"); page.click("#btn-dxf-all"); page.wait_for_timeout(1200)
-    names = sorted(d.suggested_filename for d in dl)
-    check("2 DXF-Dateien, Blatt 58 und 59", len(names) == 2 and names[0].endswith("_Blatt-58.dxf") and names[1].endswith("_Blatt-59.dxf"), names)
-    for k, d in enumerate(dl): d.save_as(f"test/ui_out_all{k}.dxf")
+    import zipfile, io  # seit 16.10.: ohne Ordnerwahl eine ZIP-Datei im Download-Ordner
+    zf = zipfile.ZipFile(io.BytesIO(open(dl[0].path(), "rb").read())) if len(dl) == 1 else None
+    names = sorted(zf.namelist()) if zf else []
+    check("Eine ZIP mit 2 DXF-Dateien, Blatt 58 und 59", len(dl) == 1 and dl[0].suggested_filename.endswith("_DXF.zip") and zf.testzip() is None and len(names) == 2 and names[0].endswith("_Blatt-58.dxf") and names[1].endswith("_Blatt-59.dxf"), names)
+    for k, n in enumerate(names): open(f"test/ui_out_all{k}.dxf", "wb").write(zf.read(n))
     # PDF: eine Seite pro Blatt
     nsh = page.evaluate("window.__schemacad.buildPrint()")
     page.emulate_media(media="print")
@@ -276,22 +282,22 @@ with sync_playwright() as p:
     with page.expect_download() as dcsv: page.click("#btn-export"); page.click("#btn-lists")
     csv = open(dcsv.value.path(), encoding="utf-8-sig").read()
     check("Listen-CSV mit Legende und Stückliste", dcsv.value.suggested_filename.endswith("_Listen.csv") and csv.startswith("Sicherungslegende") and "Stückliste" in csv, csv[:200])
-    # Hauptlinien: Ende bei Spalte, Verweis auf anderes Blatt (automatisch verknüpft, gleicher Name)
+    # Hauptlinien: Gruppe L1 bis N endet bei Spalte (Querstriche), PE mit Verweis auf anderes Blatt (automatisch verknüpft, gleicher Name)
     page.keyboard.press("v"); click(60, 190); page.wait_for_timeout(100)
-    page.select_option('[data-railend="r"]', "col:6"); page.wait_for_timeout(100)
-    L1 = [w for w in of("wire") if w.get("tag") == "grund" and w["pts"][0][1] == 190][0]
+    page.select_option('[data-mainr]', "col:6"); page.wait_for_timeout(100)
+    L1 = [w for w in M()["items"] if w["type"] == "wire" and w.get("tag") == "grund" and w["pts"][0][1] == 190][0]
     check("Hauptlinie endet bei Spalte 6", abs(L1["pts"][-1][0] - 200.4375) < 0.01 and L1.get("ends", {}).get("r") == "col:6", L1)
-    page.select_option('[data-railend="r"]', "ref"); page.wait_for_timeout(100)
-    rs = [i for i in of("symbol") if i.get("rname") == "L1"]
-    check("Verweis am Ende von L1 gesetzt, offen", len(rs) == 1 and rs[0]["sym"] == "VOUT_1P" and rs[0]["attrs"]["ZIEL"] == "offen", rs)
+    click(60, 45); page.select_option('[data-railend="r"]', "ref"); page.wait_for_timeout(100)
+    rs = [i for i in of("symbol") if i.get("rname") == "PE"]
+    check("Verweis am Ende von PE gesetzt, offen", len(rs) == 1 and rs[0]["sym"] == "VOUT_1P" and rs[0]["attrs"]["ZIEL"] == "offen", rs)
     go(2); page.wait_for_timeout(100)
-    click(60, 190); page.wait_for_timeout(100)
+    click(60, 45); page.wait_for_timeout(100)
     page.select_option('[data-railend="l"]', "ref"); page.wait_for_timeout(200)
     check("keine Rückfrage, genau ein Gegenstück gleicher Hauptlinie", page.locator(".modal").count() == 0)
-    zs = [(k, i["attrs"]["ZIEL"]) for k, sh in enumerate(D()["sheets"]) for i in sh["items"] if i.get("rname") == "L1"]
+    zs = [(k, i["attrs"]["ZIEL"]) for k, sh in enumerate(D()["sheets"]) for i in sh["items"] if i.get("rname") == "PE"]
     check("Hauptlinien-Verweise verknüpft", len(zs) == 2 and all(z != "offen" for _, z in zs), zs)
     page.select_option('[data-railend="l"]', "edge"); page.wait_for_timeout(100)
-    zs2 = [i["attrs"]["ZIEL"] for sh in D()["sheets"] for i in sh["items"] if i.get("rname") == "L1"]
+    zs2 = [i["attrs"]["ZIEL"] for sh in D()["sheets"] for i in sh["items"] if i.get("rname") == "PE"]
     check("zurück auf Blattrand entfernt Verweis, Gegenseite offen", zs2 == ["offen"], zs2)
     go(3); page.wait_for_timeout(100)
     page.click('[data-sym="VIN_4P"]'); click(200, 100); page.wait_for_timeout(100)
@@ -314,7 +320,7 @@ with sync_playwright() as p:
     page.keyboard.press("Control+Shift+z")
     # Blattnummer ändern aktualisiert das Ziel
     go(2); page.wait_for_timeout(100); page.keyboard.press("Escape")
-    page.locator('input[data-meta="BLATT"]').fill("60"); page.locator("#svg").focus()
+    meta("BLATT", "60")
     check("Blattnummer 60 steht im Ziel der Gegenseite", any(i["attrs"]["ZIEL"].startswith("60.") for k, i in refs() if k == 3), [i["attrs"]["ZIEL"] for k, i in refs()])
     # Löschen löst die Gegenseite
     go(3); page.wait_for_timeout(100)

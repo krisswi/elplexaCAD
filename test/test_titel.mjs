@@ -14,8 +14,8 @@ d.nextId = 100; renumberAll(d);
 assert.strictEqual(s1.items[0].attrs.BMK, "1F2"); // x 50 = Spalte 2
 s2.meta.SCHEMA = "HV"; // nur auf Blatt 10 ausgefüllt: wird übernommen, keine Meldung
 const note = T.ensureDeck(d, { FIRMA: "Elektro CJ", FIRMA_ADR: "Weg 1\n3000 Bern" });
-assert.deepStrictEqual(d.sheets.map((s) => s.kind || "schema"), ["title", "toc", "schema", "schema", "dispo", "legend"]);
-assert.deepStrictEqual(d.sheets.map((s) => s.meta.BLATT), ["1", "2", "3", "12", "1", "13"], "Schemablätter +2, Disposition bleibt, Legende nach dem letzten Schemablatt");
+assert.deepStrictEqual(d.sheets.map((s) => s.kind || "schema"), ["title", "toc", "schema", "schema", "legend", "dispo"]); // feste Reihenfolge (CJ 16.10.)
+assert.deepStrictEqual(d.sheets.map((s) => s.meta.BLATT), ["1", "2", "3", "12", "13", "1"], "Schemablätter +2, Disposition bleibt, Legende nach dem letzten Schemablatt");
 assert.match(note, /rücken um 2/); assert.match(note, /Datum/); assert.doesNotMatch(note, /Objekt/);
 assert.ok(d.sheets.every((s) => s.meta.DATUM === "01.10.2026" && s.meta.SCHEMA === "HV"), "Angaben vom ersten Schemablatt, leere aus anderen Blättern");
 assert.doesNotMatch(note, /Schema,|Schema\./);
@@ -58,8 +58,8 @@ assert.deepStrictEqual(w.sheets.map((s) => s.kind || "schema"), ["title", "toc",
 console.log("Neues Dokument ok");
 
 // Inhaltsverzeichnis und Änderungsindex
-assert.deepStrictEqual(T.tocRows(d).map((r) => r.no), ["1", "2", "3", "12", "Dispo 1", "13"]);
-assert.deepStrictEqual(T.tocRows(d).map((r) => r.art), ["Titelseite", "Inhaltsverzeichnis", "Schema", "Schema", "Disposition", "Sicherungslegende"]);
+assert.deepStrictEqual(T.tocRows(d).map((r) => r.no), ["1", "2", "3", "12", "13", "Dispo 1"]);
+assert.deepStrictEqual(T.tocRows(d).map((r) => r.art), ["Titelseite", "Inhaltsverzeichnis", "Schema", "Schema", "Sicherungslegende", "Disposition"]);
 assert.strictEqual(T.tocPageCount(d), 1);
 const many = newDoc(); for (let i = 0; i < 60; i++) many.sheets.push(newSheet()); T.ensureDeck(many);
 assert.strictEqual(T.tocPageCount(many), 3);
@@ -73,25 +73,25 @@ console.log("Inhalt und Index ok");
 // Umbau (CJ 15.10.): Titelseite und Inhalt nur mit Schemablatt, löschbar (noTitle, noToc)
 const kinds = (x) => x.sheets.map((s) => s.kind || "schema");
 const pvd = newDoc(); pvd.sheets = [Object.assign(newSheet("pv"), { sid: 1 }), Object.assign(newSheet("dispo"), { sid: 2 })];
-assert.strictEqual(T.ensureDeck(pvd), ""); assert.deepStrictEqual(kinds(pvd), ["pv", "dispo"], "reiner Stringplan und Disposition: ohne Titelseite, Inhalt, Legende");
+assert.strictEqual(T.ensureDeck(pvd), ""); assert.deepStrictEqual(kinds(pvd), ["dispo", "pv"], "Disposition vor Stringplan (CJ 16.10.), reiner Stringplan und Disposition: ohne Titelseite, Inhalt, Legende");
 pvd.sheets[0].meta.OBJEKT = "PV Dach";
 const sc = newSheet(); sc.meta.BLATT = "3"; pvd.sheets.push(sc);
 T.ensureDeck(pvd, null, { shift: false });
-assert.deepStrictEqual(kinds(pvd), ["title", "toc", "pv", "dispo", "schema", "legend"], "erstes Schemablatt: Titelseite und Inhalt kommen dazu");
-assert.deepStrictEqual(pvd.sheets.map((s) => s.meta.BLATT), ["1", "2", "1", "1", "3", "4"], "ohne shift bleiben die Nummern");
+assert.deepStrictEqual(kinds(pvd), ["title", "toc", "schema", "legend", "dispo", "pv"], "erstes Schemablatt: Titelseite und Inhalt kommen dazu");
+assert.deepStrictEqual(pvd.sheets.map((s) => s.meta.BLATT), ["1", "2", "3", "4", "1", "1"], "ohne shift bleiben die Nummern");
 assert.strictEqual(pvd.sheets[0].meta.OBJEKT, "PV Dach", "Projektangaben vom Stringplan übernommen");
 pvd.noTitle = true; T.ensureDeck(pvd, null, { shift: false });
-assert.deepStrictEqual(kinds(pvd), ["toc", "pv", "dispo", "schema", "legend"], "Titelseite gelöscht");
+assert.deepStrictEqual(kinds(pvd), ["toc", "schema", "legend", "dispo", "pv"], "Titelseite gelöscht");
 assert.strictEqual(T.ensureDeck(pvd, null, { shift: false }), ""); assert.strictEqual(pvd.sheets[0].kind, "toc", "kommt nicht wieder");
 pvd.noToc = true; T.ensureDeck(pvd, null, { shift: false });
-assert.deepStrictEqual(kinds(pvd), ["pv", "dispo", "schema", "legend"]);
-assert.strictEqual(pvd.sheets.at(-1).meta.BLATT, "4", "Legende ohne Titelseite: letztes Schemablatt + 1");
+assert.deepStrictEqual(kinds(pvd), ["schema", "legend", "dispo", "pv"]);
+assert.strictEqual(pvd.sheets.find((s) => s.kind === "legend").meta.BLATT, "4", "Legende ohne Titelseite: letztes Schemablatt + 1");
 const pt = serializeModel(pvd); assert.strictEqual(JSON.parse(pt).noTitle, true);
-const pb = parseModel(pt); assert.ok(pb.noTitle && pb.noToc); assert.strictEqual(T.ensureDeck(pb), ""); assert.deepStrictEqual(kinds(pb), ["pv", "dispo", "schema", "legend"], "Löschen bleibt nach dem Öffnen");
+const pb = parseModel(pt); assert.ok(pb.noTitle && pb.noToc); assert.strictEqual(T.ensureDeck(pb), ""); assert.deepStrictEqual(kinds(pb), ["schema", "legend", "dispo", "pv"], "Löschen bleibt nach dem Öffnen");
 delete pb.noTitle; delete pb.noToc; T.ensureDeck(pb, null, { shift: false });
-assert.deepStrictEqual(kinds(pb), ["title", "toc", "pv", "dispo", "schema", "legend"], "wieder einfügen");
+assert.deepStrictEqual(kinds(pb), ["title", "toc", "schema", "legend", "dispo", "pv"], "wieder einfügen");
 pb.sheets = pb.sheets.filter((s) => !!s.kind); T.ensureDeck(pb, null, { shift: false });
-assert.deepStrictEqual(kinds(pb), ["pv", "dispo"], "letztes Schemablatt gelöscht: Titelseite, Inhalt, Legende entfallen");
+assert.deepStrictEqual(kinds(pb), ["dispo", "pv"], "letztes Schemablatt gelöscht: Titelseite, Inhalt, Legende entfallen");
 // Datei aus v2 vor dem Umbau (Stringplan mit Titelseite): beim Öffnen entfallen sie mit Meldung
 const oldPv = newDoc(); oldPv.sheets = [Object.assign(newSheet("pv"), { sid: 1 })]; oldPv.sheets.unshift(Object.assign(newSheet("toc")), Object.assign(newSheet("title"), { info: T.cleanInfo({}) })); oldPv.sheets.push(newSheet("legend"));
 assert.match(T.ensureDeck(oldPv), /nur in Dateien mit Schemablatt/); assert.deepStrictEqual(kinds(oldPv), ["pv"]);

@@ -33,9 +33,9 @@ with sync_playwright() as p:
     page.click("#btn-new"); page.click('[data-start="schema"]'); page.wait_for_timeout(150)
     check("Neu → Schema: Blatt mit Grundverkabelung", kind() == "schema" and any(i.get("tag") == "grund" for i in D()["sheets"][2]["items"]) and D()["sheets"][2]["meta"]["BLATT"] == "3")
     d = D()
-    check("Neu: Titelseite Blatt 1 und Inhalt Blatt 2 davor", [s.get("kind") for s in d["sheets"][:2]] == ["title", "toc"] and [s["meta"]["BLATT"] for s in d["sheets"][:2]] == ["1", "2"] and d["active"] == 2 and d["version"] == 5)
+    check("Neu: Titelseite Blatt 1 und Inhalt Blatt 2 davor", [s.get("kind") for s in d["sheets"][:2]] == ["title", "toc"] and [s["meta"]["BLATT"] for s in d["sheets"][:2]] == ["1", "2"] and d["active"] == 2 and d["version"] == 7)
     # Ungespeicherte Änderung: erst wählen, dann Rückfrage
-    page.locator('input[data-meta="TITEL"]').fill("Test"); page.locator("#svg").focus(); page.wait_for_timeout(500)
+    page.click("#btn-blatt"); page.locator('#pv-pop input[data-meta="TITEL"]').fill("Test"); page.keyboard.press("Escape"); page.wait_for_timeout(500)
     page.click("#btn-new"); page.click('[data-start="dispo"]'); page.wait_for_timeout(100)
     check("Bei Änderungen kommt die Rückfrage", page.is_visible('.modal [data-r="1"]'))
     page.click('.modal [data-r="0"]'); page.wait_for_timeout(100)

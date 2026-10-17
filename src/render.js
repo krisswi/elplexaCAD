@@ -5,6 +5,7 @@ import { LAYERS, WIRE_KINDS } from "./model.js";
 import { textBox } from "./geom.js";
 import { termItems, termTexts, termNumbers, termBBox, termPins } from "./terminals.js";
 import * as D from "./dispo.js";
+import { railStubs } from "./hauptlinien.js";
 import { PV_TYPES, hitPv, isClosed, modBox, hitMod, strPts, spaBox } from "./pv.js";
 export { textBox };
 
@@ -19,6 +20,7 @@ export const icons = {
   select: I('<path d="M6 3.5l12 7.2-5.4 1.4-2.6 5.4z"/>'),
   wire: I('<path d="M4 18h7V7h9"/><circle cx="4" cy="18" r="1.4"/><circle cx="20" cy="7" r="1.4"/>'),
   text: I('<path d="M5 7V5h14v2M12 5v14M9 19h6"/>'),
+  dim: I('<path d="M4 6v12M20 6v12M4 12h16M7 9.5l-3 2.5 3 2.5M17 9.5l3 2.5-3 2.5"/>'),
   hand: I('<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>'),
   undo: I('<path d="M9 14L4 9l5-5M4 9h9a6 6 0 010 12H8"/>'),
   redo: I('<path d="M15 14l5-5-5-5M20 9h-9a6 6 0 000 12h5"/>'),
@@ -34,6 +36,9 @@ export const icons = {
   pvmod: I('<rect x="4" y="5" width="16" height="14" rx="1"/><path d="M4 12h16M9.3 5v14M14.7 5v14"/>'),
   pvwr: I('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 9c1-1.6 2-1.6 3 0s2 1.6 3 0M9 15h6"/>'),
   print: I('<path d="M7 9V3h10v6M7 17H5a2 2 0 01-2-2v-4a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2h-2"/><rect x="7" y="14" width="10" height="7"/>'),
+  eye: I('<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  frame: I('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M11 15h10M11 15v5M16 15v5"/>'),
+  rails: I('<path d="M3 7h14M3 11h14M3 15h14M17 5l4 6-4 6"/>'),
   trash: I('<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>'),
   copy: I('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>'),
   rotate: I('<path d="M20 12a8 8 0 11-2.6-5.9M20 4v5h-5"/>'),
@@ -48,8 +53,8 @@ function primsSVG(prims, color) {
   let s = "";
   for (const p of prims) {
     if (p.t === "l") s += `<line x1="${f(p.x1)}" y1="${f(p.y1)}" x2="${f(p.x2)}" y2="${f(p.y2)}"${p.d ? ' stroke-dasharray="5 3"' : ""}/>`;
-    else if (p.t === "c") s += `<circle cx="${f(p.cx)}" cy="${f(p.cy)}" r="${f(p.r)}"/>`;
-    else if (p.t === "t") s += `<text transform="translate(${f(p.x)},${f(p.y)}) scale(1,-1)" font-size="${p.h}" text-anchor="middle" dominant-baseline="central" fill="${color}" stroke="none">${esc(p.s)}</text>`;
+    else if (p.t === "c") s += `<circle cx="${f(p.cx)}" cy="${f(p.cy)}" r="${f(p.r)}"${p.f ? ` fill="${color}"` : ""}/>`;
+    else if (p.t === "t") s += `<text transform="translate(${f(p.x)},${f(p.y)})${p.r ? ` rotate(${p.r})` : ""} scale(1,-1)" font-size="${p.h}" text-anchor="${p.al === "l" ? "start" : "middle"}" dominant-baseline="central" fill="${color}" stroke="none">${esc(p.s)}</text>`;
   }
   return s;
 }
@@ -166,7 +171,8 @@ export const onWire = (items, x, y, skip) => items.some((o) => o.type === "wire"
 // Verbindungspunkte: Ein Leitungsende liegt mitten auf einer anderen Leitung
 export function junctions(items) {
   const wires = items.filter((i) => i.type === "wire");
-  const out = [], seen = new Set();
+  // Klemmen sitzen oben auf der PE-Linie: ein Leitungsende auf einer Klemme ist mit der Klemme verbunden, nicht mit PE
+  const seen = new Set(items.filter((i) => i.type === "terminals").flatMap((t) => termPins(t)).map((q) => q.x + "," + q.y)), out = [];
   for (const w of wires) {
     for (const p of [w.pts[0], w.pts.at(-1)]) {
       for (const o of wires) {
@@ -267,8 +273,8 @@ export function terminalsThumb() {
   return `<svg viewBox="-5 -14 20 20" aria-hidden="true"><g transform="scale(1,-1)">${cells}</g></svg>`;
 }
 
-export function itemsSVG(items, kind = "schema", { dims = false } = {}) {
-  if (kind === "dispo") return D.planSVG(items, dims);
+export function itemsSVG(items, kind = "schema", o = {}) {
+  if (kind === "dispo") return D.planSVG(items, o); // o wie D.planOpts
   let s = "";
   for (const it of items) {
     if (it.type === "dispoview") { s += D.viewSVG(it); continue; }
@@ -279,6 +285,7 @@ export function itemsSVG(items, kind = "schema", { dims = false } = {}) {
     } else if (it.type === "text") s += txt(it.x, it.y, it.h, it.s);
     else if (it.type === "terminals") s += terminalsSVG(it);
   }
+  for (const t of railStubs(items)) s += poly([[t.x1, t.y1], [t.x2, t.y2]], LAYERS[(WIRE_KINDS[t.w.kind] || WIRE_KINDS.leitung).layer].css, ""); // Abschluss der Hauptlinie
   for (const j of junctions(items)) s += `<circle cx="${f(j.x)}" cy="${f(j.y)}" r="0.9" fill="${INK}" stroke="none"/>`;
   return s;
 }

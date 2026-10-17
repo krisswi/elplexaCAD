@@ -16,7 +16,7 @@ export function fuseLegend(doc) {
     for (const it of sh.items) {
       if (it.type !== "symbol" || !isDevice(sym(it))) continue;
       const a = it.attrs, t = sh.items.find((i) => i.type === "terminals" && i.of === it.id);
-      rows.push([sh.meta.BLATT ?? "", a.BMK ?? "", sym(it).label, sym(it).poles, a.STROM ?? "", a.CHAR ?? "", a.IDN ?? "", a.GROESSE ?? "", t?.bmk ?? "", t?.cable ?? "", t?.name ?? ""]);
+      rows.push([sh.meta.BLATT ?? "", a.BMK ?? "", sym(it).label, sym(it).poles, a.STROM ?? "", a.CHAR ?? "", a.IDN ?? "", a.GROESSE ?? "", t?.bmk ?? "", t?.cable ?? "", t?.name || it.bez || ""]);
     }
   }
   const nat = (a, b) => String(a).localeCompare(String(b), "de", { numeric: true });
@@ -38,7 +38,7 @@ export function partsList(doc) {
         const s = sym(it);
         const data = s.attrs.filter((d) => d.tag !== "BMK" && !d.auto).map((d) => it.attrs[d.tag]).filter(Boolean).join(" ");
         add(s.label, data, it.attrs.BMK);
-      } else if (it.type === "terminals") {
+      } else if (it.type === "terminals" && !it.noterm) {
         const n = termCount(it), pe = it.pe !== "none" ? 1 : 0;
         if (n - pe) add("Reihenklemme", "", it.bmk, n - pe);
         if (pe) add("PE-Klemme", "", it.bmk, pe);

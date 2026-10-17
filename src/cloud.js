@@ -34,7 +34,7 @@ function loginDialog() {
 <div class="field"><label>E-Mail</label><input type="email" data-f="e" autocomplete="username" spellcheck="false"></div>
 <div class="field"><label>Passwort</label><input type="password" data-f="p" autocomplete="current-password"></div>
 <div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>Anmelden</button></div>`;
-  return openModal("Anmelden", body, async (b, done) => {
+  const shown = openModal("Anmelden", body, async (b, done) => {
     if (b.dataset.c !== undefined) { done(false); return; }
     if (b.dataset.ok === undefined) return;
     const v = (f) => document.querySelector(`#modal-root [data-f="${f}"]`).value;
@@ -43,6 +43,9 @@ function loginDialog() {
     try { await token("password", { email, password }); done(true); }
     catch (err) { toast(err.status === 400 ? "E-Mail oder Passwort falsch." : err.message, "error"); }
   }, false, "input");
+  // Enter in E-Mail oder Passwort schickt ab, wie ein Klick auf „Anmelden“
+  document.querySelector("#modal-root .modal").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches("input")) { e.preventDefault(); document.querySelector("#modal-root [data-ok]").click(); } });
+  return shown;
 }
 
 // Gültige Anmeldung oder null (abgebrochen). Abgelaufene Zugänge werden still erneuert.

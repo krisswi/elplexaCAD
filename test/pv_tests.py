@@ -99,7 +99,7 @@ with sync_playwright() as p:
     check("Hintergrund: Seite 2, 842 × 595 pt", bg["page"] == 2 and near(bg["w"], 842, 0.01) and near(bg["h"], 595, 0.01), bg)
     doc = D()
     check("PDF eingebettet, byteidentisch", doc["assets"][bg["asset"]]["data"] == base64.b64encode(A.read_bytes()).decode())
-    check("Datei Version 6 (mit Stringplan, 5ab)", doc["version"] == 6)
+    check("Datei Version 7 (mit Stringplan und Schemablatt mit Hauptlinien)", doc["version"] == 7)
     check("3c: „Strecke messen“ wählt das Werkzeug Messstrecke, kein Massstab", page.get_attribute('[data-tool="pv-measure"]', "aria-pressed") == "true" and "mmPerPt" not in bg)
     wait_image()
     check("PDF als Bild gerendert (pdf.js mit Worker)", page.locator("#sheet image").count() == 1)
@@ -177,13 +177,14 @@ with sync_playwright() as p:
     with page.expect_download() as d: page.click("#btn-save")
     f = OUT / "pv.schemacad.json"; d.value.save_as(f)
     saved = json.loads(f.read_text())
-    check("Gespeichert: Version 6, PDF B byteidentisch", saved["version"] == 6 and list(saved["assets"].values())[0]["data"] == base64.b64encode(B.read_bytes()).decode())
+    check("Gespeichert: Version 7, PDF B byteidentisch", saved["version"] == 7 and list(saved["assets"].values())[0]["data"] == base64.b64encode(B.read_bytes()).decode())
     page.click("#btn-new"); page.wait_for_timeout(200); page.click('[data-start="schema"]')
     if page.locator(".modal").count(): page.click('.modal [data-r="1"]'); page.wait_for_timeout(200)
     with page.expect_file_chooser() as fc: page.click("#btn-open")
     fc.value.set_files(str(f)); page.wait_for_timeout(400)
-    page.click("#sheet-cur"); page.click('#sheet-menu [data-sheet="3"]'); page.wait_for_timeout(300)
-    check("Geöffnet: Stringplan mit gleichem Plan und Objekten", kind() == "pv" and M()["bg"] == bg and M()["items"] == saved["sheets"][3]["items"])
+    pi = next(i for i, sh in enumerate(saved["sheets"]) if sh.get("kind") == "pv")  # feste Reihenfolge (CJ 16.10.): Stringplan nach der Legende
+    page.click("#sheet-cur"); page.click(f'#sheet-menu [data-sheet="{pi}"]'); page.wait_for_timeout(300)
+    check("Geöffnet: Stringplan mit gleichem Plan und Objekten", kind() == "pv" and M()["bg"] == bg and M()["items"] == saved["sheets"][pi]["items"])
     wait_image()
     check("Geöffnet: Plan wird wieder gerendert", page.locator("#sheet image").count() == 1)
     page.screenshot(path=str(OUT / "pv_geoeffnet.png"))
@@ -718,8 +719,12 @@ with sync_playwright() as p:
     sug2 = page.input_value('.modal [data-f="0"]'); page.fill('.modal [data-f="2"]', "2"); page.click(".modal [data-ok]"); page.wait_for_timeout(150)
     check("5k: zweiter Durchgang für WR 2: 2.1.1, 2.2.1", sug2 == "2" and [s["name"] for s in strs()] == ["1.1.1", "1.1.2", "2.1.1", "2.2.1"], (sug2, [s["name"] for s in strs()]))
     for _ in range(3): page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
-    page.click('[data-tool="select"]'); page.keyboard.press("Escape"); page.click(pop("wr") + ' [data-pvact="wrrm"][data-wr="1"]'); page.wait_for_timeout(60); page.click(pop("wr") + ' [data-pvact="wrrm"][data-wr="0"]'); page.wait_for_timeout(60)
-    check("5k: WR entfernt = keine Anlage, alter Stand", "anlage" not in (D().get("pv") or {}) and len(mods()) == n3 and len(strs()) == 1, D().get("pv"))
+    page.click('[data-tool="select"]'); page.keyboard.press("Escape")
+    for k in ("1", "1", "0"): page.click(pop("wr") + f' [data-pvact="wrrm"][data-wr="{k}"]'); page.wait_for_timeout(60)
+    check("5k/5as: WR 2 geleert und gelöscht, WR 1 geleert (String 1.1.1 bleibt), alter Stand", D().get("pv", {}).get("anlage") == [{"str": []}] and len(mods()) == n3 and len(strs()) == 1, D().get("pv"))
+    page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(60); page.keyboard.press("Meta+z"); page.wait_for_timeout(60)
+    check("5as: Rückgängig: WR 2 wieder da (geleert)", D().get("pv", {}).get("anlage") == [{"str": [2]}, {"str": []}], D().get("pv"))
+    page.keyboard.press("Meta+Shift+z"); page.wait_for_timeout(60); page.keyboard.press("Meta+Shift+z"); page.wait_for_timeout(60)
     # Schritt 5l: Teile für den Druck abwählen
     def pv_page():
         page.evaluate("window.__schemacad.preparePrint()"); page.evaluate("window.__schemacad.buildPrint()")
@@ -834,9 +839,9 @@ with sync_playwright() as p:
     page.click(pop("wr") + ' [data-pvact="itnew"]'); page.wait_for_selector('.modal [data-f="6"]')
     page.fill('.modal [data-f="0"]', "WR Test"); notoast(); page.click(".modal [data-ok]"); page.wait_for_timeout(150)
     check("6: WR-Typ ohne Vmax: Meldung, Formular bleibt", "Vmax" in toasts() and page.locator('.modal [data-f="0"]').count() == 1)
-    page.fill('.modal [data-f="1"]', "1000"); page.fill('.modal [data-f="4"]', "16"); page.fill('.modal [data-f="6"]', "2"); page.click(".modal [data-ok]"); page.wait_for_timeout(150)
+    page.fill('.modal [data-f="1"]', "1000"); page.fill('.modal [data-f="4"]', "16"); page.fill('.modal [data-f="7"]', "2"); page.click(".modal [data-ok]"); page.wait_for_timeout(150)
     it = pvd().get("invTypes", [])
-    check("6: WR-Typ im Katalog der Datei", len(it) == 1 and it[0]["name"] == "WR Test" and it[0]["vmax"] == 1000 and it[0]["imax"] == 16 and it[0]["mppt"] == 2 and "vstart" not in it[0], it)
+    check("6: WR-Typ im Katalog der Datei", len(it) == 1 and it[0]["name"] == "WR Test" and it[0]["vmax"] == 1000 and it[0]["iscMax"] == 16 and it[0]["mppt"] == 2 and "imppMax" not in it[0] and "vstart" not in it[0], it)
     page.locator(pop("wr") + ' [data-pvopt="wr"][data-nr="1"]').select_option(label="WR Test"); page.wait_for_timeout(100)
     check("6: WR 1 zugeordnet, Vmax in der Tabelle", pvd().get("wr") == {"1": it[0]["id"]} and "1000 V" in rows()[0][2] and "WR 1: WR Test" in page.text_content("#items"), pvd())
     page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(100)
@@ -1072,7 +1077,8 @@ with sync_playwright() as p:
     nm = page.evaluate("[...document.querySelectorAll('#items .pv-name')].map(t=>[t.textContent,t.getAttribute('font-size'),t.getAttribute('fill')])")
     check("5ae/5ac: Stringnummer 300 mm hoch (1,2 ×), Farben aus 24 (1.1.2, 1.2.1)", nm == [["1.1.2", "300", "#d06f00"], ["1.2.1", "300", "#a88400"]], nm)
     goto_tab(); rw = {r[0]: r for r in rows()}
-    check("5ak: Strom mit Zuschlag: MPPT 1 = 2 × 10 A × 1,25 = 25 A über 24 A", "Über Imax: Isc × 1,25 von 2 Strings 25 A, Imax 24 A" in rw["1.1.1"][2] and rw["1.1.2"][1] == "bad", rw)
+    check("5ak/5au: altes Feld imax als Isc max geladen", D()["pv"]["invTypes"][0].get("iscMax") == 24 and "imax" not in D()["pv"]["invTypes"][0], D()["pv"]["invTypes"])
+    check("5ak: Strom mit Zuschlag: MPPT 1 = 2 × 10 A × 1,25 = 25 A über 24 A", "Über Isc max: Isc × 1,25 von 2 Strings 25 A, max 24 A" in rw["1.1.1"][2] and rw["1.1.2"][1] == "bad", rw)
     check("5am: MPPT 2 mit 12,5 A von 24 A ohne „knapp“, kein Knapp bei Strom und Systemspannung", rw["1.2.1"][1] == "ok" and "knapp" not in rw["1.2.1"][2].lower(), rw)
     check("Gruppe C: keine JS-Fehler", not errors, errors)
 
@@ -1118,6 +1124,58 @@ with sync_playwright() as p:
     page.click(pop("druck") + ' [data-pvact="pmidauto"]'); page.wait_for_timeout(80)
     check("5ao: Mitte automatisch: Feld weg", "pmid" not in M(), M().get("pmid"))
     check("Gruppe D: keine JS-Fehler", not errors, errors)
+
+    # ---------- 5ar–5aw (CJ 15.10.) ----------
+    mE = {"id": "mE", "name": "E", "l": 1700, "b": 1000, "voc": 40, "isc": 10, "impp": 9.5, "tkVoc": -0.3, "vsys": 1000}
+    def mods_e(n, id0): return [{"id": id0 + i, "type": "pvmodule", "mt": "mE", "x": i * 1005, "y": 0, "quer": False} for i in range(n)]
+    exE = {"format": "schemacad", "version": 6, "active": 0, "nextId": 1000, "pvLayer": "kabel",
+           "pv": {"moduleTypes": [mE], "invTypes": [{"id": "w1", "name": "WR klein", "vmax": 1000, "iscMax": 30, "imppMax": 9, "mppt": 2}, {"id": "w2", "name": "WR alt", "vmax": 1000, "imax": 12}], "wr": {"1": "w1", "3": "w2"}, "tmin": -10,
+                  "anlage": [{"str": [1]}, {"str": [1]}, {"str": [1]}]},
+           "sheets": [{"kind": "pv", "sid": 5, "meta": {"BLATT": "1"}, "items": mods_e(3, 100) + [{"id": 150, "type": "pvstring", "name": "1.1.1", "mods": [100]}, {"id": 151, "type": "pvstring", "name": "2.1.1", "mods": [101]}, {"id": 152, "type": "pvstring", "name": "3.1.1", "mods": [102]}]},
+                      {"kind": "pvtab", "meta": {"BLATT": "1"}, "items": []}]}
+    fE = OUT / "pv_5ar.schemacad.json"; fE.write_text(json.dumps(exE)); notoast(); reopen(fE)
+    names = lambda: sorted(st["name"] for st in strs())
+    check("5ar: + und − Kreis grösser (r 216 statt 180)", page.locator('#items circle.pv-plus[r="216"]').count() == 3 and page.locator('#items circle.pv-minus[r="216"]').count() == 3)
+    page.click('#left [data-tool="select"]'); page.keyboard.press("Escape")
+    wt = page.inner_text(pop("wr"))
+    check("5at: Hinweis Tmin nach NIN SN 411000 7.12.5.1.2.1.1", "NIN SN 411000 7.12.5.1.2.1.1" in wt and "0 °C (Neigung unter 15°)" in wt and "−5 °C" in wt and "−15 °C" in wt and "−25 °C" in wt and "Abweichung nur mit Nachweis" in wt, wt[:400])
+    check("5aw: WR-Zeilen mit Griff zum Ziehen", page.locator('#pv-pop [data-wrdrag][draggable="true"]').count() == 3)
+    # Ziehen mit der Maus in einer frischen Seite (in dieser langen Sitzung startet Chromium kein Ziehen mehr, Grund nicht gefunden), hier mit DragEvents
+    p2 = ctx.new_page(); p2.goto(URL); p2.wait_for_timeout(300); p2.click('[data-start="schema"]')
+    with p2.expect_file_chooser() as fc: p2.click("#btn-open")
+    fc.value.set_files(str(fE)); p2.wait_for_timeout(400); p2.click("#btn-pvwr"); p2.wait_for_timeout(80)
+    p2.drag_and_drop('#pv-pop [data-wrdrag="3"]', '#pv-pop [data-wrrow="1"]'); p2.wait_for_timeout(120)
+    check("5aw: Ziehen mit der Maus (frische Seite): WR 3 wird WR 1", p2.evaluate("window.__schemacad.doc.pv.wr") == {"1": "w2", "2": "w1"}, p2.evaluate("window.__schemacad.doc.pv.wr"))
+    p2.close()
+    page.evaluate("""(()=>{const dt=new DataTransfer(), q=(s)=>document.querySelector('#pv-pop '+s), ev=(el,t)=>el.dispatchEvent(new DragEvent(t,{bubbles:true,cancelable:true,dataTransfer:dt}));
+      ev(q('[data-wrdrag="3"]'),'dragstart'); ev(q('[data-wrrow="1"]'),'dragover'); ev(q('[data-wrrow="1"]'),'drop'); })()"""); page.wait_for_timeout(120)
+    pv = D()["pv"]
+    check("5aw: WR 3 nach oben gezogen: wird WR 1, Strings und Datenblatt folgen", names() == ["1.1.1", "2.1.1", "3.1.1"] and {st["id"]: st["name"] for st in strs()} == {152: "1.1.1", 150: "2.1.1", 151: "3.1.1"} and pv["wr"] == {"1": "w2", "2": "w1"} and page.inner_text("#pv-pop .pv-wr-head >> nth=0").startswith("⠿ WR 1"), ({st["id"]: st["name"] for st in strs()}, pv))
+    page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    check("5aw: Rückgängig: alte Reihenfolge", {st["id"]: st["name"] for st in strs()} == {150: "1.1.1", 151: "2.1.1", 152: "3.1.1"} and D()["pv"]["wr"] == {"1": "w1", "3": "w2"})
+    notoast(); page.click(pop("wr") + ' [data-pvact="wrrm"][data-wr="1"]'); page.wait_for_timeout(80)
+    check("5as: 1. Klick leert WR 2 (Anlage leer, String bleibt)", D()["pv"]["anlage"] == [{"str": [1]}, {"str": []}, {"str": [1]}] and names() == ["1.1.1", "2.1.1", "3.1.1"] and "geleert" in toasts(), (D()["pv"], toasts()))
+    notoast(); page.click(pop("wr") + ' [data-pvact="wrrm"][data-wr="1"]'); page.wait_for_timeout(120)
+    check("5as: 2. Klick fragt nach (String von WR 2 wird gelöscht)", page.locator('.modal [data-r="1"]').count() == 1 and "WR 2 löschen" in page.inner_text(".modal"))
+    page.click('.modal [data-r="1"]'); page.wait_for_timeout(120); pv = D()["pv"]
+    check("5as: WR 2 gelöscht, WR 3 rückt nach (3.1.1 → 2.1.1), Module bleiben", {st["id"]: st["name"] for st in strs()} == {150: "1.1.1", 152: "2.1.1"} and pv["wr"] == {"1": "w1", "2": "w2"} and pv["anlage"] == [{"str": [1]}, {"str": [1]}] and len(mods()) == 3 and page.locator("#pv-pop .pv-wr").count() == 2, pv)
+    page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    check("5as: Rückgängig: WR 2 und sein String wieder da", names() == ["1.1.1", "2.1.1", "3.1.1"] and len(D()["pv"]["anlage"]) == 3)
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    page.click(pop("wr") + ' [data-pvact="itnew"]'); page.wait_for_selector('.modal [data-f="7"]'); ml = page.inner_text(".modal"); page.keyboard.press("Escape"); page.wait_for_timeout(80)
+    check("5au: WR-Typ mit getrennten Feldern Isc max und Impp max", "Isc max je MPPT in A" in ml and "Impp max je MPPT in A" in ml and "Imax" not in ml, ml)
+    page.keyboard.press("Escape"); goto_tab(); rw = {r[0]: r for r in rows()}
+    check("5au: Impp 9,5 A über Impp max 9 A: Warnung Ertragseinbusse, Isc 12,5 A unter 30 A ok", rw["1.1.1"][1] == "warn" and "Ertragseinbusse möglich: Impp 9,5 A, Impp max 9 A" in rw["1.1.1"][2] and "Isc max" not in rw["1.1.1"][2], rw.get("1.1.1"))
+    check("5au: altes imax 12 als Isc max: 12,5 A darüber = Fehler, ohne Impp max keine Impp-Prüfung", rw["3.1.1"][1] == "bad" and "Über Isc max: Isc × 1,25 12,5 A, max 12 A" in rw["3.1.1"][2] and "Impp" not in rw["3.1.1"][2] and "Isc max 30 A, Impp max 9 A" in page.text_content("#items"), rw.get("3.1.1"))
+    page.click("#sheet-cur"); page.click('#sheet-menu [data-sheet="0"]'); page.wait_for_timeout(300); page.keyboard.press("Escape")
+    for part in ("mod", "name", "head"): page.click(pop("druck") + f' [data-pvopt="pr"][data-part="{part}"]'); page.wait_for_timeout(60)
+    hid = M().get("hide"); page.keyboard.press("Escape")
+    page.evaluate("window.print = () => setTimeout(() => window.dispatchEvent(new Event('afterprint')), 50)")
+    page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_timeout(400)
+    check("5av: nach Druck/PDF alle Druckteile wieder an", hid == ["mod", "name", "head"] and "hide" not in M() and page.locator("#items .pv-module").count() == 3 and page.locator(pop("druck") + ' [data-pvopt="pr"]:not(:checked)').count() == 0, (hid, M().get("hide")))
+    page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
+    check("5av: Rückgängig holt die Auswahl zurück", M().get("hide") == ["mod", "name", "head"], M().get("hide"))
+    check("5ar–5aw: keine JS-Fehler", not errors, errors)
 
     # DXF und PDF für Stringpläne folgen später: Hinweis, kein Absturz
     page.click("#btn-export"); page.click("#btn-dxf"); page.wait_for_timeout(200)

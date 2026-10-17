@@ -6,6 +6,7 @@ import * as R from "./render.js";
 import * as D from "./dispo.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
+import { zipFiles } from "./zip.js";
 
 export function makeFiles(c) {
   const { S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv } = c;
@@ -84,9 +85,9 @@ export function makeFiles(c) {
       if (sh.kind === "legend") return L.printPages(S.doc, sh); // A4 hoch
       if (T.isDeck(sh)) return T.deckPrintPages(S.doc, sh);
       if (sh.kind === "dispo") { // freie Fläche: Inhalt mit Rand auf eine Seite einpassen, Linienstärke in Papier-mm
-        const b = D.contentBBox(sh.items, sh.dims !== false) || { x0: 0, y0: 0, x1: W, y1: H }, pad = Math.max(20, (b.x1 - b.x0) * 0.03);
+        const o = D.planOpts(sh), b = D.contentBBox(sh.items, o) || { x0: 0, y0: 0, x1: W, y1: H }, pad = Math.max(20, (b.x1 - b.x0) * 0.03);
         const x0 = b.x0 - pad, w = b.x1 - b.x0 + 2 * pad, h = b.y1 - b.y0 + 2 * pad, y1 = b.y1 + pad;
-        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${-y1} ${w} ${h}" style="--pw:${0.35 * Math.max(w / W, h / H)}"><g transform="scale(1 -1)">${R.itemsSVG(sh.items, "dispo", { dims: sh.dims !== false })}</g></svg>`;
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${-y1} ${w} ${h}" style="--pw:${0.35 * Math.max(w / W, h / H)}"><g transform="scale(1 -1)">${R.itemsSVG(sh.items, "dispo", o)}</g></svg>`;
       }
       return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"><g transform="matrix(1 0 0 -1 0 ${H})">${R.sheetSVG(sh.meta, { on: false, size: S.grid.size }, 1)}${R.itemsSVG(sh.items, sh.kind)}</g></svg>`;
     });
@@ -98,7 +99,7 @@ export function makeFiles(c) {
     if (!only) await pv.preparePrint(); // PDF-Pläne der Stringpläne fertig rendern
     buildPrint(only);
     document.title = baseName() + (only ? "_Legende" : "");
-    const done = () => { document.title = old; $("#printroot").innerHTML = ""; window.removeEventListener("afterprint", done); };
+    const done = () => { document.title = old; $("#printroot").innerHTML = ""; window.removeEventListener("afterprint", done); if (!only) pv.resetPrintParts(); }; // 5av: Druckteile wieder an
     window.addEventListener("afterprint", done);
     window.print();
   }
@@ -109,16 +110,25 @@ export function makeFiles(c) {
     try {
       S.doc.sheets.forEach((sh, i) => sh.kind !== "pv" && sh.kind !== "pvtab" && !T.isDeck(sh) && files.push([`${baseName()}_${sh.kind === "dispo" ? "Dispo" : "Blatt"}-${safeName(String(sh.meta.BLATT || i + 1))}.dxf`, exportDxf(sh)]));
     } catch (err) { toast("Der DXF-Export ist fehlgeschlagen: " + (err.message || err), "error"); return; }
-    try {
-      if (hasFS && window.showDirectoryPicker) {
-        const dir = await window.showDirectoryPicker({ mode: "readwrite" });
+    // Ordner wählen. Chrome sperrt in der Ordnerwahl Systemordner (z. B. ~/Library und damit iCloud Drive) und meldet
+    // „Dieser Ordner kann nicht geöffnet werden“; die App erfährt nur „abgebrochen“. Darum danach immer die ZIP anbieten.
+    let why = "";
+    if (hasFS && window.showDirectoryPicker) {
+      try {
+        const dir = await window.showDirectoryPicker({ id: "schemacad-dxf", mode: "readwrite" });
         for (const [n, t] of files) { const h = await dir.getFileHandle(n, { create: true }); await writeHandle(h, t); }
         toast(`${files.length} DXF-Dateien exportiert nach: ${dir.name}`);
-      } else {
-        for (const [n, t] of files) { download(n, t, "application/octet-stream"); await new Promise((r) => setTimeout(r, 250)); }
-        toast(`${files.length} DXF-Dateien in den Download-Ordner geladen.`);
-      }
-    } catch (err) { if (err && err.name === "AbortError") return; toast("DXF-Export hat nicht geklappt: " + (err.message || err), "error"); }
+        return;
+      } catch (err) { why = err && err.name === "AbortError" ? "Kein Ordner gewählt." : `Der Ordner liess sich nicht beschreiben (${err.message || err}).`; }
+      if (!(await confirmDialog("Als ZIP laden?", `${why} Chrome kann manche Ordner nicht öffnen, zum Beispiel iCloud Drive. Alle ${files.length} DXF-Dateien lassen sich stattdessen als eine ZIP-Datei in den Download-Ordner laden.`, "ZIP laden"))) return;
+    }
+    saveZip(files);
+  }
+  // Alle DXF als eine ZIP-Datei direkt in den Download-Ordner: kein weiterer Dateidialog, der wieder an einem gesperrten Ordner scheitern könnte
+  function saveZip(files) {
+    const name = `${baseName()}_DXF.zip`;
+    download(name, zipFiles(files), "application/zip");
+    toast(`${files.length} DXF-Dateien als ZIP in den Download-Ordner geladen: ${name}`);
   }
   const printLegend = () => printPdf(S.doc.sheets.find((sh) => sh.kind === "legend") || null);
   return { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend };

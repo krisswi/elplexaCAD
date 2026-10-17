@@ -42,7 +42,7 @@ const toolLayer = (t) => (PLAN_TOOLS.includes(t) ? "bg" : DRAW_TOOLS[t] ? "dach"
 // Tasten für Werkzeuge (Schritt 5d, Vorschlag Claude): M und F sind schon belegt (Blatt anheften, Einpassen)
 const TOOL_KEYS = { s: "pv-string", p: "pv-spa", e: "pv-module", b: "pv-field" };
 const keyOf = (t) => Object.keys(TOOL_KEYS).find((k) => TOOL_KEYS[k] === t)?.toUpperCase() ?? "";
-const MARK_R = 180;
+const MARK_R = 216; // Kreis für + und − (5ar, CJ 15.10.: leicht grösser, 1,2 × von 180 mm)
 // Füllmuster (5h): massstäblich in mm, dezent, damit Module lesbar bleiben. Masse und Farben Annahme Claude.
 const FILL_DEF = { "ziegel-rot": ["ziegel", "#b5583a"], "ziegel-dunkel": ["ziegel", "#4b4542"], "trapez-hell": ["trapez", "#a3a9af"], "trapez-dunkel": ["trapez", "#5b6166"], "trapez-braun": ["trapez", "#7b5638"] };
 const TILE_W = 300, TILE_H = 340, RIB = 250; // Ziegelbreite, Lattweite, Rippenabstand Trapezblech in mm
@@ -723,17 +723,33 @@ export function makePv(c) {
     for (const it of S.model.items) if (S.sel.has(it.id) && !P.pickable(S.model, it)) S.sel.delete(it.id); // nicht mehr wählbar
     c.renderLeft(); renderSheet(); c.renderRight(); c.renderOverlay();
   }
-  // WR entfernen (Wechselrichter-Fenster): der letzte fällt weg, ein WR mitten drin wird geleert, damit die Nummern der anderen (und ihre Strings) bleiben
-  function removeWr(i) {
-    const nr = i + 1, last = i === (S.doc.pv?.anlage?.length ?? 0) - 1;
-    change(() => {
-      S.doc.pv ??= {};
-      const a = (S.doc.pv.anlage ?? []).map((w) => ({ str: [...w.str] }));
-      if (last) a.pop(); else if (i < a.length) a[i] = { str: [] };
-      if (S.doc.pv.wr) delete S.doc.pv.wr[nr];
-      S.doc.pv.anlage = a.length ? a : undefined; S.doc.pv = P.tidyPv(S.doc.pv);
-    });
-    if (!last) toast(`WR ${nr} geleert. Die Nummern der anderen WR bleiben.`);
+  // WR entfernen (5as, CJ 15.10.): 1. Klick leert den WR (Anlage und Datenblatt), 2. Klick auf den geleerten WR löscht ihn ganz, egal wo in der Liste.
+  // Die folgenden WR rücken nach (WR 3 wird WR 2, seine Strings 3.x.y heissen dann 2.x.y). Hat der WR noch Strings, fragt eine Rückfrage, sie werden gelöscht.
+  const wrRows = () => Math.max(S.doc.pv?.anlage?.length ?? 0, 0, ...P.wrNumbers(S.doc));
+  const wrStrings = (nr) => S.doc.sheets.filter((sh) => sh.kind === "pv").flatMap((sh) => P.strings(sh)).filter((st) => P.parseName(st.name)?.wr === nr).length;
+  async function removeWr(i) {
+    const nr = i + 1, a = S.doc.pv?.anlage ?? [];
+    if (a[i]?.str.length || S.doc.pv?.wr?.[nr]) {
+      setAnlage((x) => { if (i < x.length) x[i] = { str: [] }; if (S.doc.pv.wr) delete S.doc.pv.wr[nr]; });
+      toast(`WR ${nr} geleert. Nochmals × löscht ihn ganz.`); return;
+    }
+    const k = wrStrings(nr), n = wrRows();
+    if (k && !(await confirmDialog(`WR ${nr} löschen?`, `${k === 1 ? "Ein String" : `${k} Strings`} von WR ${nr} ${k === 1 ? "wird" : "werden"} gelöscht, die Module bleiben.${nr < n ? " Die folgenden WR rücken nach." : ""} Rückgängig mit ⌘Z.`, "Löschen"))) return;
+    change(() => { S.sel.clear(); P.renumberWr(S.doc, Array.from({ length: n }, (_, j) => j + 1).filter((j) => j !== nr)); });
+    toast(nr < n ? `WR ${nr} gelöscht. WR ${nr + 1} bis ${n} rücken nach.` : `WR ${nr} gelöscht.`);
+  }
+  // WR verschieben (5aw, CJ 15.10.: Drag and Drop im Fenster Wechselrichter): WR from (1 …) kommt an die Stelle to, Nummern und Strings folgen
+  function moveWr(from, to) {
+    const n = wrRows();
+    if (from === to || from < 1 || to < 1 || from > n || to > n) return;
+    const order = Array.from({ length: n }, (_, j) => j + 1);
+    order.splice(to - 1, 0, ...order.splice(from - 1, 1));
+    change(() => P.renumberWr(S.doc, order));
+    toast(`WR ${from} ist jetzt WR ${to}.`);
+  }
+  // Nach Druck/PDF alle Druckteile wieder an (5av, CJ 15.10.). Ein Rückgängig-Schritt holt die Auswahl zurück.
+  function resetPrintParts() {
+    if (S.doc.sheets.some((sh) => sh.kind === "pv" && sh.hide)) change(() => { for (const sh of S.doc.sheets) if (sh.kind === "pv") delete sh.hide; });
   }
   const pickable = () => S.model.items.filter((it) => P.pickable(S.model, it));
   // Verkabelung löschen (5m): markierte Strings, ohne Markierung alle Strings des offenen Stringplans (5aj, CJ 15.10.). Ein Rückgängig-Schritt.
@@ -864,7 +880,8 @@ export function makePv(c) {
     h += `<div class="row"><button class="btn outline small" data-pvact="wradd">${R.icons.plus.replace("<svg", '<svg width="16" height="16"')}WR hinzufügen</button></div>`;
     for (let i = 0; i < n; i++) {
       const w = a[i] ?? { str: [] }, nr = i + 1;
-      h += `<div class="pv-wr" data-wrrow="${nr}"><div class="pv-wr-head"><span>WR ${nr}</span><button class="btn outline small danger" data-pvact="wrrm" data-wr="${i}" title="${i === a.length - 1 ? "WR entfernen" : "WR leeren (die Nummern der anderen WR bleiben)"}" aria-label="WR ${nr} entfernen">×</button></div>`;
+      const empty = !w.str.length && !S.doc.pv?.wr?.[nr]; // 5as: geleert → nächster Klick löscht
+      h += `<div class="pv-wr" data-wrrow="${nr}"><div class="pv-wr-head"><span class="pv-wr-grip" draggable="true" data-wrdrag="${nr}" title="Ziehen verschiebt den WR, die Nummern folgen der Reihenfolge">⠿ WR ${nr}</span><button class="btn outline small danger" data-pvact="wrrm" data-wr="${i}" title="${empty ? "WR löschen (folgende WR rücken nach)" : "WR leeren (nochmals × löscht ihn)"}" aria-label="WR ${nr} ${empty ? "löschen" : "leeren"}">×</button></div>`;
       h += `<div class="pv-wr-grid"><div class="field"><label>Datenblatt</label>${TAB.wrSelect(nr)}</div><div class="field"><label>MPPT</label>${inp(`data-pvopt="mppt" data-wr="${i}"`, w.str.length, `WR ${nr}: Anzahl MPPT`)}</div></div>`;
       if (w.str.length) h += `<div class="field"><label>Strings je MPPT</label><div class="pv-mppt">${w.str.map((k, m) => `<label><span>${m + 1}</span>${inp(`data-pvopt="str" data-wr="${i}" data-m="${m}"`, k, `WR ${nr}, MPPT ${m + 1}: Strings`)}</label>`).join("")}</div></div>`;
       h += `</div>`;
@@ -981,7 +998,7 @@ export function makePv(c) {
     gripAt: tab(gripAt, () => null), pointerDown: tab(pointerDown, () => true), hover: tab(hover, () => {}), toolKey: tab(toolKey, () => false), cornerKey: tab(cornerKey, () => false), cancel, action: (el) => (TAB_ACTS.has(el.dataset.pvact) ? TAB.action(el) : DOC_ACTS.has(el.dataset.pvact) ? action(el) : tab(action, TAB.action)(el)),
     option: (el) => (TAB_OPTS.has(el.dataset.pvopt) ? TAB.option(el) : DOC_OPTS.has(el.dataset.pvopt) ? option(el) : tab(option, TAB.option)(el)), popHTML, printLabel, pickable: tab(pickable, () => []), layerPick: tab(() => P.layerPick(S.model, act()), () => []),
     otherLayers: tab(() => P.otherLayers(S.model, act()), () => []), layerNote: (it) => { const l = P.layerOf(it); return `Liegt auf Ebene ${layerName(l)}. Wechseln mit ⌘${P.DRAW_LAYERS.indexOf(l) + 1}.`; },
-    leftHTML: tab(leftHTML, () => TAB.leftHTML(TOOLS, toolBtn)), panelHTML: tab(panelHTML, (sel, o) => TAB.panelHTML(o)), hint: tab(hint, TAB.hint), printPages, preparePrint };
+    leftHTML: tab(leftHTML, () => TAB.leftHTML(TOOLS, toolBtn)), panelHTML: tab(panelHTML, (sel, o) => TAB.panelHTML(o)), hint: tab(hint, TAB.hint), printPages, preparePrint, moveWr, resetPrintParts };
 }
 
 const fmtMm = (v) => String(Math.round(v * 10) / 10).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, " ");

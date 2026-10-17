@@ -12,6 +12,10 @@ const KINDS = [
 // Gibt "schema", "dispo", "pv", "open" oder null (abgebrochen) zurück
 export function startDialog() {
   const tiles = KINDS.map((k) => `<button class="start-tile" data-start="${k.id}"><span class="start-ic">${k.icon}</span><span class="start-t">${R.esc(k.label)}</span><span class="start-s">${R.esc(k.sub)}</span></button>`).join("");
+  if (ELPLEXA) return openModal("Womit beginnst du?", `<p>Jedes Modul öffnet für sich. Weitere Module legst du in der Projektübersicht (Taste 0) über „+ Modul“ an.</p><div class="start-grid">${tiles}</div><div class="actions"><button class="btn outline" data-start="open">Datei öffnen …</button><button class="btn outline" data-c>Abbrechen</button></div>`, (b, done) => {
+    if (b.dataset.start) done(b.dataset.start);
+    else if (b.dataset.c !== undefined) done(null);
+  }, null, '[data-start="schema"]', "start");
   return openModal("Was möchtest du zeichnen?", `<p>Weitere Blätter anderer Art fügst du später unten über + hinzu.</p><div class="start-grid">${tiles}</div><div class="actions"><button class="btn outline" data-start="open">Datei öffnen …</button><button class="btn outline" data-c>Abbrechen</button></div>`, (b, done) => {
     if (b.dataset.start) done(b.dataset.start);
     else if (b.dataset.c !== undefined) done(null);

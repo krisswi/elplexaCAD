@@ -50,7 +50,7 @@ export function partsList(doc) {
 }
 
 // Formelschutz: Excel soll Texte wie "=…", "+…", "-…" oder "@…" nicht als Formel ausführen.
-const cell = (v) => { const s = /^[=+\-@]/.test(String(v)) ? "'" + v : String(v); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+export const cell = (v) => { const s = /^[=+\-@]/.test(String(v)) ? "'" + v : String(v); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const lines = (rows) => rows.map((r) => r.map(cell).join(";"));
 
 // Eine Datei, beide Listen nacheinander. BOM, damit Excel Umlaute richtig liest.

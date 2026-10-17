@@ -19,10 +19,15 @@ const pdfWorker = { name: "pdf-worker-src", setup(b) {
     return { contents: code, loader: "text" };
   });
 } };
-const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker] });
-const css = fs.readFileSync("src/style.css", "utf8");
+// `node build.mjs` baut SchemaCAD (v3, online). `node build.mjs elplexa` baut elplexaCAD (Aufbau B, CJ 17.10.2026): gleicher Quellcode,
+// Teile nur für elplexaCAD stehen hinter ELPLEXA und fallen im SchemaCAD-Bau ganz weg.
+const EL = process.argv[2] === "elplexa";
+const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker], define: { ELPLEXA: String(EL) } });
+const css = fs.readFileSync("src/style.css", "utf8") + (EL ? "\n" + fs.readFileSync("src/elplexa.css", "utf8") : "");
 let html = fs.readFileSync("src/index.template.html", "utf8");
+if (EL) html = html.replace("<title>SchemaCAD v3</title>", "<title>elplexaCAD</title>").replace('<span class="brand-name">SchemaCAD</span>', '<span class="brand-name">elplexaCAD</span>');
 html = html.replace("/*CSS*/", () => fonts + "\n" + css).replace("/*JS*/", () => js.outputFiles[0].text.replace(/<\/script/gi, "<\\/script"));
 fs.mkdirSync("dist", { recursive: true });
-fs.writeFileSync("dist/schemacad.html", html);
-console.log("dist/schemacad.html", (html.length / 1024).toFixed(0) + " KB");
+const out = EL ? "dist/ElplexaCAD.html" : "dist/schemacad.html";
+fs.writeFileSync(out, html);
+console.log(out, (html.length / 1024).toFixed(0) + " KB");

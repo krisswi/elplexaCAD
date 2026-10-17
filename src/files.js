@@ -13,10 +13,15 @@ export function makeFiles(c) {
   const { S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv, sheetLabel } = c;
   const hasFS = "showSaveFilePicker" in window && "showOpenFilePicker" in window;
   const safeName = (s) => s.replace(/[\\/:*?"<>|]+/g, "-").trim();
-  function baseName() { const m = S.model.meta; return safeName((T.isDeck(S.model) ? "" : m.TITEL) || m.OBJEKT || "Schema") || "Schema"; }
+  function baseName() {
+    if (ELPLEXA) { const n = S.doc.project?.name || (S.fileName !== "Unbenannt" ? S.fileName : ""); if (n) return safeName(n) || "Projekt"; } // elplexaCAD: Projektname, sonst Dateiname
+    const m = S.model.meta; return safeName((T.isDeck(S.model) ? "" : m.TITEL) || m.OBJEKT || "Schema") || "Schema"; }
+  // elplexaCAD speichert als .elplexa.json, öffnet aber auch alte .schemacad.json; Projektname ohne Endung.
+  // elplexaCAD: Projektname ohne .elplexa.json, .schemacad.json oder .json (alte Dateien öffnen weiter).
   const sheetName = (sh) => baseName() + (sh.kind === "dispo" ? "_Dispo" : "");
 
   function download(name, text, type) {
+    if (ELPLEXA && S.elLocked() && !/\.(dxf|zip)$/i.test(name)) { S.elUnlock(); return; } // elplexaCAD im Netz ohne Anmeldung: nur DXF (CJ 17.10.)
     const url = URL.createObjectURL(new Blob([text], { type }));
     const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -25,16 +30,19 @@ export function makeFiles(c) {
 
   async function saveJson(forceAs) {
     closeEditor(true);
+    if (ELPLEXA && !(await S.elUnlock())) return;
     const text = docText();
     try {
       if (hasFS) {
         let h = S.fileHandle;
-        if (!h || forceAs) h = await window.showSaveFilePicker({ suggestedName: `${baseName()}.schemacad.json`, types: [{ description: "SchemaCAD-Datei", accept: { "application/json": [".json"] } }] });
+        if (!h || forceAs) h = await window.showSaveFilePicker({ suggestedName: `${baseName()}${ELPLEXA ? ".elplexa.json" : ".schemacad.json"}`, types: [{ description: ELPLEXA ? "elplexaCAD-Datei" : "SchemaCAD-Datei", accept: { "application/json": [".json"] } }] });
         await writeHandle(h, text);
-        S.fileHandle = h; setFileName(h.name); markClean(); toast("Gespeichert: " + h.name);
+        S.fileHandle = h; setFileName(ELPLEXA ? h.name.replace(/(\.elplexa|\.schemacad)?\.json$/i, "") || h.name : h.name); markClean(); toast("Gespeichert: " + h.name);
+        if (ELPLEXA) dispatchEvent(new CustomEvent("el-file", { detail: { file: h.name, handle: h } })); // zuletzt geöffnete Projekte
       } else {
-        const name = `${baseName()}.schemacad.json`;
-        download(name, text, "application/json"); setFileName(name); markClean(); toast("Die Datei wurde in den Download-Ordner geladen: " + name);
+        const name = `${baseName()}${ELPLEXA ? ".elplexa.json" : ".schemacad.json"}`;
+        download(name, text, "application/json"); setFileName(ELPLEXA ? name.replace(/(\.elplexa|\.schemacad)?\.json$/i, "") || name : name); markClean(); toast("Die Datei wurde in den Download-Ordner geladen: " + name);
+        if (ELPLEXA) dispatchEvent(new CustomEvent("el-file", { detail: { file: name, handle: null } }));
       }
     } catch (err) { if (err && err.name === "AbortError") return; toast("Speichern hat nicht geklappt: " + (err.message || err) + ". Prüfe, ob der Ordner beschreibbar ist, oder speichere unter einem anderen Namen (⇧⌘S).", "error"); }
   }
@@ -43,14 +51,15 @@ export function makeFiles(c) {
     const m = parseModel(text);
     S.doc = m; S.active = m.active; S.sel.clear(); S.undo = []; S.redo = []; S.fileHandle = handle || null; S.wireDraft = null;
     const note = adoptDeck(); // alte Datei: Titelseite und Inhalt kommen dazu, Schemablätter rücken um 2
-    setFileName(name); markClean(); updateUndoButtons(); setTool("select"); afterSheetChange(null, { reset: true, fit: true });
+    setFileName(ELPLEXA ? name.replace(/(\.elplexa|\.schemacad)?\.json$/i, "") || name : name); markClean(); updateUndoButtons(); setTool("select"); afterSheetChange(null, { reset: true, fit: true });
     if (note) { markDirty(); toast(note); }
+    if (ELPLEXA) dispatchEvent(new CustomEvent("el-file", { detail: { file: name, handle: handle || null } }));
   }
   async function openJson() {
     if (S.dirty && !(await confirmDialog("Ungespeicherte Änderungen", "Beim Öffnen gehen die Änderungen am aktuellen Blatt verloren.", "Trotzdem öffnen"))) return;
     try {
       if (hasFS) {
-        const [h] = await window.showOpenFilePicker({ types: [{ description: "SchemaCAD-Datei", accept: { "application/json": [".json"] } }] });
+        const [h] = await window.showOpenFilePicker({ types: [{ description: ELPLEXA ? "elplexaCAD-Datei" : "SchemaCAD-Datei", accept: { "application/json": [".json"] } }] });
         const file = await h.getFile();
         await loadText(await file.text(), h.name, h);
       } else {
@@ -130,6 +139,7 @@ export function makeFiles(c) {
   // Knopf PDF (CJ 17.10.): Blätter wählen, Vorgabe alle, Schnellwahl aktuelles Blatt. only: gleich drucken ohne Auswahl (Legende).
   async function printPdf(only = null) {
     closeEditor(true);
+    if (ELPLEXA && !(await S.elUnlock())) return;
     if (only) { await printSheets([only], only.kind === "legend" ? "_Legende" : ""); return; }
     const sh = S.doc.sheets, row = (s, i) => `<label class="chk"><input type="checkbox" data-psheet="${i}" checked> <span>${R.esc(sheetLabel(s, i))}${s.meta?.TITEL && s.meta.TITEL !== sheetLabel(s, i) ? ` · ${R.esc(s.meta.TITEL)}` : ""}</span><span class="note print-paper">${sheetPaper(s).label}</span></label>`;
     const body = `<p>Welche Blätter? Reihenfolge wie in der Datei. Im Druckdialog „Als PDF sichern“ wählen.</p>`

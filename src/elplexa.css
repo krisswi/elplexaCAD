@@ -1,0 +1,96 @@
+/* elplexaCAD (Aufbau B, CJ 17.10.2026): nur im Bau `node build.mjs elplexa` angehängt. */
+:root { --el-band: #2f6db3; }
+#stage { box-shadow: inset 0 3px 0 var(--el-band); } /* Farbband: welches Modul offen ist */
+.el-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--faint); }
+.el-crumb { display: flex; align-items: center; gap: 2px; flex: none; }
+.el-crumb .btn { gap: 6px; white-space: nowrap; }
+.el-back { color: var(--muted); }
+.el-sl { color: var(--faint); padding: 0 2px; }
+.el-cur { font-weight: 600; }
+.el-hubtitle { font-weight: 600; padding: 0 8px; white-space: nowrap; }
+.el-sbmod { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+#el-modmenu .mi, #el-addmenu .mi { align-items: center; gap: 10px; }
+#el-addmenu .mi[disabled] { opacity: .5; cursor: default; }
+
+/* Seitenleisten aus (Taste §): Zeichenfläche über die ganze Breite */
+body.el-bare #app { grid-template-columns: 0 minmax(0, 1fr) 0; }
+body.el-bare #left, body.el-bare #right { visibility: hidden; padding: 0; border: 0; }
+.el-barebtn[aria-pressed="true"] { background: var(--hover); }
+
+/* Projektübersicht: über Leisten und Zeichenfläche, Kopf- und Statusleiste bleiben */
+#el-hub { grid-row: 2; grid-column: 1 / -1; z-index: 6; background: var(--bench); overflow: auto; }
+body.el-hubopen #sheetbar, body.el-hubopen #zoombar, body.el-hubopen .pvbar, body.el-hubopen #btn-handover, body.el-hubopen #el-bare, body.el-hubopen #statusbar .gridctl, body.el-hubopen #grid-size, body.el-hubopen #coords { visibility: hidden; }
+.el-hubin { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 24px; align-items: start; max-width: 1100px; padding: 28px 32px; }
+.el-col { display: grid; gap: 24px; min-width: 0; }
+.el-proj { background: #fff; border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 10px rgba(23, 33, 43, .1); display: grid; gap: 6px; }
+.el-proj h2 { margin: 0 0 6px; font-size: 19px; overflow-wrap: anywhere; }
+.el-eye { font-size: 11.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.el-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0; border-bottom: 1px solid var(--panel-line); font-size: 13.5px; }
+.el-row span { color: var(--muted); flex: none; }
+.el-row input { flex: 1; min-width: 0; height: 30px; padding: 0 6px; margin-right: -6px; font: inherit; color: var(--ink); text-align: right; background: transparent; border: 1px solid transparent; border-radius: 6px; }
+.el-proj input:focus-visible, .el-time input:focus-visible { outline: 2px solid var(--pe-green); outline-offset: 0; background: #fff; }
+@media (hover: hover) and (pointer: fine) { .el-row input:hover, .el-name:hover { background: var(--hover); } }
+.el-name { width: 100%; margin: 0 0 4px -6px; padding: 2px 6px; font: 600 19px/1.3 var(--font); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 6px; text-overflow: ellipsis; }
+.el-eyerow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
+/* Projektstatus: Pille, darüber ein unsichtbares Auswahlfeld */
+.el-st { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 12px; font-weight: 600; white-space: nowrap; color: #2f4a66; background: #e3ebf4; }
+.el-st[data-st="of"] { color: #5a6775; background: #e8ecf0; }
+.el-st[data-st="ab"] { color: #8a4a06; background: #fbecd6; }
+.el-st[data-st="ag"] { color: #1f6b3d; background: #dcf0e3; }
+.el-stsel { position: relative; display: inline-flex; cursor: pointer; }
+.el-stsel .el-st::after { content: "▾"; margin-left: 5px; font-size: 10px; }
+.el-stsel select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.el-stsel:focus-within .el-st { outline: 2px solid var(--pe-green); outline-offset: 1px; }
+.el-crumb .el-st { margin-left: 8px; }
+/* Projekte: neu und zuletzt geöffnet */
+.el-projs, .el-time { background: #fff; border-radius: 12px; padding: 14px 20px 16px; box-shadow: 0 2px 10px rgba(23, 33, 43, .1); display: grid; gap: 8px; }
+.el-recent { display: grid; }
+.el-rrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 8px 8px; margin: 0 -8px; text-align: left; font: inherit; color: var(--ink); background: none; border: 0; border-radius: 8px; cursor: pointer; transition: transform 100ms var(--ease-out); }
+.el-rrow:active { transform: scale(.98); }
+.el-rrow:focus-visible { outline: 2px solid var(--pe-green); }
+@media (hover: hover) and (pointer: fine) { .el-rrow:hover { background: var(--hover); } }
+.el-rn { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.el-rs { grid-column: 1 / -1; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Online-Projekte */
+.el-online { display: grid; gap: 8px; padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--panel-line); }
+.el-online:empty { display: none; }
+.el-acct { font-size: 12.5px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.el-link { font: inherit; color: var(--ink); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.el-link:focus-visible { outline: 2px solid var(--pe-green); outline-offset: 1px; }
+.el-online .el-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.el-onlist { max-height: 260px; overflow: auto; }
+.el-orow { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 4px; align-items: center; }
+.el-orow .el-rrow { margin-right: 0; }
+.el-rrow[aria-current="true"] .el-rn::before { content: "● "; color: var(--pe-green); }
+/* Zeit */
+.el-sum { font-size: 13.5px; color: var(--muted); }
+.el-sum b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.el-tform { display: grid; grid-template-columns: 150px 80px minmax(0, 1fr) auto; gap: 8px; }
+.el-tform input { height: 34px; min-width: 0; padding: 0 8px; font: inherit; font-size: 14px; color: var(--ink); background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--radius); }
+.el-tlist { display: grid; max-height: 320px; overflow: auto; }
+.el-trow { display: grid; grid-template-columns: 90px 64px minmax(0, 1fr) 34px; gap: 8px; align-items: center; min-height: 36px; border-bottom: 1px solid var(--panel-line); font-size: 13.5px; }
+.el-th2 { text-align: right; font-variant-numeric: tabular-nums; }
+.el-tn { overflow-wrap: anywhere; color: var(--ink); }
+.el-tdel { color: var(--muted); height: 30px; }
+.el-tdel { font-size: 18px; line-height: 1; }
+.el-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+.el-acts { margin-top: 10px; }
+.el-mods { display: grid; gap: 10px; }
+.el-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.el-tile { display: grid; gap: 6px; align-content: start; min-height: 132px; padding: 14px 16px; text-align: left; font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--panel-line); border-radius: 12px; cursor: pointer; transition: transform 100ms var(--ease-out); }
+.el-tile:active { transform: scale(.98); }
+.el-tile:focus-visible { outline: 2px solid var(--pe-green); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .el-tile:hover { border-color: var(--faint); } }
+.el-th { display: flex; align-items: center; gap: 8px; font-size: 15.5px; font-weight: 600; }
+.el-th kbd { margin-left: auto; }
+.el-ts { font-size: 12.5px; color: var(--muted); }
+.el-thumbs { display: flex; gap: 4px; margin-top: auto; }
+.el-thumbs i { width: 34px; height: 24px; border: 1px solid var(--panel-line); border-radius: 3px; background: var(--panel); }
+.el-new { background: transparent; border-style: dashed; color: var(--muted); place-content: center; justify-items: center; text-align: center; }
+.el-new .el-th { color: var(--muted); }
+kbd { font: 600 11px/16px var(--font); color: var(--muted); border: 1px solid var(--panel-line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: #fff; }
+.el-keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; margin: 4px 0 12px; }
+.el-keys kbd { justify-self: start; }
+@media (max-width: 760px) { .el-hubin { grid-template-columns: 1fr; padding: 16px; } .el-col { display: contents; } .el-mods { order: 1; } .el-time { order: 2; } .el-projs { order: 3; } .el-tform { grid-template-columns: 1fr 80px; } .el-tform #el-tn { grid-column: 1 / -1; } .el-tform .btn { grid-column: 1 / -1; } .el-trow { grid-template-columns: 82px 56px minmax(0, 1fr) 34px; } }
+@media (max-width: 600px) { #el-hub { grid-row: 2 / -1; } .el-crumb { flex: 0 1 auto; min-width: 0; } .el-hubtitle { overflow: hidden; text-overflow: ellipsis; padding: 0 4px; } .el-back { padding: 0 6px; } .el-lbl { display: none; } .el-crumb .el-st { margin-left: 4px; padding: 0 7px; } .el-tform input { font-size: 16px; } .el-barebtn { display: none; } }
+@media (prefers-reduced-motion: reduce) { .el-tile, .el-rrow { transition: none; } .el-tile:active, .el-rrow:active { transform: none; } }

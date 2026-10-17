@@ -1,4 +1,4 @@
-# Baut schemacad.html und stellt sie über GitHub Pages online (bei jedem Push auf main).
+# Baut elplexaCAD (seit 17.10.2026, vorher schemacad.html) und stellt sie über GitHub Pages online (bei jedem Push auf main).
 name: Pages
 on:
   push:
@@ -24,8 +24,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node build.mjs
-      - run: mkdir -p site && cp dist/schemacad.html site/index.html
+      - run: node build.mjs elplexa
+      - run: mkdir -p site && cp dist/ElplexaCAD.html site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

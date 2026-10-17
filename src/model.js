@@ -32,9 +32,14 @@ export const LAYERS = {
   ...DISPO_LAYERS,
 };
 
+// elplexaCAD: Projektdaten aus der Übersicht (doc.project.meta) gelten auch für neue Blätter. Setzt elplexaCAD bei jedem Dokumentwechsel.
+// typeof: Node-Tests laden model.js ohne esbuild-define.
+let projMeta = null;
+export function setProjectMeta(m) { projMeta = m || null; }
 export function newMeta() {
   const m = {};
   for (const f of META_FIELDS) m[f.tag] = f.def;
+  if (typeof ELPLEXA !== "undefined" && ELPLEXA && projMeta) Object.assign(m, projMeta);
   const d = new Date();
   m.DATUM = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
   return m;
@@ -95,6 +100,7 @@ export function parseModel(text) {
   splitWandlerDoc(doc); // alte Wandlermessung (ein Symbol) in Wandlerteil, Zähler und Leitungen zerlegen
   if (o.noTitle === true) doc.noTitle = true; // Titelseite gelöscht (CJ 15.10.), kommt nicht von selbst wieder
   if (o.noToc === true) doc.noToc = true;
+  if (typeof ELPLEXA !== "undefined" && ELPLEXA) { const pj = cleanProject(o.project); if (pj) doc.project = pj; } // elplexaCAD: Name, Status, Projektdaten, Zeit (SchemaCAD v3 liest das nicht)
   if (o.info && !doc.sheets.some((s) => s.kind === "title")) doc.info = cleanInfo(o.info); // Angaben einer weggefallenen Titelseite (Gruppe D)
   if (cleanLayerId(o.pvLayer) && o.pvLayer !== "dach") doc.pvLayer = o.pvLayer; // aktive Ebene der Stringpläne (5q), fehlt = Dach
   // Verweise: Verknüpfung nur behalten, wenn die Gegenseite existiert und zurückzeigt
@@ -102,6 +108,24 @@ export function parseModel(text) {
   for (const i of all.values()) if (i.link !== undefined && all.get(i.link)?.link !== i.id) delete i.link;
   syncMains(doc); // alte Dateien: Hauptlinien umrechnen
   return doc;
+}
+
+// elplexaCAD (CJ 17.10.2026): Projekt in der Datei. name, status (feste Liste), meta = Projektdaten fürs Schriftfeld, time = Zeiteinträge, online = Online-Kopie.
+export const projectStatus = () => ["Offerte", "In Arbeit", "Abgegeben", "Abgeschlossen"];
+export const PROJECT_META = () => ["OBJEKT", "AUFTRAG", "INDEX"];
+export function cleanProject(o) {
+  if (!o || typeof o !== "object") return null;
+  const p = {};
+  if (typeof o.name === "string" && o.name.trim()) p.name = o.name.trim().slice(0, 200);
+  if (projectStatus().includes(o.status)) p.status = o.status;
+  if (o.meta && typeof o.meta === "object") { const m = {}; for (const k of PROJECT_META()) if (typeof o.meta[k] === "string") m[k] = o.meta[k]; if (Object.keys(m).length) p.meta = m; }
+  if (Array.isArray(o.time)) {
+    const t = o.time.filter((e) => e && /^\d{4}-\d{2}-\d{2}$/.test(e.d) && isNum(e.h) && e.h > 0 && e.h <= 24).map((e) => ({ d: e.d, h: e.h, n: String(e.n ?? "").slice(0, 500) }));
+    if (t.length) p.time = t;
+  }
+  // Online-Kopie (Schritt 3): ID der Zeile und Stand beim letzten Online-Speichern, für die Konfliktprüfung
+  if (o.online && /^[0-9a-f-]{36}$/.test(o.online.id) && typeof o.online.at === "string") p.online = { id: o.online.id, at: o.online.at };
+  return Object.keys(p).length ? p : null;
 }
 
 // Titelseite (titel.js): Bauherr, Firma, Logo (Bild als data-URL), Änderungsindex

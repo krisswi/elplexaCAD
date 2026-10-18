@@ -1,5 +1,5 @@
 // SchemaCAD: Editor. Zustand, Bedienung, Dateien.
-import { newDoc, newSheet, parseModel, serializeModel, WIRE_KINDS, LEGEND_KEYS, setProjectMeta, cleanInfo } from "./model.js";
+import { newDoc, newSheet, parseModel, serializeModel, WIRE_KINDS, LEGEND_KEYS, setProjectMeta, cleanInfo, cleanProject, modBase, modOf, modKey, modName } from "./model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, anchorX, variantByKey, hasTrenner, bmkLetter } from "./symbols.js";
 import { splitWandlerDoc, routeWm, wmParts } from "./wandler.js";
 import { insertFeed } from "./eingang.js";
@@ -26,10 +26,11 @@ import { makeDispo } from "./dispoedit.js";
 import { toast, openModal, confirmDialog, formDialog, chooseDialog, makeMenu } from "./dialogs.js";
 import { fieldHTML, actions, head, dupDel, textPanelHTML } from "./panel.js";
 import { startDialog } from "./start.js";
-import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel } from "./pv.js";
+import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel, varOf, newVar } from "./pv.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
-import { cloudMenu, cloudUser, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete } from "./cloud.js";
+import { cloudMenu, cloudUser, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend } from "./cloud.js";
+import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
 
@@ -82,7 +83,7 @@ const kindKey = () => S.model.kind || "schema";
 const textH = () => (isPv() ? PV_TEXT_H : isDispo() ? S.dp.textH : S.textH);
 const selectedItems = () => S.model.items.filter((it) => S.sel.has(it.id));
 const nextId = () => S.doc.nextId++;
-const snapshot = () => JSON.stringify({ sheets: S.doc.sheets, nextId: S.doc.nextId, pv: S.doc.pv, noTitle: S.doc.noTitle, noToc: S.doc.noToc, info: S.doc.info, ...(ELPLEXA ? { project: S.doc.project } : {}) }); // pv: Modultypen (Stringplan), project: elplexaCAD
+const snapshot = () => JSON.stringify({ sheets: S.doc.sheets, nextId: S.doc.nextId, pv: S.doc.pv, noTitle: S.doc.noTitle, noToc: S.doc.noToc, info: S.doc.info, mods: S.doc.mods, ...(ELPLEXA ? { project: S.doc.project } : {}) }); // pv: Modultypen (Stringplan), project: elplexaCAD
 const docText = (noAssets = false) => serializeModel({ ...S.doc, active: S.active, ...(usedCustom(S.doc).length ? { symbols: usedCustom(S.doc) } : {}) }, { noAssets });
 const PV = makePv({ S, $, TOOLS, toast, change, openModal, chooseDialog, formDialog, confirmDialog, setTool, renderSheet, renderItems, renderOverlay, updateHint, applyView, fitView, nextId, markDirty, renderLeft, renderRight, download: (...a) => download(...a), openEditor: (...a) => openEditor(...a) });
 const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp: dispoApplyDp, cabAct: dispoCabAct, cornerKey: dispoCornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
@@ -150,8 +151,8 @@ function afterChange(panel = true) { const cur = S.model; splitWandlerDoc(S.doc)
 function restore(json) {
   const k0 = S.model.kind;
   const o = JSON.parse(json);
-  S.doc = { ...S.doc, sheets: o.sheets, nextId: o.nextId, pv: o.pv, noTitle: o.noTitle, noToc: o.noToc, info: o.info };
-  if (ELPLEXA) { const ol = S.doc.project?.online; S.doc.project = o.project; if (ol) (S.doc.project ||= {}).online = ol; } // Online-Verknüpfung bleibt bei Rückgängig
+  S.doc = { ...S.doc, sheets: o.sheets, nextId: o.nextId, pv: o.pv, noTitle: o.noTitle, noToc: o.noToc, info: o.info, mods: o.mods }; // mods: Modulnamen (18.10.2026)
+  if (ELPLEXA) { const ol = S.doc.project?.online, za = S.doc.project?.auto, zid = S.doc.project?.id; S.doc.project = o.project; if (ol) (S.doc.project ||= {}).online = ol; elZeitUndo(za, zid); } // Online-Verknüpfung bleibt bei Rückgängig, die automatische Zeit läuft weiter
   S.active = Math.min(S.active, S.doc.sheets.length - 1);
   if (k0 !== "legend" && S.model.kind === "legend" && S.active > 0) S.active--; // Blatt weg: aufs vorherige Arbeitsblatt, nicht auf die Legende
   const ids = new Set(S.model.items.map((i) => i.id));
@@ -586,14 +587,14 @@ function renderRightPanel() {
     else if (S.tool === "text") h += `<div class="prop-head"><h2>Neuer Text</h2></div><div class="field"><label>Texthöhe in mm</label><input type="number" min="1" max="20" step="0.5" data-newth value="${S.textH}"></div>` + styleHTML([{ type: "text", c: S.textC }]);
     else if (shapeTool(S.tool)) h += head(`Neue Form: ${shapeTool(S.tool).label}`) + styleHTML([{ type: "shape", k: shapeTool(S.tool).k, ...S.shapeStyle }]);
     h += head(sheetLabel(S.model, S.active), S.model.meta.TITEL || "ohne Blatttitel") + `<p class="note">Hauptlinien: ${R.esc(mainSummary())}.</p>`;
-    h += `<div class="row"><button class="btn outline small danger" data-act="delsheet"${workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
+    h += `<div class="row"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
   }
   rightEl.innerHTML = h;
 }
 
 // ---------- Blätter ----------
 const workCount = () => S.doc.sheets.filter((sh) => !T.isDeck(sh)).length;
-function sheetLabel(sh, i) { return sh.kind === "title" ? "Titelseite" : sh.kind === "toc" ? "Inhalt" : sh.kind === "legend" ? `Legende ${sh.meta.BLATT}` : sh.kind === "pvtab" ? "Stringübersicht" : `${sh.kind === "dispo" ? "Dispo" : sh.kind === "pv" ? "Stringplan" : "Blatt"} ${sh.meta.BLATT || i + 1}`; }
+function sheetLabel(sh, i) { const v = sh.var > 1 ? ` · V${sh.var}` : ""; return sh.kind === "title" ? "Titelseite" : sh.kind === "toc" ? "Inhalt" : sh.kind === "legend" ? `Legende ${sh.meta.BLATT}` : sh.kind === "pvtab" ? `Stringübersicht${v}` : `${sh.kind === "dispo" ? "Dispo" : sh.kind === "pv" ? "Stringplan" : "Blatt"} ${sh.meta.BLATT || i + 1}${v}`; } // V2: Variante (18.10.2026)
 // Kompakte Leiste: ‹ Blatt 58 · 1 von 12 ▾ › +. Die Mitte öffnet die Liste aller Blätter, + hält eine Auswahl bereit
 function renderSheetBar() {
   if (ELPLEXA) { elSheetBar(); return; }
@@ -601,17 +602,23 @@ function renderSheetBar() {
   $("#btn-dxf-all").hidden = n < 2;
   const open = sheetMenu?.open, keep = document.activeElement?.closest?.("#sheetbar") && document.activeElement.id;
   $("#sheetbar").innerHTML = `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt (Bild auf)" aria-label="Vorheriges Blatt"${a === 0 ? " disabled" : ""}>‹</button>`
-    + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Liste aller Blätter (G)"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span><span class="of">${a + 1} von ${n}</span><span class="caret" aria-hidden="true">▾</span></button>`
+    + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Liste aller Blätter (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${a + 1} von ${n}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt (Bild ab)" aria-label="Nächstes Blatt"${a === n - 1 ? " disabled" : ""}>›</button>`
     + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>`;
   if (keep) document.getElementById(keep)?.focus();
   if (open) renderSheetList();
 }
+// Fusszeile der Blattliste: Duplizieren und Löschen gelten fürs aktive Blatt (CJ 18.10.2026)
+function sheetFoot() {
+  $("#sheet-menu [data-sheetact=dup]").disabled = isDeck();
+  $("#sheet-menu [data-sheetact=del]").disabled = isDeck() || workCount() < 2;
+}
 function renderSheetList() {
+  sheetFoot();
   if (ELPLEXA) { elSheetList(); return; }
   const q = $("#sheet-find").value.trim().toLowerCase();
   const rows = S.doc.sheets.map((sh, i) => ({ sh, i, label: sheetLabel(sh, i), title: sh.meta.TITEL || "" })).filter((r) => !q || `${r.label} ${r.title}`.toLowerCase().includes(q));
-  $("#sheet-menu .slist").innerHTML = rows.length ? rows.map(({ sh, i, label, title }) => `<div class="srow"><button class="mi${i === S.active ? " on" : ""}" data-sheet="${i}" tabindex="-1"${i === S.active ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${R.esc(label)}</span><span class="ms">${R.esc(title || "ohne Titel")}</span></span><span class="pos">${i + 1}</span></button><button class="pin" data-pin="${i}" tabindex="-1" title="${sh.pin ? "Markierung entfernen" : "Blatt markieren"} (M für das aktive Blatt)" aria-label="${sh.pin ? "Markierung entfernen" : "Blatt markieren"}" aria-pressed="${!!sh.pin}">${sh.pin ? "★" : "☆"}</button></div>`).join("") : `<div class="empty">Kein Blatt gefunden</div>`;
+  $("#sheet-menu .slist").innerHTML = rows.length ? rows.map(({ sh, i, label, title }) => `<div class="srow"><button class="mi${i === S.active ? " on" : ""}" data-sheet="${i}" data-ctx="${i}" tabindex="-1"${i === S.active ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${R.esc(label)}</span><span class="ms">${R.esc(title || "ohne Titel")}</span></span><span class="pos">${i + 1}</span></button><button class="pin" data-pin="${i}" tabindex="-1" title="${sh.pin ? "Markierung entfernen" : "Blatt markieren"} (M für das aktive Blatt)" aria-label="${sh.pin ? "Markierung entfernen" : "Blatt markieren"}" aria-pressed="${!!sh.pin}">${sh.pin ? "★" : "☆"}</button></div>`).join("") : `<div class="empty">Kein Blatt gefunden</div>`;
 }
 let sheetMenu = null;
 function gotoSheet(opts) { sheetMenu.show($("#sheet-cur"), opts); }
@@ -656,44 +663,50 @@ function switchSheet(i) {
   S.active = i; S.sel.clear();
   afterSheetChange(k0);
 }
-function addDispo() {
+// Modul-Nummer für ein neues Blatt (CJ 18.10.2026): v vorgegeben (neues Modul), sonst das Modul des offenen Blatts, wenn es dieselbe Art ist
+const varIn = (base, v) => (typeof v === "number" ? v : modBase(S.model) === base && !T.isDeck(S.model) ? varOf(S.model) : 1);
+const setVar = (sh, v) => { if (v > 1) sh.var = v; return sh; };
+function addDispo(v) {
   setTool("select"); // ein gewähltes Setz-Werkzeug gehört zum alten Blatttyp
   const k0 = S.model.kind;
   const n = S.doc.sheets.filter((sh) => sh.kind === "dispo").length + 1;
+  v = varIn("dispo", v);
   change(() => {
-    const sh = newSheet("dispo");
+    const sh = setVar(newSheet("dispo"), v);
     sh.sid = nextId(); sh.meta.BLATT = String(n);
     S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
   });
   afterSheetChange(k0);
 }
-function addPv() {
+function addPv(v) {
   setTool("select");
   const k0 = S.model.kind;
   const n = S.doc.sheets.filter((sh) => sh.kind === "pv").length + 1;
+  v = varIn("pv", v);
   change(() => {
-    const sh = newSheet("pv");
+    const sh = setVar(newSheet("pv"), v); // im offenen PV-Modul (Strings zählen im Modul weiter)
     sh.sid = nextId(); sh.meta.BLATT = String(n);
     S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
   });
   afterSheetChange(k0);
 }
-// Stringübersicht: eine für alle Stringpläne der Datei (CJ 14.10.). Gibt es sie schon, wird sie angezeigt.
+// Stringübersicht: eine für alle Stringpläne der Datei (CJ 14.10.), seit 18.10.2026 eine je PV-Modul. Gibt es sie schon, wird sie angezeigt.
 function addPvTab() {
-  const i = S.doc.sheets.findIndex((sh) => sh.kind === "pvtab");
-  if (i >= 0) { switchSheet(i); toast("Die Stringübersicht gibt es schon, sie gilt für alle Stringpläne."); return; }
+  const v = S.model.kind === "pv" || S.model.kind === "pvtab" ? varOf(S.model) : 1, i = S.doc.sheets.findIndex((sh) => sh.kind === "pvtab" && varOf(sh) === v);
+  if (i >= 0) { switchSheet(i); toast(`Die Stringübersicht gibt es schon, sie gilt für alle Stringpläne von „${modName(S.doc, modKey("pv", v))}“.`); return; }
   setTool("select");
   const k0 = S.model.kind;
-  change(() => { const sh = newSheet("pvtab"); sh.meta.BLATT = "1"; S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear(); });
+  change(() => { const sh = newSheet("pvtab"); sh.meta.BLATT = "1"; if (v > 1) sh.var = v; S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear(); });
   afterSheetChange(k0);
 }
 // Plus-Knopf (CJ 16.10.): Blatt vom Typ des aktuellen Blatts. Stringplan und Stringübersicht → Stringplan, Titel, Inhalt, Legende → Schemablatt.
 const addKindLabel = () => ({ dispo: "Disposition", pv: "Stringplan", pvtab: "Stringplan" }[S.model.kind] || "Schemablatt");
 function addSameKind() { const k = S.model.kind; (k === "dispo" ? addDispo : k === "pv" || k === "pvtab" ? addPv : addSheet)(); }
-function addSheet() {
+function addSheet(v) {
   setTool("select");
   const k0 = S.model.kind;
-  change(() => { S.doc.sheets.push(makeSheet(nextSheetNo())); S.active = S.doc.sheets.length - 1; S.sel.clear(); });
+  v = varIn("schema", v);
+  change(() => { S.doc.sheets.push(setVar(makeSheet(nextSheetNo()), v)); S.active = S.doc.sheets.length - 1; S.sel.clear(); });
   afterSheetChange(k0);
 }
 // Nächste freie Blattnummer der Schemablätter, neues Schemablatt mit Grundverkabelung
@@ -718,6 +731,111 @@ function addDeck() {
   change(() => { delete S.doc.noTitle; delete S.doc.noToc; });
   S.active = Math.max(0, S.doc.sheets.findIndex(T.isDeck)); S.sel.clear();
   afterSheetChange(k0);
+}
+// Blatt duplizieren (CJ 18.10.2026): die Kopie ist ganz unabhängig. Neue IDs, Verweise auf andere Blätter bleiben offen, Disposition und
+// Stringplan mit neuer sid (Ansichten „An Schema“ zeigen weiter aufs Original). Stringplan: neue Variante, mit eigener Stringübersicht, wenn
+// die Variante eine hat. Stringübersicht: die ganze Variante. PDF-Dachplan: derselbe Eintrag in assets (wird nie verändert, Plantausch legt
+// einen neuen an), so bleibt die Datei klein. Titel: „… – Variante 2“, umbenennen über den Blatttitel.
+// Mehrere Blätter auf einmal (ganzes Modul): Verweise und Hauptlinien-Ziele zwischen den kopierten Blättern zeigen auf die Kopien
+function copySheets(list) {
+  const cs = list.map((sh) => structuredClone(sh)), ids = new Map(), sids = new Map(), bundles = new Map();
+  for (const c of cs) {
+    delete c.pin;
+    for (const it of c.items) { const n = nextId(); ids.set(it.id, n); it.id = n; }
+    if (c.sid) { const n = nextId(); sids.set(c.sid, n); c.sid = n; }
+  }
+  for (const c of cs) {
+    for (const it of c.items) {
+      if (it.link !== undefined) { if (ids.has(it.link)) it.link = ids.get(it.link); else delete it.link; } // Verweis auf ein anderes Blatt: offen
+      for (const k of ["of", "rail"]) if (it[k] !== undefined && ids.has(it[k])) it[k] = ids.get(it[k]); // Wandlermessung, alte Gruppenverweise
+      if (it.bundle !== undefined) { if (!bundles.has(it.bundle)) bundles.set(it.bundle, nextId()); it.bundle = bundles.get(it.bundle); }
+      if (it.type === "pvstring") it.mods = it.mods.map((id) => ids.get(id) ?? id);
+    }
+    if (c.main?.r === "sheet" && sids.has(c.main.to)) c.main = { ...c.main, to: sids.get(c.main.to) };
+    else if (c.main?.r === "sheet") { c.main = { ...c.main, r: "next" }; delete c.main.to; } // Hauptlinien: Ziel ausserhalb gehört dem Original
+  }
+  return cs;
+}
+const copySheet = (sh) => copySheets([sh])[0];
+const VAR_RE = /\s*–\s*Variante \d+$|^Variante \d+$/;
+const varTitle = (t, n) => { const b = String(t || "").replace(VAR_RE, "").trim(); return b ? `${b} – Variante ${n}` : `Variante ${n}`; };
+function duplicateSheet() {
+  const sh = S.model, k = sh.kind || "schema";
+  if (isDeck()) { toast("Titelseite, Inhalt und Legende gibt es nur einmal."); return; }
+  setTool("select"); finishWire(); closeEditor(false);
+  let target = null;
+  change(() => {
+    if (k === "pv" || k === "pvtab") {
+      const v = newVar(S.doc), v0 = varOf(sh);
+      const src = S.doc.sheets.filter((s) => varOf(s) === v0 && (k === "pvtab" ? s.kind === "pv" || s.kind === "pvtab" : s === sh || s.kind === "pvtab"));
+      let no = maxNo("pv");
+      for (const s of src) {
+        const c = copySheet(s); c.var = v; c.meta.TITEL = varTitle(s.meta.TITEL, v);
+        if (c.kind === "pv") c.meta.BLATT = String(++no);
+        S.doc.sheets.push(c); if (s === sh) target = c;
+      }
+    } else {
+      const base = String(sh.meta.TITEL || "").replace(VAR_RE, "").trim(), same = S.doc.sheets.filter((s) => (s.kind || "schema") === k && String(s.meta.TITEL || "").replace(VAR_RE, "").trim() === base);
+      const n = Math.max(1, ...same.map((s) => Number(/Variante (\d+)$/.exec(s.meta.TITEL || "")?.[1]) || 1)) + 1;
+      target = copySheet(sh); target.meta.TITEL = varTitle(sh.meta.TITEL, n);
+      target.meta.BLATT = k === "dispo" ? String(maxNo("dispo") + 1) : nextSheetNo();
+      S.doc.sheets.push(target);
+    }
+    S.active = S.doc.sheets.indexOf(target); S.sel.clear();
+  });
+  afterSheetChange(k, { fit: true });
+  toast(`Kopie angelegt: ${sheetLabel(S.model, S.active)} „${S.model.meta.TITEL}“. Umbenennen: Feld Titel im ${k === "pv" || k === "pvtab" ? "Plankopf (Fenster Druck)" : "Schriftfeld"}.`);
+}
+// ---------- Module (CJ 18.10.2026): Schema, Disposition und PV mehrfach, je Modul eigener Name (doc.mods, model.js) ----------
+const modSheets = (id) => S.doc.sheets.filter((sh) => modOf(sh) === id && !T.isDeck(sh));
+const maxNo = (kind) => Math.max(0, ...S.doc.sheets.filter((s) => s.kind === kind).map((s) => parseInt(s.meta.BLATT, 10)).filter(Number.isFinite));
+function tidyMods() { const m = S.doc.mods; if (!m) return; for (const k of Object.keys(m)) if (!Object.keys(m[k]).length) delete m[k]; if (!Object.keys(m).length) delete S.doc.mods; }
+// Ganzes Modul kopieren: neue Nummer, alle Blätter (ohne Titelseite, Inhalt, Legende), Name „… (Kopie)“. Rückgabe: Kennung des neuen Moduls.
+function duplicateModule(id) {
+  const base = id.split(":")[0], list = modSheets(id);
+  if (!list.length) return null;
+  const v = Math.max(...S.doc.sheets.filter((sh) => modBase(sh) === base).map(varOf)) + 1, nid = modKey(base, v);
+  setTool("select"); finishWire(); closeEditor(false);
+  change(() => {
+    let nd = maxNo("dispo"), np = maxNo("pv");
+    for (const c of copySheets(list)) {
+      c.var = v;
+      c.meta.BLATT = !c.kind ? nextSheetNo() : c.kind === "dispo" ? String(++nd) : c.kind === "pv" ? String(++np) : c.meta.BLATT;
+      S.doc.sheets.push(c);
+    }
+    const m = (S.doc.mods ??= {}), cont = m[id]?.cont;
+    m[nid] = { name: `${modName(S.doc, id)} (Kopie)`, ...(cont ? { cont } : {}) };
+  });
+  return nid;
+}
+async function renameModule(id) {
+  const r = await formDialog("Modul umbenennen", "Name in der Projektübersicht, zum Beispiel „Schema HV“ oder „PV Variante Ost“. Leer = Standardname.", [{ label: "Name", value: modName(S.doc, id) }], "Umbenennen");
+  if (!r) return;
+  const name = r[0].trim().slice(0, 80);
+  change(() => { const m = (S.doc.mods ??= {}); m[id] = { ...m[id] }; if (name) m[id].name = name; else delete m[id].name; tidyMods(); }, { panel: false });
+}
+async function deleteModule(id) {
+  const list = modSheets(id), rest = S.doc.sheets.filter((sh) => !T.isDeck(sh) && !list.includes(sh));
+  if (!list.length) return;
+  if (!rest.length) { toast("Das letzte Modul des Projekts lässt sich nicht löschen."); return; }
+  if (!(await confirmDialog("Modul löschen?", `„${modName(S.doc, id)}“ mit ${list.length === 1 ? "einem Blatt" : `${list.length} Blättern`} wird gelöscht. Verknüpfte Verweise auf anderen Blättern werden wieder offen. Rückgängig ist möglich.`, "Modul löschen"))) return;
+  setTool("select"); finishWire(); closeEditor(false);
+  const k0 = S.model.kind, cur = S.model;
+  change(() => {
+    for (const sh of list) for (const it of sh.items) if (isRef(it)) unlinkRef(S.doc, it);
+    S.doc.sheets = S.doc.sheets.filter((sh) => !list.includes(sh));
+    if (S.doc.mods) { delete S.doc.mods[id]; if (id.startsWith("pv")) for (const m of Object.values(S.doc.mods)) if (m.cont === (Number(id.split(":")[1]) || 1)) delete m.cont; tidyMods(); }
+    S.active = Math.max(0, S.doc.sheets.indexOf(cur)); S.sel.clear();
+  });
+  afterSheetChange(k0, { reset: true });
+}
+// Blatt umbenennen (CJ 18.10.2026): Blatttitel (Schriftfeld TITEL), erscheint in Blattleiste, Blattliste, Inhaltsverzeichnis
+async function renameSheet() {
+  if (isDeck()) return;
+  const r = await formDialog("Blatt umbenennen", `Titel von ${sheetLabel(S.model, S.active)}, zum Beispiel „Schema HV“. Steht im Schriftfeld und in der Blattliste.`, [{ label: "Titel", value: S.model.meta.TITEL || "" }], "Umbenennen");
+  if (!r || r[0].trim() === (S.model.meta.TITEL || "")) return;
+  change(() => { S.model.meta.TITEL = r[0].trim(); });
+  renderSheet();
 }
 async function deleteSheet() {
   if (workCount() < 2 || isDeck()) return;
@@ -1278,7 +1396,7 @@ window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
     if (k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (k === "y") { e.preventDefault(); redo(); return; }
-    if (k === "s") { e.preventDefault(); saveJson(e.shiftKey); return; }
+    if (k === "s") { e.preventDefault(); if (ELPLEXA) elSave(e.shiftKey); else saveJson(e.shiftKey); return; }
     if (k === "o") { e.preventDefault(); openJson(); return; }
     if (k === "d") { e.preventDefault(); duplicateSelected(); return; }
     if (k === "c") { e.preventDefault(); copySelected(); return; }
@@ -1287,7 +1405,7 @@ window.addEventListener("keydown", (e) => {
     if (isPv() && /^Digit[1-5]$/.test(e.code)) { e.preventDefault(); PV.setActive(DRAW_LAYERS[Number(e.code.slice(5)) - 1]); return; } // aktive Ebene
     if (k === "a") { e.preventDefault(); S.sel = new Set((isPv() ? PV.layerPick() : pickable()).map((i) => i.id)); renderRight(); renderOverlay(); return; } // Stringplan: nur aktive Ebene (5n)
   }
-  if (mod && typing && e.key.toLowerCase() === "s") { e.preventDefault(); saveJson(false); return; }
+  if (mod && typing && e.key.toLowerCase() === "s") { e.preventDefault(); if (ELPLEXA) elSave(false); else saveJson(false); return; }
   if (typing) { if (e.key === "Escape") t.blur(); return; }
   if (e.key === " ") { e.preventDefault(); if (!S.space) { S.space = true; svg.classList.add("cursor-hand"); } return; }
   if (e.key === "Shift") { S.shift = true; renderOverlay(); }
@@ -1465,7 +1583,7 @@ onPanel("click", (e) => {
   if (b.dataset.act.startsWith("dp")) { dispoAct(b.dataset.act, b); return; } // Zählerplatte bestücken, Masse aus-/einblenden
   if (b.dataset.act.startsWith("cab")) { dispoCabAct(b.dataset.act, b, selectedItems()[0]); return; } // Schrank: Feld anfügen, löschen, Montageplatten
   const one = selectedItems()[0];
-  ({ rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
+  ({ rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, dupsheet: duplicateSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
 });
 
 let addHeld = false, addTimer = 0; // langes Drücken auf + öffnet die Auswahl statt ein Blatt anzulegen
@@ -1488,14 +1606,49 @@ const addMenu = makeMenu($("#add-menu"), { up: true, beforeShow: () => { closeEd
 $("#add-menu").addEventListener("click", (e) => { const b = e.target.closest("[data-new]"); if (b) ({ dispo: addDispo, pv: addPv, pvtab: addPvTab, deck: addDeck }[b.dataset.new] || addSheet)(); });
 sheetMenu = makeMenu($("#sheet-menu"), { up: true, beforeShow: () => closeEditor(true), onOpen: () => { $("#sheet-find").value = ""; renderSheetList(); $("#sheet-find").focus(); $("#sheet-menu .mi.on")?.scrollIntoView({ block: "nearest" }); } });
 $("#sheet-find").addEventListener("input", renderSheetList);
+// Blattmenü (CJ 18.10.2026): Rechtsklick oder gedrückt halten auf dem Blattnamen, einer Zeile der Blattliste oder (elplexaCAD) einer
+// Blatt-Kachel der Übersicht. data-ctx = Index des Blatts. Gedrückt halten wie beim Plus-Knopf (450 ms), der folgende Klick fällt weg.
+let ctxSheet = -1, ctxHub = false, ctxTimer = 0, ctxHeld = false;
+const ctxMenu = makeMenu($("#sheet-ctx"), { up: true, beforeShow: () => {
+  const sh = S.doc.sheets[ctxSheet], deck = T.isDeck(sh);
+  $("#sheet-ctx .ctx-head").textContent = `${sheetLabel(sh, ctxSheet)}${sh.meta.TITEL ? ` · ${sh.meta.TITEL}` : ""}`;
+  $("#sheet-ctx [data-ctxact=dup]").disabled = $("#sheet-ctx [data-ctxact=ren]").disabled = deck;
+  $("#sheet-ctx [data-ctxact=del]").disabled = deck || workCount() < 2;
+} });
+function openCtx(el) {
+  const i = Number(el.dataset.ctx);
+  if (!S.doc.sheets[i]) return;
+  ctxSheet = i; ctxHub = !!el.closest("#el-hub");
+  ctxMenu.show(el.closest("#sheet-menu") ? $("#sheet-cur") : el); // Zeile der Blattliste: die Liste schliesst, Menü am Blattnamen
+}
+const ctxOpen = (el) => (el.dataset.modctx ? ELPLEXA && elModCtx(el) : openCtx(el)); // Modul-Kachel (elplexaCAD) oder Blatt
+document.addEventListener("contextmenu", (e) => { const el = e.target.closest?.("[data-ctx], [data-modctx]"); if (el) { e.preventDefault(); clearTimeout(ctxTimer); ctxOpen(el); } });
+document.addEventListener("pointerdown", (e) => {
+  ctxHeld = false; clearTimeout(ctxTimer);
+  const el = e.target.closest?.("[data-ctx], [data-modctx]");
+  if (el && e.button === 0) ctxTimer = setTimeout(() => { ctxHeld = true; ctxOpen(el); }, 450);
+});
+for (const ev of ["pointerup", "pointercancel", "pointermove"]) document.addEventListener(ev, (e) => { if (ev !== "pointermove" || Math.abs(e.movementX) + Math.abs(e.movementY) > 4) clearTimeout(ctxTimer); });
+document.addEventListener("click", (e) => { if (ctxHeld) { ctxHeld = false; e.stopPropagation(); e.preventDefault(); } }, true);
+$("#sheet-ctx").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-ctxact]"), i = ctxSheet, hub = ELPLEXA && ctxHub;
+  if (!b || !S.doc.sheets[i]) return;
+  if (hub) elHub(false);
+  if (i !== S.active) switchSheet(i);
+  if (b.dataset.ctxact === "ren") { await renameSheet(); if (hub) elHub(true); }
+  else if (b.dataset.ctxact === "dup") duplicateSheet();
+  else if (b.dataset.ctxact === "del") { await deleteSheet(); if (hub) elHub(true); }
+});
 $("#sheet-menu").addEventListener("click", (e) => {
+  const sa = e.target.closest("[data-sheetact]");
+  if (sa) { (sa.dataset.sheetact === "dup" ? duplicateSheet : deleteSheet)(); return; } // aktives Blatt (CJ 18.10.2026)
   const pin = e.target.closest("[data-pin]"), t = e.target.closest("[data-sheet]");
   if (pin) { togglePin(Number(pin.dataset.pin)); renderSheetList(); } else if (t) switchSheet(Number(t.dataset.sheet));
 });
 $("#btn-undo").addEventListener("click", undo);
 $("#btn-redo").addEventListener("click", redo);
 $("#btn-open").addEventListener("click", () => openJson());
-$("#btn-save").addEventListener("click", () => saveJson(false));
+$("#btn-save").addEventListener("click", () => ELPLEXA ? elSave(false) : saveJson(false));
 $("#btn-dxf").addEventListener("click", () => saveDxf());
 $("#btn-pdf").addEventListener("click", () => printPdf());
 $("#btn-legpdf").addEventListener("click", () => printLegend());
@@ -1623,16 +1776,17 @@ function insertBase() {
 // ---------- elplexaCAD (Aufbau B, CJ 17.10.2026; nur im Bau `node build.mjs elplexa`) ----------
 // Module = Blattarten derselben Datei (elplexa.js). Das offene Modul folgt aus dem aktiven Blatt; Blattleiste, Plus-Menü
 // und Blatt vor/zurück bleiben im Modul. Projektübersicht über allem ausser Kopf- und Statusleiste.
-const EL_S = { hub: null, last: {}, modMenu: null, addMenu: null };
+const EL_S = { hub: null, last: {}, lastOf: {}, modMenu: null, addMenu: null };
 const elMod = () => E.moduleOf(S.model);
 const elIdx = () => E.modIdx(S.doc, elMod());
 function elSheetBar() {
   const a = S.active, sh = S.model, idx = elIdx(), pos = idx.indexOf(a), m = E.modById(elMod());
   $("#btn-dxf-all").hidden = S.doc.sheets.length < 2;
   const open = sheetMenu?.open, keep = document.activeElement?.closest?.("#sheetbar") && document.activeElement.id;
-  $("#sheetbar").innerHTML = `<span class="el-sbmod" title="Modul ${m.label}"><span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>${m.short || m.label}</span>`
+  const mn = S.doc.mods?.[elMod()]?.name || `${m.short || m.label}${varOf(sh) > 1 && !T.isDeck(sh) ? ` ${varOf(sh)}` : ""}`; // eigener Name des Moduls (18.10.2026)
+  $("#sheetbar").innerHTML = `<span class="el-sbmod" title="Modul ${R.esc(modName(S.doc, elMod()))}"><span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>${R.esc(mn)}</span>`
     + `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt im Modul (Bild auf)" aria-label="Vorheriges Blatt"${pos <= 0 ? " disabled" : ""}>‹</button>`
-    + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Blätter dieses Moduls (G)"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span><span class="of">${pos + 1} von ${idx.length}</span><span class="caret" aria-hidden="true">▾</span></button>`
+    + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Blätter dieses Moduls (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${pos + 1} von ${idx.length}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt im Modul (Bild ab)" aria-label="Nächstes Blatt"${pos >= idx.length - 1 ? " disabled" : ""}>›</button>`
     + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>`;
   if (keep) document.getElementById(keep)?.focus();
@@ -1641,17 +1795,17 @@ function elSheetBar() {
 function elSheetList() {
   const q = $("#sheet-find").value.trim().toLowerCase(), idx = elIdx();
   const rows = idx.map((i) => ({ sh: S.doc.sheets[i], i, label: sheetLabel(S.doc.sheets[i], i), title: S.doc.sheets[i].meta.TITEL || "" })).filter((r) => !q || `${r.label} ${r.title}`.toLowerCase().includes(q));
-  $("#sheet-menu .slist").innerHTML = rows.length ? rows.map(({ sh, i, label, title }, n) => `<div class="srow"><button class="mi${i === S.active ? " on" : ""}" data-sheet="${i}" tabindex="-1"${i === S.active ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${R.esc(label)}</span><span class="ms">${R.esc(title || "ohne Titel")}</span></span><span class="pos">${idx.indexOf(i) + 1}</span></button><button class="pin" data-pin="${i}" tabindex="-1" title="${sh.pin ? "Markierung entfernen" : "Blatt markieren"} (M für das aktive Blatt)" aria-label="${sh.pin ? "Markierung entfernen" : "Blatt markieren"}" aria-pressed="${!!sh.pin}">${sh.pin ? "★" : "☆"}</button></div>`).join("") : `<div class="empty">Kein Blatt gefunden</div>`;
+  $("#sheet-menu .slist").innerHTML = rows.length ? rows.map(({ sh, i, label, title }, n) => `<div class="srow"><button class="mi${i === S.active ? " on" : ""}" data-sheet="${i}" data-ctx="${i}" tabindex="-1"${i === S.active ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${R.esc(label)}</span><span class="ms">${R.esc(title || "ohne Titel")}</span></span><span class="pos">${idx.indexOf(i) + 1}</span></button><button class="pin" data-pin="${i}" tabindex="-1" title="${sh.pin ? "Markierung entfernen" : "Blatt markieren"} (M für das aktive Blatt)" aria-label="${sh.pin ? "Markierung entfernen" : "Blatt markieren"}" aria-pressed="${!!sh.pin}">${sh.pin ? "★" : "☆"}</button></div>`).join("") : `<div class="empty">Kein Blatt gefunden</div>`;
 }
 function elStep(d) { const idx = elIdx(), i = idx[idx.indexOf(S.active) + d]; if (i !== undefined) switchSheet(i); }
-function elAddFilter() { const ok = E.ADD_KINDS[elMod()] || []; for (const b of document.querySelectorAll("#add-menu [data-new]")) if (!ok.includes(b.dataset.new)) b.hidden = true; else if (b.dataset.new !== "deck") b.hidden = false; } // deck: eigene Regel davor
+function elAddFilter() { const ok = E.ADD_KINDS[E.baseOf(elMod())] || []; for (const b of document.querySelectorAll("#add-menu [data-new]")) if (!ok.includes(b.dataset.new)) b.hidden = true; else if (b.dataset.new !== "deck") b.hidden = false; } // deck: eigene Regel davor
 function elSync() {
   const id = elMod(), m = E.modById(id);
   EL_S.last[id] = S.active;
   document.documentElement.style.setProperty("--el-band", m.color);
-  document.body.dataset.elmod = id;
+  document.body.dataset.elmod = E.baseOf(id); EL_S.lastOf[E.baseOf(id)] = id;
   setProjectMeta(S.doc.project?.meta); // neue Blätter bekommen die Projektdaten (model.js newMeta)
-  const c = $("#el-crumb"); if (c && EL_S.hub?.hidden !== false) c.innerHTML = E.crumbHTML(id, E.statusOf(S.doc));
+  const c = $("#el-crumb"); if (c && EL_S.hub?.hidden !== false) c.innerHTML = E.crumbHTML(id, E.statusOf(S.doc), modName(S.doc, id));
 }
 function elInit() {
   const crumb = document.createElement("div"); crumb.id = "el-crumb"; crumb.className = "el-crumb";
@@ -1659,6 +1813,9 @@ function elInit() {
   const bare = document.createElement("button"); bare.className = "btn icon el-barebtn"; bare.id = "el-bare"; bare.dataset.elact = "bare";
   bare.title = "Seitenleisten aus und ein (§)"; bare.setAttribute("aria-label", "Seitenleisten aus und ein"); bare.setAttribute("aria-pressed", "false"); bare.innerHTML = R.icons.panelL;
   $("#btn-undo").before(bare);
+  const fb = document.createElement("button"); fb.className = "btn el-fbbtn"; fb.id = "el-fb"; fb.dataset.elact = "feedback"; fb.type = "button";
+  fb.title = "Fehler, Anregung oder Wunsch melden, mit Screenshot der Ansicht"; fb.innerHTML = `<span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H10l-4 4v-4H5z"/><path d="M9 9.5h6M9 12h4"/></svg></span><span class="lbl">Feedback melden</span>`;
+  $("#statusbar").append(fb);
   const hub = document.createElement("div"); hub.id = "el-hub"; hub.hidden = true; hub.setAttribute("role", "region"); hub.setAttribute("aria-label", "Projektübersicht");
   const mm = document.createElement("div"); mm.className = "menu"; mm.id = "el-modmenu"; mm.setAttribute("role", "menu"); mm.setAttribute("aria-label", "Modul öffnen"); mm.hidden = true;
   const am = mm.cloneNode(); am.id = "el-addmenu"; am.setAttribute("aria-label", "Modul anlegen");
@@ -1667,41 +1824,54 @@ function elInit() {
   S.elLocked = elLocked; S.elUnlock = elUnlock; // für files.js (Speichern, PDF, Downloads)
   EL_S.modMenu = makeMenu(mm, { left: true, beforeShow: () => { mm.innerHTML = E.modMenuHTML(S.doc, EL_S.hub.hidden ? elMod() : null); } });
   EL_S.addMenu = makeMenu(am, { left: true, beforeShow: () => { am.innerHTML = E.addModMenuHTML(S.doc); } });
+  const mc = mm.cloneNode(); mc.id = "el-modctx"; mc.setAttribute("aria-label", "Modul");
+  mc.innerHTML = `<div class="ctx-head"></div>` + [["open", "list", "Öffnen", ""], ["ren", "text", "Umbenennen", "Eigener Name, z. B. Schema HV"], ["dup", "copy", "Duplizieren", "Ganzes Modul, unabhängig vom Original"], ["del", "trash", "Löschen", "Mit allen Blättern, Rückgängig möglich"]]
+    .map(([a, ic, t, sub]) => `<button class="mi${a === "del" ? " danger" : ""}" role="menuitem" data-elmodact="${a}" tabindex="-1"><span class="ic">${R.icons[ic]}</span><span class="mt"><span class="mh">${t}</span>${sub ? `<span class="ms">${sub}</span>` : ""}</span></button>`).join("");
+  $("#app").append(mc);
+  EL_S.modCtx = makeMenu(mc, { left: true, beforeShow: () => {
+    const id = EL_S.ctxMod, n = E.modIdx(S.doc, id).filter((i) => !T.isDeck(S.doc.sheets[i])).length;
+    mc.querySelector(".ctx-head").textContent = `${modName(S.doc, id)} · ${n} ${n === 1 ? "Blatt" : "Blätter"}`;
+    mc.querySelector("[data-elmodact=del]").disabled = !S.doc.sheets.some((sh) => !T.isDeck(sh) && modOf(sh) !== id);
+  } });
+  mc.addEventListener("click", (e) => { const b = e.target.closest("[data-elmodact]"); if (b) elModAct(b.dataset.elmodact); });
   document.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel]");
+    const b = e.target.closest("[data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
-    if (b.dataset.elopen) elOpen(b.dataset.elopen);
+    if (b.dataset.elopen) elOpen(b.dataset.elopen, { exact: b.dataset.exact !== undefined }); // exact: genau dieses Modul (Kachel), sonst Art
     else if (b.dataset.elnew) elNew(b.dataset.elnew);
     else if (b.dataset.eltdel) elTimeDel(Number(b.dataset.eltdel));
+    else if (b.dataset.elzok || b.dataset.elzweg) elZeitResolve(b.dataset.elzok || b.dataset.elzweg, !!b.dataset.elzok);
     else if (b.dataset.elrecent) elOpenRecent(Number(b.dataset.elrecent));
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
     else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv,
-      onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin }[b.dataset.elact] || (() => {}))();
+      onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("change", (e) => { const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); });
   hub.addEventListener("submit", (e) => { e.preventDefault(); elTimeAdd(); });
+  hub.addEventListener("keydown", (e) => { const r = e.key === "Enter" && e.target.closest?.("[data-elz]"); if (r) { e.preventDefault(); elZeitResolve(r.dataset.elz, true); } }); // Enter in der Zeile übernimmt
   hub.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches?.("input[data-elp]")) { e.preventDefault(); e.target.blur(); } }); // Enter übernimmt
   addEventListener("el-file", (e) => { // files.js: gespeichert oder geöffnet
+    elZeitDoc({ file: !EL_S.fromOnline });
     if (EL_S.fromOnline) return; // aus der Online-Ablage geöffnet: keine Datei, nicht unter „zuletzt geöffnet“
     E.recentAdd({ file: e.detail.file, name: elName(), status: E.statusOf(S.doc), handle: e.detail.handle || null }).then(() => { if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); });
   });
-  elSync(); elHub(true);
+  elZeitInit(); elSync(); elHub(true);
 }
 // Übersicht zeigen (show) oder schliessen; beim Schliessen bleibt das zuletzt offene Modul. keepFocus: neu zeichnen, Fokus bleibt
 function elHub(show, { keepFocus = false } = {}) {
   const h = EL_S.hub, f = keepFocus && document.activeElement?.closest?.("#el-hub") ? (document.activeElement.id ? "#" + document.activeElement.id : document.activeElement.dataset.elp ? `[data-elp="${document.activeElement.dataset.elp}"]` : null) : null;
   if (show) {
-    finishWire(); closeEditor(true);
-    const d = new Date(), today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    finishWire(); closeEditor(true); elZeitPause(); // in der Übersicht läuft keine Zeit
+    const today = elDay(Date.now());
     const file = S.fileHandle?.name || "", suggest = `${baseName()}.elplexa.json`;
-    h.innerHTML = E.hubHTML(S.doc, { name: elName(), file, suggest, today });
+    h.innerHTML = E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel });
     for (const el of h.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
     E.recentList().then((l) => { EL_S.recent = l; const r = h.querySelector("#el-recent"); if (r) r.innerHTML = E.recentHTML(l); });
     elOnlineDraw();
   }
   h.hidden = !show; document.body.classList.toggle("el-hubopen", show);
-  $("#el-crumb").innerHTML = show ? `<span class="el-hubtitle">Projektübersicht</span>${E.statusPill(E.statusOf(S.doc))}` : E.crumbHTML(elMod(), E.statusOf(S.doc));
+  $("#el-crumb").innerHTML = show ? `<span class="el-hubtitle">Projektübersicht</span>${E.statusPill(E.statusOf(S.doc))}` : E.crumbHTML(elMod(), E.statusOf(S.doc), modName(S.doc, elMod()));
   if (f) h.querySelector(f)?.focus(); else if (keepFocus) { /* Fokus nicht auf eine Kachel springen lassen */ } else if (show) h.querySelector(".el-tile")?.focus(); else svg.focus();
 }
 // Projektname: in der Datei (doc.project.name), alte Dateien ohne Namen nehmen den Dateinamen
@@ -1733,6 +1903,79 @@ function elTimeAdd() {
 function elTimeDel(k) {
   change(() => { const t = S.doc.project.time; t.splice(k, 1); if (!t.length) delete S.doc.project.time; }, { panel: false });
   elHub(true); $("#el-th")?.focus();
+}
+// Automatische Zeit (CJ 18.10.2026): läuft in den Modulen mit, Aktivität = Maus, Taste, Klick, Scrollen, Touch. 5 min ohne Aktivität,
+// Fenster im Hintergrund oder Übersicht offen = Pause. Ein vorläufiger Eintrag je Tag in doc.project.auto, ausserhalb von Rückgängig
+// und ohne „ungespeichert“; mit der Datei und online gespeichert und laufend im Browser gesichert (localStorage je Projekt-Kennung).
+// Zeit wird nur bis zur letzten Aktivität plus 5 min gezählt (from = zuletzt abgerechnet, until = Ende der aktiven Zeit).
+const EL_IDLE = 300e3, EL_ZK = "elplexacad.zeit.", EL_Z = { doc: null, from: 0, until: 0, mod: "schema", dirty: false };
+const elDay = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const elRid = (n) => Math.random().toString(36).slice(2, 2 + n).padEnd(n, "0");
+function elZeitSettle(t = Date.now()) {
+  const doc = EL_Z.doc, ms = Math.min(t, EL_Z.until) - EL_Z.from;
+  EL_Z.from = t;
+  if (!doc || ms <= 0) return;
+  const p = (doc.project ||= {}), d = elDay(t);
+  p.id ||= elRid(10);
+  let e = (p.auto ||= []).find((x) => x.d === d && !x.x);
+  if (!e) p.auto.push((e = { k: elRid(8), d, s: 0, m: [] }));
+  e.s = Math.min(86400, e.s + ms / 1000);
+  if (!e.m.includes(EL_Z.mod)) e.m.push(EL_Z.mod);
+  EL_Z.dirty = true;
+}
+function elZeitBackup(doc = EL_Z.doc) {
+  const p = doc?.project;
+  if (!p?.id || !p.auto) return;
+  try { localStorage.setItem(EL_ZK + p.id, JSON.stringify({ f: S.fileName, auto: p.auto })); } catch { /* ohne Sicherung weiterzählen */ }
+}
+function elZeitPause() { elZeitDoc(); elZeitSettle(); EL_Z.until = 0; if (EL_Z.dirty) { elZeitBackup(); EL_Z.dirty = false; } }
+// Anderes Projekt offen (Öffnen, Neu, Online): altes abrechnen und sichern, beim neuen die Sicherung aus dem Browser dazunehmen.
+// file: aus einer Datei geöffnet; nur dann gilt eine Sicherung mit gleichem Dateinamen für eine Datei ohne Kennung (nie gespeichert).
+function elZeitDoc({ file = false } = {}) {
+  if (EL_Z.doc === S.doc) return;
+  if (EL_Z.doc) { elZeitSettle(); elZeitBackup(); }
+  EL_Z.doc = S.doc; EL_Z.from = Date.now(); EL_Z.until = 0; EL_Z.dirty = false;
+  let id = S.doc.project?.id, b = null;
+  try {
+    if (id) b = JSON.parse(localStorage.getItem(EL_ZK + id) || "null");
+    else if (file) for (let i = 0; i < localStorage.length && !b; i++) {
+      const k = localStorage.key(i);
+      if (k.startsWith(EL_ZK)) { const x = JSON.parse(localStorage.getItem(k)); if (x?.f === S.fileName) { b = x; id = k.slice(EL_ZK.length); } }
+    }
+  } catch { b = null; }
+  const auto = cleanProject({ auto: b?.auto })?.auto;
+  if (auto) { const p = (S.doc.project ||= {}); p.id ||= id; p.auto = E.mergeAuto(p.auto, auto); }
+  const old = E.autoOpen(S.doc).filter((e) => e.d !== elDay(Date.now())).length;
+  if (old) toast(`Vorläufige Zeit: ${old === 1 ? "ein Eintrag" : `${old} Einträge`} in der Übersicht übernehmen oder verwerfen (Taste 0).`);
+}
+function elZeitAct() {
+  elZeitDoc();
+  if (!EL_S.hub || !EL_S.hub.hidden || document.hidden || !document.hasFocus()) return;
+  const t = Date.now();
+  elZeitSettle(t); EL_Z.until = t + EL_IDLE; EL_Z.mod = E.baseOf(elMod());
+}
+function elZeitUndo(za, zid) { // Rückgängig: vorläufige Zeit nicht zurückdrehen, übernommen/verworfen aber schon
+  if (!za) return;
+  const p = (S.doc.project ||= {});
+  p.id ||= zid; p.auto = E.mergeAuto(p.auto, za, true);
+  EL_Z.doc = S.doc; elZeitBackup();
+}
+function elZeitInit() {
+  for (const ev of ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(ev, elZeitAct, { capture: true, passive: true });
+  addEventListener("visibilitychange", elZeitPause); addEventListener("blur", elZeitPause); addEventListener("pagehide", elZeitPause);
+  setInterval(() => { elZeitDoc(); if (document.hidden || !document.hasFocus()) { elZeitPause(); return; } elZeitSettle(); if (EL_Z.dirty) { elZeitBackup(); EL_Z.dirty = false; } }, 15e3);
+  elZeitDoc();
+}
+// Vorläufigen Eintrag übernehmen (mit den Stunden und der Notiz aus der Zeile) oder verwerfen. Ein Rückgängig-Schritt.
+function elZeitResolve(k, ok) {
+  const e = S.doc.project?.auto?.find((x) => x.k === k), row = $(`#el-hub [data-elz="${k}"]`);
+  if (!e || !row) return;
+  const h = Number(row.querySelector(".el-ah").value.trim().replace(",", ".")), n = row.querySelector(".el-an").value.trim();
+  if (ok && !(h > 0 && h <= 24)) { toast("Stunden zwischen 0 und 24 eingeben, z. B. 1,5.", "error"); row.querySelector(".el-ah").focus(); return; }
+  change(() => { const a = S.doc.project.auto.find((x) => x.k === k); a.x = ok ? "ok" : "weg"; if (ok) (elProj().time ||= []).push({ d: e.d, h: Math.round(h * 100) / 100, n }); }, { panel: false });
+  EL_Z.doc = S.doc; elZeitBackup();
+  elHub(true, { keepFocus: true });
+  toast(ok ? `Übernommen: ${E.fmtH(Math.round(h * 100) / 100)} h am ${E.fmtD(e.d)}.` : `Vorläufiger Eintrag vom ${E.fmtD(e.d)} verworfen.`);
 }
 function elCsv() { download(`${baseName()}_Zeit.csv`, E.timeCsv(S.doc), "text/csv"); toast("Zeit als CSV in den Download-Ordner geladen."); }
 // Neues Projekt aus der Übersicht: Name, Bauherr, erstes Modul. Ungespeicherte Änderungen: nachfragen wie bei „Neu“.
@@ -1795,8 +2038,10 @@ async function elOnline(fn) { // sperrt die Knöpfe während der Anfrage
 }
 const elOnlineList = () => elOnline(async () => { const l = await projList(); if (l) EL_S.onlist = l; });
 const elLogout = () => elOnline(async () => { await cloudLogout(); EL_S.onlist = null; toast("Abgemeldet."); });
-function elOnlineSave() {
-  return elOnline(async () => {
+const elOnlineSave = () => elOnline(() => elOnlineSaveCore(false));
+// clean: über den Speichern-Knopf; der Online-Stand gilt dann als gespeichert (sonst merkt sich erst die Datei mit ⌘S den Stand)
+async function elOnlineSaveCore(clean) {
+  {
     closeEditor(true);
     const doc = JSON.parse(docText()), opt = { name: elName(), status: E.statusOf(S.doc) };
     let r = await projSave(doc, S.doc.project?.online, opt);
@@ -1809,11 +2054,41 @@ function elOnlineSave() {
     }
     if (!r) return; // Anmeldung abgebrochen
     elProj().online = { id: r.id, at: r.at };
-    markDirty(); // die Datei merkt sich den Online-Stand beim nächsten Speichern
+    if (clean) markClean(); else markDirty(); // die Datei merkt sich den Online-Stand beim nächsten Speichern
     const l = await projList().catch(() => null); if (l) EL_S.onlist = l;
     projSaved();
-    toast(`Online gespeichert: „${opt.name}“. Mit ⌘S merkt sich auch die Datei diesen Stand.`);
-  });
+    toast(clean ? `Online gespeichert: „${opt.name}“.` : `Online gespeichert: „${opt.name}“. Mit ⌘S merkt sich auch die Datei diesen Stand.`);
+  }
+}
+// Speichern-Knopf und ⌘S (CJ 18.10.2026): angemeldet und Projekt schon online → direkt online; angemeldet, noch nicht online → Wahl online oder Datei.
+// Ohne Anmeldung und ⇧⌘S (Speichern unter) wie bisher als Datei. Fehler online: Meldung und Angebot, als Datei zu speichern.
+async function elSave(forceAs) {
+  if (forceAs || !cloudUser()) return saveJson(forceAs);
+  if (EL_S.onbusy) return;
+  closeEditor(true);
+  if (!S.doc.project?.online) {
+    const c = await chooseDialog("Speichern", "Online: auf jedem Rechner nach der Anmeldung öffnen, weitere Klicks speichern direkt online. Lokal: als Datei (.elplexa.json) auf diesem Rechner.",
+      [{ label: "Online speichern", v: "on" }, { label: "Lokal speichern", v: "file" }]);
+    const v = c?.option?.v;
+    if (v === "file") return saveJson(false);
+    if (v !== "on") return;
+  }
+  EL_S.onbusy = true; if (!EL_S.hub.hidden) elOnlineDraw();
+  let err = null;
+  try { await elOnlineSaveCore(true); } catch (e) { err = e; }
+  finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) elOnlineDraw(); }
+  if (err && (await confirmDialog("Online speichern hat nicht geklappt", `${err.message || err} Es ist nichts verloren. Jetzt als Datei auf diesem Rechner speichern?`, "Lokal speichern"))) await saveJson(false);
+}
+// Feedback melden (CJ 18.10.2026): nur angemeldet (Gäste: Hinweis und Anmeldung), Screenshot der Zeichenfläche, Zeile in Supabase `feedback`
+async function elFeedback() {
+  if (!cloudUser()) { toast("Feedback nur mit Login. Bitte anmelden."); if (!(await elLogin())) return; }
+  closeEditor(true);
+  const hub = !EL_S.hub.hidden;
+  const shot = hub ? null : await snapSvg(svg);
+  const modul = hub ? "Übersicht" : `${modName(S.doc, elMod())} · ${sheetLabel(S.model, S.active)}`;
+  const ok = await feedbackDialog({ shot, noShot: hub ? "Ohne Screenshot: in der Projektübersicht gibt es keine Zeichenfläche." : "Ohne Screenshot: die Ansicht liess sich nicht als Bild erfassen.",
+    send: (f) => feedbackSend({ ...f, app_version: `elplexaCAD ${APP_BUILD}`, modul: modul.slice(0, 100), projekt_id: S.doc.project?.online?.id || null }) });
+  if (ok) toast("Danke, Feedback gesendet.");
 }
 // Online-Projekt löschen (nur die Online-Kopie, Dateien bleiben). Zeigt die offene Datei darauf, fällt die Verknüpfung weg.
 function elOnlineDelete(id) {
@@ -1837,17 +2112,34 @@ function elOnlineOpen(id) {
     toast(`Online-Projekt „${elName()}“ geöffnet. Speichern als Datei mit ⌘S.`);
   });
 }
-function elOpen(id, { create = true } = {}) { // create: false = per Taste, legt kein fehlendes Modul an
+function elOpen(id, { create = true, exact = false } = {}) { // create: false = per Taste, legt kein fehlendes Modul an
+  if (!exact && !id.includes(":")) { const ids = E.modIds(S.doc).filter((x) => E.baseOf(x) === id); if (ids.length) id = ids.includes(EL_S.lastOf[id]) ? EL_S.lastOf[id] : ids[0]; } // Art: zuletzt offenes Modul dieser Art
   const idx = E.modIdx(S.doc, id);
   if (!idx.length) { if (create && !E.modById(id)?.later) elNew(id); else { elHub(true); toast(`${E.modById(id).label} gibt es in diesem Projekt noch nicht. Anlegen mit „+ Modul“.`); } return; }
   const want = EL_S.last[id];
   elHub(false);
   switchSheet(idx.includes(want) ? want : idx[0]);
 }
+// Neues Modul (auch ein weiteres derselben Art, CJ 18.10.2026): nächste freie Nummer, erstes Blatt
 function elNew(id) {
   const add = { schema: addSheet, dispo: addDispo, pv: addPv }[id];
   if (!add) { toast(`${E.modById(id).label} kommt später.`); return; }
-  elHub(false); add();
+  const vs = S.doc.sheets.filter((sh) => modBase(sh) === id && !T.isDeck(sh)).map(varOf);
+  elHub(false); add(vs.length ? Math.max(...vs) + 1 : 1);
+}
+// Kachelmenü der Übersicht (CJ 18.10.2026): Rechtsklick oder gedrückt halten auf eine Modul-Kachel
+function elModCtx(el) {
+  EL_S.ctxMod = el.dataset.modctx;
+  EL_S.modCtx.show(el);
+}
+async function elModAct(a) {
+  const id = EL_S.ctxMod;
+  if (!id) return;
+  if (a === "open") { elOpen(id, { exact: true }); return; }
+  if (a === "ren") await renameModule(id);
+  else if (a === "dup") { const nid = duplicateModule(id); if (nid) toast(`Kopie angelegt: „${modName(S.doc, nid)}“. Umbenennen: Rechtsklick auf die Kachel.`); }
+  else if (a === "del") await deleteModule(id);
+  elHub(true);
 }
 function elBare() {
   const on = document.body.classList.toggle("el-bare");

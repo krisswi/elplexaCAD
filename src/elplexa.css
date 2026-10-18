@@ -79,6 +79,16 @@ body.el-hubopen #sheetbar, body.el-hubopen #zoombar, body.el-hubopen .pvbar, bod
 .el-sum b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .el-tform { display: grid; grid-template-columns: 150px 80px minmax(0, 1fr) auto; gap: 8px; }
 .el-tform input { height: 34px; min-width: 0; padding: 0 8px; font: inherit; font-size: 14px; color: var(--ink); background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--radius); }
+/* Vorläufige Zeit (automatisch erfasst): warm hinterlegt, damit sie beim Öffnen auffällt */
+.el-auto { display: grid; gap: 6px; padding: 10px 12px; background: #FBF5E4; border: 1px solid #E8D9A6; border-radius: 10px; }
+.el-ahead { margin: 0 0 2px; font-size: 13px; color: var(--muted); }
+.el-ahead b { color: var(--ink); font-weight: 600; }
+.el-arow { display: grid; grid-template-columns: 90px 1fr 64px minmax(0, 1.6fr) auto 34px; gap: 8px; align-items: center; font-size: 13.5px; }
+.el-ad i { font-style: normal; font-size: 12px; color: var(--muted); }
+.el-adur { color: var(--muted); font-variant-numeric: tabular-nums; }
+.el-arow input { height: 32px; min-width: 0; padding: 0 8px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; border: 1px solid var(--panel-line); border-radius: var(--radius); }
+.el-arow .el-ah { text-align: right; font-variant-numeric: tabular-nums; }
+.el-auto input:focus-visible { outline: 2px solid var(--el-green); outline-offset: 0; }
 .el-tlist { display: grid; max-height: 320px; overflow: auto; }
 .el-trow { display: grid; grid-template-columns: 90px 64px minmax(0, 1fr) 34px; gap: 8px; align-items: center; min-height: 36px; border-bottom: 1px solid var(--panel-line); font-size: 13.5px; }
 .el-th2 { text-align: right; font-variant-numeric: tabular-nums; }
@@ -95,14 +105,37 @@ body.el-hubopen #sheetbar, body.el-hubopen #zoombar, body.el-hubopen .pvbar, bod
 @media (hover: hover) and (pointer: fine) { .el-tile:hover { border-color: var(--faint); } }
 .el-th { display: flex; align-items: center; gap: 8px; font-size: 15.5px; font-weight: 600; }
 .el-th kbd { margin-left: auto; }
+.el-tn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* eigener Modulname (18.10.2026) */
+#el-modctx { width: 260px; }
+#el-modctx .mi.danger { color: var(--danger); }
+#el-modctx .mi:disabled { opacity: 0.4; pointer-events: none; }
+#el-modctx .ctx-head { padding: 6px 10px 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .el-ts { font-size: 12.5px; color: var(--muted); }
 .el-thumbs { display: flex; gap: 4px; margin-top: auto; }
 .el-thumbs i { width: 34px; height: 24px; border: 1px solid var(--panel-line); border-radius: 3px; background: var(--panel); }
+@media (hover: hover) and (pointer: fine) { .el-thumbs i:hover { border-color: var(--muted); } } /* Blattmenü per Rechtsklick (18.10.2026) */
 .el-new { background: transparent; border-style: dashed; color: var(--muted); place-content: center; justify-items: center; text-align: center; }
 .el-new .el-th { color: var(--muted); }
 kbd { font: 600 11px/16px var(--font); color: var(--muted); border: 1px solid var(--panel-line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: #fff; }
 .el-keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; margin: 4px 0 12px; }
 .el-keys kbd { justify-self: start; }
-@media (max-width: 760px) { .el-hubin { grid-template-columns: 1fr; padding: 16px; } .el-col { display: contents; } .el-mods { order: 1; } .el-time { order: 2; } .el-projs { order: 3; } .el-tform { grid-template-columns: 1fr 80px; } .el-tform #el-tn { grid-column: 1 / -1; } .el-tform .btn { grid-column: 1 / -1; } .el-trow { grid-template-columns: 82px 56px minmax(0, 1fr) 34px; } }
+@media (max-width: 760px) { .el-hubin { grid-template-columns: 1fr; padding: 16px; } .el-col { display: contents; } .el-mods { order: 1; } .el-time { order: 2; } .el-projs { order: 3; } .el-tform { grid-template-columns: 1fr 80px; } .el-tform #el-tn { grid-column: 1 / -1; } .el-tform .btn { grid-column: 1 / -1; } .el-trow { grid-template-columns: 82px 56px minmax(0, 1fr) 34px; } .el-arow { grid-template-columns: 1fr 64px auto 34px; } .el-arow .el-adur { grid-column: 2 / -1; text-align: right; } .el-arow .el-an { grid-column: 1 / 2; grid-row: 2; } }
 @media (max-width: 600px) { #el-hub { grid-row: 2 / -1; } .el-crumb { flex: 0 1 auto; min-width: 0; } .el-hubtitle { overflow: hidden; text-overflow: ellipsis; padding: 0 4px; } .el-back { padding: 0 6px; } .el-lbl { display: none; } .el-crumb .el-st { margin-left: 4px; padding: 0 7px; } .el-tform input { font-size: 16px; } .el-barebtn { display: none; } }
 @media (prefers-reduced-motion: reduce) { .el-tile, .el-rrow { transition: none; } .el-tile:active, .el-rrow:active { transform: none; } }
+
+/* Feedback melden (CJ 18.10.2026): dezent rechts in der Statusleiste, deckt die Zeichenfläche nicht ab */
+#statusbar .el-fbbtn { height: 24px; padding: 0 8px; gap: 5px; font-size: 12.5px; color: var(--muted); background: transparent; border-color: transparent; }
+#statusbar .el-fbbtn .ic svg { width: 15px; height: 15px; }
+@media (hover: hover) and (pointer: fine) { #statusbar .el-fbbtn:hover { color: var(--ink); background: var(--hover); } }
+#statusbar .el-fbbtn:active { transform: scale(0.97); }
+.el-fbmodal { width: min(520px, 94vw); }
+.el-fbart { display: flex; gap: 6px; }
+.el-fbart label { margin: 0; }
+.el-fbart input { position: absolute; opacity: 0; pointer-events: none; }
+.el-fbart span { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 1px solid var(--panel-line); border-radius: var(--radius); background: #fff; color: var(--ink); font-size: 13.5px; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
+.el-fbart input:checked + span { background: var(--ink); border-color: var(--ink); color: #fff; }
+.el-fbart input:focus-visible + span { outline: 2px solid var(--el-green); outline-offset: 1px; }
+.el-fbchk { display: flex; align-items: center; gap: 6px; margin: 4px 0 8px; font-size: 13.5px; }
+.el-fbpic { display: flex; justify-content: center; width: 100%; height: 200px; overflow: hidden; border: 1px solid var(--panel-line); border-radius: var(--radius); background: var(--bench); cursor: pointer; transition: opacity 150ms ease; }
+.el-fbpic canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+.el-fbpic.off { opacity: 0.35; }

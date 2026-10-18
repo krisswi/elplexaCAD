@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "schemacad.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="dims_"))
 OUT.mkdir(parents=True, exist_ok=True)
-RT = next(c for c in (ROOT.parent / "roundtrip_check.py", ROOT.parent / "Etappe0" / "roundtrip_check.py") if c.exists())
+RT = ROOT / "test" / "roundtrip_check.py"
 errors, fails = [], []
 def check(name, cond, info=""):
     print(("ok   " if cond else "FAIL ") + name + (f"  {info}" if info and not cond else ""))

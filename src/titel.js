@@ -71,7 +71,8 @@ const label = (k) => ({ OBJEKT: "Objekt", AUFTRAG: "Auftrag", SCHEMA: "Schema", 
 // Ohne Titelseite (gelöscht) setzt die App die Projektangaben direkt auf allen Blättern (app.js).
 export const SHEET_ORDER = ["title", "toc", "schema", "legend", "dispo", "pv", "pvtab"];
 export function syncDeck(doc) {
-  const rank = (s) => SHEET_ORDER.indexOf(s.kind || "schema");
+  // Module mehrfach (18.10.2026): je Modul nacheinander (Schema 1, Schema 2, Legende, Dispo 1, Dispo 2, PV 1 mit Übersicht, PV 2 mit Übersicht)
+  const rank = (s) => { const k = s.kind || "schema", v = s.var || 1; return k === "title" ? 0 : k === "toc" ? 1 : k === "schema" ? 100 + v : k === "legend" ? 199 : k === "dispo" ? 200 + v : 300 + v * 2 + (k === "pvtab" ? 1 : 0); };
   doc.sheets = doc.sheets.map((s, i) => [s, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map((e) => e[0]);
   const leg = doc.sheets.find((s) => s.kind === "legend");
   if (leg?.kind === "legend") {

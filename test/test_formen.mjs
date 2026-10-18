@@ -40,7 +40,7 @@ add({ type: "text", x: 20, y: 60, h: 5, s: "Rot gross", c: "rot" });
 add({ type: "text", x: 20, y: 70, h: 2.5, s: "Schwarz" });
 renumberAll(d);
 const text = serializeModel(d), o2 = JSON.parse(text);
-assert.strictEqual(o2.version, 15); assert.strictEqual(VERSION, 15);
+assert.strictEqual(o2.version, 15); assert.ok(VERSION >= 15); // seit 18.10.2026 liest die App bis 16 (Stringplan-Varianten)
 const d2 = parseModel(text);
 assert.deepStrictEqual(d2.sheets[0].items, sh.items, "Speichern und Laden ohne Datenverlust");
 assert.strictEqual(serializeModel(d2), text, "zweites Speichern gleich");

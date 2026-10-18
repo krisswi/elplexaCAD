@@ -60,6 +60,7 @@ assert.deepStrictEqual(ny, [fy - 0.5, fy - 4.5]);
 wb.sheets[0].meta.BLATT = "3"; renumber(wb.sheets[0]);
 const mid = items.filter((i) => i.sym === "ZW_CT").sort((a, b) => a.x - b.x)[1];
 assert.strictEqual(sichs[0].attrs.FBMK, `3F${colOf(mid.x + 1.25)}`, "Sicherung nach mittlerem Wandler");
+delete box.manual; renumber(wb.sheets[0]); assert.strictEqual(box.attrs.BMK, `3P${colOf(mid.x + 1.25)}`, "Zähler nach mittlerem Wandler");
 sichs[0].manual = true; sichs[0].attrs.FBMK = "F9"; renumber(wb.sheets[0]); assert.strictEqual(sichs[0].attrs.FBMK, "F9", "von Hand bleibt");
 assert.ok(wires.length > 30 && texts.length > 40 && texts.some((t) => t.r === 90 && t.s === "braun (1)"));
 assert.ok(wb.nextId > Math.max(...items.map((i) => i.id)), "neue IDs unter nextId");

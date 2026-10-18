@@ -60,7 +60,7 @@ function legendSVG(a, den, dir, bar) {
 export const TAB_PAPER = { size: "A4", quer: true, den: 1 };
 export const tabPaper = (sheet) => ({ ...TAB_PAPER, ...sheet.paper, den: 1 });
 function tableParts(sheet, doc) {
-  const p = tabPaper(sheet), a = P.printArea(p), k = Math.min(1, (a.x1 - a.x0) / WIDTH), parts = tablePages(doc, (a.y1 - a.y0 - 2) / k);
+  const p = tabPaper(sheet), a = P.printArea(p), k = Math.min(1, (a.x1 - a.x0) / WIDTH), parts = tablePages(P.varDoc(doc, sheet), (a.y1 - a.y0 - 2) / k); // nur die Variante dieser Übersicht
   return parts.map((t, i) => pageInner(p, sheet.meta, `Stringübersicht · Seite ${i + 1} von ${parts.length} · ${P.paperLabel(p)}`, `<g transform="translate(${a.x0} ${a.y1 - 2}) scale(${R.f(k)})" style="--pw:0.2">${t}</g>`));
 }
 export function tablePagesSVG(sheet, doc) {

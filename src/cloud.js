@@ -189,3 +189,17 @@ export async function pdfCleanup() {
   if (drop.length) await storage("object/projekt-pdf", { method: "DELETE", body: JSON.stringify({ prefixes: drop }) });
   return drop.length;
 }
+
+// Feedback (elplexaCAD, CJ 18.10.2026): Tabelle `feedback` (nur einfügen und eigene lesen, RLS), Screenshot im privaten Bucket `feedback` unter <Konto>/<Zufall>.png.
+// f = { art, titel, beschreibung, shot (Blob oder null), app_version, modul, projekt_id }. true = gesendet, null = Anmeldung abgebrochen.
+export async function feedbackSend({ shot, ...f }) {
+  if (!(await ensure())) return null;
+  let screenshot_path = null;
+  if (shot) { // zuerst das Bild, damit die Zeile nie auf ein fehlendes Bild zeigt
+    const path = `${uid(sess)}/${crypto.randomUUID()}.${shot.type === "image/jpeg" ? "jpg" : "png"}`;
+    if (!(await storage(`object/feedback/${path}`, { method: "POST", body: shot, headers: { "Content-Type": shot.type } }))) return null;
+    screenshot_path = path;
+  }
+  const r = await rest("feedback?select=id", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ...f, screenshot_path, user_agent: navigator.userAgent.slice(0, 500) }) });
+  return r?.length ? true : null;
+}

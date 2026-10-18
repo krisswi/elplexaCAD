@@ -9,6 +9,7 @@ import { openPdf, pageSize, toBase64, imageFor, imageReady } from "./pdfbg.js";
 import * as PR from "./pvprint.js";
 import * as R from "./render.js";
 import { cloudMenu } from "./cloud.js";
+import { modOf, modVar, modName } from "./model.js";
 
 const ICON = {
   measure: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16.5L16.5 3 21 7.5 7.5 21z"/><path d="M7 12.5l2 2M10 9.5l2 2M13 6.5l2 2"/></svg>',
@@ -430,12 +431,12 @@ export function makePv(c) {
     const name = nextName(), err = P.nameError(S.model, name);
     if (err) { toast(err, "error"); return; }
     // Mit Anlage (5k): ein WR je Durchgang, Anzahl leer = alle freien Strings dieses WR, Bezeichnungen aus der Anlage
-    const an = S.doc.pv?.anlage, wrs = an ? an.map((_, i) => [String(i + 1), `WR ${i + 1} (${P.anlageFree(i + 1).length} frei)`]) : null;
-    const wr0 = an ? String(Math.max(1, an.findIndex((_, i) => P.anlageFree(i + 1).length) + 1)) : "";
+    const an = S.doc.pv?.anlage, wrs = an ? an.map((_, i) => [String(i + 1), `WR ${i + 1} (${P.anlageFree(i + 1, S.model).length} frei)`]) : null;
+    const wr0 = an ? String(Math.max(1, an.findIndex((_, i) => P.anlageFree(i + 1, S.model).length) + 1)) : "";
     const r = await formDialog("Autoverkabelung", an ? "Start beim angeklickten Modul (+ des ersten Strings), weiter in Schlangenlinie über die freien Module. Bezeichnungen aus der Anlage, ein WR je Durchgang." : `Start beim angeklickten Modul (+ des ersten Strings), weiter in Schlangenlinie über die freien Module. Erste Bezeichnung ${name}, dann fortlaufend.`,
       [...(an ? [{ label: "Wechselrichter", value: wr0, options: wrs }] : []), { label: an ? "Anzahl Strings (leer = alle freien des WR)" : "Anzahl Strings", value: an ? "" : autoOpt[0] }, { label: "Module je String", value: autoOpt[1] }, { label: "Richtung", value: autoOpt[2], options: [["h", "waagrecht (Reihen)"], ["v", "senkrecht (Spalten)"]] }], "Verkabeln");
     if (!r) return;
-    const [nv, kv, dir] = an ? r.slice(1) : r, names = an ? P.anlageFree(Number(r[0])) : null;
+    const [nv, kv, dir] = an ? r.slice(1) : r, names = an ? P.anlageFree(Number(r[0]), S.model) : null;
     if (an && !names.length) { toast(`WR ${r[0]} hat keine freien Strings mehr.`, "error"); return; }
     const n = an && !nv.trim() ? names.length : Number(nv), k = Number(kv);
     if (!Number.isInteger(n) || !Number.isInteger(k) || n < 1 || k < 1) { toast("Bitte ganze Zahlen ab 1 eingeben.", "error"); return; }
@@ -578,8 +579,26 @@ export function makePv(c) {
     toast(n ? `${n} Modultyp${n > 1 ? "en" : ""} übernommen.` : "Keine neuen Modultypen (gleiche Namen werden übersprungen).", n ? undefined : "error");
   }
   // Auswahlfelder rechts (data-pvopt): Einstellungen für neue Module oder Änderung gewählter Module
+  // Strings fortsetzen (CJ 18.10.2026): jedes PV-Modul zählt ab 1.1.1. Mit Haken schlägt es die Bezeichnungen nach dem gewählten
+  // PV-Modul vor (doc.mods[Modul].cont = dessen Nummer). Die Module bleiben getrennt, jedes mit eigener Stringübersicht.
+  const myMod = () => modOf(S.model), otherMods = () => [...new Set(S.doc.sheets.filter((sh) => sh.kind === "pv").map(modOf))].filter((id) => id !== myMod());
+  function contHTML() {
+    const others = otherMods(), c = S.doc.mods?.[myMod()]?.cont, on = !!c && others.some((id) => modVar(id) === c);
+    if (!others.length) return "";
+    let h = `<h3 class="pv-title">Strings</h3><label class="check"><input type="checkbox" data-pvopt="cont"${on ? " checked" : ""}> Strings fortsetzen</label>`;
+    if (on) h += `<div class="field"><label>Nach dem Modul</label><select data-pvopt="contto">${others.map((id) => `<option value="${modVar(id)}"${modVar(id) === c ? " selected" : ""}>${R.esc(modName(S.doc, id))}</option>`).join("")}</select></div>`
+      + `<p class="note">Neue Strings zählen nach den Strings von „${R.esc(modName(S.doc, others.find((id) => modVar(id) === c)))}“ weiter.</p>`;
+    else h += `<p class="note">Dieses PV-Modul beginnt bei 1.1.1. Haken setzen, um nach einem anderen PV-Modul weiterzuzählen.</p>`;
+    return h;
+  }
+  function setCont(v) {
+    const id = myMod();
+    change(() => { const m = (S.doc.mods ??= {}); if (v) m[id] = { ...m[id], cont: v }; else if (m[id]) { delete m[id].cont; if (!Object.keys(m[id]).length) delete m[id]; } if (!Object.keys(m).length) delete S.doc.mods; });
+  }
   function option(el) {
     const k = el.dataset.pvopt, v = el.value;
+    if (k === "cont") { setCont(el.checked ? modVar(otherMods()[0]) : 0); return; } // Haken: nach dem ersten anderen PV-Modul
+    if (k === "contto") { setCont(Number(v)); return; }
     if (k === "sname" || k === "selname") { // Bezeichnung des nächsten bzw. des gewählten Strings
       const st = k === "selname" ? S.model.items.find((it) => S.sel.has(it.id) && it.type === "pvstring") : null, err = P.nameError(S.model, v, st);
       if (err) { toast(err, "error"); c.renderRight(); return; }
@@ -984,8 +1003,9 @@ export function makePv(c) {
       if (act() !== "bg") h += note("Plan-Werkzeuge: links Ebene Hintergrund wählen (⌘1).");
       if (b.swap) h += note("Neuer Planstand: Massstab messen und Fixpunkt an derselben Stelle wie im alten Plan setzen.");
     }
+    h += contHTML();
     h += note("Module, Wechselrichter und Druck: oben in der Leiste.");
-    h += `<div class="row pv-last"><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
+    h += `<div class="row pv-last"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
     return h;
   }
   // Papier und Druckmassstab (Schritt 7). Hinweis, ob der Inhalt ins Planfeld passt, sonst der kleinste passende Normmassstab.
@@ -1026,7 +1046,7 @@ export function makePv(c) {
       h += `</div>`;
     }
     const total = a.reduce((s, w) => s + w.str.reduce((x, k) => x + k, 0), 0);
-    h += `<p class="note">${a.length ? `${total} Strings vorgesehen, ${P.anlageFree().length} frei. Vorschlag beim Zeichnen und in der Autoverkabelung in dieser Reihenfolge.` : "Ohne Anlage: Bezeichnungen der Strings frei (WR.MPPT.String)."}</p>`;
+    h += `<p class="note">${a.length ? `${total} Strings vorgesehen, ${P.anlageFree(undefined, S.model).length} frei. Vorschlag beim Zeichnen und in der Autoverkabelung in dieser Reihenfolge.` : "Ohne Anlage: Bezeichnungen der Strings frei (WR.MPPT.String)."}</p>`;
     return h + `<h3 class="pv-title">WR-Typen (Datenblätter)</h3>` + TAB.invCatHTML();
   }
   // Fenster oben: Module, Wechselrichter, Druck (mit Plankopf). kind: "mod", "wr", "druck"

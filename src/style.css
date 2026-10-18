@@ -206,6 +206,7 @@ button { cursor: pointer; }
 /* Mitte: Blatt und Position, kürzt lange Namen statt die Leiste zu verbreitern */
 .sheettab.cur { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 0 10px; }
 .sheettab.cur .cl { overflow: hidden; text-overflow: ellipsis; }
+.sheettab.cur .ct { overflow: hidden; text-overflow: ellipsis; max-width: 200px; font-weight: 400; color: var(--muted); } /* Blatttitel (18.10.2026) */
 .sheettab.cur .of { font-weight: 400; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .sheettab.cur .caret { margin-left: -2px; }
 .sheettab.add { flex: none; padding: 0 8px; -webkit-touch-callout: none; user-select: none; touch-action: manipulation; }
@@ -223,6 +224,14 @@ button { cursor: pointer; }
 .srow .pin[aria-pressed="false"] { color: var(--faint); }
 .srow .pin:hover { background: var(--hover); }
 .slist .empty { padding: 10px; color: var(--muted); }
+#sheet-ctx { width: 250px; transform-origin: bottom left; }
+.ctx-head { padding: 6px 10px 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sheet-ctx .mi.danger { color: var(--danger); }
+#sheet-ctx .mi:disabled { opacity: 0.4; pointer-events: none; }
+.sfoot { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--panel-line); }
+.sfoot .mi { flex: 1; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; }
+.sfoot .mi.danger { color: var(--danger); }
+.sfoot .mi:disabled { opacity: 0.4; pointer-events: none; }
 .check { display: flex; gap: 8px; align-items: center; margin: 8px 0; font-size: 13.5px; }
 .sheettab.add svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
 .choices { display: grid; gap: 6px; margin: 12px 0; max-height: 40vh; overflow-y: auto; }

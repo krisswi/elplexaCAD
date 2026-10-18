@@ -22,7 +22,7 @@ const pdfWorker = { name: "pdf-worker-src", setup(b) {
 // `node build.mjs` baut SchemaCAD (v3, online). `node build.mjs elplexa` baut elplexaCAD (Aufbau B, CJ 17.10.2026): gleicher Quellcode,
 // Teile nur für elplexaCAD stehen hinter ELPLEXA und fallen im SchemaCAD-Bau ganz weg.
 const EL = process.argv[2] === "elplexa";
-const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker], define: { ELPLEXA: String(EL) } });
+const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker], define: { ELPLEXA: String(EL), APP_BUILD: JSON.stringify(new Date().toISOString().slice(0, 16).replace("T", " ")) } });
 const css = fs.readFileSync("src/style.css", "utf8") + (EL ? "\n" + fs.readFileSync("src/elplexa.css", "utf8") : "");
 let html = fs.readFileSync("src/index.template.html", "utf8");
 // elplexaCAD: Elplexa-CI (Handbuch 1.0, 17.10.2026): Figur als Logo und Favicon, Schrift Source Sans 3 für die Oberfläche.

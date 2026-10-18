@@ -11,6 +11,12 @@ errors, fails = [], []
 def check(name, cond, info=""):
     print(("ok   " if cond else "FAIL ") + name + (f"  {info}" if info and not cond else ""))
     if not cond: fails.append(name)
+def no_auto(d):  # automatische Zeit (project.id, project.auto) läuft mit und hat eigene Tests in zeit_tests.py
+    p = d.get("project")
+    if isinstance(p, dict):
+        p.pop("auto", None); p.pop("id", None)
+        if not p: d.pop("project")
+    return d
 MOD = {"dispo": "dispo", "pv": "pv", "pvtab": "pv"}
 with sync_playwright() as p:
     b = p.chromium.launch()
@@ -18,7 +24,7 @@ with sync_playwright() as p:
     page = ctx.new_page()
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-    D = lambda: page.evaluate("window.__schemacad.doc")
+    D = lambda: no_auto(page.evaluate("window.__schemacad.doc"))
     active = lambda: page.evaluate("window.__schemacad.active")
     mods = lambda d: [MOD.get(s.get("kind"), "schema") for s in d["sheets"]]
     cur = lambda: MOD.get(D()["sheets"][active()].get("kind"), "schema")
@@ -186,8 +192,8 @@ with sync_playwright() as p:
         page.evaluate("document.activeElement?.blur()")  # ⌘O wirkt nicht in einem Eingabefeld (wie im ganzen Editor)
         with page.expect_file_chooser() as fc: page.keyboard.press("Meta+o")
         fc.value.set_files(str(path)); page.wait_for_timeout(300)
-    def save():
-        with page.expect_download() as dl: page.keyboard.press("Meta+s")
+    def save(k="Meta+s"):
+        with page.expect_download() as dl: page.keyboard.press(k)
         out = TMP / dl.value.suggested_filename; dl.value.save_as(str(out)); page.wait_for_timeout(400); return out  # Liste „zuletzt geöffnet“ schreibt im Hintergrund
     OLD = ROOT / "test" / "ui_out.schemacad.json"
     for src in (OLD, shutil.copy(OLD, TMP / "Alt.elplexa.json")):
@@ -230,7 +236,7 @@ with sync_playwright() as p:
     import base64, hashlib, uuid, re as _re
     from urllib.parse import urlparse, parse_qs, unquote
     UID = "11111111-2222-3333-4444-555555555555"
-    srv = {"rows": {}, "files": {}, "ftime": {}, "calls": [], "mode": "ok", "uploads": 0}
+    srv = {"rows": {}, "files": {}, "ftime": {}, "calls": [], "mode": "ok", "uploads": 0, "fb": [], "fbfiles": {}}
     jwt = "x." + base64.urlsafe_b64encode(json.dumps({"sub": UID}).encode()).decode().rstrip("=") + ".y"
     def fake(route):
         req = route.request; u = urlparse(req.url); q = {k: v[0] for k, v in parse_qs(u.query).items()}; path = u.path
@@ -255,6 +261,10 @@ with sync_playwright() as p:
                 r = srv["rows"].get(rid)
                 if not r or ("updated_at" in q and q["updated_at"][3:] != r["updated_at"]): J([]); return
                 r.update(body); J([{"id": r["id"], "updated_at": r["updated_at"]}]); return
+        if path == "/rest/v1/feedback" and req.method == "POST":  # Feedback (18.10.2026)
+            r = {"id": str(uuid.uuid4()), "user_id": UID, **json.loads(req.post_data)}; srv["fb"].append(r); J([{"id": r["id"]}], 201); return
+        mf = _re.match(r"^/storage/v1/object/feedback/(.+)$", path)
+        if mf and req.method == "POST": srv["fbfiles"][mf.group(1)] = (req.headers.get("content-type"), req.post_data_buffer); J({"Key": "feedback/" + mf.group(1)}); return
         if path == "/storage/v1/object/list/projekt-pdf":
             pre = json.loads(req.post_data)["prefix"]; J([{"name": k.split("/")[-1], "created_at": srv["ftime"].get(k, "2026-10-17T20:00:00Z")} for k in srv["files"] if k.startswith(pre + "/")]); return
         if path == "/storage/v1/object/projekt-pdf" and req.method == "DELETE":
@@ -321,7 +331,7 @@ with sync_playwright() as p:
     ids = list(srv["rows"])
     check("Konflikt als neues Projekt: zweite Zeile, Datei zeigt auf die neue", len(ids) == 2 and D()["project"]["online"]["id"] == ids[1] and srv["uploads"] == 1, [len(ids), srv["uploads"]])
     # Datei speichern und laden: Verknüpfung bleibt
-    clear_toasts(); out = save(); open_file(out); d2 = D()
+    clear_toasts(); out = save("Meta+Shift+s"); open_file(out); d2 = D()  # online verknüpft: ⌘S speichert online, ⇧⌘S als Datei (18.10.2026)
     check("Datei speichern/laden: Online-Verknüpfung und Projekt bleiben", d2["project"].get("online", {}).get("id") == ids[1] and d2["assets"] == d0["assets"] and d2["sheets"] == d0["sheets"], d2["project"])
     # Öffnen aus der Liste (erste Zeile) bei ungespeicherter Änderung
     key("0") if not hub() else None; page.wait_for_timeout(100)
@@ -351,6 +361,54 @@ with sync_playwright() as p:
     check("Letztes Projekt gelöscht: unbenutzte PDF aufgeräumt", not srv["rows"] and not srv["files"], [list(srv["rows"]), list(srv["files"])])
     check("Offenes Projekt verliert die Online-Verknüpfung, Blätter bleiben", "online" not in D()["project"] and D()["sheets"] == d0["sheets"] and "Noch keine Online-Projekte" in page.inner_text("#el-online"), D()["project"])
     page.screenshot(path=str(OUT / "e15_online_liste.png"))
+    # ---- Speichern-Knopf (CJ 18.10.2026): angemeldet, noch nicht online → Wahl; danach direkt online ----
+    key("0") if not hub() else None; page.wait_for_timeout(150); clear_toasts()
+    page.click("#btn-save"); page.wait_for_timeout(250)
+    txt = page.inner_text(".modal") if page.is_visible(".modal") else ""
+    check("Speichern, angemeldet, nicht online: Wahl Online / Lokal", "Online speichern" in txt and "Lokal speichern" in txt, txt)
+    page.screenshot(path=str(OUT / "e18_speichern_wahl.png"))
+    page.click('.modal .choice:has-text("Online speichern")'); page.wait_for_timeout(500)
+    rid = D()["project"].get("online", {}).get("id")
+    check("Online speichern über den Knopf: neue Zeile, Datei verknüpft, nicht mehr „ungespeichert“", len(srv["rows"]) == 1 and rid in srv["rows"] and page.is_hidden("#dirty") and "Online gespeichert" in toasts(), [len(srv["rows"]), toasts()])
+    at1 = srv["rows"][rid]["updated_at"]; clear_toasts(); page.wait_for_timeout(20)
+    page.select_option('#el-hub [data-elp="status"]', "Abgegeben"); page.wait_for_timeout(120)
+    page.evaluate("document.activeElement?.blur()"); page.keyboard.press("Meta+s"); page.wait_for_timeout(500)
+    check("⌘S bei Online-Projekt: ohne Frage direkt online", not page.is_visible(".modal") and len(srv["rows"]) == 1 and srv["rows"][rid]["updated_at"] != at1 and srv["rows"][rid]["status"] == "Abgegeben" and "Online gespeichert" in toasts(), toasts())
+    # Fehlerfall: Meldung und Angebot, als Datei zu speichern; nichts verloren
+    before = D(); clear_toasts(); srv["mode"] = "offline"
+    page.select_option('#el-hub [data-elp="status"]', "Offerte"); page.wait_for_timeout(120)
+    page.click("#btn-save"); page.wait_for_timeout(400)
+    txt = page.inner_text(".modal") if page.is_visible(".modal") else ""
+    check("Online-Fehler: klare Meldung mit Angebot „Lokal speichern“", "Online speichern hat nicht geklappt" in txt and "Keine Verbindung" in txt and "Lokal speichern" in txt, txt)
+    page.screenshot(path=str(OUT / "e19_speichern_fehler.png"))
+    with page.expect_download() as dl: page.click('.modal [data-r="1"]')
+    out = TMP / dl.value.suggested_filename; dl.value.save_as(str(out)); page.wait_for_timeout(300)
+    check("Nach Fehler lokal gespeichert: Datei mit aktuellem Stand", no_auto(json.loads(out.read_text()))["project"]["status"] == "Offerte" and D()["sheets"] == before["sheets"], out.name)
+    srv["mode"] = "ok"
+    # ---- Feedback melden (CJ 18.10.2026) ----
+    key("0") if hub() else None; page.wait_for_timeout(150)  # Übersicht zu: Zeichenfläche sichtbar
+    check("Feedback-Knopf unten rechts in der Statusleiste", page.is_visible("#statusbar #el-fb") and page.evaluate("(() => { const r = document.querySelector('#el-fb').getBoundingClientRect(); return r.right > innerWidth - 200 && r.bottom > innerHeight - 40; })()"))
+    page.click("#el-fb"); page.wait_for_selector(".modal #el-fbt", timeout=3000); page.wait_for_timeout(300)
+    check("Feedback: Dialog mit Art, Titel, Beschreibung und Screenshot-Vorschau", page.is_visible(".modal") and page.locator(".modal [name=el-fbart]").count() == 3 and page.is_visible(".modal #el-fbt") and page.is_visible(".modal #el-fbd") and page.evaluate("document.querySelector('.el-fbpic canvas')?.width || 0") > 100)
+    page.screenshot(path=str(OUT / "e20_feedback.png"))
+    page.click(".modal [data-ok]"); page.wait_for_timeout(200)
+    check("Feedback ohne Titel: nicht gesendet, Fenster bleibt", page.is_visible(".modal") and not srv["fb"])
+    page.click('.modal .el-fbart span:has-text("Wunsch")'); page.fill("#el-fbt", "Testzeile"); page.fill("#el-fbd", "Beschreibung"); clear_toasts()
+    srv["mode"] = "offline"; page.click(".modal [data-ok]"); page.wait_for_timeout(400)
+    check("Feedback offline: Meldung, Fenster und Text bleiben", page.is_visible(".modal") and page.input_value("#el-fbt") == "Testzeile" and "Keine Verbindung" in toasts() and not srv["fb"], toasts())
+    srv["mode"] = "ok"; page.click(".modal [data-ok]"); page.wait_for_timeout(600)
+    f = srv["fb"][0] if srv["fb"] else {}
+    shot = srv["fbfiles"].get(f.get("screenshot_path") or "", (None, b""))
+    check("Feedback gesendet: Zeile mit Art, Titel, Modul, Version, Projekt, Browser", f.get("art") == "wunsch" and f.get("titel") == "Testzeile" and f.get("beschreibung") == "Beschreibung" and f.get("app_version", "").startswith("elplexaCAD ") and f.get("modul") and f.get("projekt_id") == rid and f.get("user_agent"), f)
+    check("Screenshot als PNG unter Konto/…", (f.get("screenshot_path") or "").startswith(UID + "/") and shot[0] == "image/png" and shot[1][:4] == b"\x89PNG", [f.get("screenshot_path"), shot[0]])
+    check("Feedback: Fenster zu, Dank", not page.is_visible(".modal") and "Danke" in toasts(), toasts())
+    page.click("#el-fb"); page.wait_for_timeout(800)
+    page.uncheck("#el-fbshot"); page.fill("#el-fbt", "Ohne Bild"); page.click(".modal [data-ok]"); page.wait_for_timeout(500)
+    check("Screenshot abgewählt: Zeile ohne Bild", len(srv["fb"]) == 2 and srv["fb"][1]["screenshot_path"] is None and len(srv["fbfiles"]) == 1, srv["fb"][-1:])
+    key("0"); page.wait_for_timeout(150)
+    page.click("#el-fb"); page.wait_for_timeout(300)
+    check("Feedback in der Übersicht: ohne Screenshot, mit Hinweis", page.is_visible(".modal") and not page.is_visible(".el-fbpic") and "Ohne Screenshot" in page.inner_text(".modal"))
+    page.keyboard.press("Escape"); page.wait_for_timeout(150)
     # ohne Internet, pausiert: Meldung, nichts geändert
     before = D(); clear_toasts(); srv["mode"] = "offline"
     page.click('#el-hub [data-elact="onsave"]'); page.wait_for_timeout(400)
@@ -397,13 +455,19 @@ with sync_playwright() as p:
     page.evaluate("document.querySelector('#btn-dxf').click()"); page.wait_for_timeout(500)
     check("DXF ohne Anmeldung erlaubt", len(downloads) == 1 and downloads[0].endswith(".dxf"), downloads)
     check("Sperre: keine Anfrage an den Server ohne Anmeldung", not [c for c in srv["calls"] if "/rest/" in c or "/storage/" in c], srv["calls"])
+    page.evaluate("document.querySelectorAll('#toasts .toast').forEach((t) => t.remove())")
+    page.click("#el-fb"); page.wait_for_timeout(300)
+    check("Feedback ohne Anmeldung: Hinweis „nur mit Login“, Anmeldung, kein Feedback-Fenster", "Feedback nur mit Login" in page.inner_text("#toasts") and page.is_visible(".modal") and "Anmelden" in page.inner_text(".modal") and not page.is_visible("#el-fbt"))
+    page.click(".modal [data-c]"); page.wait_for_timeout(200)
+    check("Feedback abgebrochen: nichts gesendet", not [c for c in srv["calls"] if "feedback" in c], srv["calls"])
     key("0"); page.wait_for_timeout(150)
     page.click('#el-hub [data-elact="login"]'); page.wait_for_timeout(150)
     page.fill('.modal [data-f="e"]', "test@beispiel.ch"); page.fill('.modal [data-f="p"]', "attrappe"); page.click(".modal [data-ok]"); page.wait_for_timeout(400)
     on = page.inner_text("#el-online")
     check("Anmelden in der Übersicht: Konto sichtbar, Hinweis weg", "test@beispiel.ch" in on and "nur als DXF" not in on, on)
-    key("0"); page.evaluate("document.activeElement?.blur()"); page.keyboard.press("Meta+s"); page.wait_for_timeout(500)
-    check("Nach Anmeldung: ⌘S speichert die Projektdatei", len(downloads) == 2 and downloads[1].endswith(".elplexa.json"), downloads)
+    key("0"); page.evaluate("document.activeElement?.blur()"); page.keyboard.press("Meta+s"); page.wait_for_timeout(300)
+    page.click('.modal .choice:has-text("Lokal speichern")'); page.wait_for_timeout(500)
+    check("Nach Anmeldung: ⌘S, „Lokal speichern“ speichert die Projektdatei", len(downloads) == 2 and downloads[1].endswith(".elplexa.json"), downloads)
     b.close()
 
 check("keine JS-Fehler", not errors, errors)

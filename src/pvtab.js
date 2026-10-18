@@ -1,4 +1,4 @@
-// Stringübersicht (Modul PV-Strings, Schritt 6): ein Blatt (kind "pvtab") für alle Stringpläne der Datei (CJ 14.10.), ohne eigene Objekte.
+// Stringübersicht (Modul PV-Strings, Schritt 6): ein Blatt (kind "pvtab") für alle Stringpläne der Datei (CJ 14.10.), seit 18.10.2026 je Variante (Blattfeld var, pv.js varDoc), ohne eigene Objekte.
 // Inhalt wird beim Zeichnen aus den Strings berechnet (pv.js stringReport). Rechts: Tmin, Zuordnung WR-Nummer → WR-Typ, WR-Katalog.
 // Tabelle in Papier-mm (1:1), y nach oben, oben links bei (0, 0). Druck (Schritt 7): A4 quer mit Plankopf, über mehrere Seiten (tablePages).
 import * as P from "./pv.js";
@@ -47,7 +47,7 @@ export function tablePages(doc, avail) {
 function partSVG(doc, rows, { empty = !rows.length, tail = true } = {}) {
   const tmin = doc.pv?.tmin;
   let s = txt(0, -7, "Stringübersicht", { h: 6, bold: true });
-  s += txt(0, -14, `Alle Stringpläne der Datei · ${typeof tmin === "number" ? `Tmin ${P.fmtNum(tmin)} °C` : "Tmin fehlt (oben unter „Wechselrichter“ eingeben)"}`, { h: 3 });
+  s += txt(0, -14, `${doc.varNo ? `Variante ${doc.varNo}` : "Alle Stringpläne der Datei"} · ${typeof tmin === "number" ? `Tmin ${P.fmtNum(tmin)} °C` : "Tmin fehlt (oben unter „Wechselrichter“ eingeben)"}`, { h: 3 });
   s += txt(0, -20, "Voc bei Tmin = Σ Voc × (1 + Tk/100 × (Tmin − 25 °C)), Tk in %/K. Knapp ab 95 % der Grenze.", { h: FS, fill: "#4a5562" });
   let y = TOP;
   s += `<rect x="0" y="${R.f(y - HEAD_H)}" width="${WIDTH}" height="${HEAD_H}" fill="#eef1f4" stroke="#17212b" stroke-width="0.25"/>`;
@@ -177,8 +177,8 @@ export function makePvTab(c) {
   }
   // Rechts ohne Auswahl: nur Hinweis und Blatt löschen
   function panelHTML({ head }) {
-    return head("Stringübersicht", "Alle Stringpläne der Datei") + note("Tmin, Wechselrichter und Druck: oben in der Leiste.")
-      + `<div class="row pv-last"><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
+    return head("Stringübersicht", P.hasVariants(S.doc) ? `Stringpläne der Variante ${P.varOf(S.model)}` : "Alle Stringpläne der Datei") + note("Tmin, Wechselrichter und Druck: oben in der Leiste.")
+      + `<div class="row pv-last"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
   }
   const hint = () => (S.tool === "hand" ? "Ziehen verschiebt die Ansicht." : "Stringübersicht: füllt sich aus allen Stringplänen. Tmin und Wechselrichter oben unter „Wechselrichter“. Ergebnis nur als Hinweis, keine Freigabe.");
   return { action, option, leftHTML, panelHTML, hint, tminHTML, wrSelect, invCatHTML, paperHTML };

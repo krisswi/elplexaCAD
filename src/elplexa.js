@@ -2,6 +2,7 @@
 // Ein Modul ist eine Gruppe von Blattarten derselben Datei. Welches Modul offen ist, folgt aus dem aktiven Blatt.
 import { esc } from "./render.js";
 import { cell } from "./auswertung.js";
+import { modOf, modVar, modName } from "./model.js";
 
 export const MODULES = [
   { id: "schema", label: "Schema", sub: "Stromlaufschema mit Grundverkabelung", color: "#2f6db3" },
@@ -10,10 +11,15 @@ export const MODULES = [
   { id: "plan", label: "Plan", sub: "Installationsplan auf dem Grundriss", color: "#b45309", later: true },
   { id: "prinzip", label: "Prinzipschema", sub: "Übersicht der Verteiler und Zuleitungen", color: "#7a4fb0", later: true },
 ];
-export const modById = (id) => MODULES.find((m) => m.id === id); // als Funktion: im SchemaCAD-Bau fällt alles weg
+// Module mehrfach (CJ 18.10.2026): Kennung „schema“, „pv:2“ … (model.js modOf), Art = Teil vor dem Doppelpunkt
+export const baseOf = (id) => String(id).split(":")[0];
+export const modById = (id) => MODULES.find((m) => m.id === baseOf(id)); // als Funktion: im SchemaCAD-Bau fällt alles weg
 
-// Titelseite, Inhalt und Legende gehören vorerst zum Schema (sie gibt es nur mit Schemablatt)
-export const moduleOf = (sh) => (sh.kind === "dispo" ? "dispo" : sh.kind === "pv" || sh.kind === "pvtab" ? "pv" : "schema");
+// Titelseite, Inhalt und Legende gehören vorerst zum ersten Schema (sie gibt es nur mit Schemablatt)
+export const moduleOf = modOf;
+// Module des Projekts in fester Folge: Art wie MODULES, dann Nummer
+export const modIds = (doc) => [...new Set(doc.sheets.map(modOf))].sort((a, b) => MODULES.indexOf(modById(a)) - MODULES.indexOf(modById(b)) || modVar(a) - modVar(b));
+export const tileId = (id) => `el-tile-${String(id).replace(":", "-")}`;
 export const modIdx = (doc, id) => doc.sheets.map((sh, i) => (moduleOf(sh) === id ? i : -1)).filter((i) => i >= 0);
 // Neues Blatt im Modul: welche Einträge des Plus-Menüs (data-new) dazugehören
 export const ADD_KINDS = { schema: ["sheet", "deck"], dispo: ["dispo"], pv: ["pv", "pvtab"] };
@@ -42,11 +48,38 @@ export function timeCsv(doc) {
   const rows = [...(doc.project?.time || [])].sort((a, b) => a.d.localeCompare(b.d)).map((e) => row([fmtD(e.d), r(e.h), e.n]));
   return "\ufeff" + [row(["Datum", "Stunden", "Notiz"]), ...rows, row(["Summe", r(timeSum(doc)), ""])].join("\r\n") + "\r\n";
 }
+// Automatische Zeit (CJ 18.10.2026): vorläufige Einträge in doc.project.auto (Sekunden je Tag, Module). Zählen nicht in Summe und CSV.
+// Offen = weder übernommen noch verworfen und mindestens 1 min. Vorschlag beim Übernehmen: auf 0,25 h gerundet, mindestens 0,25 h.
+export const autoOpen = (doc) => (doc.project?.auto || []).filter((e) => !e.x && e.s >= 60).sort((a, b) => a.d.localeCompare(b.d));
+export const autoHours = (s) => Math.max(0.25, Math.round(s / 900) / 4);
+const AUTO_LBL = () => ({ schema: "Schema", dispo: "Dispo", pv: "PV" });
+export const autoNote = (e) => MODULES.filter((m) => e.m.includes(m.id)).map((m) => AUTO_LBL()[m.id]).join(", ");
+const fmtDur = (s) => { const m = Math.round(s / 60), h = Math.floor(m / 60); return h ? `${h} h ${String(m % 60).padStart(2, "0")} min` : `${m} min`; };
+// Zwei Stände zusammenführen (gleiche Kennung k): längere Zeit, alle Module. Übernommen/verworfen: beim Laden gilt, was eine Seite meldet;
+// beim Rückgängig (undo = true) der Stand von a (dem zurückgeholten), damit ⌘Z ein Übernehmen aufhebt.
+export function mergeAuto(a = [], b = [], undo = false) {
+  const out = a.map((e) => ({ ...e, m: [...e.m] })), by = new Map(out.map((e) => [e.k, e]));
+  for (const e of b) {
+    const o = by.get(e.k);
+    if (!o) { out.push({ ...e, m: [...e.m] }); continue; }
+    o.s = Math.max(o.s, e.s); for (const m of e.m) if (!o.m.includes(m)) o.m.push(m);
+    if (!undo && e.x && !o.x) o.x = e.x;
+  }
+  return out;
+}
+function autoHTML(doc, today) {
+  const open = autoOpen(doc);
+  if (!open.length) return "";
+  const rows = open.map((e) => `<div class="el-arow" data-elz="${e.k}"><span class="el-ad">${fmtD(e.d)}${e.d === today ? ` <i>heute</i>` : ""}</span><span class="el-adur">${fmtDur(e.s)} erfasst</span>`
+    + `<input class="el-ah" value="${fmtH(autoHours(e.s))}" inputmode="decimal" aria-label="Stunden vom ${fmtD(e.d)}"><input class="el-an" value="${esc(autoNote(e))}" maxlength="500" aria-label="Notiz vom ${fmtD(e.d)}">`
+    + `<button class="btn primary small" data-elzok="${e.k}">Übernehmen</button><button class="btn icon el-tdel" data-elzweg="${e.k}" title="Verwerfen" aria-label="Vorläufigen Eintrag vom ${fmtD(e.d)} verwerfen"><span aria-hidden="true">×</span></button></div>`).join("");
+  return `<div class="el-auto" role="group" aria-label="Vorläufige Zeit"><p class="el-ahead"><b>Vorläufig erfasst</b> beim Arbeiten in den Modulen. Prüfen, dann übernehmen oder verwerfen. Zählt erst nach dem Übernehmen.</p>${rows}</div>`;
+}
 function timeHTML(doc, today) {
   const t = (doc.project?.time || []).map((e, k) => [e, k]).sort((a, b) => b[0].d.localeCompare(a[0].d) || b[1] - a[1]);
   const rows = t.map(([e, k]) => `<div class="el-trow"><span>${fmtD(e.d)}</span><span class="el-th2">${fmtH(e.h)} h</span><span class="el-tn">${esc(e.n) || "–"}</span><button class="btn icon el-tdel" data-eltdel="${k}" title="Eintrag löschen" aria-label="Eintrag vom ${fmtD(e.d)} löschen"><span aria-hidden="true">×</span></button></div>`).join("");
   return `<section class="el-time" aria-label="Zeit"><div class="el-eyerow"><span class="el-eye">Zeit</span><span class="el-sum">Summe <b>${fmtH(timeSum(doc))} h</b></span></div>
-    <form class="el-tform" id="el-tform" autocomplete="off"><input type="date" id="el-td" value="${today}" aria-label="Datum" required><input type="text" id="el-th" inputmode="decimal" placeholder="Std." aria-label="Stunden" required><input type="text" id="el-tn" placeholder="Notiz" aria-label="Notiz" maxlength="500"><button class="btn primary" type="submit">Eintragen</button></form>
+    ${autoHTML(doc, today)}<form class="el-tform" id="el-tform" autocomplete="off"><input type="date" id="el-td" value="${today}" aria-label="Datum" required><input type="text" id="el-th" inputmode="decimal" placeholder="Std." aria-label="Stunden" required><input type="text" id="el-tn" placeholder="Notiz" aria-label="Notiz" maxlength="500"><button class="btn primary" type="submit">Eintragen</button></form>
     <div class="el-tlist">${rows || `<p class="el-note">Noch keine Einträge. Stunden mit Komma oder Punkt, z. B. 1,5.</p>`}</div>
     <div class="el-acts"><button class="btn outline" data-elact="csv"${t.length ? "" : " disabled"}><span>Als CSV exportieren</span></button></div></section>`;
 }
@@ -56,10 +89,10 @@ export function hubHTML(doc, o) {
   const fld = (k, label) => `<label class="el-row"><span>${label}</span><input data-elp="${k}" value="${esc(pd[k])}" placeholder="–" spellcheck="false"></label>`;
   const opts = ["Offerte", "In Arbeit", "Abgegeben", "Abgeschlossen"].map((x) => `<option${x === st ? " selected" : ""}>${x}</option>`).join("");
   const fileHint = o.file && o.suggest !== o.file ? `<p class="el-note">Datei: ${esc(o.file)}. Speichern unter (⇧⌘S) schlägt „${esc(o.suggest)}“ vor.</p>` : "";
-  const tiles = MODULES.filter((m) => !m.later).map((m, n) => {
-    const idx = modIdx(doc, m.id);
-    if (!idx.length) return "";
-    return `<button class="el-tile" data-elopen="${m.id}"><span class="el-th">${dot(m)}${m.label}<kbd>${n + 1}</kbd></span><span class="el-ts">${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"} · ${m.sub}</span><span class="el-thumbs">${idx.slice(0, 6).map(() => "<i></i>").join("")}</span></button>`;
+  const keyOf = (id) => MODULES.filter((m) => !m.later).indexOf(modById(id)) + 1, seen = new Set();
+  const tiles = modIds(doc).map((id) => {
+    const m = modById(id), idx = modIdx(doc, id), first = !seen.has(m.id); seen.add(m.id);
+    return `<button class="el-tile" id="${tileId(id)}" data-elopen="${id}" data-exact data-modctx="${id}" title="${esc(modName(doc, id))}. Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${first ? `<kbd>${keyOf(id)}</kbd>` : ""}</span><span class="el-ts">${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"} · ${m.sub}</span><span class="el-thumbs">${idx.slice(0, 6).map((i) => `<i id="el-sh-${i}" data-ctx="${i}" title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"></i>`).join("")}</span></button>`;
   }).join("");
   return `<div class="el-hubin"><div class="el-col">
     <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span><label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label></div>
@@ -114,25 +147,25 @@ export function onlineHTML(o) {
   return `${head}${state}<div class="el-acts"><button class="btn outline" data-elact="onsave"${o.busy ? " disabled" : ""}><span>Online speichern</span></button><button class="btn outline" data-elact="onlist"${o.busy ? " disabled" : ""}><span>${o.list === null ? "Online-Projekte zeigen" : "Liste aktualisieren"}</span></button></div>${rows ? `<div class="el-recent el-onlist">${rows}</div>` : ""}`;
 }
 
-// Menü „+ Modul“: fehlende Module anlegen, spätere Module ausgegraut
+// Menü „+ Modul“: neues Modul anlegen, auch ein weiteres derselben Art (CJ 18.10.2026), spätere Module ausgegraut
 export function addModMenuHTML(doc) {
   return MODULES.map((m) => {
-    const has = modIdx(doc, m.id).length > 0, off = m.later || has;
-    return `<button class="mi" role="menuitem" data-elnew="${m.id}" tabindex="-1"${off ? " disabled" : ""}>${dot(m)}<span class="mt"><span class="mh">${m.label}${m.later ? " (später)" : has ? " (schon da)" : ""}</span><span class="ms">${m.sub}</span></span></button>`;
+    const n = modIds(doc).filter((id) => baseOf(id) === m.id).length;
+    return `<button class="mi" role="menuitem" data-elnew="${m.id}" tabindex="-1"${m.later ? " disabled" : ""}>${dot(m)}<span class="mt"><span class="mh">${m.label}${m.later ? " (später)" : n ? ` (${n + 1}.)` : ""}</span><span class="ms">${n && !m.later ? `Weiteres Modul, unabhängig vom bestehenden` : m.sub}</span></span></button>`;
   }).join("");
 }
 
 export function modMenuHTML(doc, cur) {
-  return MODULES.filter((m) => !m.later).map((m, n) => {
-    const has = modIdx(doc, m.id).length > 0;
-    return `<button class="mi" role="menuitem" data-elopen="${m.id}" tabindex="-1"${m.id === cur ? ' aria-current="true"' : ""}>${dot(m)}<span class="mt"><span class="mh">${m.label}</span><span class="ms">${m.id === cur ? "Jetzt offen" : has ? `Taste ${n + 1}` : "Noch nicht im Projekt: wird angelegt"}</span></span></button>`;
-  }).join("") + `<button class="mi" role="menuitem" data-elact="hub" tabindex="-1"><span class="el-dot" aria-hidden="true"></span><span class="mt"><span class="mh">Projektübersicht</span><span class="ms">Taste 0</span></span></button>`;
+  const ids = modIds(doc), act = MODULES.filter((m) => !m.later);
+  const rows = ids.map((id) => ({ id, m: modById(id), has: true })).concat(act.filter((m) => !ids.some((id) => baseOf(id) === m.id)).map((m) => ({ id: m.id, m, has: false })))
+    .sort((a, b) => MODULES.indexOf(a.m) - MODULES.indexOf(b.m) || modVar(a.id) - modVar(b.id));
+  return rows.map(({ id, m, has }) => `<button class="mi" role="menuitem" data-elopen="${id}"${has ? " data-exact" : ""} tabindex="-1"${id === cur ? ' aria-current="true"' : ""}>${dot(m)}<span class="mt"><span class="mh">${esc(has ? modName(doc, id) : m.label)}</span><span class="ms">${id === cur ? "Jetzt offen" : has ? `Taste ${act.indexOf(m) + 1}` : "Noch nicht im Projekt: wird angelegt"}</span></span></button>`).join("") + `<button class="mi" role="menuitem" data-elact="hub" tabindex="-1"><span class="el-dot" aria-hidden="true"></span><span class="mt"><span class="mh">Projektübersicht</span><span class="ms">Taste 0</span></span></button>`;
 }
 
-export function crumbHTML(cur, st) {
+export function crumbHTML(cur, st, name) {
   const m = modById(cur);
   return `<button class="btn el-back" data-elact="hub" title="Projektübersicht (0)">‹ Übersicht</button><span class="el-sl" aria-hidden="true">/</span>`
-    + `<button class="btn el-cur" id="el-mod" data-elact="modmenu" aria-haspopup="menu" aria-expanded="false" title="Anderes Modul öffnen (1 bis 3)">${dot(m)}<span class="el-lbl">${m.label}</span><span class="caret" aria-hidden="true">▾</span></button>${statusPill(st)}`;
+    + `<button class="btn el-cur" id="el-mod" data-elact="modmenu" aria-haspopup="menu" aria-expanded="false" title="Anderes Modul öffnen (1 bis 3)">${dot(m)}<span class="el-lbl">${esc(name || m.label)}</span><span class="caret" aria-hidden="true">▾</span></button>${statusPill(st)}`;
 }
 
 export const keysHTML = () => `<div class="el-keys">${[

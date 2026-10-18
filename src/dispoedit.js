@@ -446,7 +446,7 @@ export function makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, sn
     } else if (S.tool === "text") h += head("Neuer Text") + np("Texthöhe in mm", "textH");
     else if (S.tool === "dim") h += head("Bemassung") + `<p class="note">Zwei Punkte klicken, dann die Lage der Masslinie. Zwischen den Punkten gezogen = waagrecht bzw. senkrecht. Fängt Ecken, Kantenmitten und Kanten, Alt = frei. Esc bricht ab.</p>`;
     h += head("Disposition", S.model.meta.TITEL || "Verteileraufbau, Einheit mm") + `<p class="note">${S.model.items.filter((i) => i.type === "plate").length} Platten, ${S.model.items.filter((i) => i.type === "device").length} Geräte. Schriftfeld und „An Schema“ oben.</p>`;
-    h += `<div class="row"><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
+    h += `<div class="row"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
     return h;
   }
 

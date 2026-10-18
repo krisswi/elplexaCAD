@@ -69,6 +69,14 @@
   <div class="menu up" id="sheet-menu" role="dialog" aria-label="Blätter" hidden>
     <input id="sheet-find" type="text" placeholder="Blatt suchen: Nummer oder Titel" aria-label="Blatt suchen" autocomplete="off" spellcheck="false">
     <div class="slist"></div>
+    <div class="sfoot"><button class="mi" data-sheetact="dup" tabindex="-1" title="Kopie des aktiven Blatts, ganz unabhängig vom Original"><span class="ic" data-ic="copy"></span><span class="mh">Duplizieren</span></button><button class="mi danger" data-sheetact="del" tabindex="-1" title="Aktives Blatt löschen (mit Rückfrage, Rückgängig möglich)"><span class="ic" data-ic="trash"></span><span class="mh">Löschen</span></button></div>
+  </div>
+  <div class="menu up" id="sheet-ctx" role="menu" aria-label="Blatt" hidden>
+    <div class="ctx-head"></div>
+    <button class="mi" role="menuitem" data-ctxact="open" tabindex="-1"><span class="ic" data-ic="list"></span><span class="mt"><span class="mh">Öffnen</span></span></button>
+    <button class="mi" role="menuitem" data-ctxact="ren" tabindex="-1"><span class="ic" data-ic="text"></span><span class="mt"><span class="mh">Umbenennen</span><span class="ms">Blatttitel, z. B. Schema HV</span></span></button>
+    <button class="mi" role="menuitem" data-ctxact="dup" tabindex="-1"><span class="ic" data-ic="copy"></span><span class="mt"><span class="mh">Duplizieren</span><span class="ms">Kopie, unabhängig vom Original</span></span></button>
+    <button class="mi danger" role="menuitem" data-ctxact="del" tabindex="-1"><span class="ic" data-ic="trash"></span><span class="mt"><span class="mh">Löschen</span><span class="ms">Mit Rückfrage, Rückgängig möglich</span></span></button>
   </div>
   <div class="menu up" id="add-menu" role="menu" aria-label="Neues Blatt" hidden>
     <button class="mi" role="menuitem" data-new="sheet" tabindex="-1"><span class="ic" data-ic="new"></span><span class="mt"><span class="mh">Neues Blatt</span><span class="ms">Schemablatt mit Grundverkabelung</span></span></button>

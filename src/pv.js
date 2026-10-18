@@ -537,10 +537,16 @@ export function stringColor(name) {
 }
 // Vorschlag für den nächsten String: nach dem zuletzt angelegten die nächste freie Stringnummer am selben MPPT, sonst 1.1.1
 // 5ad (CJ 15.10.): Bezeichnungen gelten für die ganze Datei, darum zählen die Strings aller Stringpläne
-const fileStrings = (sheet) => { const doc = docSource(); return doc?.sheets.includes(sheet) ? doc.sheets.filter((sh) => sh.kind === "pv").flatMap((sh) => strings(sh).map((st) => ({ st, sh }))) : strings(sheet).map((st) => ({ st, sh: sheet })); };
+// Varianten (CJ 18.10.2026): nur die Stringpläne derselben Variante zählen
+const fileStrings = (sheet) => { const doc = docSource(); return doc?.sheets.includes(sheet) ? doc.sheets.filter((sh) => sh.kind === "pv" && varOf(sh) === varOf(sheet)).flatMap((sh) => strings(sh).map((st) => ({ st, sh }))) : strings(sheet).map((st) => ({ st, sh: sheet })); };
+// PV-Modul mit „Strings fortsetzen nach“ (doc.mods[…].cont, CJ 18.10.2026): dessen Bezeichnungen gelten für Vorschläge als vergeben
+function contNames(sheet) {
+  const doc = docSource(), v = varOf(sheet), c = doc?.mods?.[v > 1 ? `pv:${v}` : "pv"]?.cont;
+  return c ? doc.sheets.filter((sh) => sh.kind === "pv" && varOf(sh) === c).flatMap((sh) => strings(sh).map((s) => s.name)) : [];
+}
 export function nextName(sheet) {
-  const names = new Set(fileStrings(sheet).map((x) => x.st.name));
-  const pre = anlageFree().find((n) => !names.has(n)); // Anlage vorbestimmt (5k): erste freie Bezeichnung der Datei
+  const names = new Set([...fileStrings(sheet).map((x) => x.st.name), ...contNames(sheet)]);
+  const pre = anlageFree(undefined, sheet).find((n) => !names.has(n)); // Anlage vorbestimmt (5k): erste freie Bezeichnung der Datei
   if (pre) return pre;
   const last = parseName(strings(sheet).at(-1)?.name) ?? { wr: 1, mppt: 1, str: 0 };
   let k = last.str + 1;
@@ -548,6 +554,29 @@ export function nextName(sheet) {
   return `${last.wr}.${last.mppt}.${k}`;
 }
 export const strings = (sheet) => sheet.items.filter((it) => it.type === "pvstring");
+// Varianten (CJ 18.10.2026): Stringpläne und Stringübersicht mit derselben Variante gehören zusammen (Blattfeld var, 2 …, fehlt = 1).
+// Stringbezeichnungen, Stringübersicht und Anlage-Vorschläge gelten je Variante. Katalog, WR-Zuordnung, Anlage und Tmin bleiben je Datei.
+export const varOf = (sh) => sh.var || 1;
+export const hasVariants = (doc) => doc.sheets.some((sh) => (sh.kind === "pv" || sh.kind === "pvtab") && varOf(sh) > 1);
+// Sicht auf eine Variante: nur ihre Stringpläne (für stringReport und die Stringübersicht). varNo nur, wenn es mehrere Varianten gibt.
+// Stringplan einem PV-Modul zuordnen (v = Nummer; Kopie eines Stringplans im selben Modul, CJ 18.10.2026). Gibt es Bezeichnungen der
+// eigenen Strings im Modul schon, werden alle eigenen Strings fortlaufend umbenannt (WR und MPPT bleiben, Stringnummer = nächste freie).
+// Rückgabe: Anzahl umbenannter Strings. Ändert sheet direkt.
+export function joinVar(doc, sheet, v) {
+  if (v > 1) sheet.var = v; else delete sheet.var;
+  const used = new Set(doc.sheets.filter((s) => s !== sheet && s.kind === "pv" && varOf(s) === v).flatMap((s) => strings(s).map((x) => x.name)));
+  const mine = strings(sheet);
+  if (!mine.some((st) => used.has(st.name))) return 0;
+  for (const st of mine) {
+    const p = parseName(st.name) ?? { wr: 1, mppt: 1 };
+    let k = 1;
+    while (used.has(`${p.wr}.${p.mppt}.${k}`)) k++;
+    st.name = `${p.wr}.${p.mppt}.${k}`; used.add(st.name);
+  }
+  return mine.length;
+}
+export const newVar = (doc) => Math.max(0, ...doc.sheets.filter((s) => s.kind === "pv" || s.kind === "pvtab").map(varOf)) + 1;
+export const varDoc = (doc, sh) => ({ ...doc, sheets: doc.sheets.filter((s) => s.kind === "pv" && varOf(s) === varOf(sh)), ...(hasVariants(doc) ? { varNo: varOf(sh) } : {}) });
 // Verkabelung löschen (5m, CJ 15.10.): markierte Strings (ids) oder ohne Markierung alle Strings der Stringpläne.
 // SPA und Module bleiben. Stringpläne mit gesperrter Ebene Verkabelung bleiben unverändert. Rückgabe: [{ sheet, st }]
 // 5aj (CJ 15.10.): ohne Markierung nur die Strings des offenen Stringplans, darum ruft pvedit.js mit [S.model] auf
@@ -673,10 +702,10 @@ export function anlageNames(list, wr) { // wr = nur dieser WR (1 …), sonst all
 let docSource = () => null;
 export const setDocSource = (fn) => { docSource = fn; };
 // Freie Bezeichnungen der Anlage (eines WR oder aller), über alle Stringpläne der Datei
-export function anlageFree(wr) {
+export function anlageFree(wr, sheet) { // sheet: nur die Variante dieses Blatts (18.10.2026), fehlt = alle Stringpläne
   const doc = docSource(), list = doc?.pv?.anlage;
   if (!list) return [];
-  const used = new Set(doc.sheets.filter((sh) => sh.kind === "pv").flatMap((sh) => strings(sh).map((s) => s.name)));
+  const used = new Set([...doc.sheets.filter((sh) => sh.kind === "pv" && (!sheet || varOf(sh) === varOf(sheet))).flatMap((sh) => strings(sh).map((s) => s.name)), ...(sheet ? contNames(sheet) : [])]);
   return anlageNames(list, wr).filter((n) => !used.has(n));
 }
 // WR neu nummerieren (5as löschen, 5aw verschieben, CJ 15.10.): order[k] = alte WR-Nummer, die neu Nummer k + 1 bekommt.

@@ -20,14 +20,16 @@ export function renumber(model) {
     if (low && low !== d) { t.of = low.id; changed0 = true; }
   }
   const cols = new Map(), add = (k, d) => (cols.get(k) || cols.set(k, []).get(k)).push(d);
-  for (const d of devs) add(colOf(centerX(d)) + bmkLetter(SYMBOL_BY_NAME[d.sym]), d);
-  // Sicherungen der Wandlermessung (CJ 18.10.): die beschriftete Sicherung zählt als F in der Spalte des mittleren Stromwandlers
+  // Wandlermessung (CJ 18.10.): Zähler und beschriftete Sicherung zählen in der Spalte des mittleren Stromwandlers (über ihnen, rechts von x0)
   const cts = model.items.filter((i) => i.type === "symbol" && i.sym === "ZW_CT");
+  const ctCol = (x0, x1, y) => {
+    const near = cts.filter((c) => c.x > x0 && c.x < x1 && c.y > y).sort((a, b) => a.x - b.x), mid = near[Math.min(1, near.length - 1)];
+    return mid ? colOf(mid.x + 1.25) : null;
+  };
+  for (const d of devs) add(((d.sym === "ZW_ZAEHLER2" && ctCol(d.x, d.x + 45, d.y)) || colOf(centerX(d))) + bmkLetter(SYMBOL_BY_NAME[d.sym]), d);
   for (const f of model.items) {
     if (f.type !== "symbol" || f.sym !== "ZW_SICH" || f.manual || !String(f.attrs.FBMK ?? "").trim()) continue;
-    const near = cts.filter((c) => c.x > f.x - 1 && c.x < f.x + 45 && c.y > f.y).sort((a, b) => a.x - b.x);
-    const mid = near[Math.min(1, near.length - 1)];
-    add(colOf(mid ? mid.x + 1.25 : f.x) + "F", f);
+    add((ctCol(f.x - 1, f.x + 45, f.y) ?? colOf(f.x)) + "F", f);
   }
   let changed = changed0;
   for (const [k, list] of cols) {

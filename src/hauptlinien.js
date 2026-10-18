@@ -61,7 +61,7 @@ export function syncMains(doc) {
   const src = new Map(), dst = new Map();
   const take = (a, b) => { if (b && b !== a && b.sh.main.l === "auto" && !src.has(b)) { src.set(b, a); dst.set(a, b); } };
   for (const a of list) if (a.sh.main.r === "sheet") take(a, list.find((b) => b.sh.sid === a.sh.main.to));
-  for (const [k, a] of list.entries()) if (a.sh.main.r === "next" || (a.sh.main.r === "sheet" && !list.some((b) => b.sh.sid === a.sh.main.to))) take(a, list[k + 1]);
+  for (const [k, a] of list.entries()) if (a.sh.main.r === "next" || (a.sh.main.r === "sheet" && !list.some((b) => b.sh.sid === a.sh.main.to))) { if ((list[k + 1]?.sh.var || 1) === (a.sh.var || 1)) take(a, list[k + 1]); } // „nächstes Blatt“ nur im selben Modul (18.10.2026)
   for (const a of list) {
     const { sh, ws } = a, m = sh.main, inc = src.has(a), out = dst.has(a);
     const lx0 = inc ? REF_L : okCol(m.l) ? colX(m.l) : X0, rx = out ? REF_R : okCol(m.r) ? colX(m.r) : X1;

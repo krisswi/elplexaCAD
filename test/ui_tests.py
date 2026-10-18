@@ -3,7 +3,7 @@ import os, subprocess, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parent.parent  # web-src bzw. web
-URL = (ROOT / "dist" / "schemacad.html").as_uri() if (ROOT / "dist").exists() else (ROOT.parent / "schemacad.html").as_uri()
+URL = (ROOT / "dist" / "schemacad.html").as_uri()
 errors, fails = [], []
 def check(name, cond, info=""):
     print(("ok   " if cond else "FAIL ") + name + (f"  {info}" if info and not cond else ""))
@@ -405,7 +405,7 @@ with sync_playwright() as p:
     check("Menü bleibt bei 390 px im Bild, kein seitliches Scrollen", bx[0] >= 0 and bx[1] <= bx[2] and bx[3] <= bx[2], bx)
     page.keyboard.press("Escape")
     b.close()
-RT = next(c for c in (ROOT.parent / "roundtrip_check.py", ROOT.parent / "Etappe0" / "roundtrip_check.py") if c.exists())
+RT = ROOT / "test" / "roundtrip_check.py"
 r = subprocess.run([sys.executable, str(RT), "test/ui_out.dxf"], capture_output=True, text=True)
 print(r.stdout[:700])
 r2 = subprocess.run([sys.executable, str(RT), "test/ui_out_ref.dxf"], capture_output=True, text=True)

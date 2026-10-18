@@ -13,7 +13,8 @@ const FAMILY = "BarlowSC";
 function inline(src, dst) {
   const cs = getComputedStyle(src);
   if (cs.display === "none") { dst.remove(); return; }
-  if (!(src instanceof SVGSVGElement) || src.ownerSVGElement) for (const p of PROPS) { const v = cs.getPropertyValue(p); if (v) dst.setAttribute(p, v); }
+  // Chrome liefert Werte aus calc() als „calc(0.875px)“, svg2pdf.js liest daraus keine Zahl (Fehler „jsPDF.scale“, Bärgen 18.10.): Hülle entfernen
+  if (!(src instanceof SVGSVGElement) || src.ownerSVGElement) for (const p of PROPS) { const v = cs.getPropertyValue(p).replace(/^calc\(\s*([^()]+)\s*\)$/, "$1"); if (v) dst.setAttribute(p, v); }
   if (src.tagName === "text") {
     dst.setAttribute("font-family", FAMILY);
     dst.setAttribute("font-weight", Number(cs.fontWeight) >= 550 || cs.fontWeight === "bold" ? "bold" : "normal");

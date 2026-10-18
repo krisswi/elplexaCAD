@@ -1097,6 +1097,7 @@ with sync_playwright() as p:
     setopt("pquer", "0")
     tp = [x for x in prints() if "Stringübersicht ·" in x["t"]]
     check("5ap: A4 hoch im Druck (Tabelle verkleinert), Hinweis rechts", M().get("paper") == {"size": "A4", "quer": False} and tp and all(x["vb"] == "0 0 210 297" for x in tp) and "verkleinert" in page.inner_text("#pv-pop") and page.inner_text("#btn-pvdruck").strip() == "A4 hoch", (M().get("paper"), [x["vb"] for x in tp]))
+    page.keyboard.press("Escape")  # Fenster Druck zu (seit 18.10. weiter links, deckt sonst die Blattleiste)
     page.click("#sheet-cur"); page.click('#sheet-menu [data-sheet="0"]'); page.wait_for_timeout(300)
     page.keyboard.press("Escape"); page.keyboard.press("Meta+3"); page.wait_for_timeout(80); use("select"); page.keyboard.press("Escape")
     nmod = page.locator("#items .pv-module").count()

@@ -512,7 +512,7 @@ function cableNote(it) {
 
 
 
-// Fenster Module, Wechselrichter, Druck oben (Stringplan und Stringübersicht, UI Schritt 6 Teil 2). Hängt am Knopf, blockiert den Plan nicht.
+// Fenster Module, Wechselrichter (rechte Leiste) und Druck (oben) im Stringplan und in der Stringübersicht (UI Schritt 6 Teil 2, 18.10.2026). Hängt am Knopf, blockiert den Plan nicht.
 let pvPop = null, popKind = null;
 const popEl = $("#pv-pop");
 const SHEET_POPS = new Set(["blatt", "haupt", "ansicht"]);
@@ -533,7 +533,10 @@ function renderPvBar() {
   if (pvPop.open) { const y = popEl.scrollTop, had = popEl.contains(document.activeElement); popEl.innerHTML = popHTML(); popEl.scrollTop = y; if (had) popEl.focus(); } // live, z. B. Passt-Hinweis
 }
 // Mobilansicht: ohne Auswahl zeigt die Leiste unten einen Hinweis (body.nosel, style.css)
-function renderRight() { renderRightPanel(); document.body.classList.toggle("nosel", !S.sel.size && !(S.model.kind === "legend" && S.legSel != null)); }
+function renderRight() {
+  renderRightPanel(); document.body.classList.toggle("nosel", !S.sel.size && !(S.model.kind === "legend" && S.legSel != null));
+  if (pvPop?.open) document.getElementById(pvPop.anchorId())?.setAttribute("aria-expanded", "true"); // Zeile rechts neu gezeichnet: Zustand des offenen Fensters
+}
 function renderRightPanel() {
   renderPvBar();
   const sel = selectedItems();
@@ -1660,13 +1663,65 @@ $("#btn-lists").addEventListener("click", () => { closeEditor(true); download(`$
 $("#btn-handover").addEventListener("click", handOver);
 
 pvPop = makeMenu(popEl, { left: true, form: true, beforeShow: () => closeEditor(true), onOpen: () => popEl.focus() });
-for (const b of document.querySelectorAll("#pv-bar [data-pop], #doc-bar [data-pop]")) b.addEventListener("click", () => {
+// Knöpfe oben (Druck, Schriftfeld, Hauptlinien, Ansicht) und im Stringplan rechts ohne Auswahl die Zeilen Module und Wechselrichter (18.10.2026)
+function togglePop(b) {
   if (pvPop.open && pvPop.anchorId() === b.id) { pvPop.hide(); return; }
   popKind = b.dataset.pop; popEl.setAttribute("aria-label", { mod: "Module", wr: "Wechselrichter", druck: "Druck", blatt: "Schriftfeld", haupt: "Hauptlinien", ansicht: "Ansicht" }[popKind]);
   popEl.innerHTML = popHTML(); popEl.scrollTop = 0;
   if (pvPop.open) pvPop.hide(false);
-  pvPop.show(b);
-});
+  pvPop.show(b, { beside: rightEl.contains(b) && innerWidth > 600 ? rightEl : null }); // Handy: rechte Leiste liegt unten, Fenster unter der Zeile
+}
+for (const b of document.querySelectorAll("#pv-bar [data-pop], #doc-bar [data-pop]")) b.addEventListener("click", () => togglePop(b));
+rightEl.addEventListener("click", (e) => { const b = e.target.closest("button[data-pop]"); if (b) togglePop(b); });
+
+// Kopfleiste (18.10.2026): Beschriftungen nach Platz ausblenden, gemessen statt fester Fensterbreite. Stufen tb-1 … tb-6 (style.css) der Reihe nach,
+// bis nichts mehr überläuft. Neu messen bei anderer Breite und wenn sich Knöpfe oder Texte in der Leiste ändern.
+const topbar = $("#topbar"), TB_STEPS = ["tb-1", "tb-2", "tb-3", "tb-4", "tb-5", "tb-6"];
+function fitTopbar() {
+  topbar.classList.remove(...TB_STEPS);
+  for (const c of TB_STEPS) { if (topbar.scrollWidth <= topbar.clientWidth) break; topbar.classList.add(c); }
+}
+new ResizeObserver(fitTopbar).observe(topbar);
+new MutationObserver(fitTopbar).observe(topbar, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden"] });
+document.fonts?.ready.then(fitTopbar);
+
+// Seitenleisten ziehbar (CJ 18.10.2026): Griff am Rand der Zeichenfläche, 200 bis 440 px, Doppelklick = Standardbreite, Pfeiltasten ±16 px.
+// Breite je Gerät in localStorage (fehlt = Standard aus style.css), ohne Animation. Unter 860 px Overlay-Leisten, dort ist der Griff aus.
+const SIDE_KEY = "schemacad.leisten", SIDE_MIN = 200, SIDE_MAX = 440, SIDE_VAR = { left: "--lw", right: "--rw" }, appEl = $("#app");
+const sideEl = (side) => (side === "left" ? leftEl : rightEl);
+function sideSet(side, w) {
+  if (w == null) appEl.style.removeProperty(SIDE_VAR[side]);
+  else appEl.style.setProperty(SIDE_VAR[side], `${Math.round(Math.min(SIDE_MAX, Math.max(SIDE_MIN, w)))}px`);
+  $(`#grip-${side}`).setAttribute("aria-valuenow", String(Math.round(sideEl(side).getBoundingClientRect().width)));
+}
+function sideSave() {
+  const v = {}; for (const side in SIDE_VAR) { const x = parseFloat(appEl.style.getPropertyValue(SIDE_VAR[side])); if (x) v[side] = x; }
+  try { localStorage.setItem(SIDE_KEY, JSON.stringify(v)); } catch { /* ohne Speicher: Breite gilt bis zum Neuladen */ }
+}
+try { const v = JSON.parse(localStorage.getItem(SIDE_KEY) || "{}"); for (const side in SIDE_VAR) if (Number.isFinite(v?.[side])) sideSet(side, v[side]); } catch { /* Standardbreite */ }
+for (const g of document.querySelectorAll(".side-grip")) {
+  const side = g.dataset.side, dir = side === "left" ? 1 : -1;
+  let start = null;
+  g.addEventListener("pointerdown", (e) => {
+    e.stopPropagation(); // nicht die Zeichenfläche (sie würde den Zeiger übernehmen)
+    if (e.button !== 0 || start) return; // ein Finger, eine Maustaste
+    e.preventDefault(); g.setPointerCapture(e.pointerId);
+    start = { x: e.clientX, w: sideEl(side).getBoundingClientRect().width, id: e.pointerId };
+    g.classList.add("on"); document.body.classList.add("side-drag");
+  });
+  g.addEventListener("pointermove", (e) => { e.stopPropagation(); if (start && e.pointerId === start.id) sideSet(side, start.w + (e.clientX - start.x) * dir); });
+  const end = (e) => { e.stopPropagation(); if (!start || e.pointerId !== start.id) return; start = null; g.classList.remove("on"); document.body.classList.remove("side-drag"); sideSave(); };
+  g.addEventListener("pointerup", end); g.addEventListener("pointercancel", end); g.addEventListener("lostpointercapture", end);
+  g.addEventListener("dblclick", () => { sideSet(side, null); sideSave(); });
+  g.addEventListener("keydown", (e) => {
+    const d = { ArrowLeft: -16, ArrowRight: 16 }[e.key];
+    if (e.key === "Home" || e.key === "End") { e.preventDefault(); e.stopPropagation(); sideSet(side, e.key === "Home" ? SIDE_MIN : SIDE_MAX); sideSave(); return; }
+    if (!d) return;
+    e.preventDefault(); e.stopPropagation(); // keine Pfeiltasten der Zeichenfläche
+    sideSet(side, sideEl(side).getBoundingClientRect().width + d * dir); sideSave();
+  });
+  g.setAttribute("aria-valuenow", String(Math.round(sideEl(side).getBoundingClientRect().width)));
+}
 // WR verschieben per Drag and Drop im Fenster Wechselrichter (5aw, CJ 15.10.): Griff „⠿ WR n“ auf eine andere WR-Zeile ziehen
 const WR_DT = "text/x-schemacad-wr", wrDropOff = () => popEl.querySelectorAll(".pv-wr.drop, .pv-wr.dragging").forEach((x) => x.classList.remove("drop", "dragging"));
 popEl.addEventListener("dragstart", (e) => { const g = e.target.closest?.("[data-wrdrag]"); if (!g) return; e.dataTransfer.setData(WR_DT, g.dataset.wrdrag); e.dataTransfer.effectAllowed = "move"; g.closest(".pv-wr").classList.add("dragging"); });

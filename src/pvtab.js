@@ -47,7 +47,7 @@ export function tablePages(doc, avail) {
 function partSVG(doc, rows, { empty = !rows.length, tail = true } = {}) {
   const tmin = doc.pv?.tmin;
   let s = txt(0, -7, "Stringübersicht", { h: 6, bold: true });
-  s += txt(0, -14, `${doc.varNo ? `Variante ${doc.varNo}` : "Alle Stringpläne der Datei"} · ${typeof tmin === "number" ? `Tmin ${P.fmtNum(tmin)} °C` : "Tmin fehlt (oben unter „Wechselrichter“ eingeben)"}`, { h: 3 });
+  s += txt(0, -14, `${doc.varNo ? `Variante ${doc.varNo}` : "Alle Stringpläne der Datei"} · ${typeof tmin === "number" ? `Tmin ${P.fmtNum(tmin)} °C` : "Tmin fehlt (unter „Wechselrichter“ eingeben)"}`, { h: 3 });
   s += txt(0, -20, "Voc bei Tmin = Σ Voc × (1 + Tk/100 × (Tmin − 25 °C)), Tk in %/K. Knapp ab 95 % der Grenze.", { h: FS, fill: "#4a5562" });
   let y = TOP;
   s += `<rect x="0" y="${R.f(y - HEAD_H)}" width="${WIDTH}" height="${HEAD_H}" fill="#eef1f4" stroke="#17212b" stroke-width="0.25"/>`;
@@ -157,7 +157,7 @@ export function makePvTab(c) {
   }
 
   const leftHTML = (TOOLS, toolBtn) => `<section class="section"><h2 class="section-title">Werkzeuge</h2>${TOOLS.filter((t) => t.id === "select" || t.id === "hand").map((t) => toolBtn(t.id, R.icons[t.icon], t.label, t.key)).join("")}</section>`
-    + `<section class="section"><h2 class="section-title">Stringübersicht</h2><p class="note">Füllt sich automatisch aus den Strings aller Stringpläne. Tmin, Wechselrichter und Druck: oben in der Leiste.</p></section>`;
+    + `<section class="section"><h2 class="section-title">Stringübersicht</h2><p class="note">Füllt sich automatisch aus den Strings aller Stringpläne. Tmin und Wechselrichter: rechts, Druck: oben.</p></section>`;
   // Teile für das Fenster Wechselrichter und Druck (UI Schritt 6 Teil 2, pvedit.js popHTML)
   const note = (t) => `<p class="note">${t}</p>`;
   const tminHTML = () => { const tmin = S.doc.pv?.tmin; return `<div class="field"><label>Tmin in °C (tiefste Modultemperatur)</label><input type="text" data-pvopt="tmin" value="${tmin === undefined ? "" : P.fmtNum(tmin)}" placeholder="z. B. −20" autocomplete="off" spellcheck="false"></div>` + note("Gilt für die ganze Datei. Kein Vorgabewert, bitte für den Standort eingeben.") + TMIN_NOTE; };
@@ -175,11 +175,11 @@ export function makePvTab(c) {
     return sel("psize", Object.keys(P.PAPERS).map((k) => [k, `${k} (${P.PAPERS[k][0]} × ${P.PAPERS[k][1]} mm)`]), pp.size, "Papier") + sel("pquer", [["1", "quer"], ["0", "hoch"]], pp.quer ? "1" : "0", "Ausrichtung")
       + note(`Massstab 1:1, lange Tabellen auf mehreren Seiten (wie angezeigt).${P.printArea({ ...pp, den: 1 }).x1 - P.PRINT_M < WIDTH ? " Die Tabelle ist breiter als das Papier und wird verkleinert." : ""} Ausgeben: Exportieren → PDF alle Blätter.`);
   }
-  // Rechts ohne Auswahl: nur Hinweis und Blatt löschen
-  function panelHTML({ head }) {
-    return head("Stringübersicht", P.hasVariants(S.doc) ? `Stringpläne der Variante ${P.varOf(S.model)}` : "Alle Stringpläne der Datei") + note("Tmin, Wechselrichter und Druck: oben in der Leiste.")
+  // Rechts ohne Auswahl: Module, Wechselrichter (pvedit.js fileRowsHTML) und Blatt löschen
+  function panelHTML({ head, fileRowsHTML }) {
+    return head("Stringübersicht", P.hasVariants(S.doc) ? `Stringpläne der Variante ${P.varOf(S.model)}` : "Alle Stringpläne der Datei") + fileRowsHTML()
       + `<div class="row pv-last"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
   }
-  const hint = () => (S.tool === "hand" ? "Ziehen verschiebt die Ansicht." : "Stringübersicht: füllt sich aus allen Stringplänen. Tmin und Wechselrichter oben unter „Wechselrichter“. Ergebnis nur als Hinweis, keine Freigabe.");
+  const hint = () => (S.tool === "hand" ? "Ziehen verschiebt die Ansicht." : "Stringübersicht: füllt sich aus allen Stringplänen. Tmin und Wechselrichter rechts unter „Wechselrichter“. Ergebnis nur als Hinweis, keine Freigabe.");
   return { action, option, leftHTML, panelHTML, hint, tminHTML, wrSelect, invCatHTML, paperHTML };
 }

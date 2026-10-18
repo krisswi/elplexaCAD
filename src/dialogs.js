@@ -64,7 +64,7 @@ export function makeMenu(menu, { up = false, left = false, form = false, onOpen,
   const m = {
     get open() { return !menu.hidden; },
     anchorId: () => anchorId,
-    show(btn, { instant = false } = {}) {
+    show(btn, { instant = false, beside = null } = {}) { // beside: Fenster links neben diesem Element (rechte Leiste), auf Höhe des Knopfs
       if (!menu.hidden && anchorId === btn.id) return;
       beforeShow?.();
       for (const o of menus) if (o !== m) o.hide(false);
@@ -72,6 +72,8 @@ export function makeMenu(menu, { up = false, left = false, form = false, onOpen,
       menu.classList.toggle("instant", instant); // per Taste geöffnet: ohne Bewegung
       if (onOpen) onOpen(); else items()[0]?.focus();
       const r = btn.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight; // am Knopf, bleibt im Bild
+      if (beside) { menu.style.top = `${Math.max(8, Math.min(r.top, innerHeight - 8 - h))}px`; menu.style.left = `${Math.max(8, beside.getBoundingClientRect().left - 8 - w)}px`; menu.style.transformOrigin = "top right"; return; }
+      menu.style.transformOrigin = "";
       menu.style.top = `${Math.max(8, up ? r.top - 4 - h : r.bottom + 4)}px`;
       menu.style.left = `${Math.max(8, Math.min(up || left ? r.left : r.right - w, innerWidth - 8 - w))}px`;
     },

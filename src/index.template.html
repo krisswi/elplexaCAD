@@ -15,9 +15,7 @@
     <div class="brand"><span class="mark" aria-hidden="true"></span><span class="brand-name">SchemaCAD</span></div>
     <button class="btn icon only-narrow" id="btn-left" title="Werkzeuge und Symbole" aria-label="Werkzeuge und Symbole"></button>
     <div class="filechip"><span id="file-name">Unbenannt</span><span id="dirty" class="dirty" hidden title="Ungespeicherte Änderungen"></span></div>
-    <div class="pvbar" id="pv-bar" role="group" aria-label="Stringplan: Daten der Datei und Druck" hidden>
-      <button class="btn" id="btn-pvmod" data-pop="mod" title="Module: Modultypen dieser Datei" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="pvmod"></span><span class="lbl">Module</span></button>
-      <button class="btn" id="btn-pvwr" data-pop="wr" title="Wechselrichter: Anlage, Datenblätter, Tmin" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="pvwr"></span><span class="lbl">Wechselrichter</span></button>
+    <div class="pvbar" id="pv-bar" role="group" aria-label="Stringplan: Druck" hidden>
       <button class="btn" id="btn-pvdruck" data-pop="druck" title="Druck: Papier, Massstab, Plankopf" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic" data-ic="print"></span><span class="lbl" id="pv-druck-lbl">Druck</span></button>
     </div>
     <div class="pvbar" id="doc-bar" role="group" aria-label="Daten des Blatts" hidden>
@@ -54,6 +52,8 @@
       <defs><pattern id="gridpat" patternUnits="userSpaceOnUse" width="2.5" height="2.5"><circle cx="0" cy="0" r="0.17" fill="#8d99a6"/></pattern></defs>
       <g id="world"><g id="sheet"></g><g id="items"></g><g id="overlay"></g></g>
     </svg>
+    <div class="side-grip" id="grip-left" data-side="left" role="separator" aria-orientation="vertical" aria-label="Breite der linken Leiste" aria-valuemin="200" aria-valuemax="440" tabindex="0" title="Ziehen: Breite ändern. Doppelklick: Standardbreite"></div>
+    <div class="side-grip" id="grip-right" data-side="right" role="separator" aria-orientation="vertical" aria-label="Breite der rechten Leiste" aria-valuemin="200" aria-valuemax="440" tabindex="0" title="Ziehen: Breite ändern. Doppelklick: Standardbreite"></div>
     <div id="sheetbar" role="tablist" aria-label="Blätter"></div>
     <div id="zoombar" role="group" aria-label="Zoom">
       <button class="btn icon" id="zoom-out" title="Verkleinern (−)" aria-label="Verkleinern"></button>

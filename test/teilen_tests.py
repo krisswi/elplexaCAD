@@ -162,6 +162,11 @@ with sync_playwright() as p:
     w = page.evaluate("[document.documentElement.scrollWidth, document.querySelector('#el-hub').scrollWidth, document.querySelector('#el-hub').clientWidth]")
     check("375 px: geteilte Übersicht läuft nicht seitlich über", w[0] <= 375 and w[1] <= w[2], w)
     page.screenshot(path=str(OUT / "t4_empfaenger_schmal.png"))
+    page.click("#el-hub [data-elopen]"); page.wait_for_timeout(400)  # Fehler CJ 18.10.2026: auf dem Handy war die Zeichenfläche 0 px breit
+    st = page.evaluate("(() => { const r = document.querySelector('#stage').getBoundingClientRect(); return [r.width, r.height, document.querySelectorAll('#world *').length]; })()")
+    check("375 px: Modul offen, Zeichenfläche ganze Breite und bis unten, Zeichnung da", st[0] >= 370 and st[1] > 600 and st[2] > 0, st)
+    check("375 px: „Übersicht“ oben sichtbar", page.is_visible("#el-crumb .el-back") and page.evaluate("document.querySelector('#el-crumb').getBoundingClientRect().width") > 60)
+    page.screenshot(path=str(OUT / "t4b_empfaenger_schmal_modul.png"))
     ctx.close()
 
     # ---- Ungültig, abgelaufen, widerrufen: klare Meldung, nichts zu sehen ----

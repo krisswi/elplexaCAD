@@ -989,7 +989,7 @@ export function makePv(c) {
     if (MOD_TOOLS[S.tool]) return toolPanel(head);
     if (S.tool === "pv-line") return head("Leitung", "Neue Leitungen auf der Ebene Verkabelung") + lineFields("lw", "lcol", opt.lw, opt.lcol) + note("Breite im Planmass: 50 mm sind bei 1:100 auf dem Papier 0,5 mm.");
     if (S.tool === "pv-point") return head("Punkt", "Neue Punkte auf der Ebene Verkabelung") + note("Klick setzt den Punkt, danach die Beschriftung eingeben (Eingabetaste). Leer = Punkt ohne Text.");
-    if (S.tool === "pv-string" && auto) return head("Autoverkabelung", "Neue Strings auf der Ebene Verkabelung") + limitHTML() + note("Erstes Modul anklicken (+ des ersten Strings). Danach Anzahl Strings, Module je String und Richtung wählen. Ein Schritt rückgängig.") + note(S.doc.pv?.anlage ? "Bezeichnungen aus der Anlage (oben „Wechselrichter“)." : "Ohne Anlage: Bezeichnungen fortlaufend ab dem nächsten freien String.");
+    if (S.tool === "pv-string" && auto) return head("Autoverkabelung", "Neue Strings auf der Ebene Verkabelung") + limitHTML() + note("Erstes Modul anklicken (+ des ersten Strings). Danach Anzahl Strings, Module je String und Richtung wählen. Ein Schritt rückgängig.") + note(S.doc.pv?.anlage ? "Bezeichnungen aus der Anlage (rechts ohne Auswahl unter „Wechselrichter“)." : "Ohne Anlage: Bezeichnungen fortlaufend ab dem nächsten freien String.");
     if (S.tool === "pv-string") return stringToolPanel(head);
     let h = head("Stringplan", "PV-Strangplan, Einheit mm");
     h += `<h3 class="pv-title">Plan</h3>`;
@@ -1004,7 +1004,7 @@ export function makePv(c) {
       if (b.swap) h += note("Neuer Planstand: Massstab messen und Fixpunkt an derselben Stelle wie im alten Plan setzen.");
     }
     h += contHTML();
-    h += note("Module, Wechselrichter und Druck: oben in der Leiste.");
+    h += fileRowsHTML();
     h += `<div class="row pv-last"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
     return h;
   }
@@ -1049,7 +1049,15 @@ export function makePv(c) {
     h += `<p class="note">${a.length ? `${total} Strings vorgesehen, ${P.anlageFree(undefined, S.model).length} frei. Vorschlag beim Zeichnen und in der Autoverkabelung in dieser Reihenfolge.` : "Ohne Anlage: Bezeichnungen der Strings frei (WR.MPPT.String)."}</p>`;
     return h + `<h3 class="pv-title">WR-Typen (Datenblätter)</h3>` + TAB.invCatHTML();
   }
-  // Fenster oben: Module, Wechselrichter, Druck (mit Plankopf). kind: "mod", "wr", "druck"
+  // Rechts ohne Auswahl (Stringplan und Stringübersicht, 18.10.2026): Daten der Datei als Zeilen mit Kurzstand, Klick öffnet das Fenster daneben (app.js togglePop)
+  function fileRowsHTML() {
+    const nt = types().length, nw = wrRows(), tmin = S.doc.pv?.tmin;
+    const row = (id, pop, ic, label, sub, warn) => `<button class="pv-open${warn ? " warn" : ""}" id="${id}" data-pop="${pop}" aria-haspopup="dialog" aria-expanded="false" aria-controls="pv-pop"><span class="ic">${R.icons[ic]}</span><span class="mt"><span class="mh">${label}</span><span class="ms">${sub}</span></span><span class="chev" aria-hidden="true">›</span></button>`;
+    return `<h3 class="pv-title">Daten der Datei</h3>`
+      + row("btn-pvmod", "mod", "pvmod", "Module", nt ? `${nt} ${nt === 1 ? "Typ" : "Typen"}` : "noch kein Modultyp", !nt)
+      + row("btn-pvwr", "wr", "pvwr", "Wechselrichter", `${nw ? `${nw} WR` : "keine Anlage"}, ${typeof tmin === "number" ? `Tmin ${P.fmtNum(tmin)} °C` : "Tmin fehlt"}`, typeof tmin !== "number");
+  }
+  // Fenster: Module, Wechselrichter (rechts), Druck (oben, mit Plankopf). kind: "mod", "wr", "druck"
   function popHTML(kind, { head, fieldHTML, META_FIELDS }) {
     if (kind === "mod") return head("Module", "Modultypen dieser Datei") + typesHTML();
     if (kind === "wr") return head("Wechselrichter", "Für die ganze Datei") + wrHTML();
@@ -1073,7 +1081,7 @@ export function makePv(c) {
     const field = S.tool === "pv-field", t = curType(), note = (x) => `<p class="note">${x}</p>`;
     let h = head(field ? "Modulfeld" : "Modul", "Neue Module auf der Ebene Module");
     const neu = `<div class="row"><button class="btn outline small" data-pvact="mtnew">Neuer Modultyp</button></div>`;
-    if (!t) return h + note("Noch kein Modultyp. Alle Modultypen: oben „Module“.") + neu;
+    if (!t) return h + note("Noch kein Modultyp. Alle Modultypen: rechts ohne Auswahl unter „Module“.") + neu;
     h += choice("mt", typeOpts(), t.id, "Modultyp") + choice("quer", LAGE, opt.quer ? "1" : "0", "Lage");
     if (field) h += num("cols", "Spalten", 1) + num("rows", "Reihen", 1) + num("gq", "Abstand quer zum Modul in mm (zwischen den langen Seiten)", 1) + num("gl", "Abstand längs zum Modul in mm (zwischen den kurzen Seiten)", 1); // 5y
     h += neu;
@@ -1188,7 +1196,7 @@ export function makePv(c) {
     gripAt: tab(gripAt, () => null), dragGrip, pointerDown: tab(pointerDown, () => true), hover: tab(hover, () => {}), toolKey: tab(toolKey, () => false), cornerKey: tab(cornerKey, () => false), cancel, action: (el) => (TAB_ACTS.has(el.dataset.pvact) ? TAB.action(el) : DOC_ACTS.has(el.dataset.pvact) ? action(el) : tab(action, TAB.action)(el)),
     option: (el) => (TAB_OPTS.has(el.dataset.pvopt) ? TAB.option(el) : DOC_OPTS.has(el.dataset.pvopt) ? option(el) : tab(option, TAB.option)(el)), popHTML, printLabel, pickable: tab(pickable, () => []), layerPick: tab(() => (picking() ? pickMods() : P.layerPick(S.model, act())), () => []), picking,
     otherLayers: tab(() => P.otherLayers(S.model, act()), () => []), layerNote: (it) => { const l = P.layerOf(it); return `Liegt auf Ebene ${layerName(l)}. Wechseln mit ⌘${P.DRAW_LAYERS.indexOf(l) + 1}.`; },
-    leftHTML: tab(leftHTML, () => TAB.leftHTML(TOOLS, toolBtn)), panelHTML: tab(panelHTML, (sel, o) => TAB.panelHTML(o)), hint: tab(hint, TAB.hint), printPages, preparePrint, moveWr, resetPrintParts, paperOf: (sh) => (sh.kind === "pvtab" ? PR.tabPaper(sh) : P.paperOf(sh)) };
+    leftHTML: tab(leftHTML, () => TAB.leftHTML(TOOLS, toolBtn)), panelHTML: tab(panelHTML, (sel, o) => TAB.panelHTML({ ...o, fileRowsHTML })), hint: tab(hint, TAB.hint), printPages, preparePrint, moveWr, resetPrintParts, paperOf: (sh) => (sh.kind === "pvtab" ? PR.tabPaper(sh) : P.paperOf(sh)) };
 }
 
 const fmtMm = (v) => String(Math.round(v * 10) / 10).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, " ");

@@ -8,7 +8,10 @@
   --panel: #F2F4F2; --bench: #E0E4DF; --panel-line: #C0C8BF; --hover: #E6EAE5;
   --font: "Source Sans 3", Arial, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-.btn.primary:hover { background: #333b32; }
+@media (hover: hover) and (pointer: fine) { .btn.primary:hover:not(:disabled) { background: #333b32; } }
+.el-crumb { flex: none; }
+#topbar.tb-3 .el-back { font-size: 0; } #topbar.tb-3 .el-back::before { content: "‹"; font-size: 14px; }
+#topbar.tb-5 .el-cur .el-lbl { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :focus-visible, .mi:focus-visible, .field input:focus, .field select:focus, .line-row input:focus, .field textarea:focus, .rev input:focus { outline-color: var(--el-green); }
 .brand .el-logo { width: auto; height: 32px; border-radius: 0; background: none; box-shadow: none; flex: none; }
 .brand-name { font-weight: 500; }
@@ -166,7 +169,16 @@ kbd { font: 600 11px/16px var(--font); color: var(--muted); border: 1px solid va
 .btn.el-danger { color: #b42318; }
 @media (max-width: 600px) { .el-shrow { grid-template-columns: minmax(0, 1fr) auto; } .el-shurl { grid-column: 1 / -1; } }
 /* Empfänger: alles zum Bearbeiten, Speichern, Exportieren ausgeblendet (Sperre zusätzlich im Code) */
-body.el-shared #app { grid-template-columns: 0 minmax(0, 1fr) 0; }
+/* Drei Spalten nur breit; bis 860 px gibt es ohnehin nur eine Spalte. Handy: Zeichenfläche bis unten, ohne Eigenschaften-Leiste
+   (CJ 18.10.2026: die erzwungenen Spalten liessen der Zeichenfläche auf dem Handy 0 px, Modul leer) */
+@media (min-width: 861px) { body.el-shared #app { grid-template-columns: 0 minmax(0, 1fr) 0; } }
+@media (max-width: 600px) {
+  body.el-shared #app { grid-template-rows: 52px minmax(0, 1fr) 0; }
+  body.el-shared #right { display: none !important; }
+  body.el-shared .el-crumb { flex: 0 0 auto; }
+  body.el-shared .el-crumb .el-st { display: none; }
+  body.el-shared .el-sharebadge { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 24px; }
+}
 body.el-shared #left, body.el-shared #right { visibility: hidden; padding: 0; border: 0; }
 body.el-shared #btn-left, body.el-shared #btn-right, body.el-shared .pvbar, body.el-shared #btn-undo, body.el-shared #btn-redo, body.el-shared #topbar .sep,
 body.el-shared #btn-search, body.el-shared #btn-new, body.el-shared #btn-open, body.el-shared #btn-save, body.el-shared #btn-handover, body.el-shared #topbar .menuwrap,

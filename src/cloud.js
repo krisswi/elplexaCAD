@@ -203,3 +203,34 @@ export async function feedbackSend({ shot, ...f }) {
   const r = await rest("feedback?select=id", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ...f, screenshot_path, user_agent: navigator.userAgent.slice(0, 500) }) });
   return r?.length ? true : null;
 }
+
+// Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026): Tabelle `project_shares` (nur eigene Zeilen, RLS), je Link ein geheimer Schlüssel
+// mit Ablauf (Vorgabe Datenbank 30 Tage) und Widerruf. Empfänger ohne Login lesen nur über die Funktion `share_open` (security definer)
+// und holen PDF-Dachpläne über die Edge Function `teilen-pdf` (signierte Adressen, 5 min). Nie direkt aus `projects` oder dem Bucket.
+export const SHARE_ONLINE = "https://krisswi.github.io/schemacad/"; // als lokale Datei (file:) zeigt der Link auf die Online-Adresse
+export const shareUrl = (token) => `${window.location.protocol.startsWith("http") ? window.location.origin + window.location.pathname : SHARE_ONLINE}?teilen=${token}`;
+// gültige Links eines eigenen Online-Projekts, neueste zuerst. null = Anmeldung abgebrochen.
+export const shareList = (projectId) => rest(`project_shares?project_id=eq.${encodeURIComponent(projectId)}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,token,expires_at,modules&order=created_at.desc`);
+// modules: null = ganzes Projekt, sonst Modul-Kennungen (model.js modOf). Was nicht freigegeben ist, filtert share_open in der Datenbank weg.
+export async function shareCreate(projectId, modules = null) {
+  const r = await rest("project_shares?select=id,token,expires_at,modules", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ project_id: projectId, ...(modules ? { modules } : {}) }) });
+  return r?.[0] || null;
+}
+export const shareRevoke = (id) => rest(`project_shares?id=eq.${encodeURIComponent(id)}&select=id`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ revoked_at: new Date().toISOString() }) });
+// Empfänger: Projekt zum Schlüssel, ohne Anmeldung. { doc, name, at, ablauf, modules } oder { grund: "ungueltig" | "abgelaufen" | "widerrufen" | "modul_fehlt" }.
+export async function shareOpen(token) {
+  const r = await call("/rest/v1/rpc/share_open", { method: "POST", body: JSON.stringify({ p_token: token }) });
+  if (!r?.ok) return { grund: r?.grund || "ungueltig" };
+  const assets = {}, refs = Object.entries(r.data.assets || {});
+  if (refs.length) {
+    const p = await call("/functions/v1/teilen-pdf", { method: "POST", body: JSON.stringify({ token }) });
+    if (!p?.ok) return { grund: p?.grund || "ungueltig" };
+    for (const [aid, a] of refs) {
+      let res;
+      try { res = await fetch(p.urls[a.sha]); } catch { throw new Error("Keine Verbindung zur Online-Ablage."); }
+      if (!res.ok) throw new Error(`Die PDF „${a.name}“ fehlt in der Online-Ablage (${res.status}).`);
+      assets[aid] = { name: a.name, type: a.type, data: toBase64(new Uint8Array(await res.arrayBuffer())) };
+    }
+  }
+  return { doc: { ...r.data, ...(refs.length ? { assets } : {}) }, name: r.name, at: r.updated_at, ablauf: r.ablauf, modules: r.modules || null };
+}

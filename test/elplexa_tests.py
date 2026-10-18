@@ -1,6 +1,6 @@
 # UI-Tests für elplexaCAD (Module mit Projektübersicht, Aufbau B 17.10.2026; Projekt, Status, Projektdaten, Zeit, zuletzt geöffnet 17.10.; Online-Projekte gegen eine Attrappe). Vorher: node build.mjs elplexa
 # Aufruf aus web-src: python3 test/elplexa_tests.py [Ausgabeordner]
-import sys, tempfile, json, shutil
+import re, sys, tempfile, json, shutil
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parent.parent
@@ -43,7 +43,8 @@ with sync_playwright() as p:
     check("Start ohne Projekt: Projektübersicht, keine Startauswahl", hub() and not page.is_visible(".modal") and "Projektübersicht" in page.inner_text("#el-crumb"))
     check("Start: Fokus in der Übersicht, „Neues Projekt …“ da", page.evaluate("!!document.activeElement.closest('#el-hub')") and page.is_visible('#el-hub [data-elact="newproj"]'))
     page.screenshot(path=str(OUT / "e1_start.png"))
-    page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(150)
+    page.click("#btn-new"); page.wait_for_timeout(150) # Knopf „Neu“ in der Übersicht = Neues Projekt (CJ 18.10.2026)
+    check("Neu in der Übersicht: Dialog „Neues Projekt“, keine Startauswahl", page.is_visible('.modal [data-f="2"]') and not page.is_visible("[data-start]"))
     page.select_option('.modal [data-f="2"]', "pv"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     d = D()
     check("Start mit PV: nur Stringplan", mods(d) == ["pv"] and d["sheets"][0].get("kind") == "pv", mods(d))
@@ -62,7 +63,7 @@ with sync_playwright() as p:
     # + Modul: Plan und Prinzipschema ausgegraut, Schema anlegen
     page.click("#el-addmod"); page.wait_for_timeout(150)
     dis = page.evaluate("Object.fromEntries([...document.querySelectorAll('#el-addmenu [data-elnew]')].map((b) => [b.dataset.elnew, b.disabled]))")
-    check("+ Modul: Plan und Prinzipschema ausgegraut, PV schon da", dis.get("plan") and dis.get("prinzip") and dis.get("pv") and not dis.get("schema") and not dis.get("dispo"), dis)
+    check("+ Modul: Plan und Prinzipschema ausgegraut, weiteres PV möglich (Module mehrfach)", dis.get("plan") and dis.get("prinzip") and not dis.get("pv") and not dis.get("schema") and not dis.get("dispo"), dis)
     page.screenshot(path=str(OUT / "e3_addmod.png"))
     page.click('#el-addmenu [data-elnew="schema"]'); page.wait_for_timeout(200)
     d = D()
@@ -468,6 +469,57 @@ with sync_playwright() as p:
     key("0"); page.evaluate("document.activeElement?.blur()"); page.keyboard.press("Meta+s"); page.wait_for_timeout(300)
     page.click('.modal .choice:has-text("Lokal speichern")'); page.wait_for_timeout(500)
     check("Nach Anmeldung: ⌘S, „Lokal speichern“ speichert die Projektdatei", len(downloads) == 2 and downloads[1].endswith(".elplexa.json"), downloads)
+    # Menü am Knopf Speichern (CJ 18.10.2026): Rechtsklick oder gedrückt halten; kurzer Klick wie bisher
+    page.click("#btn-save", button="right"); page.wait_for_timeout(150)
+    acts = page.evaluate("[...document.querySelectorAll('#el-savectx [data-elsaveact]')].filter((b) => !b.hidden).map((b) => b.dataset.elsaveact)")
+    check("Speichern-Menü per Rechtsklick: Lokal, Speichern unter, Online (angemeldet)", page.is_visible("#el-savectx") and acts == ["file", "as", "on"], acts)
+    page.click('#el-savectx [data-elsaveact="file"]'); page.wait_for_timeout(500)
+    check("Speichern-Menü: „Lokal speichern (Datei)“ speichert die Projektdatei", not page.is_visible("#el-savectx") and len(downloads) == 3 and downloads[2].endswith(".elplexa.json"), downloads)
+    bx = page.locator("#btn-save").bounding_box(); page.mouse.move(bx["x"] + 10, bx["y"] + 10); page.mouse.down(); page.wait_for_timeout(600); page.mouse.up(); page.wait_for_timeout(200)
+    check("Speichern-Menü per gedrückt halten, ohne zu speichern", page.is_visible("#el-savectx") and not page.is_visible(".modal") and len(downloads) == 3, downloads)
+    page.keyboard.press("Escape"); page.wait_for_timeout(100)
+
+    # Modulkarte mit vielen Blättern (CJ 18.10.2026): eine Reihe, höchstens 5 Blatt-Kacheln und „+N“, nichts ragt hinaus; Klick öffnet genau dieses Blatt
+    page.keyboard.press("Escape"); page.wait_for_timeout(100); key("1"); page.wait_for_timeout(150)
+    page.evaluate("async () => { for (let k = 0; k < 12; k++) { document.querySelector('#add-menu [data-new=sheet]').click(); await new Promise((r) => setTimeout(r, 20)); } }")
+    key("0"); page.wait_for_timeout(200)
+    t = page.evaluate("""() => { const t = document.querySelector('#el-tile-schema'), r = t.getBoundingClientRect(), sh = [...t.querySelectorAll('[data-elsheet]')], more = t.querySelector('.el-more');
+      const n = window.__schemacad.doc.sheets.filter((s) => !['dispo', 'pv', 'pvtab'].includes(s.kind)).length;
+      return { n, k: sh.length, more: more?.textContent, out: [...t.querySelectorAll('.el-thumbs i')].some((i) => { const b = i.getBoundingClientRect(); return b.width && b.top < t.querySelector('.el-shs').getBoundingClientRect().bottom && b.right > r.right - 1; }), i: Number(sh[3].dataset.elsheet) }; }""")
+    check("Modulkarte: 5 Blatt-Kacheln, „+N“ mit Rest, nichts ragt hinaus", t["k"] == 5 and t["more"] == f"+{t['n'] - 5}" and not t["out"], t)
+    page.click(f"#el-sh-{t['i']}"); page.wait_for_timeout(150)
+    check("Klick auf Blatt-Kachel öffnet genau dieses Blatt", not hub() and active() == t["i"], active())
+    # „+N“: Übersicht aller Blätter des Moduls, Esc schliesst, Klick auf ein Blatt öffnet es; Knopf PDF druckt das Modul
+    key("0"); page.wait_for_timeout(200); page.click("#el-tile-schema .el-more"); page.wait_for_timeout(150)
+    pop = page.evaluate("[...document.querySelectorAll('#el-shpop [data-elsheet]')].map((b) => Number(b.dataset.elsheet))")
+    check("+N: Übersicht mit allen Blättern des Moduls", page.is_visible("#el-shpop") and len(pop) == t["n"] and hub(), len(pop))
+    page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    check("+N: Esc schliesst die Übersicht, Übersicht bleibt", not page.is_visible("#el-shpop") and hub())
+    page.click("#el-tile-schema .el-more"); page.wait_for_timeout(150); page.click(f"#el-shpop [data-elsheet='{pop[-1]}']"); page.wait_for_timeout(150)
+    check("+N: Klick auf das letzte Blatt öffnet genau dieses", not hub() and active() == pop[-1] and not page.is_visible("#el-shpop"), active())
+    key("0"); page.wait_for_timeout(200)
+    check("Modulkarte: Anzahl Blätter und Knopf PDF statt Beschreibung", page.inner_text("#el-tile-schema .el-ts").split() == [str(t["n"]), "Blätter", "PDF"], page.inner_text("#el-tile-schema .el-ts"))
+    # Eigenes PDF (CJ 18.10.2026): öffnet im neuen Tab statt Druckdialog. Seiten = „/Type /Page“ im PDF, Grössen aus /MediaBox (pt).
+    page.evaluate("window.__open = []; window.open = (u) => { window.__open.push(u); return {}; }; window.print = () => { window.__printed = true; }; 0")
+    def pdf_pages():
+        page.wait_for_function("window.__open.length > 0", timeout=60000)
+        txt = page.evaluate("(async () => { const b = new Uint8Array(await (await fetch(window.__open.shift())).arrayBuffer()); let s = ''; for (const c of b) s += String.fromCharCode(c); return s; })()")
+        pdf_pages.txt = txt
+        return [tuple(round(float(v) * 25.4 / 72) for v in m) for m in re.findall(r"/Type /Page\b.*?/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]", txt, re.S)]
+    page.click("#el-tile-schema [data-elpdf]"); pp = pdf_pages()
+    check("PDF: Schrift Barlow Semi Condensed eingebettet (normal und fett)", "/FontFile2" in pdf_pages.txt and "BarlowSC" in pdf_pages.txt)
+    check("Knopf PDF: ein PDF im neuen Tab mit allen Blättern des Moduls, ohne Rückfrage und Druckdialog, Übersicht bleibt", len(pp) == t["n"] and not page.evaluate("!!window.__printed") and not page.is_visible(".modal") and hub(), pp)
+    # Knopf PDF mit gemischtem Papier (CJ 18.10.2026: A3 und A4 gab scheinbar nur 1 Seite): neues PV-Modul mit Stringplan (A3) und Stringübersicht (A4)
+    page.click("#el-addmod"); page.wait_for_timeout(150); page.click('[data-elnew="pv"]'); page.wait_for_timeout(300)
+    page.evaluate("document.querySelector('#add-menu [data-new=pvtab]').click()"); page.wait_for_timeout(300); key("0"); page.wait_for_timeout(200)
+    pvt = page.evaluate("[...document.querySelectorAll('[id^=el-tile-pv]')].at(-1).id")
+    page.click(f"#{pvt} [data-elpdf]"); pp = pdf_pages()
+    check("PDF gemischtes Papier: ein PDF, Stringplan A3 quer und Stringübersicht A4 quer", pp == [(420, 297), (297, 210)] and not page.is_visible(".modal") and hub(), pp)
+    check("PDF: Druckteile wieder leer", page.evaluate("document.querySelector('#printroot').innerHTML === ''"))
+    key("1"); page.wait_for_timeout(150)
+    page.click("#btn-new"); page.wait_for_timeout(150)
+    check("Neu im Modul: Startauswahl wie bisher", page.is_visible("[data-start]") and not page.is_visible('.modal [data-f="2"]'))
+    page.click(".modal [data-c]"); page.wait_for_timeout(100)
     b.close()
 
 check("keine JS-Fehler", not errors, errors)

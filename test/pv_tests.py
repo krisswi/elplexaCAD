@@ -1172,10 +1172,6 @@ with sync_playwright() as p:
     hid = M().get("hide"); page.keyboard.press("Escape")
     page.evaluate("window.print = () => setTimeout(() => window.dispatchEvent(new Event('afterprint')), 50)")
     page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_selector(".modal [data-ok]"); page.click(".modal [data-ok]"); page.wait_for_timeout(400)
-    for _ in range(5):  # je weiteres Papierformat eine Rückfrage
-        try: page.wait_for_selector(".modal [data-r='1']", timeout=1500)
-        except Exception: break
-        page.click(".modal [data-r='1']"); page.wait_for_timeout(200)
     check("5av: nach Druck/PDF alle Druckteile wieder an", hid == ["mod", "name", "head"] and "hide" not in M() and page.locator("#items .pv-module").count() == 3 and page.locator(pop("druck") + ' [data-pvopt="pr"]:not(:checked)').count() == 0, (hid, M().get("hide")))
     page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(80)
     check("5av: Rückgängig holt die Auswahl zurück", M().get("hide") == ["mod", "name", "head"], M().get("hide"))
@@ -1263,21 +1259,18 @@ with sync_playwright() as p:
     page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_selector(".modal [data-psheet]")
     labels = page.locator(".modal .print-list label").all_inner_texts(); nsh = len(D()["sheets"])
     check("Druck: Fenster listet alle Blätter mit Papier, alle angehakt", len(labels) == nsh and page.locator(".modal [data-psheet]:checked").count() == nsh and any("A3 quer" in l and "Stringplan" in l for l in labels), labels)
-    check("Druck: Hinweis bei gemischtem Papier, Knopf zeigt Anzahl Drucke (A4 quer, A4 hoch Legende, A3 quer)", "Chrome druckt alle Seiten im Format der ersten" in page.inner_text(".modal [data-pmix]") and "3×" in page.inner_text(".modal [data-ok]"), page.inner_text(".modal"))
-    page.click(".modal [data-ok]"); asks = []
-    for _ in range(2):
-        page.wait_for_selector(".modal [data-r='1']", timeout=5000); asks.append(page.inner_text(".modal")); page.click(".modal [data-r='1']")
-    page.wait_for_timeout(300); pr = page.evaluate("window.__prints")
-    check("Druck: vor jedem weiteren Format fragt ein Fenster", "A4 hoch" in asks[0] and "A3 quer" in asks[1] and "Stringplan" in asks[1], asks)
-    check("Druck: drei Drucke in Dateireihenfolge, je Druck ein Papier, Stringübersicht bei A4 quer", len(pr) == 3 and all(x in ("A4q", "pA4q") for x in pr[0]["pages"]) and len(pr[0]["pages"]) >= 4 and set(pr[1]["pages"]) == {"pA4h"} and pr[2]["pages"] == ["pA3q"]
-          and [x["t"].rsplit("_", 1)[1] for x in pr] == ["A4-quer", "A4-hoch", "A3-quer"], pr)
+    check("Druck: kein Hinweis mehr auf mehrere Drucke, Knopf „Drucken“", page.locator(".modal [data-pmix]").count() == 0 and page.inner_text(".modal [data-ok]") == "Drucken", page.inner_text(".modal"))
+    page.click(".modal [data-ok]"); page.wait_for_timeout(500); pr = page.evaluate("window.__prints")
+    # ein Druck mit gemischtem Papier (Nachweis echter Chrome 18.10.2026): Seiten in Dateireihenfolge, jede mit ihrem Papier
+    check("Druck: ein Druck ohne Rückfrage, alle Blätter, Papier je Seite (A4 quer, A4 hoch Legende, A3 quer, A4 quer)", len(pr) == 1 and page.locator(".modal").count() == 0
+          and pr[0]["pages"][-3:] == ["pA4h", "pA3q", "pA4q"] and all(x in ("A4q", "pA4q") for x in pr[0]["pages"][:-3]) and len(pr[0]["pages"]) >= 6 and not pr[0]["t"].endswith(("-quer", "-hoch")), pr)
     check("Druck: danach leer, keine JS-Fehler", page.evaluate("document.querySelector('#printroot').innerHTML") == "" and not errors, errors)
     # nur aktuelles Blatt: zum Stringplan, Schnellwahl
     i_pv = next(k for k, sh in enumerate(D()["sheets"]) if sh.get("kind") == "pv")
     page.click("#sheet-cur"); page.click(f'#sheet-menu [data-sheet="{i_pv}"]'); page.wait_for_timeout(200); page.keyboard.press("Escape")
     page.evaluate("window.__prints = []")
     page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_selector(".modal [data-pcur]"); page.click(".modal [data-pcur]")
-    check("Druck: „Nur aktuelles Blatt“ hakt nur den Stringplan an, ein Druck", page.locator(".modal [data-psheet]:checked").count() == 1 and page.locator(f'.modal [data-psheet="{i_pv}"]:checked').count() == 1 and page.inner_text(".modal [data-ok]") == "Drucken" and page.inner_text(".modal [data-pmix]") == "")
+    check("Druck: „Nur aktuelles Blatt“ hakt nur den Stringplan an, ein Druck", page.locator(".modal [data-psheet]:checked").count() == 1 and page.locator(f'.modal [data-psheet="{i_pv}"]:checked').count() == 1 and page.inner_text(".modal [data-ok]") == "Drucken")
     page.click(".modal [data-ok]"); page.wait_for_timeout(300); pr = page.evaluate("window.__prints")
     check("Druck: nur der Stringplan in A3 quer, ohne Rückfrage", len(pr) == 1 and pr[0]["pages"] == ["pA3q"] and page.locator(".modal").count() == 0, pr)
     page.click("#btn-export"); page.click("#btn-pdf"); page.wait_for_selector(".modal [data-pall]")

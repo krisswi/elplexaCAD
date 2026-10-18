@@ -15,7 +15,9 @@
     "@fontsource/source-sans-3": "^5.3.1",
     "@tarikjabiri/dxf": "^2.9.0",
     "esbuild": "^0.28.2",
-    "pdfjs-dist": "6.4.299"
+    "jspdf": "^4.2.1",
+    "pdfjs-dist": "6.4.299",
+    "svg2pdf.js": "^2.8.1"
   },
   "type": "module",
   "private": true

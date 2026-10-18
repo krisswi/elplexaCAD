@@ -8,6 +8,7 @@ import * as T from "./titel.js";
 import * as L from "./legende.js";
 import { zipFiles } from "./zip.js";
 import { openModal } from "./dialogs.js";
+import { showPdf } from "./pdfout.js";
 
 export function makeFiles(c) {
   const { S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv, sheetLabel } = c;
@@ -21,7 +22,7 @@ export function makeFiles(c) {
   const sheetName = (sh) => baseName() + (sh.kind === "dispo" ? "_Dispo" : "");
 
   function download(name, text, type) {
-    if (ELPLEXA && S.elLocked() && !/\.(dxf|zip)$/i.test(name)) { S.elUnlock(); return; } // elplexaCAD im Netz ohne Anmeldung: nur DXF (CJ 17.10.)
+    if (ELPLEXA && S.elLocked() && (S.shared || !/\.(dxf|zip)$/i.test(name))) { S.elUnlock(); return; } // elplexaCAD im Netz ohne Anmeldung: nur DXF (CJ 17.10.)
     const url = URL.createObjectURL(new Blob([text], { type }));
     const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -52,7 +53,7 @@ export function makeFiles(c) {
     S.doc = m; S.active = m.active; S.sel.clear(); S.undo = []; S.redo = []; S.fileHandle = handle || null; S.wireDraft = null;
     const note = adoptDeck(); // alte Datei: Titelseite und Inhalt kommen dazu, Schemablätter rücken um 2
     setFileName(ELPLEXA ? name.replace(/(\.elplexa|\.schemacad)?\.json$/i, "") || name : name); markClean(); updateUndoButtons(); setTool("select"); afterSheetChange(null, { reset: true, fit: true });
-    if (note) { markDirty(); toast(note); }
+    if (note && !(ELPLEXA && S.shared)) { markDirty(); toast(note); } // geteilte Ansicht: Hinweis betrifft den Empfänger nicht
     if (ELPLEXA) dispatchEvent(new CustomEvent("el-file", { detail: { file: name, handle: handle || null } }));
   }
   async function openJson() {
@@ -71,6 +72,7 @@ export function makeFiles(c) {
   }
 
   async function saveDxf() {
+    if (ELPLEXA && S.shared) { S.elUnlock(); return; } // geteilte Ansicht: kein Export
     closeEditor(true);
     if (S.model.kind === "pv" || S.model.kind === "pvtab") { toast("DXF für Stringpläne kommt später."); return; }
     if (T.isDeck(S.model)) { toast("DXF für Titelseite und Inhaltsverzeichnis kommt später. Sie sind im PDF enthalten."); return; }
@@ -110,50 +112,34 @@ export function makeFiles(c) {
     const p = sh.kind === "pv" || sh.kind === "pvtab" ? pv.paperOf(sh) : { size: "A4", quer: sh.kind !== "legend" };
     return { key: p.size + (p.quer ? "q" : "h"), label: `${p.size} ${p.quer ? "quer" : "hoch"}` };
   }
-  // Druck in Gruppen gleichen Papiers (CJ 17.10.: mit Schema und Stringplan in einer Datei kamen Stringplan und Stringübersicht in A4 quer).
-  // Chrome übernimmt im Druckdialog das Papier der ersten Seite für alle Seiten (Annahme Claude aus CJs Befund, Headless-Chromium mischt richtig).
-  // Darum je Papier ein eigener Druckdialog, in der Reihenfolge der Datei. Ab dem zweiten fragt ein Fenster, damit der Druck einen Klick als Auslöser hat.
-  // Rückgabe: Gruppen [{ key, label, sheets }]
-  function paperGroups(sheets) {
-    const groups = [];
-    for (const sh of S.doc.sheets.filter((x) => sheets.includes(x))) {
-      const p = sheetPaper(sh), g = groups.find((x) => x.key === p.key);
-      if (g) g.sheets.push(sh); else groups.push({ ...p, sheets: [sh] });
-    }
-    return groups;
-  }
+  // Ein Druck für alle Blätter, jede Seite in ihrem Papier (benannte @page in style.css und pvprint.js). Nachweis 18.10.2026 im echten
+  // Chrome 155 (Druck nach „Als PDF sichern“, Seitengrössen der PDF gemessen): A4 quer, A4 hoch, A3 quer gemischt in einer PDF.
+  // Ersetzt den Druck je Papierformat mit Rückfragen (17.10., CJ 18.10.: zweites PDF ging unter).
   async function printSheets(sheets, suffix = "") {
-    const groups = paperGroups(sheets), old = document.title, pvUsed = sheets.some((sh) => sh.kind === "pv" || sh.kind === "pvtab");
-    if (!groups.length) return;
+    if (!sheets.length) return;
+    const old = document.title, pvUsed = sheets.some((sh) => sh.kind === "pv" || sh.kind === "pvtab");
     if (pvUsed) await pv.preparePrint(); // PDF-Pläne der Stringpläne fertig rendern
-    const finish = () => { document.title = old; $("#printroot").innerHTML = ""; if (pvUsed) pv.resetPrintParts(); }; // 5av: Druckteile wieder an
-    for (let k = 0; k < groups.length; k++) {
-      const g = groups[k];
-      if (k && !(await confirmDialog("Nächstes Papierformat", `Druck ${k + 1} von ${groups.length}: ${g.label}, ${g.sheets.map((sh) => sheetLabel(sh, S.doc.sheets.indexOf(sh))).join(", ")}. Im Druckdialog wieder „Als PDF sichern“ wählen.`, "Drucken"))) break;
-      buildPrint(g.sheets);
-      document.title = baseName() + suffix + (groups.length > 1 ? `_${g.label.replace(" ", "-")}` : "");
-      await new Promise((res) => { const done = () => { window.removeEventListener("afterprint", done); setTimeout(res, 0); }; window.addEventListener("afterprint", done); window.print(); });
-    }
-    finish();
+    buildPrint(sheets);
+    document.title = baseName() + suffix;
+    if (ELPLEXA) await showPdf([...$("#printroot").children], baseName() + suffix, toast, confirmDialog);
+    else await new Promise((res) => { const done = () => { window.removeEventListener("afterprint", done); setTimeout(res, 0); }; window.addEventListener("afterprint", done); window.print(); });
+    document.title = old; $("#printroot").innerHTML = ""; if (pvUsed) pv.resetPrintParts(); // 5av: Druckteile wieder an
   }
   // Knopf PDF (CJ 17.10.): Blätter wählen, Vorgabe alle, Schnellwahl aktuelles Blatt. only: gleich drucken ohne Auswahl (Legende).
-  async function printPdf(only = null) {
+  async function printPdf(only = null, suffix = "") {
     closeEditor(true);
     if (ELPLEXA && !(await S.elUnlock())) return;
+    if (Array.isArray(only)) { await printSheets(only, suffix); return; } // Liste: gleich drucken (elplexaCAD: Knopf PDF der Modulkarte)
     if (only) { await printSheets([only], only.kind === "legend" ? "_Legende" : ""); return; }
     const sh = S.doc.sheets, row = (s, i) => `<label class="chk"><input type="checkbox" data-psheet="${i}" checked> <span>${R.esc(sheetLabel(s, i))}${s.meta?.TITEL && s.meta.TITEL !== sheetLabel(s, i) ? ` · ${R.esc(s.meta.TITEL)}` : ""}</span><span class="note print-paper">${sheetPaper(s).label}</span></label>`;
-    const body = `<p>Welche Blätter? Reihenfolge wie in der Datei. Im Druckdialog „Als PDF sichern“ wählen.</p>`
+    const body = `<p>Welche Blätter? Reihenfolge wie in der Datei. ${ELPLEXA ? "Das PDF öffnet sich in einem neuen Tab." : "Im Druckdialog „Als PDF sichern“ wählen."}</p>`
       + `<div class="row"><button class="btn outline small" data-pall>Alle</button><button class="btn outline small" data-pcur>Nur aktuelles Blatt</button></div>`
-      + `<div class="print-list">${sh.map(row).join("")}</div><p class="note" data-pmix></p>`
-      + `<div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>Drucken</button></div>`;
+      + `<div class="print-list">${sh.map(row).join("")}</div>`
+      + `<div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>${ELPLEXA ? "PDF erstellen" : "Drucken"}</button></div>`;
     const root = $("#modal-root"), boxes = () => [...root.querySelectorAll("[data-psheet]")];
     const chosen = () => boxes().filter((b) => b.checked).map((b) => sh[Number(b.dataset.psheet)]);
-    const mix = () => { // Hinweis bei mehreren Papierformaten, Knopf zeigt die Anzahl Druckdialoge
-      const g = paperGroups(chosen()), n = root.querySelector("[data-pmix]"), ok = root.querySelector("[data-ok]");
-      if (n) n.textContent = g.length > 1 ? `Verschiedene Papierformate (${g.map((x) => x.label).join(", ")}): Chrome druckt alle Seiten im Format der ersten. Darum ${g.length} Drucke nacheinander, je Format eine PDF.` : "";
-      if (ok) { ok.textContent = g.length > 1 ? `Drucken (${g.length}×)` : "Drucken"; ok.disabled = !g.length; }
-    };
-    const res = openModal("PDF / Drucken", body, (b, done) => {
+    const mix = () => { const ok = root.querySelector("[data-ok]"); if (ok) ok.disabled = !chosen().length; }; // ohne Blatt kein Druck
+    const res = openModal(ELPLEXA ? "PDF" : "PDF / Drucken", body, (b, done) => {
       if (b.dataset.pall !== undefined || b.dataset.pcur !== undefined) { boxes().forEach((x) => { x.checked = b.dataset.pall !== undefined || Number(x.dataset.psheet) === S.active; }); mix(); }
       else if (b.dataset.ok !== undefined) done(chosen());
       else if (b.dataset.c !== undefined) done(null);
@@ -165,6 +151,7 @@ export function makeFiles(c) {
   }
 
   async function saveDxfAll() {
+    if (ELPLEXA && S.shared) { S.elUnlock(); return; } // geteilte Ansicht: kein Export
     closeEditor(true);
     const files = [];
     try {
@@ -191,5 +178,5 @@ export function makeFiles(c) {
     toast(`${files.length} DXF-Dateien als ZIP in den Download-Ordner geladen: ${name}`);
   }
   const printLegend = () => { const l = S.doc.sheets.find((sh) => sh.kind === "legend"); if (l) printPdf(l); else toast("Diese Datei hat keine Legende."); };
-  return { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend, paperGroups };
+  return { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend };
 }

@@ -29,7 +29,7 @@ import { startDialog } from "./start.js";
 import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel, varOf, newVar } from "./pv.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
-import { cloudMenu, cloudUser, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend } from "./cloud.js";
+import { cloudMenu, cloudUser, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen } from "./cloud.js";
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
@@ -146,7 +146,7 @@ function pushUndo(snap = snapshot()) {
   S.redo.length = 0;
   updateUndoButtons();
 }
-function change(fn, { panel = true } = {}) { const snap = snapshot(); fn(); pushUndo(snap); afterChange(panel); }
+function change(fn, { panel = true } = {}) { if (ELPLEXA && S.shared) return; const snap = snapshot(); fn(); pushUndo(snap); afterChange(panel); }
 function afterChange(panel = true) { const cur = S.model; splitWandlerDoc(S.doc); T.ensureDeck(S.doc, T.loadFirm(), { shift: false }); S.active = Math.max(0, S.doc.sheets.indexOf(cur)); renumberAll(S.doc); markDirty(); renderSheetBar(); renderItems(); renderOverlay(); if (panel) renderRight(); }
 function restore(json) {
   const k0 = S.model.kind;
@@ -165,6 +165,7 @@ function updateUndoButtons() { $("#btn-undo").disabled = !S.undo.length; $("#btn
 
 let autosaveTimer = 0;
 function markDirty() {
+  if (ELPLEXA && S.shared) return; // geteilte Ansicht: nie „ungespeichert“, keine Absturz-Sicherung
   S.dirty = true;
   $("#dirty").hidden = false;
   clearTimeout(autosaveTimer);
@@ -172,7 +173,7 @@ function markDirty() {
   const put = (t) => localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ name: S.fileName, text: t }));
   autosaveTimer = setTimeout(() => { try { put(docText()); } catch { try { put(docText(true)); } catch { /* ohne Speicher weiterarbeiten */ } } }, 400);
 }
-function markClean() { S.dirty = false; $("#dirty").hidden = true; clearTimeout(autosaveTimer); try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* egal */ } }
+function markClean() { S.dirty = false; $("#dirty").hidden = true; clearTimeout(autosaveTimer); if (ELPLEXA && S.shared) return; try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* egal */ } } // geteilte Ansicht: Sicherung eigener Projekte bleibt
 function setFileName(n) { S.fileName = n; $("#file-name").textContent = n; document.title = n + (ELPLEXA ? " – elplexaCAD" : " – SchemaCAD"); }
 
 // ---------- Ansicht ----------
@@ -335,7 +336,7 @@ function hintText() {
   if (shapeTool(S.tool)) { const t = shapeTool(S.tool); return S.shapeDraft ? `${t.label}: zweiter Klick oder Loslassen setzt ${t.k === "circle" ? "den Radius" : "das Ende"}${t.k === "line" ? ", Shift waagrecht oder senkrecht" : t.k === "rect" ? ", Shift = Quadrat" : ""}. Esc bricht ab.` : `${t.label}: klicken und ziehen (oder zweimal klicken)${t.k === "circle" ? ", erst die Mitte" : ""}. Rastet auf dem Raster ein, Alt = frei. Farbe und Strich rechts.`; }
   return "Objekt anklicken, mit Shift mehrere wählen. Auf leerer Fläche ziehen wählt mit Rahmen.";
 }
-function updateHint() { $("#hint").textContent = hintText(); }
+function updateHint() { $("#hint").textContent = ELPLEXA && S.shared ? "Geteilte Ansicht: Ziehen verschiebt, Scrollen oder Pinch zoomt, F passt ein, Bild ↑ ↓ blättert." : hintText(); }
 
 
 function renderLeft() {
@@ -1179,7 +1180,7 @@ stage.addEventListener("pointerdown", (e) => {
   if (!editor.hidden) closeEditor(true);
   svg.focus({ preventScroll: true });
   const { sx, sy } = pointerPos(e);
-  if (e.button === 1 || S.tool === "hand" || S.space) { S.drag = { type: "pan", sx, sy, vx: S.view.x, vy: S.view.y }; stage.setPointerCapture(e.pointerId); svg.classList.add("cursor-grabbing"); return; }
+  if (e.button === 1 || S.tool === "hand" || S.space || ELPLEXA && S.shared) { S.drag = { type: "pan", sx, sy, vx: S.view.x, vy: S.view.y }; stage.setPointerCapture(e.pointerId); svg.classList.add("cursor-grabbing"); return; }
   if (e.button === 2) { if (S.wireDraft) finishWire(); else if (S.tool === "place") setTool("select"); return; }
   if (e.button !== 0) return;
   if (isDeck()) { deckTap(e.target); return; }
@@ -1347,6 +1348,7 @@ stage.addEventListener("pointercancel", (e) => { if (!touch.up(e)) endDrag(e); }
 stage.addEventListener("pointerleave", () => { if (!S.drag) { S.mouse = null; renderOverlay(); } });
 stage.addEventListener("contextmenu", (e) => e.preventDefault());
 stage.addEventListener("dblclick", (e) => {
+  if (ELPLEXA && S.shared) return;
   if (S.tool !== "select" || e.target.closest("#zoombar, #sheetbar")) return;
   const { sx, sy } = pointerPos(e); const w = toWorld(sx, sy);
   const m = massAt(w.x, w.y);
@@ -1389,6 +1391,7 @@ function poleKey(key) {
 window.addEventListener("keydown", (e) => {
   if ($("#modal-root .modal-back")) return; // Dialog offen: keine Tastenkürzel
   if (ELPLEXA && elHubKey(e)) return;
+  if (ELPLEXA && S.shared && elShareKey(e)) return;
   const t = e.target;
   const typing = t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA");
   const mod = e.metaKey || e.ctrlKey;
@@ -1621,15 +1624,15 @@ function openCtx(el) {
   ctxSheet = i; ctxHub = !!el.closest("#el-hub");
   ctxMenu.show(el.closest("#sheet-menu") ? $("#sheet-cur") : el); // Zeile der Blattliste: die Liste schliesst, Menü am Blattnamen
 }
-const ctxOpen = (el) => (el.dataset.modctx ? ELPLEXA && elModCtx(el) : openCtx(el)); // Modul-Kachel (elplexaCAD) oder Blatt
-document.addEventListener("contextmenu", (e) => { const el = e.target.closest?.("[data-ctx], [data-modctx]"); if (el) { e.preventDefault(); clearTimeout(ctxTimer); ctxOpen(el); } });
+const ctxOpen = (el) => (ELPLEXA && S.shared ? null : el.dataset.savectx !== undefined ? ELPLEXA && EL_S.saveCtx.show(el) : el.dataset.modctx ? ELPLEXA && elModCtx(el) : openCtx(el)); // Speichern-Knopf, Modul-Kachel (elplexaCAD) oder Blatt
+document.addEventListener("contextmenu", (e) => { const el = e.target.closest?.("[data-ctx], [data-modctx], [data-savectx]"); if (el) { e.preventDefault(); clearTimeout(ctxTimer); ctxOpen(el); } });
 document.addEventListener("pointerdown", (e) => {
   ctxHeld = false; clearTimeout(ctxTimer);
-  const el = e.target.closest?.("[data-ctx], [data-modctx]");
+  const el = e.target.closest?.("[data-ctx], [data-modctx], [data-savectx]");
   if (el && e.button === 0) ctxTimer = setTimeout(() => { ctxHeld = true; ctxOpen(el); }, 450);
 });
 for (const ev of ["pointerup", "pointercancel", "pointermove"]) document.addEventListener(ev, (e) => { if (ev !== "pointermove" || Math.abs(e.movementX) + Math.abs(e.movementY) > 4) clearTimeout(ctxTimer); });
-document.addEventListener("click", (e) => { if (ctxHeld) { ctxHeld = false; e.stopPropagation(); e.preventDefault(); } }, true);
+document.addEventListener("click", (e) => { if (ctxHeld) { ctxHeld = false; e.stopPropagation(); e.preventDefault(); setTimeout(() => document.querySelector(".menu:not([hidden]) .mi:not([hidden]):not(:disabled)")?.focus(), 0); } }, true); // Touch: der Klick nach dem Loslassen nahm dem Menü den Fokus
 $("#sheet-ctx").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-ctxact]"), i = ctxSheet, hub = ELPLEXA && ctxHub;
   if (!b || !S.doc.sheets[i]) return;
@@ -1648,7 +1651,7 @@ $("#sheet-menu").addEventListener("click", (e) => {
 $("#btn-undo").addEventListener("click", undo);
 $("#btn-redo").addEventListener("click", redo);
 $("#btn-open").addEventListener("click", () => openJson());
-$("#btn-save").addEventListener("click", () => ELPLEXA ? elSave(false) : saveJson(false));
+$("#btn-save").addEventListener("click", () => ELPLEXA ? (EL_S.saveCtx.open ? EL_S.saveCtx.hide() : elSave(false)) : saveJson(false)); // offenes Menü: Klick schliesst es
 $("#btn-dxf").addEventListener("click", () => saveDxf());
 $("#btn-pdf").addEventListener("click", () => printPdf());
 $("#btn-legpdf").addEventListener("click", () => printLegend());
@@ -1680,7 +1683,7 @@ const exportMenu = makeMenu($("#export-menu"), { beforeShow: () => closeEditor(t
 $("#btn-export").addEventListener("click", (e) => exportMenu.toggle(e.currentTarget));
 $("#btn-export").addEventListener("keydown", (e) => { if (e.key === "ArrowDown") { e.preventDefault(); exportMenu.show(e.currentTarget); } });
 $("#btn-search").addEventListener("click", searchDialog);
-$("#btn-new").addEventListener("click", newDocument);
+$("#btn-new").addEventListener("click", ELPLEXA ? () => (EL_S.hub && !EL_S.hub.hidden ? elNewProject() : newDocument()) : newDocument); // elplexaCAD: in der Übersicht neues Projekt (CJ 18.10.2026)
 $("#btn-left").addEventListener("click", () => { document.body.classList.toggle("show-left"); document.body.classList.remove("show-right"); });
 $("#btn-right").addEventListener("click", () => { document.body.classList.toggle("show-right"); document.body.classList.remove("show-left"); });
 $("#zoom-in").addEventListener("click", () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.25); });
@@ -1816,6 +1819,10 @@ function elInit() {
   const fb = document.createElement("button"); fb.className = "btn el-fbbtn"; fb.id = "el-fb"; fb.dataset.elact = "feedback"; fb.type = "button";
   fb.title = "Fehler, Anregung oder Wunsch melden, mit Screenshot der Ansicht"; fb.innerHTML = `<span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H10l-4 4v-4H5z"/><path d="M9 9.5h6M9 12h4"/></svg></span><span class="lbl">Feedback melden</span>`;
   $("#statusbar").append(fb);
+  const shm = document.createElement("button"); shm.className = "mi"; shm.id = "el-btn-share"; shm.setAttribute("role", "menuitem"); shm.tabIndex = -1; shm.title = "Link nur für dieses Modul, ohne Login ansehen";
+  shm.innerHTML = `<span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><span class="mt"><span class="mh">Modul teilen …</span><span class="ms">Link zum Ansehen, ohne Login</span></span>`;
+  shm.addEventListener("click", () => elShareModule()); // das Menü schliesst sich selbst (makeMenu)
+  $("#export-menu").append(shm);
   const hub = document.createElement("div"); hub.id = "el-hub"; hub.hidden = true; hub.setAttribute("role", "region"); hub.setAttribute("aria-label", "Projektübersicht");
   const mm = document.createElement("div"); mm.className = "menu"; mm.id = "el-modmenu"; mm.setAttribute("role", "menu"); mm.setAttribute("aria-label", "Modul öffnen"); mm.hidden = true;
   const am = mm.cloneNode(); am.id = "el-addmenu"; am.setAttribute("aria-label", "Modul anlegen");
@@ -1834,10 +1841,22 @@ function elInit() {
     mc.querySelector("[data-elmodact=del]").disabled = !S.doc.sheets.some((sh) => !T.isDeck(sh) && modOf(sh) !== id);
   } });
   mc.addEventListener("click", (e) => { const b = e.target.closest("[data-elmodact]"); if (b) elModAct(b.dataset.elmodact); });
+  // Menü am Knopf Speichern (CJ 18.10.2026, Klick-Regel): Rechtsklick oder gedrückt halten; Online nur mit Login
+  const sv = mm.cloneNode(); sv.id = "el-savectx"; sv.setAttribute("aria-label", "Speichern");
+  sv.innerHTML = [["file", "Lokal speichern (Datei)", "Als .elplexa.json auf diesem Rechner"], ["as", "Speichern unter …", "Neue Datei wählen (⇧⌘S)"], ["on", "Online speichern", "In der Online-Ablage, auf jedem Rechner öffnen"]]
+    .map(([a, t, sub]) => `<button class="mi" role="menuitem" data-elsaveact="${a}" tabindex="-1"><span class="ic">${R.icons.save}</span><span class="mt"><span class="mh">${t}</span><span class="ms">${sub}</span></span></button>`).join("");
+  $("#app").append(sv); $("#btn-save").dataset.savectx = ""; $("#btn-save").title = "Speichern (⌘S). Rechtsklick oder gedrückt halten: Lokal oder online speichern";
+  EL_S.saveCtx = makeMenu(sv, { beforeShow: () => { closeEditor(true); sv.querySelector('[data-elsaveact="on"]').hidden = !cloudUser(); } });
+  sv.addEventListener("click", (e) => { const a = e.target.closest("[data-elsaveact]")?.dataset.elsaveact; if (a === "on") elSaveOnline(); else if (a) saveJson(a === "as"); });
+  const sp = mm.cloneNode(); sp.id = "el-shpop"; sp.setAttribute("aria-label", "Blätter des Moduls"); $("#app").append(sp); // „+N“ der Modulkarte (CJ 18.10.2026)
+  EL_S.shPop = makeMenu(sp, { left: true, beforeShow: () => { sp.innerHTML = E.sheetPopHTML(S.doc, EL_S.popMod, sheetLabel); } });
   document.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
+    const b = e.target.closest("[data-elsheet], [data-elmore], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
-    if (b.dataset.elopen) elOpen(b.dataset.elopen, { exact: b.dataset.exact !== undefined }); // exact: genau dieses Modul (Kachel), sonst Art
+    if (b.dataset.elmore) { EL_S.popMod = b.dataset.elmore; EL_S.shPop.toggle(b); } // alle Blätter des Moduls
+    else if (b.dataset.elpdf) printPdf(E.modIdx(S.doc, b.dataset.elpdf).map((i) => S.doc.sheets[i]), `_${modName(S.doc, b.dataset.elpdf)}`); // Modul als PDF, Login-Regel in printPdf
+    else if (b.dataset.elsheet) { elHub(false); switchSheet(Number(b.dataset.elsheet)); } // Blatt-Kachel: genau dieses Blatt (CJ 18.10.2026)
+    else if (b.dataset.elopen) elOpen(b.dataset.elopen, { exact: b.dataset.exact !== undefined }); // exact: genau dieses Modul (Kachel), sonst Art
     else if (b.dataset.elnew) elNew(b.dataset.elnew);
     else if (b.dataset.eltdel) elTimeDel(Number(b.dataset.eltdel));
     else if (b.dataset.elzok || b.dataset.elzweg) elZeitResolve(b.dataset.elzok || b.dataset.elzweg, !!b.dataset.elzok);
@@ -1851,26 +1870,31 @@ function elInit() {
   hub.addEventListener("submit", (e) => { e.preventDefault(); elTimeAdd(); });
   hub.addEventListener("keydown", (e) => { const r = e.key === "Enter" && e.target.closest?.("[data-elz]"); if (r) { e.preventDefault(); elZeitResolve(r.dataset.elz, true); } }); // Enter in der Zeile übernimmt
   hub.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches?.("input[data-elp]")) { e.preventDefault(); e.target.blur(); } }); // Enter übernimmt
+  hub.addEventListener("click", (e) => { const b = e.target.closest("[data-elshare]"); if (b && !b.disabled) elShareDialog(b.dataset.elshare); });
   addEventListener("el-file", (e) => { // files.js: gespeichert oder geöffnet
     elZeitDoc({ file: !EL_S.fromOnline });
     if (EL_S.fromOnline) return; // aus der Online-Ablage geöffnet: keine Datei, nicht unter „zuletzt geöffnet“
     E.recentAdd({ file: e.detail.file, name: elName(), status: E.statusOf(S.doc), handle: e.detail.handle || null }).then(() => { if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); });
   });
   elZeitInit(); elSync(); elHub(true);
+  if (S.shared) elShareLoad();
 }
 // Übersicht zeigen (show) oder schliessen; beim Schliessen bleibt das zuletzt offene Modul. keepFocus: neu zeichnen, Fokus bleibt
 function elHub(show, { keepFocus = false } = {}) {
+  if (!show && S.shared && !EL_S.shareInfo) return; // geteilte Ansicht: Übersicht bleibt, bis das Projekt geladen ist
   const h = EL_S.hub, f = keepFocus && document.activeElement?.closest?.("#el-hub") ? (document.activeElement.id ? "#" + document.activeElement.id : document.activeElement.dataset.elp ? `[data-elp="${document.activeElement.dataset.elp}"]` : null) : null;
   if (show) {
     finishWire(); closeEditor(true); elZeitPause(); // in der Übersicht läuft keine Zeit
     const today = elDay(Date.now());
     const file = S.fileHandle?.name || "", suggest = `${baseName()}.elplexa.json`;
-    h.innerHTML = E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel });
+    h.innerHTML = S.shared && !EL_S.shareInfo ? (EL_S.shareFail ? E.shareFailHTML(EL_S.shareFail.grund, EL_S.shareFail.msg) : E.shareLoadHTML())
+      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null });
     for (const el of h.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
     E.recentList().then((l) => { EL_S.recent = l; const r = h.querySelector("#el-recent"); if (r) r.innerHTML = E.recentHTML(l); });
     elOnlineDraw();
   }
   h.hidden = !show; document.body.classList.toggle("el-hubopen", show);
+  $("#btn-new").title = show ? "Neues Projekt anlegen" : "Neues Dokument: Schema, Disposition oder Stringplan";
   $("#el-crumb").innerHTML = show ? `<span class="el-hubtitle">Projektübersicht</span>${E.statusPill(E.statusOf(S.doc))}` : E.crumbHTML(elMod(), E.statusOf(S.doc), modName(S.doc, elMod()));
   if (f) h.querySelector(f)?.focus(); else if (keepFocus) { /* Fokus nicht auf eine Kachel springen lassen */ } else if (show) h.querySelector(".el-tile")?.focus(); else svg.focus();
 }
@@ -1912,6 +1936,7 @@ const EL_IDLE = 300e3, EL_ZK = "elplexacad.zeit.", EL_Z = { doc: null, from: 0, 
 const elDay = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const elRid = (n) => Math.random().toString(36).slice(2, 2 + n).padEnd(n, "0");
 function elZeitSettle(t = Date.now()) {
+  if (S.shared) return; // geteilte Ansicht: keine Zeit
   const doc = EL_Z.doc, ms = Math.min(t, EL_Z.until) - EL_Z.from;
   EL_Z.from = t;
   if (!doc || ms <= 0) return;
@@ -1924,6 +1949,7 @@ function elZeitSettle(t = Date.now()) {
   EL_Z.dirty = true;
 }
 function elZeitBackup(doc = EL_Z.doc) {
+  if (S.shared) return;
   const p = doc?.project;
   if (!p?.id || !p.auto) return;
   try { localStorage.setItem(EL_ZK + p.id, JSON.stringify({ f: S.fileName, auto: p.auto })); } catch { /* ohne Sicherung weiterzählen */ }
@@ -1932,7 +1958,7 @@ function elZeitPause() { elZeitDoc(); elZeitSettle(); EL_Z.until = 0; if (EL_Z.d
 // Anderes Projekt offen (Öffnen, Neu, Online): altes abrechnen und sichern, beim neuen die Sicherung aus dem Browser dazunehmen.
 // file: aus einer Datei geöffnet; nur dann gilt eine Sicherung mit gleichem Dateinamen für eine Datei ohne Kennung (nie gespeichert).
 function elZeitDoc({ file = false } = {}) {
-  if (EL_Z.doc === S.doc) return;
+  if (EL_Z.doc === S.doc || S.shared) return;
   if (EL_Z.doc) { elZeitSettle(); elZeitBackup(); }
   EL_Z.doc = S.doc; EL_Z.from = Date.now(); EL_Z.until = 0; EL_Z.dirty = false;
   let id = S.doc.project?.id, b = null;
@@ -2017,8 +2043,9 @@ function elOnlineDraw() {
 }
 // Sperre ohne Anmeldung (CJ 17.10.): nur wenn die App aus dem Netz läuft; als lokale Datei (file:) bleibt alles frei.
 // Ohne Anmeldung nur DXF. Keine echte Sicherung (Seite speichern umgeht sie), geschützt sind die Online-Daten über die Zugriffsregeln.
-const elLocked = () => window.location.protocol !== "file:" && !cloudUser();
+const elLocked = () => !!S.shared || window.location.protocol !== "file:" && !cloudUser();
 async function elUnlock() {
+  if (S.shared) { toast("Geteilte Ansicht: nur ansehen. Speichern, Drucken und Export gehen nicht."); return false; }
   if (!elLocked()) return true;
   toast("Ohne Anmeldung lässt sich nur als DXF speichern. Bitte anmelden.");
   return elLogin();
@@ -2073,6 +2100,11 @@ async function elSave(forceAs) {
     if (v === "file") return saveJson(false);
     if (v !== "on") return;
   }
+  await elSaveOnline();
+}
+async function elSaveOnline() { // direkt online (Knopf Speichern bzw. sein Menü), Fehler → Angebot Datei
+  if (EL_S.onbusy || !cloudUser()) return;
+  closeEditor(true);
   EL_S.onbusy = true; if (!EL_S.hub.hidden) elOnlineDraw();
   let err = null;
   try { await elOnlineSaveCore(true); } catch (e) { err = e; }
@@ -2166,6 +2198,72 @@ function elHubKey(e) {
   if (!e.altKey && elKey(e)) e.preventDefault();
   return !["Tab", "Enter", " "].includes(e.key); // Tab und Enter bedienen die Kacheln
 }
+// Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026). Ersteller: Fenster „Link teilen“ je Online-Projekt (cloud.js share*).
+// Empfänger: ?teilen=<Schlüssel> öffnet die geteilte Ansicht (S.shared): ohne Login, alles gesperrt (change, markDirty, Tasten, Zeichenfläche
+// nur verschieben und zoomen, Speichern/Drucken/Export über elUnlock), keine Absturz-Sicherung, keine Zeit, nicht unter „zuletzt geöffnet“.
+const elShareStart = () => (S.shared = new URLSearchParams(window.location.search).get("teilen") || null);
+async function elShareLoad() {
+  document.body.classList.add("el-shared", "el-sharewait"); // wait: bis geladen ohne Dateiname und Status im Kopf
+  const badge = document.createElement("span"); badge.className = "el-sharebadge"; badge.setAttribute("role", "status"); badge.textContent = "Geteilte Ansicht · nur ansehen";
+  $("#el-crumb").after(badge);
+  for (const el of document.querySelectorAll("#left, #right")) el.inert = true;
+  try {
+    const r = await shareOpen(S.shared);
+    if (r.grund) EL_S.shareFail = { grund: r.grund };
+    else {
+      EL_S.fromOnline = true;
+      try { await loadText(JSON.stringify(r.doc), r.name || "Geteiltes Projekt", null); } finally { EL_S.fromOnline = false; }
+      EL_S.shareInfo = { at: r.at, ablauf: r.ablauf, mods: r.modules ? E.modIds(S.doc).map((id) => modName(S.doc, id)) : null };
+      setTool("hand"); document.body.classList.remove("el-sharewait");
+    }
+  } catch (err) { EL_S.shareFail = { msg: err.message || String(err) }; }
+  elHub(true);
+}
+function elShareKey(e) { // true = Taste gesperrt oder erledigt; erlaubt sind Ansehen und Blättern
+  if (e.metaKey || e.ctrlKey || e.altKey) { e.preventDefault(); return true; }
+  if (/^[0-9?§`]$/.test(e.key)) { e.preventDefault(); if (EL_S.shareInfo) elKey(e); return true; }
+  if (["PageUp", "PageDown", "f", "F", "+", "-", "=", "g", "G", " ", "Escape", "Tab", "Enter"].includes(e.key)) return false;
+  e.preventDefault(); return true;
+}
+// Fenster „Link teilen“ (Ersteller): gültige Links zeigen, kopieren, widerrufen, neuen Link (30 Tage, Vorgabe der Datenbank) erstellen.
+// Ist es das offene Projekt, wählen Häkchen die Module (CJ 18.10.2026); only = Vorwahl ein Modul (Exportieren › Modul teilen). Alle Häkchen = ganzes Projekt.
+async function elShareDialog(id, only = null) {
+  const name = EL_S.onlist?.find((x) => x.id === id)?.name || elName(), mine = S.doc.project?.online?.id === id;
+  const ids = mine ? E.modIds(S.doc) : [], pick = mine ? { ids, on: new Set(only ? [only] : ids) } : null, nm = (m) => modName(mine ? S.doc : {}, m);
+  let links = null;
+  const draw = () => { const m = $("#modal-root .modal"); if (m) m.querySelector(".el-shbody").innerHTML = E.shareDialogHTML(name, links, shareUrl, pick, nm); };
+  const load = async (fn) => { try { const l = await fn(); if (l) links = l; } catch (err) { toast(err.message || String(err), "error"); } draw(); };
+  const copy = async (token) => {
+    const url = shareUrl(token);
+    try { await navigator.clipboard.writeText(url); toast("Link kopiert. Gültig 30 Tage, nur zum Ansehen."); }
+    catch { const i = [...document.querySelectorAll("#modal-root .el-shurl")].find((x) => x.value === url); i?.select(); toast("Kopieren ging nicht automatisch: Link ist markiert, mit ⌘C kopieren."); }
+  };
+  const tick = (e) => { const b = e.target.closest("[data-shmod]"); if (!b || !pick) return; if (b.checked) pick.on.add(b.dataset.shmod); else pick.on.delete(b.dataset.shmod); draw(); };
+  const shown = openModal("Link teilen", `<div class="el-shbody">${E.shareDialogHTML(name, null, shareUrl, pick, nm)}</div>`, async (b, done) => {
+    if (b.dataset.c !== undefined) done(null);
+    else if (b.dataset.shnew !== undefined) {
+      b.disabled = true; let n = null;
+      const mods = pick && pick.on.size < ids.length ? ids.filter((m) => pick.on.has(m)) : null;
+      await load(async () => { n = await shareCreate(id, mods); return n ? [n, ...links] : null; }); if (n) copy(n.token);
+    }
+    else if (b.dataset.shcopy) copy(b.dataset.shcopy);
+    else if (b.dataset.shrev) { b.disabled = true; const n0 = links.length; await load(async () => ((await shareRevoke(b.dataset.shrev))?.length ? links.filter((l) => l.id !== b.dataset.shrev) : null)); if (links.length < n0) toast("Link widerrufen. Wer ihn öffnet, sieht nur noch einen Hinweis."); }
+  }, null, "[data-c]", "el-sharemodal");
+  const root = $("#modal-root"); root.addEventListener("change", tick);
+  await load(() => shareList(id));
+  try { return await shown; } finally { root.removeEventListener("change", tick); }
+}
+// Exportieren › Modul teilen (CJ 18.10.2026): Link nur für das offene Modul. Geteilt wird der Online-Stand, darum vorher online speichern.
+async function elShareModule() {
+  if (S.shared) return;
+  if (!cloudUser() && !(await elLogin())) return;
+  if (!S.doc.project?.online || S.dirty) {
+    if (!(await confirmDialog("Zuerst online speichern", "Geteilt wird der online gespeicherte Stand. Jetzt online speichern und dann den Link erstellen?", "Online speichern"))) return;
+    await elSaveOnline();
+    if (!S.doc.project?.online || S.dirty) return;
+  }
+  return elShareDialog(S.doc.project.online.id, elMod());
+}
 
 // ---------- Start ----------
 function init() {
@@ -2175,7 +2273,7 @@ function init() {
   $("#zoom-in").innerHTML = R.icons.plus; $("#zoom-out").innerHTML = R.icons.minus;
   LIBS.load(); renderLeft();
   try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    const raw = ELPLEXA && elShareStart() ? null : localStorage.getItem(AUTOSAVE_KEY); // geteilte Ansicht: eigene Sicherung nicht laden
     if (raw) { const o = JSON.parse(raw); const m = parseModel(o.text); if (m.sheets.some((sh) => sh.items.length)) { S.doc = m; S.active = m.active; setFileName(o.name || "Unbenannt"); markDirty(); toast("Letzte Sitzung wiederhergestellt. Mit „Neu“ beginnst du ein leeres Blatt."); } }
   } catch { /* kein Zwischenstand */ }
   if (!S.dirty) S.model.items.push(...baseItems(nextId));

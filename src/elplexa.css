@@ -71,7 +71,7 @@ body.el-hubopen #sheetbar, body.el-hubopen #zoombar, body.el-hubopen .pvbar, bod
 .el-link:focus-visible { outline: 2px solid var(--el-green); outline-offset: 1px; }
 .el-online .el-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .el-onlist { max-height: 260px; overflow: auto; }
-.el-orow { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 4px; align-items: center; }
+.el-orow { display: grid; grid-template-columns: minmax(0, 1fr) 34px 34px; gap: 4px; align-items: center; }
 .el-orow .el-rrow { margin-right: 0; }
 .el-rrow[aria-current="true"] .el-rn::before { content: "● "; color: var(--el-green); }
 /* Zeit */
@@ -110,9 +110,24 @@ body.el-hubopen #sheetbar, body.el-hubopen #zoombar, body.el-hubopen .pvbar, bod
 #el-modctx .mi.danger { color: var(--danger); }
 #el-modctx .mi:disabled { opacity: 0.4; pointer-events: none; }
 #el-modctx .ctx-head { padding: 6px 10px 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.el-ts { font-size: 12.5px; color: var(--muted); }
-.el-thumbs { display: flex; gap: 4px; margin-top: auto; }
-.el-thumbs i { width: 34px; height: 24px; border: 1px solid var(--panel-line); border-radius: 3px; background: var(--panel); }
+.el-ts { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+/* Knopf PDF der Modulkarte (CJ 18.10.2026), ersetzt den Beschreibungstext */
+.el-pdf { padding: 1px 7px; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; color: var(--ink); border: 1px solid var(--panel-line); border-radius: 5px; transition: transform 100ms var(--ease-out); }
+.el-pdf:active { transform: scale(.96); }
+@media (hover: hover) and (pointer: fine) { .el-pdf:hover { border-color: var(--muted); } }
+#el-shpop { width: 300px; }
+#el-savectx { width: 270px; } /* Menü am Knopf Speichern (18.10.2026) */
+#el-shpop .ctx-head { padding: 6px 10px 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.el-shlist { max-height: min(420px, 60vh); overflow-y: auto; overscroll-behavior: contain; }
+.el-shlist .mi { align-items: center; gap: 10px; }
+.el-shlist .mi i { flex: none; width: 26px; height: 19px; border: 1px solid var(--panel-line); border-radius: 3px; background: var(--panel); }
+.el-shlist .mh, .el-shlist .ms { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.el-tile { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+/* eine Reihe, höchstens 5 Blätter und „+N“; ist die Karte zu schmal, rutschen Blätter in die verdeckte zweite Reihe, „+N“ bleibt (CJ 18.10.2026) */
+.el-thumbs { display: flex; gap: 4px; margin-top: auto; min-width: 0; }
+.el-shs { display: flex; flex-wrap: wrap; gap: 4px; height: 19px; min-width: 0; overflow: hidden; }
+.el-thumbs i { flex: none; width: 26px; height: 19px; border: 1px solid var(--panel-line); border-radius: 3px; background: var(--panel); }
+.el-thumbs .el-more { width: auto; min-width: 26px; padding: 0 4px; display: grid; place-items: center; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--muted); background: transparent; font-variant-numeric: tabular-nums; }
 @media (hover: hover) and (pointer: fine) { .el-thumbs i:hover { border-color: var(--muted); } } /* Blattmenü per Rechtsklick (18.10.2026) */
 .el-new { background: transparent; border-style: dashed; color: var(--muted); place-content: center; justify-items: center; text-align: center; }
 .el-new .el-th { color: var(--muted); }
@@ -139,3 +154,29 @@ kbd { font: 600 11px/16px var(--font); color: var(--muted); border: 1px solid va
 .el-fbpic { display: flex; justify-content: center; width: 100%; height: 200px; overflow: hidden; border: 1px solid var(--panel-line); border-radius: var(--radius); background: var(--bench); cursor: pointer; transition: opacity 150ms ease; }
 .el-fbpic canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
 .el-fbpic.off { opacity: 0.35; }
+
+/* Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026): Fenster beim Ersteller, geteilte Ansicht beim Empfänger */
+.el-oshare span { font-size: 15px; }
+.el-shlinks { display: grid; gap: 6px; margin: 10px 0 4px; }
+.el-shrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 6px; align-items: center; }
+.el-shurl { min-width: 0; font-size: 12.5px; }
+.el-shexp { font-size: 12.5px; color: var(--muted); max-width: 22ch; overflow-wrap: anywhere; } /* Umfang · Ablauf */
+.el-shpick { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 12px 0 0; padding: 0; border: 0; }
+.el-shpick legend { width: 100%; margin-bottom: 4px; font-size: 12.5px; color: var(--muted); }
+.btn.el-danger { color: #b42318; }
+@media (max-width: 600px) { .el-shrow { grid-template-columns: minmax(0, 1fr) auto; } .el-shurl { grid-column: 1 / -1; } }
+/* Empfänger: alles zum Bearbeiten, Speichern, Exportieren ausgeblendet (Sperre zusätzlich im Code) */
+body.el-shared #app { grid-template-columns: 0 minmax(0, 1fr) 0; }
+body.el-shared #left, body.el-shared #right { visibility: hidden; padding: 0; border: 0; }
+body.el-shared #btn-left, body.el-shared #btn-right, body.el-shared .pvbar, body.el-shared #btn-undo, body.el-shared #btn-redo, body.el-shared #topbar .sep,
+body.el-shared #btn-search, body.el-shared #btn-new, body.el-shared #btn-open, body.el-shared #btn-save, body.el-shared #btn-handover, body.el-shared #topbar .menuwrap,
+body.el-shared #el-fb, body.el-shared #el-bare, body.el-shared #sheet-add, body.el-shared .sfoot, body.el-shared #dirty { display: none !important; }
+.el-sharebadge { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; margin-left: 8px; border-radius: 12px; font-size: 12.5px; font-weight: 600; white-space: nowrap; color: #8a4a06; background: #fbecd6; }
+.el-shpill { color: #8a4a06; background: #fbecd6; }
+.el-shared-info p { margin: 8px 0 0; }
+.el-sharefail { grid-template-columns: minmax(0, 560px); justify-content: center; }
+.el-sharefail h2 { font-size: 20px; margin: 10px 0 6px; }
+@media (max-width: 600px) { .el-sharebadge { margin-left: 4px; padding: 0 7px; } }
+.modal.el-sharemodal { width: min(620px, calc(100vw - 32px)); max-width: none; }
+body.el-sharewait .filechip, body.el-sharewait #el-crumb .el-st { display: none; }
+.el-sharefail a.btn { text-decoration: none; color: inherit; }

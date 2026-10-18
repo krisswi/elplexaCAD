@@ -84,29 +84,32 @@ function timeHTML(doc, today) {
     <div class="el-acts"><button class="btn outline" data-elact="csv"${t.length ? "" : " disabled"}><span>Als CSV exportieren</span></button></div></section>`;
 }
 
+// Blatt-Kacheln einer Modulkarte (CJ 18.10.2026): eine Reihe, höchstens 5, danach „+N“ (öffnet das Modul)
+const THUMBS = 5, thumbs = (idx) => idx.slice(0, THUMBS);
+// o.shared: geteilte Ansicht (Meilenstein 2, Schritt 1): alles nur lesbar, ohne Kachelmenüs, PDF, Projekte und Zeit
 export function hubHTML(doc, o) {
-  const pd = projectData(doc), st = statusOf(doc);
-  const fld = (k, label) => `<label class="el-row"><span>${label}</span><input data-elp="${k}" value="${esc(pd[k])}" placeholder="–" spellcheck="false"></label>`;
+  const pd = projectData(doc), st = statusOf(doc), ro = !!o.shared, roA = ro ? " readonly" : "";
+  const fld = (k, label) => `<label class="el-row"><span>${label}</span><input data-elp="${k}" value="${esc(pd[k])}" placeholder="–" spellcheck="false"${roA}></label>`;
   const opts = ["Offerte", "In Arbeit", "Abgegeben", "Abgeschlossen"].map((x) => `<option${x === st ? " selected" : ""}>${x}</option>`).join("");
   const fileHint = o.file && o.suggest !== o.file ? `<p class="el-note">Datei: ${esc(o.file)}. Speichern unter (⇧⌘S) schlägt „${esc(o.suggest)}“ vor.</p>` : "";
   const keyOf = (id) => MODULES.filter((m) => !m.later).indexOf(modById(id)) + 1, seen = new Set();
   const tiles = modIds(doc).map((id) => {
     const m = modById(id), idx = modIdx(doc, id), first = !seen.has(m.id); seen.add(m.id);
-    return `<button class="el-tile" id="${tileId(id)}" data-elopen="${id}" data-exact data-modctx="${id}" title="${esc(modName(doc, id))}. Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${first ? `<kbd>${keyOf(id)}</kbd>` : ""}</span><span class="el-ts">${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"} · ${m.sub}</span><span class="el-thumbs">${idx.slice(0, 6).map((i) => `<i id="el-sh-${i}" data-ctx="${i}" title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"></i>`).join("")}</span></button>`;
+    return `<button class="el-tile" id="${tileId(id)}" data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${first ? `<kbd>${keyOf(id)}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
   }).join("");
   return `<div class="el-hubin"><div class="el-col">
-    <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span><label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label></div>
-      <input class="el-name" data-elp="name" value="${esc(o.name)}" aria-label="Projektname (klicken zum Umbenennen)" title="Klicken zum Umbenennen" spellcheck="false">${fileHint}
+    <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span>${ro ? statusPill(st) : `<label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label>`}</div>
+      <input class="el-name" data-elp="name" value="${esc(o.name)}"${ro ? ` aria-label="Projektname" readonly` : ` aria-label="Projektname (klicken zum Umbenennen)" title="Klicken zum Umbenennen"`} spellcheck="false">${fileHint}
       ${fld("OBJEKT", "Objekt")}${fld("AUFTRAG", "Auftrag")}${fld("BAUHERR", "Bauherr")}${fld("INDEX", "Index")}
-      <p class="el-note">Gilt für die Schriftfelder aller Blätter und Module, Bauherr auch für die Titelseite. Einzelne Blätter lassen sich im Schriftfeld weiter ändern.</p>
-      <div class="el-acts"><button class="btn primary" data-elact="pdf"><span class="ic" data-ic="pdf"></span><span>Plansatz-PDF …</span></button></div></section>
-    <section class="el-projs" aria-label="Projekte"><div class="el-eyerow"><span class="el-eye">Projekte</span><button class="btn outline small" data-elact="newproj"><span class="ic" data-ic="plus"></span><span>Neues Projekt …</span></button></div>
+      ${ro ? "" : `<p class="el-note">Gilt für die Schriftfelder aller Blätter und Module, Bauherr auch für die Titelseite. Einzelne Blätter lassen sich im Schriftfeld weiter ändern.</p>
+      <div class="el-acts"><button class="btn primary" data-elact="pdf"><span class="ic" data-ic="pdf"></span><span>Plansatz-PDF …</span></button></div>`}</section>
+    ${ro ? sharedHTML(o.shared) : `<section class="el-projs" aria-label="Projekte"><div class="el-eyerow"><span class="el-eye">Projekte</span><button class="btn outline small" data-elact="newproj"><span class="ic" data-ic="plus"></span><span>Neues Projekt …</span></button></div>
       <div id="el-recent" class="el-recent"></div>
-      <div id="el-online" class="el-online"></div></section></div>
+      <div id="el-online" class="el-online"></div></section>`}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
-      <button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button></div>
+      ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button>`}</div>
       <p class="el-note">Tasten: 1 bis ${MODULES.filter((m) => !m.later).length} öffnet ein Modul, 0 die Übersicht, ? alle Tasten.</p></section>
-    ${timeHTML(doc, o.today)}</div></div>`;
+    ${ro ? "" : timeHTML(doc, o.today)}</div></div>`;
 }
 
 // Zuletzt geöffnete Projekte (im Browser, IndexedDB): Name, Status, Zeit und, wo der Browser es kann, der Dateizugriff (FileSystemFileHandle).
@@ -141,10 +144,19 @@ const when2 = (t) => new Date(t).toLocaleString("de-CH", { day: "2-digit", month
 export function onlineHTML(o) {
   const head = `<div class="el-eyerow"><span class="el-eye">Online</span>${o.user ? `<span class="el-acct">${esc(o.user)} · <button class="el-link" data-elact="logout">Abmelden</button></span>`
     : `<button class="btn ${o.locked ? "primary" : "outline"} small" data-elact="login">Anmelden</button>`}</div>${o.locked ? `<p class="el-note el-lock">Ohne Anmeldung lässt sich nur als DXF speichern. Projektdatei, PDF, Listen, Kataloge und Online-Projekte gibt es mit Anmeldung.</p>` : ""}`;
-  const state = o.locked ? "" : o.link ? `<p class="el-note">Online gespeichert am ${when2(o.link.at)}. Die Datei bleibt der Hauptweg.</p>` : `<p class="el-note">Eine Kopie online speichern, um sie auf einem anderen Rechner zu öffnen. Die Datei bleibt der Hauptweg.</p>`;
-  const rows = o.list === null ? "" : o.list.length ? o.list.map((e) => `<div class="el-orow"><button class="el-rrow" data-elonline="${esc(e.id)}"${o.link?.id === e.id ? ' aria-current="true"' : ""}><span class="el-rn">${esc(e.name)}</span>${e.status ? statusPill(e.status) : ""}<span class="el-rs">${when2(e.updated_at)}${o.link?.id === e.id ? " · dieses Projekt" : ""}</span></button><button class="btn icon el-tdel" data-elodel="${esc(e.id)}" title="Online-Projekt löschen" aria-label="Online-Projekt ${esc(e.name)} löschen"${o.busy ? " disabled" : ""}><span aria-hidden="true">×</span></button></div>`).join("")
+  const state = o.locked ? "" : o.link ? `<p class="el-note">Online gespeichert am ${when2(o.link.at)}. Die Datei bleibt der Hauptweg.</p>${o.user ? `<div class="el-acts"><button class="btn outline small" data-elshare="${esc(o.link.id)}"${o.busy ? " disabled" : ""}><span>Link teilen …</span></button></div>` : ""}` : `<p class="el-note">Eine Kopie online speichern, um sie auf einem anderen Rechner zu öffnen. Die Datei bleibt der Hauptweg.</p>`;
+  const rows = o.list === null ? "" : o.list.length ? o.list.map((e) => `<div class="el-orow"><button class="el-rrow" data-elonline="${esc(e.id)}"${o.link?.id === e.id ? ' aria-current="true"' : ""}><span class="el-rn">${esc(e.name)}</span>${e.status ? statusPill(e.status) : ""}<span class="el-rs">${when2(e.updated_at)}${o.link?.id === e.id ? " · dieses Projekt" : ""}</span></button><button class="btn icon el-oshare" data-elshare="${esc(e.id)}" title="Link teilen (nur ansehen)" aria-label="Online-Projekt ${esc(e.name)} per Link teilen"${o.busy ? " disabled" : ""}><span aria-hidden="true">↗</span></button><button class="btn icon el-tdel" data-elodel="${esc(e.id)}" title="Online-Projekt löschen" aria-label="Online-Projekt ${esc(e.name)} löschen"${o.busy ? " disabled" : ""}><span aria-hidden="true">×</span></button></div>`).join("")
     : `<p class="el-note">Noch keine Online-Projekte.</p>`;
   return `${head}${state}<div class="el-acts"><button class="btn outline" data-elact="onsave"${o.busy ? " disabled" : ""}><span>Online speichern</span></button><button class="btn outline" data-elact="onlist"${o.busy ? " disabled" : ""}><span>${o.list === null ? "Online-Projekte zeigen" : "Liste aktualisieren"}</span></button></div>${rows ? `<div class="el-recent el-onlist">${rows}</div>` : ""}`;
+}
+
+// Übersicht aller Blätter eines Moduls (Knopf „+N“ der Modulkarte, CJ 18.10.2026): Mini-Kachel, Blattname, Titel; Klick öffnet das Blatt
+export function sheetPopHTML(doc, id, label) {
+  const idx = modIdx(doc, id);
+  return `<div class="ctx-head">${esc(modName(doc, id))} · ${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</div><div class="el-shlist">${idx.map((i) => {
+    const sh = doc.sheets[i], t = sh.meta.TITEL && sh.meta.TITEL !== label(sh, i) ? sh.meta.TITEL : "";
+    return `<button class="mi" role="menuitem" data-elsheet="${i}" tabindex="-1"><i aria-hidden="true"></i><span class="mt"><span class="mh">${esc(label(sh, i))}</span>${t ? `<span class="ms">${esc(t)}</span>` : ""}</span></button>`;
+  }).join("")}</div>`;
 }
 
 // Menü „+ Modul“: neues Modul anlegen, auch ein weiteres derselben Art (CJ 18.10.2026), spätere Module ausgegraut
@@ -172,3 +184,29 @@ export const keysHTML = () => `<div class="el-keys">${[
   ["1 2 3", "Schema, Disposition, PV öffnen"], ["0", "Projektübersicht"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
   ["Bild ↑ ↓", "Blatt zurück und vor, innerhalb des Moduls"], ["G", "Liste der Blätter des Moduls"], ["?", "diese Hilfe"],
 ].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im Schema gelten 1 bis 4 beim Setzen eines Geräts oder bei einem gewählten Gerät weiter für die Polzahl.</p>`;
+
+// Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026)
+const fmtDay = (t) => new Date(t).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+// Übersicht beim Empfänger: statt Projekte und Online ein Hinweis. s = { at, ablauf } oder { grund } (Link geht nicht) oder {} (lädt)
+export function sharedHTML(s) {
+  const what = s.mods ? `${s.mods.length === 1 ? "das Modul" : "die Module"} ${s.mods.map((m) => `„${esc(m)}“`).join(", ")}` : "alle Module und Blätter";
+  return `<section class="el-projs el-shared-info" aria-label="Geteilte Ansicht"><div class="el-eyerow"><span class="el-eye">Geteilte Ansicht</span><span class="el-st el-shpill">Nur ansehen</span></div>
+    <p>Mit dir geteilt: ${what}. Du kannst ansehen, aber nichts ändern, speichern oder drucken.</p>
+    ${s.at ? `<p class="el-note">Stand vom ${when2(s.at)}. Link gültig bis ${fmtDay(s.ablauf)}.</p>` : ""}</section>`;
+}
+const SHARE_GRUND = { abgelaufen: "Dieser Link ist abgelaufen.", widerrufen: "Dieser Link wurde vom Absender widerrufen.", modul_fehlt: "Das geteilte Modul gibt es in diesem Projekt nicht mehr.", ungueltig: "Dieser Link ist ungültig. Vielleicht ist er unvollständig kopiert oder das Projekt wurde gelöscht." };
+export function shareFailHTML(grund, msg) {
+  return `<div class="el-hubin el-sharefail"><section class="el-proj" role="alert"><span class="el-eye">Geteilte Ansicht</span><h2>${esc(grund ? SHARE_GRUND[grund] || SHARE_GRUND.ungueltig : "Das geteilte Projekt liess sich nicht laden.")}</h2>
+    <p>${grund ? "Bitte beim Absender einen neuen Link anfragen." : esc(msg || "")}</p><div class="el-acts"><a class="btn outline" href="${esc(window.location.pathname)}">elplexaCAD ohne Link öffnen</a></div></section></div>`;
+}
+// Fenster „Link teilen“ beim Ersteller: gültige Links mit Umfang, Kopieren und Widerrufen, neuer Link. links = [{ id, token, expires_at, modules }] oder null (lädt).
+// pick = null (nur ganzes Projekt, z. B. ein anderes Online-Projekt als das offene) oder { ids, on: Set } = Häkchen je Modul (CJ 18.10.2026). nm(id) = Modulname.
+export function shareDialogHTML(name, links, url, pick, nm) {
+  const scope = (l) => (l.modules ? l.modules.map(nm).join(", ") : "Ganzes Projekt");
+  const rows = links === null ? `<p class="el-note">Lädt …</p>` : links.length ? links.map((l) => `<div class="el-shrow"><input class="el-shurl" readonly value="${esc(url(l.token))}" aria-label="Link für ${esc(scope(l))}, gültig bis ${fmtDay(l.expires_at)}"><span class="el-shexp">${esc(scope(l))} · bis ${fmtDay(l.expires_at)}</span><button class="btn outline small" data-shcopy="${esc(l.token)}">Kopieren</button><button class="btn outline small el-danger" data-shrev="${esc(l.id)}">Widerrufen</button></div>`).join("")
+    : `<p class="el-note">Noch kein gültiger Link.</p>`;
+  const boxes = pick && pick.ids.length > 1 ? `<fieldset class="el-shpick"><legend>Neuer Link zeigt</legend>${pick.ids.map((id) => `<label class="chk"><input type="checkbox" data-shmod="${esc(id)}"${pick.on.has(id) ? " checked" : ""}> <span>${esc(nm(id))}</span></label>`).join("")}</fieldset>` : "";
+  return `<p>Wer den Link hat, sieht „${esc(name)}“ ohne Login, nur zum Ansehen: den zuletzt online gespeicherten Stand, ohne Zeiterfassung. Ein Link gilt 30 Tage und lässt sich jederzeit widerrufen.</p>
+    <div class="el-shlinks">${rows}</div>${boxes}<div class="actions"><button class="btn outline" data-c>Schliessen</button><button class="btn primary" data-shnew${links === null || (pick && !pick.on.size) ? " disabled" : ""}>Neuen Link erstellen</button></div>`;
+}
+export const shareLoadHTML = () => `<div class="el-hubin el-sharefail"><section class="el-proj" role="status"><span class="el-eye">Geteilte Ansicht</span><p>Das geteilte Projekt wird geladen …</p></section></div>`;

@@ -4,7 +4,8 @@
 
 const line = (x1, y1, x2, y2, dashed = false) => ({ t: "l", x1, y1, x2, y2, d: dashed });
 const circle = (cx, cy, r) => ({ t: "c", cx, cy, r });
-const dot = (cx, cy, r) => ({ t: "c", cx, cy, r, f: true }); // gefüllter Punkt (Anschluss, Abgriff)
+export const DOT_R = 0.5; // ein Mass für alle gefüllten Punkte, auch Verbindungspunkte (CJ 18.10.: kleiner, überall gleich gross)
+const dot = (cx, cy) => ({ t: "c", cx, cy, r: DOT_R, f: true }); // gefüllter Punkt (Anschluss, Abgriff)
 const text = (x, y, h, s) => ({ t: "t", x, y, h, s, anchor: "mm" });
 const r3 = (n) => Math.round(n * 1000) / 1000;
 
@@ -79,9 +80,9 @@ function rcdPart(n) {
 // in Reihe mit einem Widerstand. Abgriff am letzten Pol über dem Wandler, Rückweg zum vorletzten Pol unter dem Schaltstück.
 function testKey(n) {
   const last = (n - 1) * POLE, T = last + 3.5, prev = last - POLE;
-  return [dot(last, -1, 0.4), line(last, -1, T, -1), line(T, -1, T, -3), line(T, -6.5, T + 1.4, -3.2), // Taste offen
+  return [dot(last, -1), line(last, -1, T, -1), line(T, -1, T, -3), line(T, -6.5, T + 1.4, -3.2), // Taste offen
     line(T + 0.7, -4.85, T + 2.8, -4.85), line(T + 2.8, -3.85, T + 2.8, -5.85), // Betätiger
-    line(T, -6.5, T, -9), ...rect(T - 0.6, -9, T + 0.6, -12.5), line(T, -12.5, T, -17.5), line(T, -17.5, prev, -17.5), dot(prev, -17.5, 0.4)];
+    line(T, -6.5, T, -9), ...rect(T - 0.6, -9, T + 0.6, -12.5), line(T, -12.5, T, -17.5), line(T, -17.5, prev, -17.5), dot(prev, -17.5)];
 }
 
 function fiVariant(n) {
@@ -183,7 +184,7 @@ const hak = {
 const hakTncs = {
   name: "HAK_TNCS", family: "HAK", poles: 5, vlabel: "TN-C > TN-S", label: "Hausanschlusskasten mit PEN-Aufteilung", layer: "SCH_SYMBOLE",
   prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), line(15, 0, 15, -POLE_LEN), line(13.8, -7, 16.2, -7), line(13.8, -10, 16.2, -10),
-    dot(15, -15.5, 0.4), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0), ...rect(-3.5, -4, 23, -17.5, true),
+    dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0), ...rect(-3.5, -4, 23, -17.5, true),
     text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(17.8, -19, 1.8, "PEN"), text(27.5, -10, 2.2, "HAK")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), ...[0, 1, 2, 3].map((i) => ({ x: i * POLE, y: -POLE_LEN }))],
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
@@ -195,8 +196,8 @@ const hakTncs = {
 const hakFeed = {
   name: "HAK_TNCS_1", family: "HAK", poles: 5, vlabel: "TN-C > TN-S, Zuleitung", label: "Hausanschlusskasten mit PEN-Aufteilung, Zuleitung einpolig", layer: "SCH_SYMBOLE",
   prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...[0, 1, 2].map((i) => line(i * POLE, -POLE_LEN, i * POLE, -25)), line(15, 0, 15, -25),
-    line(13.8, -7, 16.2, -7), line(13.8, -10, 16.2, -10), dot(15, -15.5, 0.4), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0),
-    line(0, -25, 15, -25), dot(7.5, -25, 0.4), line(7.5, -25, 7.5, -30), ...rect(-3.5, -3, 23.5, -27.5, true),
+    line(13.8, -7, 16.2, -7), line(13.8, -10, 16.2, -10), dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0),
+    line(0, -25, 15, -25), dot(7.5, -25), line(7.5, -25, 7.5, -30), ...rect(-3.5, -3, 23.5, -27.5, true),
     text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(18, -19, 1.8, "PEN"), text(28, -12.5, 2.2, "HAK")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), { x: 7.5, y: -30 }],
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
@@ -204,7 +205,7 @@ const hakFeed = {
 // Hauptpotentialausgleichsschiene (CJ 16.10., Darstellung Annahme): Schiene 20 x 2,5 mm mit 5 Anschlusspunkten, Anschluss oben und unten
 const hpas = {
   name: "HPAS_1P", family: "HPAS", poles: 1, label: "Hauptpotentialausgleichsschiene (HPAS)", layer: "SCH_SYMBOLE",
-  prims: [line(0, 0, 0, -2.5), ...rect(-10, -2.5, 10, -5), ...[-8, -4, 0, 4, 8].map((x) => dot(x, -3.75, 0.45)), line(0, -5, 0, -7.5)],
+  prims: [line(0, 0, 0, -2.5), ...rect(-10, -2.5, 10, -5), ...[-8, -4, 0, 4, 8].map((x) => dot(x, -3.75)), line(0, -5, 0, -7.5)],
   pins: [{ x: 0, y: 0 }, { x: 0, y: -7.5 }],
   attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "HPAS", x: 12, y: -3, h: 2.5 }, { tag: "BEZ", label: "Bezeichnung", def: "Hauptpotentialausgleich", x: 12, y: -6.5, h: 2.5 }],
 };
@@ -242,7 +243,7 @@ const wandlerTop = () => {
     prims.push(...rect(u + 0.6, y + 1.5, u + 9.4, y - 3.2, true), line(s1 + 0.8, y, s1 + 0.8, y - 1.2), line(s1 + 0.8, y - 1.2, s2 - 0.8, y - 1.2), line(s2 - 0.8, y - 1.2, s2 - 0.8, y),
       text(s1 - 0.6, y + 0.8, 0.9, "P1"), text(s2 + 0.6, y + 0.8, 0.9, "P2"), circle(s1, y - 2, 0.35), circle(s2, y - 2, 0.35), text(s1 + 1.6, y - 2.3, 0.9, "S1"), text(s2 - 1.6, y - 2.3, 0.9, "S2"));
     // Leiter bis zu den Prüfklemmen, Farbe und Nummer, Sicherung 10 A im Spannungspfad
-    prims.push(dot(u, y, 0.4), line(u, y, u, -24.5), ...rect(u - 0.8, -24.5, u + 0.8, -28.5), line(u, -28.5, u, -32.5),
+    prims.push(dot(u, y), line(u, y, u, -24.5), ...rect(u - 0.8, -24.5, u + 0.8, -28.5), line(u, -28.5, u, -32.5),
       line(s1, y - 2.35, s1, -32.5), line(s2, y - 2.35, s2, -32.5), text(s1 + 0.7, -16.6, 0.9, String(2 * k + 1)), text(s2 + 0.7, -16.6, 0.9, String(2 * k + 2)),
       vt(u + 1.05, -20.5, 1.1, col), vt(s1 + 1.05, -20.5, 1.1, col), vt(s2 + 1.05, -20.5, 1.1, col));
     // Prüfklemmen: U (Name L1..L3), S1, Lasche, S2; Lasche schliesst S1–S2 („3)“)
@@ -256,7 +257,7 @@ const wandlerTop = () => {
       line(s1 - 0.6, -42.6, s1 + 0.6, -41.4), line(s2 - 0.6, -42.6, s2 + 0.6, -41.4));
   });
   // N: Trennstelle, Prüfklemme „N“, blau
-  prims.push(dot(37.5, -15, 0.4), line(37.5, -15, 37.5, -32.5), line(36.4, -25, 38.6, -25), line(36.4, -27, 38.6, -27), vt(38.55, -20.5, 1.1, "blau"),
+  prims.push(dot(37.5, -15), line(37.5, -15, 37.5, -32.5), line(36.4, -25, 38.6, -25), line(36.4, -27, 38.6, -27), vt(38.55, -20.5, 1.1, "blau"),
     ...rect(36.5, -32.5, 38.5, -40.5), ...screw(37.5, -33.6), ...screw(37.5, -39.4), line(37.5, -34.2, 37.5, -38.8), vt(37.5, -36.5, 1.1, "N"),
     line(35, -30.5, 35, -41.5), line(37.5, -40.5, 37.5, WM_PIN_Y), vt(38.55, -46.5, 1.1, "blau"), ...rect(-2.25, -30.5, 39.75, -41.5), text(-3.6, -42.3, 1.1, "5)"),
     lt(-16, -32.5, 1.1, "Abdeckung plombierbar"), lt(-16, -35, 1.1, "Prüfklemmen, Abdeckung"), lt(-16, -36.7, 1.1, "plombierbar"),
@@ -317,21 +318,24 @@ const pk1 = {
   name: "ZW_PK1", family: "ZPK", poles: 1, label: "Prüfklemme N", layer: "SCH_SYMBOLE",
   prims: [...pkTerm(0), ...rect(-2.5, 2, 2.5, -9)], pins: [{ x: 0, y: 0 }, { x: 0, y: -8 }], attrs: [],
 };
-// Zähler nach BKW (umgekehrt): Klemmen oben (5 mm), je Messwerk Strompfad aussen über zwei Kreise, Spannungspfad in der Mitte
-// mit Widerstand (schräger Pfeil) und 90°-Kästchen. Rechts 5 kleine Klemmen ohne Beschriftung (CJ zeichnet sie situativ).
+// Zähler nach BKW (umgekehrt, CJ 18.10. nach BKW-Bild): Klemmen oben (5 mm), je Messwerk S1, U, S2. Strompfad: S1 hinunter, waagrecht
+// durch die Mitten beider Kreise (Wirk- und Blindmesswerk), bei S2 wieder hinauf. Spannungspfad: zwei Senkrechte durch die Kreise
+// (ergibt das Kreuz), oben (Klemmenseite) verbunden, unten an der N-Sammelleitung; U in der Mitte durch den nichtlinearen Widerstand
+// zur N-Leitung; 90°-Kästchen auf der rechten Senkrechten (Blindmesswerk). N-Leitung läuft zur N-Klemme (x 45).
 const Z2_EXTRA = [47.5, 50, 52.5, 55, 57.5];
 const zaehler2Prims = () => {
-  const p = [...rect(-2.5, 0, 62.5, -17)];
+  const p = [...rect(-2.5, 0, 62.5, -17)], yI = -12.5, yB = -5, yN = -16;
   for (let i = 0; i < 10; i++) p.push(line(5 * i, 0, 5 * i, -0.95), ...screw(5 * i, -1.5, 0.6));
   for (const x of Z2_EXTRA) p.push(line(x, 0, x, -1.05), ...screw(x, -1.5, 0.45));
   [0, 1, 2].forEach((k) => {
     const a = 15 * k, c1 = a + 2.5, m = a + 5, c2 = a + 7.5, b = a + 10;
-    p.push(line(a, -2.1, a, -12.5), line(a, -12.5, c1 - 1, -12.5), circle(c1, -12.5, 1), circle(c2, -12.5, 1), line(c2 + 1, -12.5, b, -12.5), line(b, -12.5, b, -2.1),
-      ...rect(c1, -4, c2, -11.5), line(c1, -13.5, c1, -14.5), line(c2, -13.5, c2, -14.5), line(c1, -14.5, c2, -14.5),
-      line(m, -2.1, m, -6), ...rect(m - 0.6, -6, m + 0.6, -10), line(m, -10, m, -14.5), line(m - 1.2, -10.6, m + 1.2, -5.4), line(m - 1.2, -10.6, m - 1.7, -10.6),
-      ...rect(m + 0.9, -7.2, m + 2.3, -8.6), text(m + 1.6, -7.9, 0.6, "90°"));
+    p.push(line(a, -2.1, a, yI), line(a, yI, b, yI), line(b, yI, b, -2.1), circle(c1, yI, 1.2), circle(c2, yI, 1.2), // Strompfad, Kreise
+      line(c1, yB, c2, yB), line(c1, yB, c1, yN), line(c2, yB, c2, -7.7), line(c2, -9.3, c2, yN), // Spannungsspulen
+      ...rect(c2 - 1.15, -7.7, c2 + 1.15, -9.3), text(c2, -8.5, 0.7, "90°"),
+      line(m, -2.1, m, -6), ...rect(m - 0.6, -6, m + 0.6, -11), line(m, -11, m, yN), line(m - 1.2, -11.3, m + 1.2, -5.7), line(m - 1.2, -11.3, m - 1.7, -11.3));
   });
-  p.push(lt(46, -6, 1.2, "Anschluss nach"), lt(46, -8, 1.2, "Schema auf"), lt(46, -10, 1.2, "Klemmendeckel"));
+  p.push(line(2.5, yN, 45, yN), line(45, yN, 45, -2.1));
+  p.push(lt(48, -6, 1.2, "Anschluss nach"), lt(48, -8, 1.2, "Schema auf"), lt(48, -10, 1.2, "Klemmendeckel"));
   return p;
 };
 const zaehler2 = {
@@ -358,7 +362,9 @@ export function wm2Layout() {
   });
   // N: Abgriff, Trennstelle, Prüfklemme, zum Zähler
   syms.push({ sym: "ZW_PK1", x: 42.5, y: pkTop }, { sym: "ZW_ZAEHLER2", x: WM2_BOX.x, y: WM2_BOX.y });
-  wires.push([[42.5, -15], [42.5, pkTop]], [[41.4, -25], [43.6, -25]], [[41.4, -27], [43.6, -27]], [[42.5, pkBot], [42.5, lvS2], [40, lvS2], [40, WM2_BOX.y]]);
+  // N gestrichelt (CJ 18.10.: N ist bei uns gestrichelt); Trennstelle auf Höhe der Sicherungen, Striche im Abstand der Sicherungslänge
+  const nw = (pts) => Object.assign(pts, { kind: "neutral" });
+  wires.push(nw([[42.5, -15], [42.5, pkTop]]), [[41.4, -25.5], [43.6, -25.5]], [[41.4, -29.5], [43.6, -29.5]], nw([[42.5, pkBot], [42.5, lvS2], [40, lvS2], [40, WM2_BOX.y]]));
   texts.push(vt(43.55, -20.5, 1.1, "blau"), vt(43.55, -46.5, 1.1, "blau"), text(-3.6, -42.3, 1.1, "5)"),
     lt(-16, -32.5, 1.1, "Abdeckung plombierbar"), lt(-16, -35, 1.1, "Prüfklemmen, Abdeckung"), lt(-16, -36.7, 1.1, "plombierbar"),
     lt(48, -17.5, 1.5, "Leiterquerschnitte:"), lt(48, -20.5, 1.5, "Strompfad 4 mm²"), lt(48, -23, 1.5, "Spannungspfad 2,5 mm²"),
@@ -370,7 +376,7 @@ export function wm2Layout() {
 const zaehlerWandler = (() => {
   const L = wm2Layout(), parts = [ct, sich, pk, pk1, zaehler2], by = Object.fromEntries(parts.map((q) => [q.name, q]));
   const mv = (q, dx, dy) => (q.t === "l" ? { ...q, x1: q.x1 + dx, y1: q.y1 + dy, x2: q.x2 + dx, y2: q.y2 + dy } : q.t === "c" ? { ...q, cx: q.cx + dx, cy: q.cy + dy } : { ...q, x: q.x + dx, y: q.y + dy });
-  const prims = [...L.syms.flatMap((o) => by[o.sym].prims.map((q) => mv(q, o.x, o.y))), ...L.wires.flatMap((w) => w.slice(1).map((q, i) => line(w[i][0], w[i][1], q[0], q[1]))), ...L.texts];
+  const prims = [...L.syms.flatMap((o) => by[o.sym].prims.map((q) => mv(q, o.x, o.y))), ...L.wires.flatMap((w) => w.slice(1).map((q, i) => line(w[i][0], w[i][1], q[0], q[1], w.kind === "neutral"))), ...L.texts];
   return {
     name: "ZAEHLER_4P_W", family: "ZAEHLER", poles: 4, lp: 3, nm: "w", vlabel: "Wandler (>80 A)", label: "Zähler mit Wandlermessung", layer: "SCH_SYMBOLE",
     prims: [...prims, lt(WM2_BOX.x - 2.5, WM2_BOX.y - 20, 2, "Wirk-/Blindenergiezähler kombiniert")], pins: WM2_TAPS,
@@ -405,7 +411,7 @@ const erde = {
 // PEN teilt sich bei y -12.5 (Punkt, geerdet) in N (gerade hoch) und PE (schräg nach rechts oben, 5 mm daneben). Oben L1, L2, L3, N, PE.
 const tncTns = {
   name: "TNC_TNS", family: "TNC_TNS", poles: 4, label: "Netz TN-C > TN-S", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2, 3].map((i) => line(i * POLE, 0, i * POLE, -POLE_LEN)), dot(15, -12.5, 0.4), line(15, -12.5, 20, -7.5), line(20, -7.5, 20, 0),
+  prims: [...[0, 1, 2, 3].map((i) => line(i * POLE, 0, i * POLE, -POLE_LEN)), dot(15, -12.5), line(15, -12.5, 20, -7.5), line(20, -7.5, 20, 0),
     line(15, -12.5, 23.5, -12.5), ...earth(23.5, -12.5), text(17.8, -17.5, 1.8, "PEN"), text(13.2, -2.5, 1.8, "N"), text(22.2, -2.5, 1.8, "PE")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), ...[0, 1, 2, 3].map((i) => ({ x: i * POLE, y: -POLE_LEN }))],
   attrs: [attrBMK("")],

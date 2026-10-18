@@ -144,7 +144,7 @@ with sync_playwright() as p:
     click(270, 105); click(236.0, 105); click(236.0, 105); page.wait_for_timeout(100)
     wl = [i for i in of("wire") if "bundle" not in i and i["pts"][0][0] > 200]
     check("Leitung an Leitung auf Spaltenmitte angeschlossen", len(wl) == 2 and wl[0]["pts"][0][0] == 235.063 and wl[1]["pts"][-1] == [235.063, 105], wl)
-    check("Verbindungspunkt gezeichnet", page.evaluate("document.querySelectorAll('#items circle[r=\"0.9\"]').length") == 1)
+    check("Verbindungspunkt gezeichnet", page.evaluate("document.querySelectorAll('#items circle[r=\"0.5\"][stroke=\"none\"]').length") == 1)
     page.keyboard.press("Escape")
     with page.expect_download() as d5: page.click("#btn-export"); page.click("#btn-dxf")
     d5.value.save_as("test/ui_out_fang.dxf")

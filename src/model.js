@@ -6,10 +6,11 @@ import { parseCable, MAX_TERMINALS } from "./terminals.js";
 import { DISPO_LAYERS, PLAN_TYPES, cleanPlanItem } from "./dispo.js";
 import { syncMains, cleanMain } from "./hauptlinien.js";
 import { splitWandlerDoc } from "./wandler.js";
+import { cleanShape, isColor, SHAPE_LAYER } from "./formen.js";
 import { cleanAssets, cleanBg, usedAssets, cleanLayers, cleanPvItem, cleanLayerId, cleanPvDoc, PV_ITEMS, checkStrings, cleanPaper, anlageFromSheet, tidyPv, cleanHide, cleanPmid, cleanNorth, cleanStrk } from "./pv.js";
 
 export const FORMAT = "schemacad";
-export const VERSION = 14; // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
+export const VERSION = 15; // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
 // 10: // 10: Wandlermessung in Teilen (ZW_WANDLER, ZW_ZAEHLER, Leitungen mit of/wm) oder Klemmenleiste ohne Klemmen (noterm), seit 16.10.2026. // 9: Disposition mit NH-Hersteller (maker), Textzeilen (lines) oder Textgrösse (tf) (seit 16.10.2026; Stände mit 8 lehnen ab, statt die Angaben still zu verlieren). 8: Disposition mit Schrank, Teilen oder neuen Geräteangaben (seit 16.10.2026, schrank.js; ältere Stände lehnen ab statt still zu verlieren). 7: 7: Hauptlinien neu (seit 16.10.2026, Blatt main, Gruppenverweise mit main; ältere Stände lehnen ab, sonst entstünden doppelte Verweise). 6: mit Stringplan (seit 15.10.2026, Umbau 5ab: gedrehte Module, ältere Stände lehnen ab). 5: mit Titelseite und Inhaltsverzeichnis (kind "title", "toc", titel.js). höchste lesbare Version. 2: mehrere Blätter (sheets), Version 1 (ein Blatt) wird beim Öffnen umgewandelt. 3: wie 2, mit Blättern vom Typ Disposition (nur dann wird 3 geschrieben). 4: mit Stringplan (kind "pv", PDF unter assets) oder Stringübersicht (kind "pvtab").
 
 export const WIRE_KINDS = {
@@ -29,6 +30,7 @@ export const LAYERS = {
   SCH_PE: { color: 3, css: "#1b8a4b" },
   SCH_TEXT: { color: 7, css: "#17212b" },
   SCH_KLEMMEN: { color: 7, css: "#17212b" },
+  [SHAPE_LAYER]: { color: 7, css: "#17212b" }, // freie Formen (formen.js), Farbe am Objekt
   ...DISPO_LAYERS,
 };
 
@@ -192,7 +194,10 @@ function parseItems(list, m, maxId) {
       const t = { id, type: "text", x: it.x, y: it.y, h: isNum(it.h) && it.h > 0 ? it.h : 2.5, s: String(it.s ?? "") };
       if (m.kind === "pv" && cleanLayerId(it.layer)) t.layer = it.layer; // Stringplan: Ebene des Textes
       if (isNum(it.r) && it.r % 360) t.r = ((it.r % 360) + 360) % 360; // gedreht (Leiterfarben der Wandlermessung, seit 17.10.)
+      if (isColor(it.c)) t.c = it.c; // Farbe (formen.js, seit 18.10.2026)
       m.items.push(withTag(t, it));
+    } else if (it.type === "shape" && cleanShape(it, id)) {
+      m.items.push(withTag(cleanShape(it, id), it)); // Linie, Rechteck, Kreis (formen.js)
     } else if (it.type === "terminals" && isNum(it.x) && isNum(it.y)) {
       const cable = String(it.cable ?? "");
       const n = parseCable(cable)?.n ?? Math.max(1, Math.min(MAX_TERMINALS, Math.round(Number(it.n)) || 1));
@@ -236,5 +241,6 @@ export function serializeModel(m, { noAssets = false } = {}) {
     || (i.type === "part" && (i.kind === "BAR" || i.maker === "vgw" || (i.maker === "vertigroup" && /^\d-\d$/.test(i.size)))))); // Disposition 16.10.2026 (Bau-Chat Dispo)
   const usesV13 = sheets.some((sh) => sh.strk || sh.items.some((i) => i.type === "pvline" || i.type === "pvpoint")); // Stringplan: Leitungen, Punkte (5ax, 5ay), Grösse Stringbeschriftung (5bb)
   const usesV14 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.r) || /^ZW_(CT|SICH|PK1?|ZAEHLER2)$/.test(i.sym || ""))); // Wandlermessung BKW, gedrehte Texte (17.10.2026)
-  return JSON.stringify({ ...rest, version: usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
+  const usesV15 = sheets.some((sh) => sh.items.some((i) => i.type === "shape" || (i.type === "text" && i.c))); // freies Zeichnen, Textfarbe (18.10.2026)
+  return JSON.stringify({ ...rest, version: usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
 }

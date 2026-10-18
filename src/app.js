@@ -31,6 +31,7 @@ import * as T from "./titel.js";
 import * as L from "./legende.js";
 import { cloudMenu, cloudUser, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete } from "./cloud.js";
 import * as E from "./elplexa.js";
+import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
 
 const $ = (s) => document.querySelector(s);
 const stage = $("#stage"), svg = $("#svg"), world = $("#world");
@@ -60,6 +61,7 @@ const S = {
   mag: true, alt: false, // Fang an Feldmitten (Spalten- und Zeilenmitte), Alt schaltet ihn kurz aus
   wireDraft: null, wireKind: "leitung", bundleN: 1, shift: false,
   textH: 2.5,
+  shapeDraft: null, shapeStyle: {}, textC: null, // freies Zeichnen (formen.js): Form im Entstehen, Darstellung neuer Formen, Farbe neuer Texte
   drag: null, space: false,
   undo: [], redo: [], pending: null, pendingPushed: false,
   fileHandle: null, fileName: "Unbenannt", dirty: false,
@@ -132,8 +134,9 @@ function snapBase(wx, wy, pins, skip = null) {
   return { x: round3(wx), y: round3(wy) };
 }
 
-
-
+// Formen: Raster wie bei den Leitungen, Alt = frei
+const shapeSnap = (w) => (S.alt ? { x: round3(w.x), y: round3(w.y) } : snapBase(w.x, w.y, false));
+const isSchema = () => !isDispo() && !isPv() && !isDeck();
 
 // ---------- Änderungen und Rückgängig ----------
 function pushUndo(snap = snapshot()) {
@@ -260,6 +263,9 @@ function renderOverlay() {
   s += R.selectionSVG(selectedItems());
   // Griffe an den Punkten gewählter Leitungen (ziehen = Punkt verschieben)
   if (S.tool === "select") for (const w of selectedItems()) if (w.type === "wire") for (const p of w.pts) s += `<rect class="wire-handle" x="${p[0] - 0.9}" y="${p[1] - 0.9}" width="1.8" height="1.8"/>`;
+  if (S.tool === "select") for (const it of selectedItems()) if (it.type === "shape") for (const p of shapeHandles(it)) s += `<rect class="wire-handle" x="${p.x - 0.9}" y="${p.y - 0.9}" width="1.8" height="1.8"/>`; // Griffe der Formen
+  if (S.shapeDraft && S.mouse) s += `<g opacity="0.8" pointer-events="none">${shapeSVG(shapeFrom(shapeTool(S.tool).k, S.shapeDraft.a, S.mouse, S.shift, S.shapeStyle))}</g>`;
+  if (shapeTool(S.tool) && S.mouse) s += `<circle cx="${S.mouse.x}" cy="${S.mouse.y}" r="0.6" fill="#17212b" stroke="none" pointer-events="none"/>`;
   // Griffe und Live-Mass in der Disposition
   const hi = handleItem();
   if (hi) {
@@ -325,6 +331,7 @@ function hintText() {
   if (S.tool === "wire") return S.wireDraft ? "Klicken setzt einen Punkt. Nochmals auf den letzten Punkt klicken oder Eingabetaste beendet. Shift wechselt die Knickrichtung." : S.bundleN > 1 ? `Klicken startet ${S.bundleN} parallele Leiter. Der erste liegt auf dem Klickpunkt, die weiteren rechts oder darunter.` : "Klicken startet eine Leitung. Anschlusspunkte der Symbole rasten ein.";
   if (S.tool === "text") return "Klicken setzt einen Text, die Eingabetaste bestätigt.";
   if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
+  if (shapeTool(S.tool)) { const t = shapeTool(S.tool); return S.shapeDraft ? `${t.label}: zweiter Klick oder Loslassen setzt ${t.k === "circle" ? "den Radius" : "das Ende"}${t.k === "line" ? ", Shift waagrecht oder senkrecht" : t.k === "rect" ? ", Shift = Quadrat" : ""}. Esc bricht ab.` : `${t.label}: klicken und ziehen (oder zweimal klicken)${t.k === "circle" ? ", erst die Mitte" : ""}. Rastet auf dem Raster ein, Alt = frei. Farbe und Strich rechts.`; }
   return "Objekt anklicken, mit Shift mehrere wählen. Auf leerer Fläche ziehen wählt mit Rahmen.";
 }
 function updateHint() { $("#hint").textContent = hintText(); }
@@ -335,7 +342,7 @@ function renderLeft() {
   if (isDispo()) { leftEl.innerHTML = dispoLeftHTML(); return; }
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
-  for (const t of TOOLS) h += `<button class="tool" data-tool="${t.id}" aria-pressed="${S.tool === t.id}">${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`;
+  for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" aria-pressed="${S.tool === t.id}">${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
   h += `</section>` + abgangHTML() + `<section class="section"><h2 class="section-title">Symbole</h2>`;
   for (const f of FAMILIES) { // Wunsch CJ 16.10.: jede Variante direkt wählbar, ein Klick setzt das Gerät
     if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${f.variants.map(varTile).join("")}</div></div>`; continue; }
@@ -564,16 +571,20 @@ function renderRightPanel() {
       h += kindSelect('data-wirekind', it.kind);
       if (isRail(it)) h += `<p class="note">Hauptlinie ${R.esc(railName(it))}${isGroupWire(S.model.items, it) ? ", Grundverkabelung L1 bis N gemeinsam" : ""}</p>` + (isGroupWire(S.model.items, it) ? mainPanelHTML() : railEndSelect("l", it) + railEndSelect("r", it));
       h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
+    } else if (it.type === "shape") {
+      h += head(SHAPE_KINDS[it.k], "Freie Form") + styleHTML(sel) + actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else {
-      h += textPanelHTML(it);
+      h += textPanelHTML(it).replace('<div class="row">', styleHTML(sel) + '<div class="row">');
     }
   } else if (sel.length > 1) {
     h += `<div class="prop-head"><h2>${sel.length} Objekte</h2><p>Mehrfachauswahl</p></div>`;
+    if (sel.every((i) => i.type === "shape" || i.type === "text")) h += styleHTML(sel);
     h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
   } else {
     if (S.tool === "wire") h += `<div class="prop-head"><h2>Neue Leitung</h2></div>` + bundleSelect() + (S.bundleN === 1 ? kindSelect("data-newkind", S.wireKind) : `<p class="note">Leiter von oben links nach unten rechts: ${BUNDLE_PRESETS[S.bundleN].join(", ")}.</p>`);
     else if (S.tool === "place" && S.placeSym !== TERMINALS && familyOf(S.placeSym)?.variants.length > 1) h += `<div class="prop-head"><h2>Neues Symbol</h2></div>` + poleSelect("data-placepoles", familyOf(S.placeSym), S.placeSym);
-    else if (S.tool === "text") h += `<div class="prop-head"><h2>Neuer Text</h2></div><div class="field"><label>Texthöhe in mm</label><input type="number" min="1" max="20" step="0.5" data-newth value="${S.textH}"></div>`;
+    else if (S.tool === "text") h += `<div class="prop-head"><h2>Neuer Text</h2></div><div class="field"><label>Texthöhe in mm</label><input type="number" min="1" max="20" step="0.5" data-newth value="${S.textH}"></div>` + styleHTML([{ type: "text", c: S.textC }]);
+    else if (shapeTool(S.tool)) h += head(`Neue Form: ${shapeTool(S.tool).label}`) + styleHTML([{ type: "shape", k: shapeTool(S.tool).k, ...S.shapeStyle }]);
     h += head(sheetLabel(S.model, S.active), S.model.meta.TITEL || "ohne Blatttitel") + `<p class="note">Hauptlinien: ${R.esc(mainSummary())}.</p>`;
     h += `<div class="row"><button class="btn outline small danger" data-act="delsheet"${workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
   }
@@ -746,7 +757,7 @@ function setTool(id) {
   finishWire(); PV.cancel();
   closeEditor(false);
   S.tool = id; if (id !== "place") S.placeSym = null; if (id !== "select") S.sel.clear();
-  S.dimDraft = null; S.dimSel = null; draftCancel();
+  S.dimDraft = null; S.dimSel = null; draftCancel(); S.shapeDraft = null;
   svg.className.baseVal = id === "hand" ? "cursor-hand" : id === "select" ? "" : id === "text" ? "cursor-text" : "cursor-cross";
   renderLeft(); renderRight(); renderOverlay(); updateHint();
 }
@@ -774,6 +785,44 @@ function finishWire() {
     S.sel.clear();
   });
   renderOverlay(); updateHint();
+}
+
+// ---------- Freies Zeichnen (formen.js, CJ 18.10.2026) ----------
+// Form aus dem Anfangspunkt und c setzen. Das Werkzeug bleibt aktiv, wie bei der Leitung.
+function finishShape(c, shift) {
+  const f = S.shapeDraft, t = shapeTool(S.tool);
+  S.shapeDraft = null;
+  if (!f || !t) return;
+  const sh = shapeFrom(t.k, f.a, c, shift, S.shapeStyle);
+  if (!shapeEmpty(sh)) change(() => { S.model.items.push({ id: nextId(), ...sh }); S.sel.clear(); });
+  renderOverlay(); updateHint();
+}
+// Griff einer gewählten Form unter dem Zeiger
+function shapeHandleAt(x, y) {
+  const tol = Math.max(0.9, 6 / S.view.z);
+  for (const it of selectedItems()) if (it.type === "shape") { const p = shapeHandles(it).find((q) => Math.hypot(q.x - x, q.y - y) <= tol); if (p) return { it, h: p.h }; }
+  return null;
+}
+// Farbe (c), Strichart (d), Füllung (fill) für die Auswahl; ohne Auswahl für neue Formen bzw. neue Texte. Die letzte Wahl gilt auch für die nächste neue Form.
+const swatches = (attr, cur, none = false) => `<div class="swatches">${none ? `<button class="swatch none" ${attr}="keine" aria-pressed="${!cur}" title="Keine" aria-label="Keine Füllung"></button>` : ""}${COLORS.map((c) => `<button class="swatch" ${attr}="${c.k}" style="--sw:${c.css}" aria-pressed="${(cur || "schwarz") === c.k && (!none || !!cur)}" title="${c.label}" aria-label="${c.label}"></button>`).join("")}</div>`;
+function styleHTML(items) {
+  const one = (k) => { const v = new Set(items.map((i) => i[k] || "")); return v.size === 1 ? [...v][0] : undefined; };
+  const shapes = items.filter((i) => i.type === "shape"), c = one("c");
+  let h = `<div class="field"><label>Farbe</label>${swatches("data-shc", c === undefined ? "-" : c)}</div>`;
+  if (shapes.length) {
+    const d = new Set(shapes.map((i) => !!i.d));
+    h += `<div class="field"><label>Strich</label><select data-shd>${d.size > 1 ? "<option selected disabled>(verschieden)</option>" : ""}<option value="solid"${d.size === 1 && !d.has(true) ? " selected" : ""}>Durchgezogen</option><option value="dash"${d.size === 1 && d.has(true) ? " selected" : ""}>Gestrichelt</option></select></div>`;
+  }
+  const filled = shapes.filter((i) => i.k !== "line");
+  if (filled.length) { const v = new Set(filled.map((i) => i.fill || "")); h += `<div class="field"><label>Füllung</label>${swatches("data-shf", v.size === 1 ? [...v][0] : "-", true)}</div>`; }
+  return h;
+}
+function setStyle(key, v) {
+  const sel = selectedItems().filter((i) => i.type === "shape" || (i.type === "text" && key === "c"));
+  const put = (o) => { if (key === "d") { if (v) o.d = true; else delete o.d; } else if (v === "schwarz" && key === "c" || v === "keine") delete o[key]; else if (key !== "fill" || o.k !== "line") o[key] = v; };
+  if (sel.some((i) => i.type === "shape") || (!sel.length && shapeTool(S.tool))) put(S.shapeStyle);
+  if (key === "c" && (sel.some((i) => i.type === "text") || (!sel.length && S.tool === "text"))) S.textC = v === "schwarz" ? null : v;
+  if (sel.length) change(() => sel.forEach(put)); else { renderRight(); renderOverlay(); }
 }
 
 // ---------- Hauptlinien: Enden (durchgehend, bei Spalte abschliessen, Verweis auf anderes Blatt) ----------
@@ -956,7 +1005,8 @@ function groupIds(hit, single) {
 
 function hitTest(x, y, items = pickable(), px = 5) { // px: Toleranz in Bildschirmpunkten (Finger: grösser)
   const tol = Math.max(0.9, px / S.view.z);
-  for (let i = items.length - 1; i >= 0; i--) if (!D.isBack(items[i]) && R.hitItem(items[i], x, y, tol)) return items[i];
+  for (let i = items.length - 1; i >= 0; i--) if (!D.isBack(items[i]) && items[i].type !== "shape" && R.hitItem(items[i], x, y, tol)) return items[i];
+  for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "shape" && R.hitItem(items[i], x, y, tol)) return items[i]; // Formen liegen hinter allem
   for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "plate" && R.hitItem(items[i], x, y, tol)) return items[i];
   for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "cabinet" && R.hitItem(items[i], x, y, tol)) return items[i]; // Schrank zuletzt
   return null;
@@ -984,7 +1034,7 @@ function closeEditor(commit) {
     return;
   }
   if (e.id) { const it = S.model.items.find((i) => i.id === e.id); if (it && it.s !== v) change(() => { it.s = v; }); }
-  else change(() => { const id = nextId(); S.model.items.push({ id, type: "text", x: e.x, y: e.y, h: textH(), s: v, ...(isPv() ? { layer: PV.activeLayer() } : {}) }); });
+  else change(() => { const id = nextId(); S.model.items.push({ id, type: "text", x: e.x, y: e.y, h: textH(), s: v, ...(isPv() ? { layer: PV.activeLayer() } : {}), ...(S.textC && isSchema() ? { c: S.textC } : {}) }); });
 }
 editor.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") closeEditor(true); else if (e.key === "Escape") closeEditor(false); });
 editor.addEventListener("blur", () => closeEditor(true));
@@ -1030,6 +1080,9 @@ stage.addEventListener("pointerdown", (e) => {
   } else if (isPv() && S.tool === "select" && !e.shiftKey && !add && PV.gripAt(w)) {
     const g = PV.gripAt(w); // Punkt einer Dachlinie, Sperrfläche oder Leitung ziehen, oder Text eines Punkts (label)
     S.drag = { type: "pvvertex", it: g.it, i: g.i, label: !!g.label, px: sx, py: sy, started: false, snap: snapshot() };
+  } else if (S.tool === "select" && !e.shiftKey && shapeHandleAt(w.x, w.y)) {
+    const g = shapeHandleAt(w.x, w.y); // Griff einer gewählten Form ziehen
+    S.drag = { type: "shapeh", it: g.it, h: g.h, orig: JSON.parse(JSON.stringify(g.it)), px: sx, py: sy, started: false, snap: snapshot() };
   } else if (S.tool === "select" && !e.shiftKey && vertexAt(w.x, w.y)) {
     const v = vertexAt(w.x, w.y);
     S.drag = { type: "vertex", w: v.w, i: v.i, pts: v.w.pts.map((p) => [...p]), px: sx, py: sy, started: false, snap: snapshot() };
@@ -1073,6 +1126,11 @@ stage.addEventListener("pointerdown", (e) => {
       S.wireDraft.pts.push(...draftPath(c));
     }
     renderOverlay(); updateHint();
+  } else if (shapeTool(S.tool)) {
+    S.alt = e.altKey;
+    const c = shapeSnap(w);
+    if (!S.shapeDraft) S.shapeDraft = { a: c, px: sx, py: sy, down: true }; else finishShape(c, e.shiftKey);
+    renderOverlay(); updateHint();
   } else if (S.tool === "text") {
     const c = isPv() ? PV.snap(w) : snap(w.x, w.y, { pins: false, mag: true });
     openEditor(c.x, c.y, null);
@@ -1087,7 +1145,7 @@ stage.addEventListener("pointermove", (e) => {
   const d = S.drag;
   if (d && d.type === "pan") { S.view.x = d.vx + (sx - d.sx); S.view.y = d.vy + (sy - d.sy); applyView(); return; }
   S.alt = e.altKey;
-  S.mouse = isPv() ? PV.snap(w) : isDispo() ? dispoSnap(w.x, w.y) : snap(w.x, w.y, { pins: S.tool === "wire", mag: S.tool !== "select" && S.tool !== "hand", offX: S.tool === "place" ? placeOffX() : 0 });
+  S.mouse = isPv() ? PV.snap(w) : isDispo() ? dispoSnap(w.x, w.y) : shapeTool(S.tool) ? shapeSnap(w) : snap(w.x, w.y, { pins: S.tool === "wire", mag: S.tool !== "select" && S.tool !== "hand", offX: S.tool === "place" ? placeOffX() : 0 });
   if (S.tool === "wire" && S.mouse.pin && !e.altKey) { const g = R.poleGroup(S.model.items, S.mouse.x, S.mouse.y); if (g) S.mouse = { ...S.mouse, x: g.x, y: g.y }; }
   $("#coords").textContent = `x ${fmt(w.x)}  y ${fmt(w.y)} mm`;
   if (d && d.type === "move") {
@@ -1122,6 +1180,9 @@ stage.addEventListener("pointermove", (e) => {
   } else if (d && d.type === "handle") {
     if (!d.started && Math.hypot(sx - d.px, sy - d.py) > 3) d.started = true;
     if (d.started) { dragHandle(d, snapBase(w.x, w.y, false)); renderItems(); }
+  } else if (d && d.type === "shapeh") {
+    if (!d.started && Math.hypot(sx - d.px, sy - d.py) > 3) d.started = true;
+    if (d.started) { dragShapeHandle(d.it, d.orig, d.h, shapeSnap(w)); renderItems(); }
   } else if (d && d.type === "vertex") {
     if (!d.started && Math.hypot(sx - d.px, sy - d.py) > 3) d.started = true;
     if (d.started) {
@@ -1144,6 +1205,7 @@ function endDrag(e) {
   if (!d) return;
   if (d.type === "move" && d.started) { renumberAll(S.doc); pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); }
   else if (d.type === "handle" && d.started) { pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); }
+  else if (d.type === "shapeh" && d.started) { pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); }
   else if (d.type === "vertex" && d.started) { d.w.pts = simplify(d.w.pts); pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); }
   else if (d.type === "pvvertex" && d.started) { pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); updateHint(); }
   else if (d.type === "band") {
@@ -1157,7 +1219,12 @@ function endDrag(e) {
     renderRight(); renderOverlay();
   }
 }
-stage.addEventListener("pointerup", (e) => { if (!touch.up(e)) endDrag(e); });
+stage.addEventListener("pointerup", (e) => {
+  if (touch.up(e)) return;
+  const f = S.shapeDraft;
+  if (f?.down) { const { sx, sy } = pointerPos(e); f.down = false; if (Math.hypot(sx - f.px, sy - f.py) > 3 && S.mouse) finishShape(S.mouse, e.shiftKey); } // gezogen: Loslassen setzt die Form
+  endDrag(e);
+});
 stage.addEventListener("pointercancel", (e) => { if (!touch.up(e)) endDrag(e); });
 stage.addEventListener("pointerleave", () => { if (!S.drag) { S.mouse = null; renderOverlay(); } });
 stage.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -1235,6 +1302,7 @@ window.addEventListener("keydown", (e) => {
     case "l": case "L": if (!isDispo() && !isPv()) setTool("wire"); break;
     case "t": case "T": setTool("text"); break;
     case "h": case "H": setTool("hand"); break;
+    case "i": case "I": case "q": case "Q": case "o": case "O": if (isSchema()) setTool(SHAPE_TOOLS.find((t) => t.key === e.key.toUpperCase()).id); break; // Linie, Rechteck, Kreis
     case "f": case "F": fitView(); break;
     case "r": case "R": rotateSelected(); break;
     case "y": case "Y": if (!mod) toggleDims(); break;
@@ -1249,6 +1317,7 @@ window.addEventListener("keydown", (e) => {
     case "Enter": if (S.wireDraft) finishWire(); else if (PV.cancel() || draftFinish()) { renderOverlay(); updateHint(); } break;
     case "Escape":
       if (PV.cancel(true) || dimCancel() || draftEsc()) { renderOverlay(); updateHint(); } // true: Leitung im Entstehen verwerfen (5ax)
+      else if (S.shapeDraft) { S.shapeDraft = null; renderOverlay(); updateHint(); }
       else if (S.wireDraft) { S.wireDraft.pts.length >= 2 ? finishWire() : (cancelDraft(), renderOverlay(), updateHint()); }
       else if (S.tool !== "select") setTool("select");
       else if (S.sel.size) { S.sel.clear(); renderRight(); renderOverlay(); }
@@ -1308,7 +1377,7 @@ onPanel("input", (e) => {
   const t = e.target, one = selectedItems()[0];
   if (t.dataset.attr && one) {
     firstEdit(); one.attrs[t.dataset.attr] = t.value;
-    if (t.dataset.attr === "BMK" && bmkLetter(SYMBOL_BY_NAME[one.sym])) { one.manual = t.value.trim() !== ""; renumberAll(S.doc); }
+    if ((t.dataset.attr === "BMK" && bmkLetter(SYMBOL_BY_NAME[one.sym])) || (t.dataset.attr === "FBMK" && one.sym === "ZW_SICH")) { one.manual = t.value.trim() !== ""; renumberAll(S.doc); }
   }
   else if (t.dataset.meta) { firstEdit(); const tt = T.titleOf(S.doc); (T.PROJECT_FIELDS.includes(t.dataset.meta) ? (tt ? [tt] : S.doc.sheets) : [S.model]).forEach((sh) => { sh.meta[t.dataset.meta] = t.value; }); /* ohne Titelseite: auf alle Blätter */ T.syncDeck(S.doc); renderSheet(); if (t.dataset.meta === "BLATT") { renumberAll(S.doc); renderSheetBar(); renderItems(); } }
   else if (t.dataset.info && S.model.kind === "title") { firstEdit(); S.model.info[t.dataset.info] = t.value; if (t.dataset.info.startsWith("FIRMA")) T.saveFirm(S.model.info); renderSheet(); }
@@ -1371,6 +1440,7 @@ onPanel("change", (e) => {
   else if (t.dataset.dpden !== undefined && one && one.type === "dispoview") { pushUndo(); one.den = Number(t.value); afterChange(); }
   else if (t.dataset.wirekind !== undefined && one) { pushUndo(); one.kind = t.value; afterChange(false); }
   else if (t.dataset.newkind !== undefined) { S.wireKind = t.value; renderOverlay(); }
+  else if (t.dataset.shd !== undefined) setStyle("d", t.value === "dash");
   else if (t.dataset.newbundle !== undefined) { S.bundleN = Number(t.value); renderRight(); renderOverlay(); updateHint(); }
   else if (t.dataset.sympoles !== undefined && one) {
     pushUndo(); one.sym = t.value;
@@ -1384,6 +1454,8 @@ onPanel("change", (e) => {
   if (t.tagName === "SELECT") t.blur();
 });
 onPanel("click", (e) => {
+  const sw = e.target.closest("[data-shc], [data-shf]");
+  if (sw) { setStyle(sw.dataset.shc !== undefined ? "c" : "fill", sw.dataset.shc ?? sw.dataset.shf); return; } // Farbe, Füllung (formen.js)
   const dk = e.target.closest("[data-deck]");
   if (dk) { deckAction(dk); return; } // Titelseite: Logo, Änderungsindex
   const pva = e.target.closest("[data-pvact]");
@@ -1614,7 +1686,7 @@ function elInit() {
     if (EL_S.fromOnline) return; // aus der Online-Ablage geöffnet: keine Datei, nicht unter „zuletzt geöffnet“
     E.recentAdd({ file: e.detail.file, name: elName(), status: E.statusOf(S.doc), handle: e.detail.handle || null }).then(() => { if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); });
   });
-  elSync();
+  elSync(); elHub(true);
 }
 // Übersicht zeigen (show) oder schliessen; beim Schliessen bleibt das zuletzt offene Modul. keepFocus: neu zeichnen, Fokus bleibt
 function elHub(show, { keepFocus = false } = {}) {
@@ -1819,8 +1891,8 @@ function init() {
   if (note && S.dirty) toast(note);
   syncKind(); renderLeft(); renderRight(); renderSheetBar(); updateUndoButtons(); updateHint();
   fitView(); renderItems(); renderOverlay();
-  if (ELPLEXA) elInit();
-  if (!S.dirty) { markClean(); startAtLaunch(); }
+  if (ELPLEXA) elInit(); // startet immer in der Projektübersicht (CJ 18.10.2026), ohne Startauswahl
+  if (!S.dirty) { markClean(); if (!ELPLEXA) startAtLaunch(); }
 }
 // Beim Start ohne wiederhergestellte Sitzung: Startauswahl. Abbrechen lässt das leere Schemablatt stehen.
 async function startAtLaunch() {

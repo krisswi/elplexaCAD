@@ -1,12 +1,13 @@
 // DXF-Export mit der Bibliothek @tarikjabiri/dxf (MIT). Einheit mm, Blöcke mit Attributen, Layer SCH_*.
 import { DxfWriter, Units, point3d, TextHorizontalAlignment, TextVerticalAlignment } from "@tarikjabiri/dxf";
-import { SYMBOLS, SYMBOL_BY_NAME, rotatePoint } from "./symbols.js";
+import { SYMBOLS, SYMBOL_BY_NAME, rotatePoint, DOT_R } from "./symbols.js";
 import { frameGeometry, titleBlockGeometry, META_FIELDS, META_H, TB_ORIGIN, metaText } from "./frame.js";
 import { LAYERS, WIRE_KINDS } from "./model.js";
 import { junctions } from "./render.js";
 import { termItems, termTexts, termNumbers } from "./terminals.js";
 import * as D from "./dispo.js";
 import { railStubs } from "./hauptlinien.js";
+import { shapeDxf, colorAci } from "./formen.js";
 
 const P = (x, y) => point3d(x, y);
 const V = (pts) => pts.map(([x, y]) => ({ point: { x, y } }));
@@ -136,7 +137,9 @@ export function exportDxf(model) {
       const k = WIRE_KINDS[it.kind] || WIRE_KINDS.leitung;
       d.addLWPolyline(V(it.pts), { layerName: k.layer, ...(k.dashed ? { lineType: "DASHED" } : {}) });
     } else if (it.type === "text") {
-      d.addText(P(it.x, it.y), it.h, it.s, { layerName: "SCH_TEXT", ...(it.r ? { rotation: it.r } : {}) });
+      d.addText(P(it.x, it.y), it.h, it.s, { layerName: "SCH_TEXT", ...(it.r ? { rotation: it.r } : {}), ...(it.c ? { colorNumber: colorAci(it.c) } : {}) });
+    } else if (it.type === "shape") {
+      shapeDxf(d, it);
     } else if (it.type === "dispoview") {
       addPlan(d, D.viewPrims(it), D.viewMap(it));
       d.addText(P(it.x, it.y - 4.5), 2.5, D.viewCaption(it), { layerName: "SCH_TEXT" });
@@ -154,7 +157,7 @@ export function exportDxf(model) {
   for (const t of railStubs(model.items)) d.addLine(P(t.x1, t.y1), P(t.x2, t.y2), { layerName: (WIRE_KINDS[t.w.kind] || WIRE_KINDS.leitung).layer });
   // Verbindungspunkte als gefüllter Kreis: geschlossene Polylinie aus zwei Halbkreisen mit Breite
   for (const j of junctions(model.items)) {
-    d.addLWPolyline([{ point: { x: j.x - 0.4, y: j.y }, bulge: 1 }, { point: { x: j.x + 0.4, y: j.y }, bulge: 1 }], { layerName: "SCH_LEITUNG", flags: 1, constantWidth: 0.8 });
+    d.addLWPolyline([{ point: { x: j.x - DOT_R / 2, y: j.y }, bulge: 1 }, { point: { x: j.x + DOT_R / 2, y: j.y }, bulge: 1 }], { layerName: "SCH_LEITUNG", flags: 1, constantWidth: DOT_R });
   }
   return fixSeqend(d.stringify());
 }

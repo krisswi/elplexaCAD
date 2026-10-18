@@ -3,7 +3,8 @@
 import assert from "node:assert";
 import fs from "node:fs";
 import { newDoc, newSheet, parseModel, serializeModel } from "../src/model.js";
-import { renumberAll } from "../src/numbering.js";
+import { renumberAll, renumber } from "../src/numbering.js";
+import { colOf } from "../src/frame.js";
 import { SYMBOL_BY_NAME, WM_X, WM2_BOX, WM2_TAPS } from "../src/symbols.js";
 import { splitWandler, routeWm } from "../src/wandler.js";
 import { termItems, termNumbers, termTexts } from "../src/terminals.js";
@@ -52,6 +53,14 @@ assert.strictEqual(SYMBOL_BY_NAME.ZW_ZAEHLER2.pins.length, 15, "10 Klemmen plus 
 const sichs = items.filter((i) => i.sym === "ZW_SICH");
 assert.deepStrictEqual(sichs.map((i) => i.attrs), [{ FBMK: "F?", FSTROM: "10A" }, { FBMK: "", FSTROM: "" }, { FBMK: "", FSTROM: "" }]);
 const wires = items.filter((i) => i.type === "wire"), texts = items.filter((i) => i.type === "text");
+// CJ 18.10.: N gestrichelt, Trennstriche auf Höhe der Sicherung (Abstand = Sicherungslänge 4 mm), BMK nach Spalte des mittleren Wandlers
+assert.strictEqual(wires.filter((w) => w.kind === "neutral").length, 2, "zwei N-Leitungen gestrichelt");
+const fy = sichs[0].y, ny = wires.filter((w) => w.pts.length === 2 && w.pts[0][1] === w.pts[1][1] && w.pts[0][0] === 50 + 41.4).map((w) => w.pts[0][1]).sort((a, b) => b - a);
+assert.deepStrictEqual(ny, [fy - 0.5, fy - 4.5]);
+wb.sheets[0].meta.BLATT = "3"; renumber(wb.sheets[0]);
+const mid = items.filter((i) => i.sym === "ZW_CT").sort((a, b) => a.x - b.x)[1];
+assert.strictEqual(sichs[0].attrs.FBMK, `3F${colOf(mid.x + 1.25)}`, "Sicherung nach mittlerem Wandler");
+sichs[0].manual = true; sichs[0].attrs.FBMK = "F9"; renumber(wb.sheets[0]); assert.strictEqual(sichs[0].attrs.FBMK, "F9", "von Hand bleibt");
 assert.ok(wires.length > 30 && texts.length > 40 && texts.some((t) => t.r === 90 && t.s === "braun (1)"));
 assert.ok(wb.nextId > Math.max(...items.map((i) => i.id)), "neue IDs unter nextId");
 // Leitungsenden liegen auf Anschlüssen (Symbole), auf den Hauptlinien (Abgriffe) oder sind Striche/Trennstelle

@@ -25,8 +25,15 @@ const EL = process.argv[2] === "elplexa";
 const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker], define: { ELPLEXA: String(EL) } });
 const css = fs.readFileSync("src/style.css", "utf8") + (EL ? "\n" + fs.readFileSync("src/elplexa.css", "utf8") : "");
 let html = fs.readFileSync("src/index.template.html", "utf8");
-if (EL) html = html.replace("<title>SchemaCAD v3</title>", "<title>elplexaCAD</title>").replace('<span class="brand-name">SchemaCAD</span>', '<span class="brand-name">elplexaCAD</span>');
-html = html.replace("/*CSS*/", () => fonts + "\n" + css).replace("/*JS*/", () => js.outputFiles[0].text.replace(/<\/script/gi, "<\\/script"));
+// elplexaCAD: Elplexa-CI (Handbuch 1.0, 17.10.2026): Figur als Logo und Favicon, Schrift Source Sans 3 für die Oberfläche.
+const elFonts = EL ? ["400", "500", "600"].map((w) => face("Source Sans 3", w, `node_modules/@fontsource/source-sans-3/files/source-sans-3-latin-${w}-normal.woff2`)).join("\n") : "";
+if (EL) {
+  const fig = fs.readFileSync("src/elplexa-figur.svg", "utf8").replace(/<!--.*?-->\n?/s, "").trim();
+  html = html.replace("<title>SchemaCAD v3</title>", "<title>elplexaCAD</title>").replace('<span class="brand-name">SchemaCAD</span>', '<span class="brand-name">elplexaCAD</span>')
+    .replace('<span class="mark" aria-hidden="true"></span>', () => fig.replace("<svg ", '<svg class="mark el-logo" aria-hidden="true" '))
+    .replace(/<link rel="icon" href="[^"]*">/, () => `<link rel="icon" href="data:image/svg+xml;base64,${Buffer.from(fig).toString("base64")}">`);
+}
+html = html.replace("/*CSS*/", () => fonts + "\n" + (EL ? elFonts + "\n" : "") + css).replace("/*JS*/", () => js.outputFiles[0].text.replace(/<\/script/gi, "<\\/script"));
 fs.mkdirSync("dist", { recursive: true });
 const out = EL ? "dist/ElplexaCAD.html" : "dist/schemacad.html";
 fs.writeFileSync(out, html);

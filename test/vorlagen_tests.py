@@ -33,7 +33,7 @@ with sync_playwright() as p:
     ls = [i for i in it if i.get("sym") == "LS_1P"]; tm = [i for i in it if i["type"] == "terminals"]
     check("Klick setzt LS, 3 Leitungen und Klemmen mit Kabel", len(it) == n0 + 5 and len(ls) == 1 and len(tm) == 1 and tm[0]["cable"] == "3x1.5mm2" and tm[0]["n"] == 3, len(it) - n0)
     check("BMK 3F2 und Klemmen 3X2", ls[0]["attrs"]["BMK"] == "3F2" and tm[0]["bmk"] == "3X2", [ls[0]["attrs"], tm[0]["bmk"]])
-    check("Abzweigpunkte auf L1 und N, keiner auf PE", page.evaluate("[...document.querySelectorAll('#items circle[r=\"0.9\"]')].map(c => +c.getAttribute('cy'))").count(45) == 0 and page.locator('#items circle[r="0.9"]').count() == 2)
+    check("Abzweigpunkte auf L1 und N, keiner auf PE", page.evaluate("[...document.querySelectorAll('#items circle[r=\"0.5\"][stroke=\"none\"]')].map(c => +c.getAttribute('cy'))").count(45) == 0 and page.locator('#items circle[r="0.5"][stroke="none"]').count() == 2)
     click(65, 120)
     check("Belegte Spalte: Meldung, nichts gesetzt", len(M()["items"]) == n0 + 5 and "schon ein Gerät" in toasts())
     page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(100)

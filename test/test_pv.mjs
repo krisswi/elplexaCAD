@@ -3,7 +3,7 @@ import assert from "node:assert";
 import * as P from "../src/pv.js";
 import * as T from "../src/pvtab.js";
 import * as PR from "../src/pvprint.js";
-import { parseModel, serializeModel, newDoc, newSheet } from "../src/model.js";
+import { parseModel, serializeModel, newDoc, newSheet, VERSION } from "../src/model.js";
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≠ ${b}`);
 
@@ -89,7 +89,7 @@ const plain = JSON.parse(serializeModel(newDoc()));
 assert.strictEqual(plain.version, 2); assert.strictEqual(plain.assets, undefined);
 // Unbekannte Objekte auf dem Stringplan werden abgelehnt, ebenso eine neuere Version
 assert.throws(() => parseModel(JSON.stringify({ ...o, sheets: [{ kind: "pv", meta: {}, items: [{ id: 1, type: "wire", kind: "leitung", pts: [[0, 0], [10, 0]] }] }] })), /Stringplan/);
-assert.throws(() => parseModel(JSON.stringify({ ...o, version: 15 })), /neueren Version/); // 6 = Stringplan (5ab), 7 = Hauptlinien neu, 8 = Schrank (Disposition)
+assert.throws(() => parseModel(JSON.stringify({ ...o, version: VERSION + 1 })), /neueren Version/); // 6 = Stringplan (5ab), 7 = Hauptlinien neu, 8 = Schrank (Disposition)
 assert.deepStrictEqual(parseModel(JSON.stringify({ ...o, version: 4 })).sheets[1].bg, pv.bg); // 5ab: alte Dateien (Version 4) bleiben ladbar
 assert.deepStrictEqual(parseModel(JSON.stringify({ ...o, version: 5 })).sheets[1].bg, pv.bg);
 console.log("Dateiformat ok");

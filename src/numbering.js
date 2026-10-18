@@ -19,8 +19,16 @@ export function renumber(model) {
     const d = t.type === "terminals" && t.of !== undefined && all.find((i) => i.id === t.of), low = d && lowest.get(colOf(centerX(d)));
     if (low && low !== d) { t.of = low.id; changed0 = true; }
   }
-  const cols = new Map();
-  for (const d of devs) { const k = colOf(centerX(d)) + bmkLetter(SYMBOL_BY_NAME[d.sym]); (cols.get(k) || cols.set(k, []).get(k)).push(d); }
+  const cols = new Map(), add = (k, d) => (cols.get(k) || cols.set(k, []).get(k)).push(d);
+  for (const d of devs) add(colOf(centerX(d)) + bmkLetter(SYMBOL_BY_NAME[d.sym]), d);
+  // Sicherungen der Wandlermessung (CJ 18.10.): die beschriftete Sicherung zählt als F in der Spalte des mittleren Stromwandlers
+  const cts = model.items.filter((i) => i.type === "symbol" && i.sym === "ZW_CT");
+  for (const f of model.items) {
+    if (f.type !== "symbol" || f.sym !== "ZW_SICH" || f.manual || !String(f.attrs.FBMK ?? "").trim()) continue;
+    const near = cts.filter((c) => c.x > f.x - 1 && c.x < f.x + 45 && c.y > f.y).sort((a, b) => a.x - b.x);
+    const mid = near[Math.min(1, near.length - 1)];
+    add(colOf(mid ? mid.x + 1.25 : f.x) + "F", f);
+  }
   let changed = changed0;
   for (const [k, list] of cols) {
     const c = parseInt(k, 10), letter = k.slice(String(c).length);
@@ -28,7 +36,8 @@ export function renumber(model) {
     list.forEach((d, i) => {
       const suffix = i ? "." + i : "";
       const bmk = `${sheet}${letter}${c}${suffix}`;
-      if (d.attrs.BMK !== bmk) { d.attrs.BMK = bmk; changed = true; }
+      const tag = d.sym === "ZW_SICH" ? "FBMK" : "BMK";
+      if (d.attrs[tag] !== bmk) { d.attrs[tag] = bmk; changed = true; }
       for (const t of model.items) {
         if (t.type === "terminals" && t.of === d.id && !t.manual) {
           const x = `${sheet}X${c}`; // Klemmen: Spalte ohne Zähler

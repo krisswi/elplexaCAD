@@ -21,7 +21,7 @@ export function splitWandler(items, nextId) {
       if (o.sym === "ZW_ZAEHLER2") { for (const t of ["BMK", "ZAEHLERNR", "WANDLER"]) if (a[t] !== undefined) s.attrs[t] = a[t]; if (it.manual) s.manual = true; }
       out.push(s);
     }
-    for (const w of L.wires) out.push({ id: nextId(), type: "wire", kind: "leitung", pts: w.map(([x, y]) => at(it, x, y)) });
+    for (const w of L.wires) out.push({ id: nextId(), type: "wire", kind: w.kind || "leitung", pts: w.map(([x, y]) => at(it, x, y)) });
     for (const t of L.texts) out.push(freeText(it, t, nextId()));
     items.splice(k, 1, ...out);
     k += out.length - 1;

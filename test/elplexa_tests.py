@@ -33,10 +33,12 @@ with sync_playwright() as p:
         return r
     page.goto(URL); page.wait_for_timeout(300)
 
-    # Startdialog und Start mit PV
-    check("Startdialog „Womit beginnst du?“", page.is_visible(".modal.start") and "Womit beginnst du?" in page.inner_text(".modal.start") and page.locator(".start-tile").count() == 3)
+    # Start ohne Projekt: immer in der Projektübersicht, keine Startauswahl (CJ 18.10.2026); dann Neues Projekt mit PV
+    check("Start ohne Projekt: Projektübersicht, keine Startauswahl", hub() and not page.is_visible(".modal") and "Projektübersicht" in page.inner_text("#el-crumb"))
+    check("Start: Fokus in der Übersicht, „Neues Projekt …“ da", page.evaluate("!!document.activeElement.closest('#el-hub')") and page.is_visible('#el-hub [data-elact="newproj"]'))
     page.screenshot(path=str(OUT / "e1_start.png"))
-    page.click('[data-start="pv"]'); page.wait_for_timeout(200)
+    page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(150)
+    page.select_option('.modal [data-f="2"]', "pv"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     d = D()
     check("Start mit PV: nur Stringplan", mods(d) == ["pv"] and d["sheets"][0].get("kind") == "pv", mods(d))
     crumb = page.inner_text("#el-crumb")
@@ -110,6 +112,12 @@ with sync_playwright() as p:
     check("? öffnet „Tasten in elplexaCAD“", page.is_visible(".modal") and "Tasten in elplexaCAD" in page.inner_text(".modal"))
     page.click(".modal [data-c]"); page.wait_for_timeout(100)
     check("Fenstertitel nach Modulwechsel weiter „– elplexaCAD“", page.title().endswith("– elplexaCAD"), page.title())
+
+    # Wiederhergestellte Sitzung startet ebenfalls in der Übersicht (zweites Fenster, gleicher Browser-Speicher)
+    page.wait_for_timeout(600)
+    p2 = ctx.new_page(); p2.goto(URL); p2.wait_for_timeout(400)
+    check("Start mit wiederhergestellter Sitzung: Projektübersicht", p2.is_visible("#el-hub") and not p2.is_visible(".modal") and "wiederhergestellt" in p2.inner_text("#toasts") and len(p2.evaluate("window.__schemacad.doc")["sheets"]) == len(D()["sheets"]))
+    p2.close()
 
     # Schmales Fenster
     page.set_viewport_size({"width": 375, "height": 800}); page.wait_for_timeout(300)
@@ -369,7 +377,9 @@ with sync_playwright() as p:
     srv.update({"mode": "ok", "calls": []})
     page.route("https://keqfieduhipnulpkhdbj.supabase.co/**", fake)
     page.route("https://elplexa.test/**", lambda r: r.fulfill(status=200, content_type="text/html", body=HTML))
-    page.goto("https://elplexa.test/"); page.wait_for_timeout(300); page.click('[data-start="schema"]'); page.wait_for_timeout(200)
+    page.goto("https://elplexa.test/"); page.wait_for_timeout(300)
+    check("Im Netz: Start in der Projektübersicht", hub() and not page.is_visible(".modal"))
+    page.keyboard.press("Escape"); page.wait_for_timeout(200)
     downloads = []; page.on("download", lambda d: downloads.append(d.suggested_filename))
     key("0"); page.wait_for_timeout(150)
     on = page.inner_text("#el-online")

@@ -100,6 +100,12 @@ button { cursor: pointer; }
 .field label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted); }
 .field input[type="text"], .field input[type="number"], .field select, .line-row input { width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--panel-line); border-radius: var(--radius); background: #fff; }
 .field input:focus, .field select:focus, .line-row input:focus { outline: 2px solid var(--pe-green); outline-offset: 1px; border-color: transparent; }
+/* Farbfelder für Formen und Texte (formen.js): fester Rahmen, gewählt = Ring in Tintenfarbe */
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch { width: 28px; height: 28px; padding: 0; border: 1px solid rgba(23, 33, 43, .18); border-radius: 6px; background: var(--sw, #fff); transition: transform 120ms var(--ease-out); }
+.swatch:active { transform: scale(0.94); }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ink); }
+.swatch.none { background: #fff linear-gradient(to top right, transparent calc(50% - 1px), var(--danger) calc(50% - 1px), var(--danger) calc(50% + 1px), transparent calc(50% + 1px)); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .line-row { flex-wrap: nowrap; align-items: center; }
 .line-row input { flex: 1; min-width: 0; }

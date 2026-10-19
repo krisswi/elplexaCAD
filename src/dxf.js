@@ -5,6 +5,7 @@ import { frameGeometry, titleBlockGeometry, META_FIELDS, META_H, TB_ORIGIN, meta
 import { LAYERS, WIRE_KINDS } from "./model.js";
 import { junctions } from "./render.js";
 import { termItems, termTexts, termNumbers } from "./terminals.js";
+import { ctrlPrims } from "./steuerung.js";
 import * as D from "./dispo.js";
 import { railStubs } from "./hauptlinien.js";
 import { shapeDxf, colorAci } from "./formen.js";
@@ -131,13 +132,21 @@ export function exportDxf(model) {
   for (const it of model.items) {
     if (it.type === "terminals") {
       for (const c of termItems(it)) d.addInsert(c.sym, P(c.x, c.y), { layerName: "SCH_KLEMMEN" });
-      for (const n of termNumbers(it)) addCenteredText(d, n.x, n.y, n.h, n.s, "SCH_KLEMMEN");
+      for (const n of termNumbers(it)) addCenteredText(d, n.x, n.y, n.h, n.s, "SCH_KLEMMEN", TextHorizontalAlignment.Center, n.r || 0);
       for (const t of termTexts(it)) d.addText(P(t.x, t.y), t.h, t.s, { layerName: "SCH_TEXT" });
+    } else if (it.type === "ctrl") { // Steuerkasten (steuerung.js): Kasten und Klemmen auf SCH_SYMBOLE, Texte auf SCH_TEXT
+      for (const p of ctrlPrims(it)) {
+        if (p.t === "l") d.addLine(P(p.x1, p.y1), P(p.x2, p.y2), { layerName: "SCH_SYMBOLE" });
+        else if (p.c) addCenteredText(d, p.x, p.y, p.h, p.s, "SCH_TEXT");
+        else d.addText(P(p.x, p.y), p.h, p.s, { layerName: "SCH_TEXT" });
+      }
     } else if (it.type === "wire") {
       const k = WIRE_KINDS[it.kind] || WIRE_KINDS.leitung;
       d.addLWPolyline(V(it.pts), { layerName: k.layer, ...(k.dashed ? { lineType: "DASHED" } : {}) });
     } else if (it.type === "text") {
-      d.addText(P(it.x, it.y), it.h, it.s, { layerName: "SCH_TEXT", ...(it.r ? { rotation: it.r } : {}), ...(it.c ? { colorNumber: colorAci(it.c) } : {}) });
+      const al = it.al === "c" ? TextHorizontalAlignment.Center : it.al === "r" ? TextHorizontalAlignment.Right : null; // Ausrichtung am Grundlinienpunkt (CJ 19.10.2026)
+      d.addText(P(it.x, it.y), it.h, it.s, { layerName: "SCH_TEXT", ...(it.r ? { rotation: it.r } : {}), ...(it.c ? { colorNumber: colorAci(it.c) } : {}),
+        ...(al !== null ? { horizontalAlignment: al, verticalAlignment: TextVerticalAlignment.BaseLine, secondAlignmentPoint: P(it.x, it.y) } : {}) });
     } else if (it.type === "shape") {
       shapeDxf(d, it);
     } else if (it.type === "dispoview") {

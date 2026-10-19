@@ -31,7 +31,15 @@ button { cursor: pointer; }
   grid-template-areas: "top top top" "left stage right" "status status status";
 }
 #topbar { grid-area: top; display: flex; align-items: center; gap: 6px; min-width: 0; overflow: clip; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--panel-line); }
-#left { grid-area: left; background: var(--panel); border-right: 1px solid var(--panel-line); overflow: auto; padding: 14px 12px 20px; }
+#left { grid-area: left; background: var(--panel); border-right: 1px solid var(--panel-line); overflow: auto; padding: 14px 12px 0; display: flex; flex-direction: column; }
+#left-body { flex: 1 0 auto; padding-bottom: 12px; }
+/* Symbolsuche unten links, bleibt beim Blättern sichtbar (CJ 18.10.2026) */
+.symsearch { position: sticky; bottom: 0; display: flex; align-items: center; gap: 6px; margin: 0 -12px; padding: 8px 12px 10px; background: var(--panel); border-top: 1px solid var(--panel-line); }
+.symsearch[hidden] { display: none; }
+.symsearch .ic { display: flex; width: 16px; height: 16px; flex: none; color: var(--muted); }
+.symsearch .ic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+.symsearch input { flex: 1; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid var(--panel-line); border-radius: var(--radius); background: #fff; font: inherit; font-size: 13.5px; }
+.symsearch input:focus { outline: 2px solid var(--pe-green); outline-offset: 1px; border-color: transparent; }
 #right { grid-area: right; background: var(--panel); border-left: 1px solid var(--panel-line); overflow: auto; padding: 14px 16px 20px; }
 #stage { grid-area: stage; position: relative; overflow: hidden; background: var(--bench); }
 #statusbar { grid-area: status; display: flex; align-items: center; gap: 14px; padding: 0 14px; background: var(--panel); border-top: 1px solid var(--panel-line); font-size: 12.5px; color: var(--muted); }
@@ -189,7 +197,7 @@ body.side-drag, body.side-drag * { cursor: col-resize !important; user-select: n
   #left, #right { position: fixed; top: 52px; bottom: 32px; width: min(300px, 86vw); z-index: 20; box-shadow: 0 10px 30px rgba(23,33,43,.25); display: none; }
   #left { left: 0; }
   #right { right: 0; }
-  body.show-left #left { display: block; }
+  body.show-left #left { display: flex; }
   body.show-right #right { display: block; }
   .filechip { display: none; }
   .side-grip { display: none; }
@@ -250,11 +258,16 @@ body.side-drag, body.side-drag * { cursor: col-resize !important; user-select: n
 .slist { overflow-y: auto; min-height: 0; }
 .srow { display: flex; align-items: center; }
 .srow .mi { flex: 1; min-width: 0; align-items: center; }
-.srow .mi.on { box-shadow: inset 3px 0 0 var(--ink); }
+.srow .mi.on, #hold-menu .mi.on { box-shadow: inset 3px 0 0 var(--ink); }
 .srow .mi .mh, .srow .mi .ms { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .srow .pos { margin-left: auto; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .srow .pin { flex: none; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: #c58a00; font-size: 14px; }
 .srow .pin[aria-pressed="false"] { color: var(--faint); }
+.sheettab.star { color: #c58a00; font-size: 14px; gap: 2px; }
+.sheettab.star .n { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.srow.drag-src { opacity: 0.45; }
+.srow.drop-above { box-shadow: inset 0 2px 0 var(--ink); }
+.srow.drop-below { box-shadow: inset 0 -2px 0 var(--ink); }
 .slist .empty { padding: 10px; color: var(--muted); }
 #sheet-ctx { width: 250px; transform-origin: bottom left; }
 .ctx-head { padding: 6px 10px 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -264,6 +277,8 @@ body.side-drag, body.side-drag * { cursor: col-resize !important; user-select: n
 .sfoot .mi { flex: 1; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; }
 .sfoot .mi.danger { color: var(--danger); }
 .sfoot .mi:disabled { opacity: 0.4; pointer-events: none; }
+.tlab { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 4px; }
+.field .tlab input[type="text"] { height: 30px; padding: 0 4px; text-align: center; font-variant-numeric: tabular-nums; }
 .check { display: flex; gap: 8px; align-items: center; margin: 8px 0; font-size: 13.5px; }
 .sheettab.add svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
 .choices { display: grid; gap: 6px; margin: 12px 0; max-height: 40vh; overflow-y: auto; }

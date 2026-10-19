@@ -72,10 +72,12 @@ const label = (k) => ({ OBJEKT: "Objekt", AUFTRAG: "Auftrag", SCHEMA: "Schema", 
 // aktiven Index nach. Legende: Nummer = letztes Schemablatt + 1.
 // Ohne Titelseite (gelöscht) setzt die App die Projektangaben direkt auf allen Blättern (app.js).
 export const SHEET_ORDER = ["title", "toc", "schema", "legend", "dispo", "pv", "pvtab"];
+// Rang eines Blatts in der festen Reihenfolge. Blätter mit gleichem Rang (gleiche Art, gleiches Modul) behalten ihre Reihenfolge
+// in der Datei; diese lässt sich in der Blattliste per Ziehen ändern (CJ 18.10.2026, app.js moveSheet).
+export const sheetRank = (s) => { const k = s.kind || "schema", v = s.var || 1; return k === "title" ? 0 : k === "toc" ? 1 : k === "schema" ? 100 + v : k === "legend" ? 199 : k === "dispo" ? 200 + v : 300 + v * 2 + (k === "pvtab" ? 1 : 0); };
 export function syncDeck(doc) {
   // Module mehrfach (18.10.2026): je Modul nacheinander (Schema 1, Schema 2, Legende, Dispo 1, Dispo 2, PV 1 mit Übersicht, PV 2 mit Übersicht)
-  const rank = (s) => { const k = s.kind || "schema", v = s.var || 1; return k === "title" ? 0 : k === "toc" ? 1 : k === "schema" ? 100 + v : k === "legend" ? 199 : k === "dispo" ? 200 + v : 300 + v * 2 + (k === "pvtab" ? 1 : 0); };
-  doc.sheets = doc.sheets.map((s, i) => [s, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map((e) => e[0]);
+  doc.sheets = doc.sheets.map((s, i) => [s, i]).sort((a, b) => sheetRank(a[0]) - sheetRank(b[0]) || a[1] - b[1]).map((e) => e[0]);
   const leg = doc.sheets.find((s) => s.kind === "legend");
   if (leg?.kind === "legend") {
     const nums = doc.sheets.filter((s) => !s.kind || s.kind === "title" || s.kind === "toc").map((s) => parseInt(s.meta.BLATT, 10)).filter(Number.isFinite);

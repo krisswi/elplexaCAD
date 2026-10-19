@@ -2,7 +2,8 @@
 import { META_FIELDS } from "./frame.js";
 import { SYMBOL_BY_NAME, bmkLetter, isDevice } from "./symbols.js";
 import { registerDocSymbols } from "./library.js";
-import { parseCable, MAX_TERMINALS } from "./terminals.js";
+import { parseCable, MAX_TERMINALS, cleanLab } from "./terminals.js";
+import { cleanCtrl } from "./steuerung.js";
 import { DISPO_LAYERS, PLAN_TYPES, cleanPlanItem } from "./dispo.js";
 import { syncMains, cleanMain } from "./hauptlinien.js";
 import { splitWandlerDoc } from "./wandler.js";
@@ -11,7 +12,7 @@ import { cleanAssets, cleanBg, usedAssets, cleanLayers, cleanPvItem, cleanLayerI
 import { cleanAdr, cleanGwr } from "./gwr.js";
 
 export const FORMAT = "schemacad";
-export const VERSION = 16; // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
+export const VERSION = 17; // 17: Text ausgerichtet (al), Klemmentexte (lab, vert), Steuerkasten (ctrl), seit 19.10.2026. // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
 // 10: // 10: Wandlermessung in Teilen (ZW_WANDLER, ZW_ZAEHLER, Leitungen mit of/wm) oder Klemmenleiste ohne Klemmen (noterm), seit 16.10.2026. // 9: Disposition mit NH-Hersteller (maker), Textzeilen (lines) oder Textgrösse (tf) (seit 16.10.2026; Stände mit 8 lehnen ab, statt die Angaben still zu verlieren). 8: Disposition mit Schrank, Teilen oder neuen Geräteangaben (seit 16.10.2026, schrank.js; ältere Stände lehnen ab statt still zu verlieren). 7: 7: Hauptlinien neu (seit 16.10.2026, Blatt main, Gruppenverweise mit main; ältere Stände lehnen ab, sonst entstünden doppelte Verweise). 6: mit Stringplan (seit 15.10.2026, Umbau 5ab: gedrehte Module, ältere Stände lehnen ab). 5: mit Titelseite und Inhaltsverzeichnis (kind "title", "toc", titel.js). höchste lesbare Version. 2: mehrere Blätter (sheets), Version 1 (ein Blatt) wird beim Öffnen umgewandelt. 3: wie 2, mit Blättern vom Typ Disposition (nur dann wird 3 geschrieben). 4: mit Stringplan (kind "pv", PDF unter assets) oder Stringübersicht (kind "pvtab").
 
 export const WIRE_KINDS = {
@@ -232,7 +233,10 @@ function parseItems(list, m, maxId) {
       if (m.kind === "pv" && cleanLayerId(it.layer)) t.layer = it.layer; // Stringplan: Ebene des Textes
       if (isNum(it.r) && it.r % 360) t.r = ((it.r % 360) + 360) % 360; // gedreht (Leiterfarben der Wandlermessung, seit 17.10.)
       if (isColor(it.c)) t.c = it.c; // Farbe (formen.js, seit 18.10.2026)
+      if (it.al === "c" || it.al === "r") t.al = it.al; // Ausrichtung mittig/rechts (seit 19.10.2026)
       m.items.push(withTag(t, it));
+    } else if (it.type === "ctrl" && cleanCtrl(it, id)) {
+      m.items.push(withTag(cleanCtrl(it, id), it)); // Steuerkasten mit freien Klemmen (steuerung.js, seit 19.10.2026)
     } else if (it.type === "shape" && cleanShape(it, id)) {
       m.items.push(withTag(cleanShape(it, id), it)); // Linie, Rechteck, Kreis (formen.js)
     } else if (it.type === "terminals" && isNum(it.x) && isNum(it.y)) {
@@ -242,6 +246,8 @@ function parseItems(list, m, maxId) {
       if (isNum(it.of)) t.of = it.of;
       if (it.manual === true) t.manual = true;
       if (it.noterm === true) t.noterm = true; // keine Klemmen zeichnen, BMK, Kabel und Bezeichnung bleiben (CJ 16.10.)
+      if (Array.isArray(it.lab) && it.lab.some((v) => cleanLab(v))) t.lab = it.lab.slice(0, MAX_TERMINALS).map(cleanLab); // Klemmentexte (seit 19.10.2026)
+      if (it.vert === true) t.vert = true; // Klemmentexte senkrecht
       m.items.push(withTag(t, it));
     } else {
       throw new Error("Die Datei enthält ein unbekanntes oder defektes Objekt (id " + id + ").");
@@ -280,5 +286,6 @@ export function serializeModel(m, { noAssets = false } = {}) {
   const usesV14 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.r) || /^ZW_(CT|SICH|PK1?|ZAEHLER2)$/.test(i.sym || ""))); // Wandlermessung BKW, gedrehte Texte (17.10.2026)
   const usesV15 = sheets.some((sh) => sh.items.some((i) => i.type === "shape" || (i.type === "text" && i.c))); // freies Zeichnen, Textfarbe (18.10.2026)
   const usesV16 = sheets.some((sh) => sh.var) || !!m.mods; // Module mehrfach (18.10.2026): ältere Stände würden Module vermischen
-  return JSON.stringify({ ...rest, version: usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
+  const usesV17 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.al) || (i.type === "terminals" && (i.lab || i.vert)) || i.type === "ctrl")); // Wünsche CJ 19.10.2026: Textausrichtung, Klemmentexte, Steuerkasten
+  return JSON.stringify({ ...rest, version: usesV17 ? 17 : usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
 }

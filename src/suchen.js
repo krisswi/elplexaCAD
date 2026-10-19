@@ -17,6 +17,9 @@ function* fields(doc, scope) {
     } else if (it.type === "terminals") {
       yield at(() => it.bmk, (v) => { it.bmk = v; it.manual = true; }, "BMK Klemmen", true);
       if (scope === "alle") yield at(() => it.name, (v) => { it.name = v; }, "Name Klemmen", false);
+    } else if (it.type === "ctrl") { // Steuerkasten (19.10.2026)
+      yield at(() => it.bmk, (v) => { it.bmk = v; }, "BMK Steuerung", true);
+      if (scope === "alle") yield at(() => it.name, (v) => { it.name = v; }, "Name Steuerung", false);
     } else if (it.type === "text" && scope === "alle") {
       yield at(() => it.s, (v) => { it.s = v; }, "Text", false);
     }

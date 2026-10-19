@@ -52,7 +52,9 @@ export function offsetPaths(pts, n, pitch = 5) {
 
 // Abzweig an der Grundverkabelung: endet (oder beginnt) ein senkrechtes Bündel auf einer Schiene, endet jeder Leiter auf seiner eigenen Schiene.
 // L1 liegt links und endet auf der obersten Schiene, N rechts auf der untersten. rails = { L1: y, L2: y, L3: y, N: y, PE: y }.
-const railName = (nm) => (nm === "L" ? "L1" : nm);
+// Zweileiter (L, N), z. B. vom Zähler 1P+N (CJ 16.10.2026: Aussenleiter wählbar): L endet auf der angeklickten Schiene L1, L2 oder L3,
+// N immer auf N. Ohne Klick auf einen Aussenleiter wie bisher L1.
+const railName = (nm, rails, y0) => (nm !== "L" ? nm : ["L1", "L2", "L3"].find((k) => rails[k] !== undefined && Math.abs(rails[k] - y0) < 1e-6) || "L1");
 export function snapToRails(paths, names, rails) {
   const ys = Object.values(rails);
   if (!ys.length || paths.length < 2) return paths;
@@ -62,7 +64,7 @@ export function snapToRails(paths, names, rails) {
     const p0 = out[0], a = p0[idx(p0)], b = p0[nb(p0)];
     if (!ys.some((y) => Math.abs(y - a[1]) < 1e-6) || Math.abs(a[0] - b[0]) > 1e-6) return; // nur senkrecht auf einer Schiene
     out.forEach((p, k) => {
-      const y = rails[railName(names[k])];
+      const y = rails[railName(names[k], rails, a[1])];
       if (y === undefined) return;
       const e = p[idx(p)], prev = p[nb(p)];
       if (Math.sign(y - prev[1]) !== Math.sign(a[1] - b[1]) || Math.abs(e[0] - prev[0]) > 1e-6) return;

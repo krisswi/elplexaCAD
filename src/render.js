@@ -6,6 +6,7 @@ import { textBox, textItemBox } from "./geom.js";
 import { termItems, termTexts, termNumbers, termBBox, termPins } from "./terminals.js";
 import * as D from "./dispo.js";
 import { railStubs } from "./hauptlinien.js";
+import { ctrlPrims, ctrlBBox, ctrlPins } from "./steuerung.js";
 import { shapeBox, hitShape, shapeSVG, colorCss } from "./formen.js";
 import { PV_TYPES, hitPv, isClosed, modBox, hitMod, strPts, spaBox, pointBox, hitLine } from "./pv.js";
 export { textBox };
@@ -110,6 +111,7 @@ export function attrBoxes(it) {
 export function itemBBox(it) {
   if (it.type === "symbol") return symbolBBox(it, 0);
   if (it.type === "terminals") return termBBox(it);
+  if (it.type === "ctrl") return ctrlBBox(it);
   if (it.type === "text") return textItemBox(it);
   if (it.type === "shape") return shapeBox(it);
   if (D.isPlanType(it.type)) return D.itemBBox(it);
@@ -137,7 +139,7 @@ export function hitItem(it, x, y, tol) {
   if (it.type === "symbol") return inBox(symbolBBox(it, 0.5), x, y, tol) || attrBoxes(it).some((b) => inBox(b, x, y, tol * 0.5));
   if (it.type === "text") return inBox(textItemBox(it), x, y, tol);
   if (it.type === "shape") return hitShape(it, x, y, tol);
-  if (it.type === "terminals") return inBox(termBBox(it), x, y, tol);
+  if (it.type === "terminals" || it.type === "ctrl") return inBox(it.type === "ctrl" ? ctrlBBox(it) : termBBox(it), x, y, tol);
   if (D.isPlanType(it.type)) return D.hitItem(it, x, y, tol);
   if (PV_TYPES.has(it.type)) return hitPv(it, x, y, tol);
   if (it.type === "pvmodule") return hitMod(it, x, y, tol);
@@ -204,6 +206,7 @@ export function allPins(items) {
   for (const it of items) {
     if (it.type === "symbol") for (const p of SYMBOL_BY_NAME[it.sym].pins) { const o = rotatePoint(p.x, p.y, it.rot || 0); pins.push({ x: f(it.x + o.x), y: f(it.y + o.y) }); }
     else if (it.type === "terminals") pins.push(...termPins(it));
+    else if (it.type === "ctrl") pins.push(...ctrlPins(it));
     else if (it.type === "wire") { pins.push({ x: it.pts[0][0], y: it.pts[0][1] }, { x: it.pts.at(-1)[0], y: it.pts.at(-1)[1] }); }
   }
   return pins;
@@ -230,6 +233,9 @@ export function poleGroup(items, x, y) {
 // ---------- Blatt, Objekte, Auswahl ----------
 const txt = (x, y, h, s, extra = "") => `<text transform="translate(${f(x)},${f(y)}) scale(1,-1)" font-size="${h}" fill="${INK}" stroke="none" ${extra}>${esc(s)}</text>`;
 const ctr = 'text-anchor="middle" dominant-baseline="central"';
+// Freier Text: Drehung r, Farbe c, Ausrichtung al (mittig/rechts, CJ 19.10.2026)
+const ANCHOR = { c: "middle", r: "end" };
+const textSVG = (it) => `<text transform="translate(${f(it.x)},${f(it.y)})${it.r ? ` rotate(${it.r})` : ""} scale(1,-1)" font-size="${it.h}" fill="${it.c ? colorCss(it.c) : INK}" stroke="none"${ANCHOR[it.al] ? ` text-anchor="${ANCHOR[it.al]}"` : ""}>${esc(it.s)}</text>`;
 const poly = (pts, color, extra = "") => `<polyline points="${pts.map((p) => f(p[0]) + "," + f(p[1])).join(" ")}" ${strokeAttrs(color)} ${extra}/>`;
 
 export function sheetSVG(meta, grid, zoom) {
@@ -268,12 +274,14 @@ function symbolSVG(it, opacity = 1) {
 function terminalsSVG(it) {
   let s = "";
   for (const c of termItems(it)) s += symbolSVG(c);
-  for (const n of termNumbers(it)) s += txt(n.x, n.y, n.h, n.s, ctr);
+  for (const n of termNumbers(it)) s += n.r ? `<text transform="translate(${f(n.x)},${f(n.y)}) rotate(${n.r}) scale(1,-1)" font-size="${n.h}" fill="${INK}" stroke="none" ${ctr}>${esc(n.s)}</text>` : txt(n.x, n.y, n.h, n.s, ctr); // senkrecht: Klemmentext gedreht
   for (const t of termTexts(it)) s += txt(t.x, t.y, t.h, t.s);
   return s;
 }
 
-export const ghostSVG = (it) => `<g opacity="0.55">${it.type === "terminals" ? terminalsSVG(it) : symbolSVG(it)}</g>`;
+// Steuerkasten (steuerung.js): Linien und Klemmentexte
+const ctrlSVG = (it) => ctrlPrims(it).map((p) => (p.t === "l" ? poly([[p.x1, p.y1], [p.x2, p.y2]], INK) : txt(p.x, p.y, p.h, p.s, p.c ? ctr : ""))).join("");
+export const ghostSVG = (it) => `<g opacity="0.55">${it.type === "terminals" ? terminalsSVG(it) : it.type === "ctrl" ? ctrlSVG(it) : symbolSVG(it)}</g>`;
 
 // Vorschaubild für die Palette: drei Klemmen, die letzte als PE-Klemme
 export function terminalsThumb() {
@@ -291,8 +299,9 @@ export function itemsSVG(items, kind = "schema", o = {}) {
     else if (it.type === "wire") {
       const k = WIRE_KINDS[it.kind] || WIRE_KINDS.leitung;
       s += poly(it.pts, LAYERS[k.layer].css, k.dashed ? 'stroke-dasharray="7 4"' : "");
-    } else if (it.type === "text") s += it.r ? `<text transform="translate(${f(it.x)},${f(it.y)}) rotate(${it.r}) scale(1,-1)" font-size="${it.h}" fill="${it.c ? colorCss(it.c) : INK}" stroke="none">${esc(it.s)}</text>` : it.c ? txt(it.x, it.y, it.h, it.s).replace(`fill="${INK}"`, `fill="${colorCss(it.c)}"`) : txt(it.x, it.y, it.h, it.s);
+    } else if (it.type === "text") s += textSVG(it);
     else if (it.type === "terminals") s += terminalsSVG(it);
+    else if (it.type === "ctrl") s += ctrlSVG(it);
   }
   for (const t of railStubs(items)) s += poly([[t.x1, t.y1], [t.x2, t.y2]], LAYERS[(WIRE_KINDS[t.w.kind] || WIRE_KINDS.leitung).layer].css, ""); // Abschluss der Hauptlinie
   for (const j of junctions(items)) s += `<circle cx="${f(j.x)}" cy="${f(j.y)}" r="${DOT_R}" fill="${INK}" stroke="none"/>`;
@@ -309,7 +318,7 @@ export function selectionSVG(items) {
     const pts = it.type === "pvstring" ? strPts(it) : it.pts;
     if (pts?.length > 1) s += pePair((c) => `<polyline class="${c}" points="${[...pts, ...(isClosed(it) ? [pts[0]] : [])].map((p) => f(p[0]) + "," + f(p[1])).join(" ")}"/>`);
     else {
-      const b = it.type === "shape" ? shapeBox(it) : it.type === "symbol" ? symbolBBox(it, 1) : it.type === "terminals" ? termBBox(it) : D.isPlanType(it.type) ? D.itemBBox(it) : it.type === "pvmodule" ? modBox(it) : it.type === "spa" ? spaBox(it) : it.type === "pvpoint" ? pointBox(it) : pts ? itemBBox(it) : textBox(it.x, it.y, it.h, it.s);
+      const b = it.type === "shape" ? shapeBox(it) : it.type === "symbol" ? symbolBBox(it, 1) : it.type === "terminals" ? termBBox(it) : D.isPlanType(it.type) ? D.itemBBox(it) : it.type === "pvmodule" ? modBox(it) : it.type === "spa" ? spaBox(it) : it.type === "pvpoint" ? pointBox(it) : it.type === "ctrl" ? ctrlBBox(it) : pts ? itemBBox(it) : textItemBox(it); // Text gedreht oder ausgerichtet (19.10.2026)
       const g = it.type !== "symbol" ? { x0: b.x0 - 0.8, y0: b.y0 - 0.8, x1: b.x1 + 0.8, y1: b.y1 + 0.8 } : b;
       s += pePair((c) => rect(g, c));
     }

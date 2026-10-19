@@ -98,3 +98,49 @@ export function abgangItems(tpl, col, items, ids) {
   out.push({ id: ids(), ...newTerminals(x0, pe.y, { cable: tpl.cable, n, bmk: "" }), of: devs.at(-1).id }); // Klemmen gehören zum untersten Gerät
   return { items: out };
 }
+
+// Autoverkabelung (Idee CJ 18.10.2026, „Alt+V“): Leitungen eines gesetzten Geräts von den Hauptlinien oben in seine Pole und von
+// den Polen unten zu den Klemmen-Punkten darunter. Quelle oben: nächster Geräte-Pin darüber in derselben Senkrechten (Geräte
+// übereinander, z. B. FI über LS), sonst die Hauptlinie des Leiters (1-polig L1, 2-polig L1 und N, 3-polig L1 bis L3, 4-polig L1 bis N).
+// Ziel unten: nächster Geräte-Pin oder Klemmen-Punkt darunter (nicht die PE-Klemme). Pins, an denen schon eine Leitung endet, bleiben unberührt.
+// Nur ungedrehte Geräte. Gibt { items, skipped } zurück; items = neue Leitungen.
+const CONDUCTORS = { 1: ["L1"], 2: ["L1", "N"], 3: ["L1", "L2", "L3"], 4: ["L1", "L2", "L3", "N"] };
+export function autoWireItems(dev, items, ids) {
+  const sym = SYMBOL_BY_NAME[dev.sym];
+  if (!sym || (dev.rot || 0) !== 0) return { items: [], skipped: ["gedreht"] };
+  const r = rails(items), names = CONDUCTORS[sym.poles] || [];
+  const ys = sym.pins.map((p) => p.y), top = sym.pins.filter((p) => p.y === Math.max(...ys)), bot = sym.pins.filter((p) => p.y === Math.min(...ys));
+  if (top.length !== sym.poles || bot.length !== sym.poles) return { items: [], skipped: ["Pole"] };
+  const eq = (a, b) => Math.abs(a - b) < 1e-3;
+  const ends = items.filter((i) => i.type === "wire").flatMap((w) => [w.pts[0], w.pts.at(-1)]);
+  const used = (x, y) => ends.some((e) => eq(e[0], x) && eq(e[1], y));
+  const others = items.filter((i) => i.type === "symbol" && i.id !== dev.id && SYMBOL_BY_NAME[i.sym] && !(i.rot || 0));
+  const devPins = (row) => others.flatMap((o) => { const ps = SYMBOL_BY_NAME[o.sym].pins, yy = ps.map((p) => p.y), want = row === "top" ? Math.max(...yy) : Math.min(...yy); return ps.filter((p) => p.y === want).map((p) => ({ x: r3(o.x + p.x), y: r3(o.y + p.y) })); });
+  const upper = devPins("bot"), lower = [...devPins("top"), ...items.filter((i) => i.type === "terminals" && !i.noterm).flatMap((t) => { const n = parseCable(t.cable)?.n ?? t.n ?? 1; return Array.from({ length: t.pe === "none" ? n : n - 1 }, (_, k) => ({ x: r3(t.x + k * POLE), y: t.y })); })]; // ohne PE-Klemme
+  // Keine Leitung durch ein anderes Gerät (z. B. FI und LS nicht genau übereinander): solche Pole bleiben offen
+  const blocked = (x, ya, yb) => others.some((o) => {
+    const ps = SYMBOL_BY_NAME[o.sym].pins; if (!ps.length) return false;
+    const px = ps.map((q) => o.x + q.x), py = ps.map((q) => o.y + q.y);
+    return x > Math.min(...px) - POLE / 2 + 1e-3 && x < Math.max(...px) + POLE / 2 - 1e-3 && Math.max(ya, yb) > Math.min(...py) + 1e-3 && Math.min(ya, yb) < Math.max(...py) - 1e-3;
+  });
+  const out = [], skipped = [];
+  top.forEach((p, k) => {
+    const x = r3(dev.x + p.x), y = r3(dev.y + p.y), name = names[k] || "L1";
+    if (used(x, y)) return;
+    const above = upper.filter((q) => eq(q.x, x) && q.y > y + 1e-3).sort((a, b) => a.y - b.y)[0];
+    const rail = r[name] && x >= r[name].x0 - 1e-3 && x <= r[name].x1 + 1e-3 && r[name].y > y ? r[name].y : null;
+    const from = above && (rail === null || above.y < rail) ? above.y : rail;
+    if (from === null) { skipped.push(name); return; }
+    if (blocked(x, from, y)) { skipped.push(`${name} (Gerät im Weg)`); return; }
+    out.push({ id: ids(), type: "wire", kind: conductorKind(name), pts: [[x, from], [x, y]] });
+  });
+  bot.forEach((p, k) => {
+    const x = r3(dev.x + p.x), y = r3(dev.y + p.y);
+    if (used(x, y)) return;
+    const below = lower.filter((q) => eq(q.x, x) && q.y < y - 1e-3).sort((a, b) => b.y - a.y)[0];
+    if (!below) { skipped.push(`Pol ${k + 1} unten`); return; }
+    if (blocked(x, y, below.y)) { skipped.push(`Pol ${k + 1} unten (Gerät im Weg)`); return; }
+    out.push({ id: ids(), type: "wire", kind: conductorKind(names[k] || "L1"), pts: [[x, y], [x, below.y]] });
+  });
+  return { items: out, skipped };
+}

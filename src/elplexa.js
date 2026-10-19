@@ -184,7 +184,8 @@ export function crumbHTML(cur, st, name) {
 
 export const keysHTML = () => `<div class="el-keys">${[
   ["1 2 3", "Schema, Disposition, PV öffnen"], ["0", "Projektübersicht"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
-  ["Bild ↑ ↓", "Blatt zurück und vor, innerhalb des Moduls"], ["G", "Liste der Blätter des Moduls"], ["?", "diese Hilfe"],
+  ["Bild ↑ ↓", "Blatt zurück und vor, innerhalb des Moduls"], ["G", "Liste der Blätter des Moduls (Zeile ziehen oder Alt ↑ ↓ sortiert)"], ["M", "Blatt mit ★ markieren"], ["⇧ Bild ↑ ↓", "zum vorherigen und nächsten ★-Blatt, auch über Module"],
+  ["/", "Symbolsuche unten links"], ["⌘ Klick", "zur Auswahl dazu oder wieder ab"], ["?", "diese Hilfe"],
 ].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im Schema gelten 1 bis 4 beim Setzen eines Geräts oder bei einem gewählten Gerät weiter für die Polzahl.</p>`;
 
 // Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026)

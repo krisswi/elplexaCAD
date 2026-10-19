@@ -9,13 +9,14 @@ import { importDxfSymbol } from "./dxfimport.js";
 import { X0 as RAIL_X0, X1 as RAIL_X1 } from "./template.js";
 import { renumberAll, deviceTerminals, linkedTerminals, columnHasTerminals, isRef, openCounterparts, linkRefs, unlinkRef, findItem, refLabel } from "./numbering.js";
 import { BUNDLE_PRESETS, BUNDLE_LABELS, conductorKind, offsetPaths, snapToRails, snapToVerticals } from "./bundle.js";
-import { parseCable, newTerminals, termCount } from "./terminals.js";
+import { parseCable, newTerminals, termCount, cleanLab } from "./terminals.js";
+import { newCtrl, ctrlTerms } from "./steuerung.js";
 import { baseItems, hasBase, BASE_TAG } from "./template.js";
 import { W, H, META_FIELDS, COL_CENTERS, ROW_CENTERS, colOf } from "./frame.js";
 import { exportDxf } from "./dxf.js";
 import { isGroupWire, mainSheets, mainState } from "./hauptlinien.js";
 import { makeTouch } from "./mobil.js";
-import { TEMPLATES, TEMPLATE_PREFIX, templateOf, abgangItems, CUSTOM, makeCustom, addCustom, removeCustom } from "./vorlagen.js";
+import { autoWireItems, TEMPLATES, TEMPLATE_PREFIX, templateOf, abgangItems, CUSTOM, makeCustom, addCustom, removeCustom } from "./vorlagen.js";
 import * as R from "./render.js";
 import * as D from "./dispo.js";
 import { makeFiles } from "./files.js";
@@ -24,7 +25,7 @@ import { listsCsv } from "./auswertung.js";
 import { makePv } from "./pvedit.js";
 import { makeDispo } from "./dispoedit.js";
 import { toast, openModal, confirmDialog, formDialog, chooseDialog, makeMenu } from "./dialogs.js";
-import { fieldHTML, actions, head, dupDel, textPanelHTML } from "./panel.js";
+import { fieldHTML, actions, head, dupDel, textPanelHTML, turnHTML } from "./panel.js";
 import { startDialog } from "./start.js";
 import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel, varOf, newVar } from "./pv.js";
 import * as T from "./titel.js";
@@ -39,10 +40,12 @@ import { fetchGwr, searchAdr, adrText } from "./gwr.js";
 const $ = (s) => document.querySelector(s);
 const stage = $("#stage"), svg = $("#svg"), world = $("#world");
 const gSheet = $("#sheet"), gItems = $("#items"), gOverlay = $("#overlay");
-const leftEl = $("#left"), rightEl = $("#right"), editor = $("#texteditor");
+// Linke Leiste: Inhalt in #left-body (wird neu gezeichnet), darunter die Symbolsuche (CJ 18.10.2026), bleibt stehen und behält den Fokus
+const leftEl = (() => { const b = document.createElement("div"); b.id = "left-body"; $("#left").append(b); return b; })(), rightEl = $("#right"), editor = $("#texteditor");
 const AUTOSAVE_KEY = "schemacad.autosave.v1";
 const PX_PER_MM = 96 / 25.4;
 const TERMINALS = "TERMINALS"; // Platzhalter für „Klemmenleiste setzen“
+const CTRL = "CTRL"; // Platzhalter für „Steuerung (Kasten) setzen“ (steuerung.js)
 const familyOf = (name) => FAMILIES.find((f) => f.variants.includes(name));
 
 const TOOLS = [
@@ -51,6 +54,7 @@ const TOOLS = [
   { id: "text", label: "Text", key: "T", icon: "text" },
   { id: "hand", label: "Ansicht schieben", key: "H", icon: "hand" },
 ];
+const HOLD_TOOLS = { wire: "Leitung (L). Rechtsklick oder gedrückt halten: Leiterzahl und Art", text: "Text (T). Rechtsklick oder gedrückt halten: Drehung und Ausrichtung" };
 
 const S = {
   doc: newDoc(), active: 0, // Dokument mit mehreren Blättern, active = angezeigtes Blatt
@@ -64,7 +68,7 @@ const S = {
   mag: true, alt: false, // Fang an Feldmitten (Spalten- und Zeilenmitte), Alt schaltet ihn kurz aus
   wireDraft: null, wireKind: "leitung", bundleN: 1, shift: false,
   textH: 2.5,
-  shapeDraft: null, shapeStyle: {}, textC: null, // freies Zeichnen (formen.js): Form im Entstehen, Darstellung neuer Formen, Farbe neuer Texte
+  shapeDraft: null, shapeStyle: {}, textC: null, textR: 0, textAl: "", // freies Zeichnen (formen.js): Form im Entstehen, Darstellung neuer Formen, Farbe neuer Texte
   drag: null, space: false,
   undo: [], redo: [], pending: null, pendingPushed: false,
   fileHandle: null, fileName: "Unbenannt", dirty: false,
@@ -107,7 +111,7 @@ function magnet(c, offX = 0) {
   if (Math.abs(gy - c.y) <= r) { out.y = round3(gy); out.magY = round3(gy); }
   return out;
 }
-const placeOffX = () => (S.placeSym === TERMINALS || templateOf(S.placeSym) ? 0 : anchorX(SYMBOL_BY_NAME[S.placeSym]?.poles ?? 1));
+const placeOffX = () => (S.placeSym === TERMINALS || S.placeSym === CTRL || templateOf(S.placeSym) ? 0 : anchorX(SYMBOL_BY_NAME[S.placeSym]?.poles ?? 1));
 
 function snap(wx, wy, { pins = true, offX = 0, mag = false } = {}) {
   const c = snapBase(wx, wy, pins);
@@ -137,6 +141,13 @@ function snapBase(wx, wy, pins, skip = null) {
   return { x: round3(wx), y: round3(wy) };
 }
 
+// Alt beim Ziehen (CJ 16.10.2026): schaltet den Fang um, solange Alt gedrückt ist. Raster an → frei (ohne Pins und Leitungen), Raster aus → Raster.
+const altGrid = (e) => S.grid.on !== !!e.altKey;
+function dragSnap(e, wx, wy, pins, skip = null) {
+  if (!e.altKey) return snapBase(wx, wy, pins, skip);
+  const g = altGrid(e) ? S.grid.size : 0;
+  return g ? { x: round3(Math.round(wx / g) * g), y: round3(Math.round(wy / g) * g) } : { x: round3(wx), y: round3(wy) };
+}
 // Formen: Raster wie bei den Leitungen, Alt = frei
 const shapeSnap = (w) => (S.alt ? { x: round3(w.x), y: round3(w.y) } : snapBase(w.x, w.y, false));
 const isSchema = () => !isDispo() && !isPv() && !isDeck();
@@ -225,6 +236,7 @@ function railMap() {
 }
 const bundlePaths = (pts, n) => snapToVerticals(snapToRails(offsetPaths(pts, n), BUNDLE_PRESETS[n], railMap()), S.model.items);
 const bundleCount = () => (S.wireDraft && S.wireDraft.n) || S.bundleN;
+const poleSnap = () => !S.wireDraft || bundleCount() > 1; // Pole als Gruppe fangen: beim Start oder wenn ein Bündel im Bau ist
 // Bündel von Geräte-Polen auf eine Schiene mit seitlichem Versatz: die Höhe des Versatzes so wählen,
 // dass alle waagrechten Stücke zwischen den Polen und der nächsten Schiene liegen. Geht das nicht, gerade hoch.
 function railJog(p0, c, rails) {
@@ -286,6 +298,7 @@ function renderOverlay() {
   if (S.tool === "place" && S.mouse && isDispo() && placingDispo) s += placeGhost(S.mouse);
   else if (S.tool === "place" && S.mouse && !isDispo() && !placingDispo) {
     if (S.placeSym === TERMINALS) s += R.ghostSVG(newTerminals(S.mouse.x, S.mouse.y));
+    else if (S.placeSym === CTRL) s += R.ghostSVG(newCtrl(S.mouse.x, S.mouse.y));
     else if (templateOf(S.placeSym)) { let k = 0; const a = abgangItems(templateOf(S.placeSym), colOf(S.mouse.x), S.model.items, () => --k); if (a.items) s += `<g opacity="0.55">${R.itemsSVG(a.items)}</g>`; } // Abgang: Vorschau in der Spalte unter dem Zeiger
     else s += R.ghostSVG({ type: "symbol", sym: S.placeSym, x: S.mouse.x, y: S.mouse.y, rot: S.placeRot, attrs: Object.fromEntries(SYMBOL_BY_NAME[S.placeSym].attrs.map((a) => [a.tag, a.def])) });
   }
@@ -331,22 +344,56 @@ function hintText() {
     return "Klick wählt (Platte am Rand), Shift oder ⌘ mehrere (nochmals klicken wählt ab), Ziehen auf leerer Fläche wählt mit Rahmen. Griffe ändern die Grösse, Doppelklick auf ein Mass tippt es ein, Alt ohne Hilfslinien.";
   }
   if (S.tool === "place" && templateOf(S.placeSym)) return `Abgang ${templateOf(S.placeSym).label}: Klicken in eine freie Spalte setzt Geräte, Leitungen zu den Hauptlinien und Klemmen mit Kabel. Esc beendet.`;
-  if (S.tool === "place") return S.placeSym === TERMINALS ? "Klemmenleiste: Klicken setzt die obere Kante auf die gewählte Stelle, die Klemmen hängen darunter. Esc beendet." : `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht${familyOf(S.placeSym)?.variants.length > 1 ? `, 1 bis 4 Polzahl, N Neutralleiter${hasTrenner(S.placeSym) ? ", T N-Trenner" : ""}` : ""}, Esc beendet. Der Fang rastet auf Feldmitten ein, Alt schaltet ihn aus.`;
+  if (S.tool === "place" && S.placeSym === CTRL) return "Steuerung: Klicken setzt die linke obere Ecke. Klemmen oben und unten rechts frei eintragen, Leitungen rasten an den Klemmen ein. Esc beendet.";
+  if (S.tool === "place") return S.placeSym === TERMINALS ? "Klemmenleiste: Klicken setzt die obere Kante auf die gewählte Stelle, die Klemmen hängen darunter. Esc beendet." : `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht${familyOf(S.placeSym)?.variants.length > 1 ? `, 1 bis 4 Polzahl, N Neutralleiter${hasTrenner(S.placeSym) ? ", T N-Trenner" : ""}` : ""}, Esc beendet. Der Fang rastet auf Feldmitten ein, Alt schaltet ihn aus.${isDevice(SYMBOL_BY_NAME[S.placeSym]) ? " Alt+V verdrahtet das zuletzt gesetzte Gerät." : ""}`;
   if (S.tool === "wire") return S.wireDraft ? "Klicken setzt einen Punkt. Nochmals auf den letzten Punkt klicken oder Eingabetaste beendet. Shift wechselt die Knickrichtung." : S.bundleN > 1 ? `Klicken startet ${S.bundleN} parallele Leiter. Der erste liegt auf dem Klickpunkt, die weiteren rechts oder darunter.` : "Klicken startet eine Leitung. Anschlusspunkte der Symbole rasten ein.";
-  if (S.tool === "text") return "Klicken setzt einen Text, die Eingabetaste bestätigt.";
+  if (S.tool === "text") return `Klicken setzt einen Text, die Eingabetaste bestätigt. R dreht (jetzt ${S.textR || 0}°), Ausrichtung rechts.`;
   if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
   if (shapeTool(S.tool)) { const t = shapeTool(S.tool); return S.shapeDraft ? `${t.label}: zweiter Klick oder Loslassen setzt ${t.k === "circle" ? "den Radius" : "das Ende"}${t.k === "line" ? ", Shift waagrecht oder senkrecht" : t.k === "rect" ? ", Shift = Quadrat" : ""}. Esc bricht ab.` : `${t.label}: klicken und ziehen (oder zweimal klicken)${t.k === "circle" ? ", erst die Mitte" : ""}. Rastet auf dem Raster ein, Alt = frei. Farbe und Strich rechts.`; }
-  return "Objekt anklicken, mit Shift mehrere wählen. Auf leerer Fläche ziehen wählt mit Rahmen.";
+  return "Objekt anklicken, mit ⌘ oder Shift mehrere wählen (nochmals klicken wählt ab). Auf leerer Fläche ziehen wählt mit Rahmen.";
 }
 function updateHint() { $("#hint").textContent = ELPLEXA && S.shared ? "Geteilte Ansicht: Ziehen verschiebt, Scrollen oder Pinch zoomt, F passt ein, Bild ↑ ↓ blättert." : hintText(); }
 
 
+// Symbolsuche unten links (CJ 18.10.2026): immer sichtbar in Schema und Disposition, filtert die Kacheln der Leiste nach Name,
+// Untertitel und Polzahl. Enter setzt den ersten Treffer, Esc leert, Taste / springt ins Feld.
+const symFind = (() => {
+  const w = document.createElement("div"); w.className = "symsearch"; w.setAttribute("role", "search");
+  w.innerHTML = `<span class="ic" aria-hidden="true">${R.icons.search}</span><input id="sym-find" type="search" placeholder="Symbol suchen (/)" aria-label="Symbol suchen" autocomplete="off" spellcheck="false">`;
+  $("#left").append(w); return w;
+})();
+const symQ = () => $("#sym-find").value.trim().toLowerCase();
+function applySymFind() {
+  const q = symQ(), words = q.split(/\s+/).filter(Boolean);
+  leftEl.classList.toggle("searching", !!q);
+  for (const el of leftEl.querySelectorAll("[data-sym]")) {
+    const fam = el.closest(".symfam")?.querySelector(".name")?.textContent || "";
+    const hay = `${fam} ${el.textContent} ${el.title || ""} ${el.getAttribute("aria-label") || ""} ${el.dataset.sym.replace(/^D:\w+:/, "").replace(/_/g, " ")}`.toLowerCase(); // auch der interne Name (LS_1P)
+    el.hidden = !!q && !words.every((x) => hay.includes(x));
+  }
+  for (const g of leftEl.querySelectorAll(".symfam")) g.hidden = !!q && !g.querySelector("[data-sym]:not([hidden])");
+  for (const sec of leftEl.querySelectorAll("section")) sec.hidden = !!q && !sec.querySelector("[data-sym]:not([hidden])");
+  let none = leftEl.querySelector(".symnone");
+  if (q && !leftEl.querySelector("[data-sym]:not([hidden])")) { if (!none) { none = document.createElement("p"); none.className = "note symnone"; leftEl.append(none); } none.textContent = `Kein Symbol für „${$("#sym-find").value.trim()}“.`; }
+  else none?.remove();
+}
+$("#sym-find").addEventListener("input", applySymFind);
+$("#sym-find").addEventListener("keydown", (e) => {
+  e.stopPropagation();
+  if (e.key === "Enter") { e.preventDefault(); const first = symQ() && leftEl.querySelector("[data-sym]:not([hidden])"); if (first) { first.click(); svg.focus({ preventScroll: true }); } }
+  else if (e.key === "Escape") { e.preventDefault(); e.target.value = ""; applySymFind(); svg.focus({ preventScroll: true }); }
+});
 function renderLeft() {
+  renderLeftBody();
+  symFind.hidden = isDeck() || isPv();
+  if (!symFind.hidden) applySymFind();
+}
+function renderLeftBody() {
   if (isDeck()) { const k = S.model.kind; leftEl.innerHTML = `<section class="section"><h2 class="section-title">${T.kindLabel(S.model)}</h2><p class="note">${k === "title" ? "Blatt 1. Hier wird nicht gezeichnet, die Angaben stehen rechts." : k === "toc" ? "Blatt 2. Entsteht automatisch aus allen Blättern der Datei." : "Letztes Blatt, A4 hoch. Entsteht automatisch aus den Schutzgeräten aller Schemablätter."}</p></section>`; return; }
   if (isDispo()) { leftEl.innerHTML = dispoLeftHTML(); return; }
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
-  for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" aria-pressed="${S.tool === t.id}">${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
+  for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
   h += `</section>` + abgangHTML() + `<section class="section"><h2 class="section-title">Symbole</h2>`;
   for (const f of FAMILIES) { // Wunsch CJ 16.10.: jede Variante direkt wählbar, ein Klick setzt das Gerät
     if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${f.variants.map(varTile).join("")}</div></div>`; continue; }
@@ -354,6 +401,7 @@ function renderLeft() {
     h += `<button class="sym" data-sym="${f.def}" aria-pressed="${on}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
   }
   h += `<button class="sym" data-sym="${TERMINALS}" aria-pressed="${S.tool === "place" && S.placeSym === TERMINALS}"><span class="thumb">${R.terminalsThumb()}</span><span><span class="name">Klemmenleiste</span><br><span class="sub">Anzahl folgt dem Kabel</span></span></button>`;
+  h += `<button class="sym" data-sym="${CTRL}" aria-pressed="${S.tool === "place" && S.placeSym === CTRL}" title="Steuerung KNX Energiemanagement Aktor"><span class="thumb"><svg viewBox="-2 -2 28 20" aria-hidden="true"><rect x="0" y="0" width="24" height="16" fill="none" stroke="currentColor" stroke-width="1.4"/>${[5, 10, 15].map((x) => `<path d="M${x} 0v2.5M${x} 16v-2.5" stroke="currentColor" stroke-width="1.4"/>`).join("")}</svg></span><span><span class="name">Steuerung (Kasten)</span><br><span class="sub">KNX, Energiemanagement, Klemmen frei</span></span></button>`;
   h += "</section>" + libraryHTML();
   leftEl.innerHTML = h;
 }
@@ -507,9 +555,15 @@ function setMainEnd(t) {
 const kindSelect = (attr, value) => `<div class="field"><label>Art der Leitung</label><select ${attr}>${Object.entries(WIRE_KINDS).map(([k, v]) => `<option value="${k}"${k === value ? " selected" : ""}>${v.label}</option>`).join("")}</select></div>`;
 const poleSelect = (attr, family, value) => `<div class="field"><label>Polzahl</label><select ${attr}>${family.variants.map((v) => `<option value="${v}"${v === value ? " selected" : ""}>${SYMBOL_BY_NAME[v].vlabel ?? SYMBOL_BY_NAME[v].poles + "-polig"}</option>`).join("")}</select></div>`;
 const bundleSelect = () => `<div class="field"><label>Anzahl Leiter pro Zug</label><select data-newbundle>${Object.entries(BUNDLE_LABELS).map(([n, l]) => `<option value="${n}"${Number(n) === S.bundleN ? " selected" : ""}>${l}</option>`).join("")}</select></div>`;
+// Klemmentexte (CJ 18.10.2026): je Klemme ein Feld, leer = Nummer; 2 Zeilen à 5 Zeichen mit „|“; Haken senkrecht
+const termLabCells = (it) => { const n = termCount(it); return Array.from({ length: n }, (_, i) => `<input type="text" data-tlab="${i}" value="${R.esc(it.lab?.[i] ?? "")}" placeholder="${it.pe !== "none" && i === n - 1 ? "PE" : i + 1}" maxlength="11" aria-label="Klemme ${i + 1}" autocomplete="off" spellcheck="false">`).join(""); };
+function termLabHTML(it) {
+  return `<div class="field"><label>Klemmentexte</label><div class="tlab">${termLabCells(it)}</div></div><p class="note">Leer = Nummer. Höchstens 2 Zeilen à 5 Zeichen, Zeilen mit | trennen (z. B. L1|12345).</p>`
+    + `<label class="check"><input type="checkbox" data-tvert${it.vert ? " checked" : ""}> Klemmentexte senkrecht</label>`;
+}
 function cableNote(it) {
   const c = parseCable(it.cable);
-  return c ? `Aus dem Kabel folgen ${c.n} Klemmen (${c.q} mm²).` : `Kabelangabe nicht erkannt (Beispiel 5x1.5mm2). Es bleiben ${termCount(it)} Klemmen.`;
+  return c?.tel ? `Fernmeldekabel: ${c.n} Adern = ${c.n} Klemmen (Ø ${c.q} mm), ohne PE-Klemme.` : c ? `Aus dem Kabel folgen ${c.n} Klemmen (${c.q} mm²).` : `Kabelangabe nicht erkannt (Beispiel 5x1.5mm2). Es bleiben ${termCount(it)} Klemmen.`;
 }
 
 
@@ -562,7 +616,7 @@ function renderRightPanel() {
         h += `<p class="note">${cur ? "Verknüpft mit " + R.esc(refLabel(cur.item, cur.sheet)) + "." : "Noch nicht verknüpft."}</p>`;
         h += `<div class="row"><button class="btn outline small" data-act="relink">${cur ? "Verknüpfung ändern" : "Verknüpfen"}</button>${cur ? '<button class="btn outline small" data-act="unlink">Lösen</button>' : ""}</div>`;
       }
-      if (isDevice(sym)) h += `<div class="row"><button class="btn outline small" data-act="golegend">In Legende zeigen</button></div>`;
+      if (isDevice(sym)) h += `<div class="row"><button class="btn outline small" data-act="golegend">In Legende zeigen</button><button class="btn outline small" data-act="autowire" title="Leitungen von den Hauptlinien und zu den Klemmen (Alt+V)">Autoverkabelung</button></div>`;
       h += actions([["rotate", "rotate", "Drehen"], ["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else if (it.type === "terminals") {
       h += `<div class="prop-head"><h2>Klemmenleiste</h2><p>${termCount(it)} Klemmen</p></div>`;
@@ -571,7 +625,17 @@ function renderRightPanel() {
       h += `<p class="note" data-cablenote>${R.esc(cableNote(it))}</p>`;
       h += fieldHTML("Bezeichnung (unter dem Kabel)", 'data-term="name"', it.name);
       h += `<div class="field"><label>Klemmen</label><select data-termdraw><option value="on"${it.noterm ? "" : " selected"}>Klemmen zeichnen</option><option value="off"${it.noterm ? " selected" : ""}>Keine Klemme (nur BMK, Kabel, Bezeichnung)</option></select></div>`;
+      if (!it.noterm) h += termLabHTML(it);
       if (!it.noterm) h += `<div class="field"><label>Letzte Klemme</label><select data-termpe><option value="last"${it.pe !== "none" ? " selected" : ""}>PE-Klemme (schraffiert)</option><option value="none"${it.pe === "none" ? " selected" : ""}>Normale Klemme</option></select></div>`;
+      h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
+    } else if (it.type === "ctrl") {
+      h += head("Steuerung", `${ctrlTerms(it.top).length + ctrlTerms(it.bot).length} Klemmen`);
+      h += fieldHTML("Bezeichnung im Kasten", 'data-ctrl="name"', it.name, 'placeholder="z. B. KNX Schaltaktor"');
+      h += fieldHTML("BMK", 'data-ctrl="bmk"', it.bmk, 'placeholder="z. B. 12A1"');
+      h += fieldHTML("Klemmen oben (mit Komma getrennt)", 'data-ctrl="top"', it.top, 'placeholder="L, N, KNX+, KNX-"');
+      h += fieldHTML("Klemmen unten (mit Komma getrennt)", 'data-ctrl="bot"', it.bot, 'placeholder="1, 2, 3, 4"');
+      h += `<p class="note">Je Klemme höchstens 8 Zeichen, Abstand 5 mm. Die Breite folgt aus der Klemmenzahl.</p>`;
+      h += `<div class="field"><label>Höhe in mm</label><input type="number" min="10" max="200" step="2.5" data-ctrl="h" value="${it.h}"></div>`;
       h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else if (it.type === "wire") {
       h += `<div class="prop-head"><h2>Leitung</h2><p>${it.pts.length - 1} Segment${it.pts.length === 2 ? "" : "e"}</p></div>`;
@@ -581,7 +645,7 @@ function renderRightPanel() {
     } else if (it.type === "shape") {
       h += head(SHAPE_KINDS[it.k], "Freie Form") + styleHTML(sel) + actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else {
-      h += textPanelHTML(it).replace('<div class="row">', styleHTML(sel) + '<div class="row">');
+      h += textPanelHTML(it, false, isSchema()).replace('<div class="row">', styleHTML(sel) + '<div class="row">');
     }
   } else if (sel.length > 1) {
     h += `<div class="prop-head"><h2>${sel.length} Objekte</h2><p>Mehrfachauswahl</p></div>`;
@@ -590,7 +654,7 @@ function renderRightPanel() {
   } else {
     if (S.tool === "wire") h += `<div class="prop-head"><h2>Neue Leitung</h2></div>` + bundleSelect() + (S.bundleN === 1 ? kindSelect("data-newkind", S.wireKind) : `<p class="note">Leiter von oben links nach unten rechts: ${BUNDLE_PRESETS[S.bundleN].join(", ")}.</p>`);
     else if (S.tool === "place" && S.placeSym !== TERMINALS && familyOf(S.placeSym)?.variants.length > 1) h += `<div class="prop-head"><h2>Neues Symbol</h2></div>` + poleSelect("data-placepoles", familyOf(S.placeSym), S.placeSym);
-    else if (S.tool === "text") h += `<div class="prop-head"><h2>Neuer Text</h2></div><div class="field"><label>Texthöhe in mm</label><input type="number" min="1" max="20" step="0.5" data-newth value="${S.textH}"></div>` + styleHTML([{ type: "text", c: S.textC }]);
+    else if (S.tool === "text") h += `<div class="prop-head"><h2>Neuer Text</h2></div><div class="field"><label>Texthöhe in mm</label><input type="number" min="1" max="20" step="0.5" data-newth value="${S.textH}"></div>` + (isSchema() ? turnHTML(S.textR, S.textAl, "data-newt") : "") + styleHTML([{ type: "text", c: S.textC }]);
     else if (shapeTool(S.tool)) h += head(`Neue Form: ${shapeTool(S.tool).label}`) + styleHTML([{ type: "shape", k: shapeTool(S.tool).k, ...S.shapeStyle }]);
     h += head(sheetLabel(S.model, S.active), S.model.meta.TITEL || "ohne Blatttitel") + `<p class="note">Hauptlinien: ${R.esc(mainSummary())}.</p>`;
     h += `<div class="row"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
@@ -610,9 +674,18 @@ function renderSheetBar() {
   $("#sheetbar").innerHTML = `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt (Bild auf)" aria-label="Vorheriges Blatt"${a === 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Liste aller Blätter (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${a + 1} von ${n}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt (Bild ab)" aria-label="Nächstes Blatt"${a === n - 1 ? " disabled" : ""}>›</button>`
-    + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>`;
+    + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>` + starBtn();
   if (keep) document.getElementById(keep)?.focus();
   if (open) renderSheetList();
+}
+// Sprünge zu wichtigen Blättern (CJ 18.10.2026): mit M (★) markierte Blätter. Knopf ★ in der Blattleiste: Klick = nächstes markiertes
+// Blatt, Rechtsklick oder gedrückt halten = Liste aller markierten (Klick-Regel). Tasten ⇧Bild ab / ⇧Bild auf. Über alle Module.
+const pinned = () => S.doc.sheets.map((sh, i) => (sh.pin ? i : -1)).filter((i) => i >= 0);
+const starBtn = () => (pinned().length ? `<button class="sheettab star" id="sheet-star" data-starjump data-hold="star" aria-haspopup="menu" title="Nächstes markierte Blatt (⇧Bild ab). Rechtsklick oder gedrückt halten: alle markierten Blätter" aria-label="Markierte Blätter: ${pinned().length}">★<span class="n">${pinned().length}</span></button>` : "");
+function jumpStar(d) {
+  const p = pinned(); if (!p.length) { toast("Kein Blatt markiert. M markiert das offene Blatt mit ★."); return; }
+  const i = d > 0 ? p.find((k) => k > S.active) ?? p[0] : [...p].reverse().find((k) => k < S.active) ?? p.at(-1);
+  if (i !== S.active) switchSheet(i);
 }
 // Fusszeile der Blattliste: Duplizieren und Löschen gelten fürs aktive Blatt (CJ 18.10.2026)
 function sheetFoot() {
@@ -979,7 +1052,22 @@ function addSymbol(name, x, y, rot) {
     if (isDevice(sym) && !columnHasTerminals(S.model.items, dev)) S.model.items.push(deviceTerminals(dev, S.model.items, nextId));
     placed = dev;
   });
+  if (placed && isDevice(sym)) S.lastDev = placed.id; // für die Autoverkabelung (Alt+V) direkt nach dem Setzen
   if (placed && isRef(placed)) offerLink(S.model.items.find((i) => i.id === placed.id));
+}
+// Autoverkabelung (CJ 18.10.2026): Alt+V verdrahtet die gewählten Geräte, ohne Auswahl das zuletzt gesetzte (vorlagen.js autoWireItems).
+// Ein Rückgängig-Schritt; Geräte von oben nach unten, damit übereinander stehende Geräte aneinander anschliessen.
+function autoWire() {
+  if (!isSchema()) return;
+  let devs = selectedItems().filter((i) => i.type === "symbol" && isDevice(SYMBOL_BY_NAME[i.sym]));
+  if (!devs.length) { const last = S.model.items.find((i) => i.id === S.lastDev); if (last) devs = [last]; }
+  if (!devs.length) { toast("Autoverkabelung: zuerst ein Gerät (LS, FI, RCBO, NH) setzen oder wählen, dann Alt+V."); return; }
+  devs.sort((a, b) => b.y - a.y);
+  const snap0 = snapshot(); let n = 0; const skipped = [];
+  for (const d of devs) { const a = autoWireItems(d, S.model.items, nextId); S.model.items.push(...a.items); n += a.items.length; skipped.push(...a.skipped); }
+  if (!n) { toast(skipped.includes("gedreht") ? "Autoverkabelung geht nur bei ungedrehten Geräten." : "Autoverkabelung: alle Pole sind schon verbunden oder es fehlen Hauptlinien bzw. Klemmen darunter."); return; }
+  pushUndo(snap0); afterChange();
+  toast(`Autoverkabelung: ${n} Leitung${n === 1 ? "" : "en"} gezogen.${skipped.length ? ` Nicht verbunden: ${[...new Set(skipped)].join(", ")}.` : ""}`);
 }
 // Abgang aus einer Vorlage in Spalte col: ein Rückgängig-Schritt, BMK und Klemmen nummerieren sich danach (renumberAll)
 function addAbgang(tpl, col) {
@@ -1006,8 +1094,9 @@ const followers = (items) => { const ids = new Set(items.map((i) => i.id)); retu
 const followDy = (t, dy) => (t.type === "terminals" ? 0 : dy);
 function rotateSelected() {
   if (S.tool === "place") { S.placeRot = (S.placeRot + 90) % 360; renderOverlay(); return; }
-  const syms = selectedItems().filter((i) => i.type === "symbol");
-  if (syms.length) change(() => syms.forEach((i) => { i.rot = (i.rot + 90) % 360; }), { panel: false });
+  if (S.tool === "text" && isSchema()) { S.textR = ((S.textR || 0) + 90) % 360; renderRight(); updateHint(); return; } // nächster Text gedreht (CJ 19.10.2026)
+  const syms = selectedItems().filter((i) => i.type === "symbol"), texts = isSchema() ? selectedItems().filter((i) => i.type === "text") : [];
+  if (syms.length || texts.length) change(() => { syms.forEach((i) => { i.rot = (i.rot + 90) % 360; }); texts.forEach((i) => { const r = ((i.r || 0) + 90) % 360; if (r) i.r = r; else delete i.r; }); }, { panel: texts.length > 0 });
 }
 // Kopiert Objekte mit neuen IDs. src = Objekte, selIds = die davon, die danach ausgewählt sein sollen.
 // Zugehörige Klemmenleisten behalten ihre Höhe. Verknüpfungen und Grundverkabelungs-Markierung entfallen.
@@ -1064,7 +1153,7 @@ function moveItem(it, dx, dy) {
 // ---------- Leitungen folgen dem Gerät, Leitungspunkte ziehen ----------
 // Nicht mitverschobene Leitungen, deren Ende auf einem Pin eines verschobenen Geräts (oder einer Klemmenleiste) liegt.
 function wireLinks(movers) {
-  const devs = isDispo() ? [] : movers.filter((i) => i.type === "symbol" || i.type === "terminals");
+  const devs = isDispo() ? [] : movers.filter((i) => i.type === "symbol" || i.type === "terminals" || i.type === "ctrl");
   if (!devs.length) return [];
   const moving = new Set(movers.map((i) => i.id));
   const owner = (p) => { const o = devs.find((d) => R.allPins([d]).some((q) => Math.abs(q.x - p[0]) < 1e-3 && Math.abs(q.y - p[1]) < 1e-3)); return o && { it: o, x: o.x, y: o.y }; };
@@ -1158,7 +1247,7 @@ function closeEditor(commit) {
     return;
   }
   if (e.id) { const it = S.model.items.find((i) => i.id === e.id); if (it && it.s !== v) change(() => { it.s = v; }); }
-  else change(() => { const id = nextId(); S.model.items.push({ id, type: "text", x: e.x, y: e.y, h: textH(), s: v, ...(isPv() ? { layer: PV.activeLayer() } : {}), ...(S.textC && isSchema() ? { c: S.textC } : {}) }); });
+  else change(() => { const id = nextId(); S.model.items.push({ id, type: "text", x: e.x, y: e.y, h: textH(), s: v, ...(isPv() ? { layer: PV.activeLayer() } : {}), ...(S.textC && isSchema() ? { c: S.textC } : {}), ...(S.textR && isSchema() ? { r: S.textR } : {}), ...(S.textAl && isSchema() ? { al: S.textAl } : {}) }); });
 }
 editor.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") closeEditor(true); else if (e.key === "Escape") closeEditor(false); });
 editor.addEventListener("blur", () => closeEditor(true));
@@ -1191,23 +1280,23 @@ stage.addEventListener("pointerdown", (e) => {
   if (isDeck()) { deckTap(e.target); return; }
   stage.setPointerCapture(e.pointerId);
   const w = toWorld(sx, sy);
-  const add = (isPv() || isDispo()) && (e.metaKey || e.ctrlKey); // ⌘ + Klick oder Rahmen ergänzt die Auswahl bzw. wählt einzeln ab; Stringplan nur aktive Ebene (5o), Disposition seit 19.10.2026
-  const ha = S.tool === "select" && !e.shiftKey ? handleAt(w.x, w.y) : null;
+  const add = e.metaKey || e.ctrlKey; // ⌘ + Klick oder Rahmen ergänzt die Auswahl bzw. wählt einzeln ab; Stringplan nur aktive Ebene (5o), Disposition seit 19.10.2026, überall seit 19.10.2026 (CJ 18.10.)
+  const ha = S.tool === "select" && !e.shiftKey && !add ? handleAt(w.x, w.y) : null;
   if (ha) {
     const o = JSON.parse(JSON.stringify(ha.it));
     S.drag = { type: "handle", it: ha.it, h: ha.h, orig: o, px: sx, py: sy, started: false, snap: snapshot(),
       rails: ha.it.type === "plate" ? D.contained(S.model.items, ha.it).filter((i) => i.type === "rail" && !i.free).map((r) => ({ r, o: { ...r }, full: D.railIsFull(r, ha.it) })) : [],
       plate: ha.it.type === "rail" && !ha.it.free ? plateAt(o.x + o.len / 2, o.y) : null }; // freie Schiene: ohne Plattenrand
-  } else if (S.tool === "select" && !e.shiftKey && !hitTest(w.x, w.y) && autoDimPick(w.x, w.y)) { // automatisches Mass wählen (ausblenden mit Entf)
+  } else if (S.tool === "select" && !e.shiftKey && !add && !hitTest(w.x, w.y) && autoDimPick(w.x, w.y)) { // automatisches Mass wählen (ausblenden mit Entf)
     S.sel.clear(); S.dimSel = autoDimPick(w.x, w.y); renderRight(); renderOverlay();
   } else if (massAt(w.x, w.y) && !hitTest(w.x, w.y)) { /* Mass: Doppelklick öffnet die Eingabe, die Auswahl bleibt */
   } else if (isPv() && S.tool === "select" && !e.shiftKey && !add && PV.gripAt(w)) {
     const g = PV.gripAt(w); // Punkt einer Dachlinie, Sperrfläche oder Leitung ziehen, oder Text eines Punkts (label)
     S.drag = { type: "pvvertex", it: g.it, i: g.i, label: !!g.label, px: sx, py: sy, started: false, snap: snapshot() };
-  } else if (S.tool === "select" && !e.shiftKey && shapeHandleAt(w.x, w.y)) {
+  } else if (S.tool === "select" && !e.shiftKey && !add && shapeHandleAt(w.x, w.y)) {
     const g = shapeHandleAt(w.x, w.y); // Griff einer gewählten Form ziehen
     S.drag = { type: "shapeh", it: g.it, h: g.h, orig: JSON.parse(JSON.stringify(g.it)), px: sx, py: sy, started: false, snap: snapshot() };
-  } else if (S.tool === "select" && !e.shiftKey && vertexAt(w.x, w.y)) {
+  } else if (S.tool === "select" && !e.shiftKey && !add && vertexAt(w.x, w.y)) {
     const v = vertexAt(w.x, w.y);
     S.drag = { type: "vertex", w: v.w, i: v.i, pts: v.w.pts.map((p) => [...p]), px: sx, py: sy, started: false, snap: snapshot() };
   } else if (S.tool === "select") {
@@ -1234,17 +1323,17 @@ stage.addEventListener("pointerdown", (e) => {
     const c = dispoSnap(w.x, w.y);
     if (placeDown(c)) { renderOverlay(); updateHint(); } else addDispoItem(newDispoItem(S.placeSym, c.x, c.y, c)); // Schienen N/PE/PEN, Zuleitung, Vorlage: eigene Klickfolge
   } else if (S.tool === "place") {
-    const c = snap(w.x, w.y, { pins: false, mag: true, offX: placeOffX() });
+    const c = snap(w.x, w.y, { pins: false, mag: S.placeSym !== CTRL, offX: placeOffX() }); // Steuerkasten: nur Raster, damit seine Klemmen auf dem Raster liegen
     if (templateOf(S.placeSym)) addAbgang(templateOf(S.placeSym), colOf(w.x));
-    else if (S.placeSym === TERMINALS) addTerminals(c.x, c.y); else addSymbol(S.placeSym, c.x, c.y, S.placeRot);
+    else if (S.placeSym === TERMINALS) addTerminals(c.x, c.y); else if (S.placeSym === CTRL) change(() => S.model.items.push({ id: nextId(), ...newCtrl(c.x, c.y) })); else addSymbol(S.placeSym, c.x, c.y, S.placeRot);
   } else if (S.tool === "wire") {
     let c = snap(w.x, w.y, { mag: true });
-    // Pin eines mehrpoligen Geräts (Start oder Ende): alle Pole als Bündel, Alt = nur ein Leiter
-    const g = c.pin && !e.altKey ? R.poleGroup(S.model.items, c.x, c.y) : null;
+    // Start an einem Pin eines mehrpoligen Geräts: so viele Leiter wie Pole (Bündel), Alt = nur ein Leiter. Am Ende (Fang) wird ein
+    // einzelner Leiter nicht zum Bündel (CJ 18.10.2026: „am Fang nichts automatisch“); ein Bündel rastet dort mit allen Polen ein.
+    const g = c.pin && !e.altKey && poleSnap() ? R.poleGroup(S.model.items, c.x, c.y) : null;
     if (g) c = { ...c, x: g.x, y: g.y };
     if (!S.wireDraft) S.wireDraft = { pts: [[c.x, c.y]], n: g && S.bundleN === 1 ? g.n : 0, pin: !!c.pin };
     else {
-      if (g && !S.wireDraft.n && S.bundleN === 1) S.wireDraft.n = g.n;
       const last = S.wireDraft.pts.at(-1);
       if (Math.hypot(c.x - last[0], c.y - last[1]) < 1e-6) { finishWire(); return; }
       S.wireDraft.pts.push(...draftPath(c));
@@ -1269,13 +1358,13 @@ stage.addEventListener("pointermove", (e) => {
   const d = S.drag;
   if (d && d.type === "pan") { S.view.x = d.vx + (sx - d.sx); S.view.y = d.vy + (sy - d.sy); applyView(); return; }
   S.alt = e.altKey;
-  S.mouse = isPv() ? PV.snap(w) : isDispo() ? dispoSnap(w.x, w.y) : shapeTool(S.tool) ? shapeSnap(w) : snap(w.x, w.y, { pins: S.tool === "wire", mag: S.tool !== "select" && S.tool !== "hand", offX: S.tool === "place" ? placeOffX() : 0 });
-  if (S.tool === "wire" && S.mouse.pin && !e.altKey) { const g = R.poleGroup(S.model.items, S.mouse.x, S.mouse.y); if (g) S.mouse = { ...S.mouse, x: g.x, y: g.y }; }
+  S.mouse = isPv() ? PV.snap(w) : isDispo() ? dispoSnap(w.x, w.y) : shapeTool(S.tool) ? shapeSnap(w) : snap(w.x, w.y, { pins: S.tool === "wire", mag: S.tool !== "select" && S.tool !== "hand" && !(S.tool === "place" && S.placeSym === CTRL), offX: S.tool === "place" ? placeOffX() : 0 });
+  if (S.tool === "wire" && S.mouse.pin && !e.altKey && poleSnap()) { const g = R.poleGroup(S.model.items, S.mouse.x, S.mouse.y); if (g) S.mouse = { ...S.mouse, x: g.x, y: g.y }; }
   $("#coords").textContent = `x ${fmt(w.x)}  y ${fmt(w.y)} mm`;
   if (d && d.type === "move") {
     if (!d.started && Math.hypot(sx - d.px, sy - d.py) > 3) d.started = true;
     if (d.started) {
-      const g = S.grid.on ? S.grid.size : 0.1;
+      const g = altGrid(e) ? S.grid.size : 0.1; // Alt schaltet das Raster beim Ziehen um
       let dx = round3(Math.round((w.x - d.sx0) / g) * g), dy = round3(Math.round((w.y - d.sy0) / g) * g);
       const mover = d.extras ? [...selectedItems(), ...d.extras] : selectedItems();
       const plan = isDispo() ? selectedItems().filter((i) => D.PLAN_TYPES.has(i.type)) : [];
@@ -1303,14 +1392,14 @@ stage.addEventListener("pointermove", (e) => {
     }
   } else if (d && d.type === "handle") {
     if (!d.started && Math.hypot(sx - d.px, sy - d.py) > 3) d.started = true;
-    if (d.started) { dragHandle(d, snapBase(w.x, w.y, false)); renderItems(); }
+    if (d.started) { dragHandle(d, dragSnap(e, w.x, w.y, false)); renderItems(); }
   } else if (d && d.type === "shapeh") {
     if (!d.started && Math.hypot(sx - d.px, sy - d.py) > 3) d.started = true;
     if (d.started) { dragShapeHandle(d.it, d.orig, d.h, shapeSnap(w)); renderItems(); }
   } else if (d && d.type === "vertex") {
     if (!d.started && Math.hypot(sx - d.px, sy - d.py) > 3) d.started = true;
     if (d.started) {
-      const end = d.i === 0 || d.i === d.pts.length - 1, c = snapBase(w.x, w.y, end, d.w), q = d.pts[d.i];
+      const end = d.i === 0 || d.i === d.pts.length - 1, c = dragSnap(e, w.x, w.y, end, d.w), q = d.pts[d.i];
       d.w.pts = dragVertex(d.pts, d.i, round3(c.x - q[0]), round3(c.y - q[1]), d.w);
       renderItems();
     }
@@ -1377,7 +1466,7 @@ stage.addEventListener("wheel", (e) => {
 function poleKey(key) {
   if (isPv() || isDispo()) return false;
   if (S.tool === "place") {
-    if (S.placeSym === TERMINALS || templateOf(S.placeSym)) return false;
+    if (S.placeSym === TERMINALS || S.placeSym === CTRL || templateOf(S.placeSym)) return false;
     const v = variantByKey(S.placeSym, key);
     if (!v) return (key === "t" || key === "T") && hasTrenner(S.placeSym); // T nicht als Text-Werkzeug, wenn die Familie einen N-Trenner kennt
     S.placeSym = v; renderLeft(); renderRight(); renderOverlay(); updateHint();
@@ -1449,6 +1538,7 @@ window.addEventListener("keydown", (e) => {
   if (isPv() && !mod && !e.altKey && PV.toolKey(e.key)) return; // S, P, E, B: Werkzeuge des Stringplans (Schritt 5d)
   if (!mod && !e.altKey && poleKey(e.key)) { e.preventDefault(); return; } // 1 bis 4 und N: Polzahl (CJ 16.10.)
   if (ELPLEXA && !mod && !e.altKey && elKey(e)) { e.preventDefault(); return; } // Module, Übersicht, Leisten, Hilfe
+  if (e.altKey && !mod && e.code === "KeyV") { e.preventDefault(); autoWire(); return; } // Autoverkabelung (CJ 18.10.2026; e.code, weil Alt+V auf dem Mac „√“ tippt)
   switch (e.key) {
     case "v": case "V": setTool("select"); break;
     case "l": case "L": if (!isDispo() && !isPv()) setTool("wire"); break;
@@ -1460,9 +1550,10 @@ window.addEventListener("keydown", (e) => {
     case "y": case "Y": if (!mod) toggleDims(); break;
     case "m": case "M": if (!mod) togglePin(S.active); break;
     case "b": case "B": if (!mod && isDispo()) setTool("dim"); break;
+    case "/": if (!symFind.hidden) { e.preventDefault(); $("#sym-find").focus(); $("#sym-find").select(); } break;
     case "g": case "G": if (!mod) { e.preventDefault(); gotoSheet({ instant: true }); } break;
-    case "PageUp": e.preventDefault(); stepSheet(-1); break;
-    case "PageDown": e.preventDefault(); stepSheet(1); break;
+    case "PageUp": e.preventDefault(); if (e.shiftKey) jumpStar(-1); else stepSheet(-1); break;
+    case "PageDown": e.preventDefault(); if (e.shiftKey) jumpStar(1); else stepSheet(1); break;
     case "+": case "=": { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.25); break; }
     case "-": { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 0.8); break; }
     case "Delete": case "Backspace": e.preventDefault(); deleteSelected(); break;
@@ -1543,6 +1634,18 @@ onPanel("input", (e) => {
     renderSheet();
   }
   else if (t.dataset.text && one) { firstEdit(); const v = t.dataset.text === "h" ? parseFloat(t.value) : t.value; if (t.dataset.text === "h" && !(v > 0)) return; one[t.dataset.text] = v; }
+  else if (t.dataset.ctrl && one?.type === "ctrl") {
+    const k = t.dataset.ctrl, v = k === "h" ? parseFloat(t.value) : t.value;
+    if (k === "h" && !(v >= 10 && v <= 200)) return;
+    firstEdit(); one[k] = v;
+    if (k === "top" || k === "bot") { const hd = rightEl.querySelector(".prop-head p"); if (hd) hd.textContent = `${ctrlTerms(one.top).length + ctrlTerms(one.bot).length} Klemmen`; }
+  }
+  else if (t.dataset.tlab !== undefined && one?.type === "terminals") {
+    firstEdit();
+    const lab = Array.from({ length: termCount(one) }, (_, i) => one.lab?.[i] ?? "");
+    lab[Number(t.dataset.tlab)] = cleanLab(t.value);
+    if (lab.some(Boolean)) one.lab = lab; else delete one.lab;
+  }
   else if (t.dataset.term && one && one.type === "terminals") {
     firstEdit();
     one[t.dataset.term] = t.value;
@@ -1550,8 +1653,10 @@ onPanel("input", (e) => {
     if (t.dataset.term === "cable") {
       const c = parseCable(t.value);
       if (c) one.n = c.n;
+      if (c?.tel && one.pe !== "none") { one.pe = "none"; const pe = rightEl.querySelector("[data-termpe]"); if (pe) pe.value = "none"; } // Fernmeldekabel: ohne PE-Klemme
       const note = rightEl.querySelector("[data-cablenote]"); if (note) note.textContent = cableNote(one);
       const head = rightEl.querySelector(".prop-head p"); if (head) head.textContent = termCount(one) + " Klemmen";
+      const tl = rightEl.querySelector(".tlab"); if (tl && tl.children.length !== termCount(one)) tl.innerHTML = termLabCells(one);
     }
   }
   else if (t.dataset.dp && one) {
@@ -1601,6 +1706,11 @@ onPanel("change", (e) => {
     afterChange();
   }
   else if (t.dataset.placepoles !== undefined) { S.placeSym = t.value; renderLeft(); renderRight(); renderOverlay(); updateHint(); }
+  else if (t.dataset.textr !== undefined && one?.type === "text") { pushUndo(); const r = Number(t.value); if (r) one.r = r; else delete one.r; afterChange(false); }
+  else if (t.dataset.textal !== undefined && one?.type === "text") { pushUndo(); if (t.value) one.al = t.value; else delete one.al; afterChange(false); }
+  else if (t.dataset.newtr !== undefined) S.textR = Number(t.value);
+  else if (t.dataset.newtal !== undefined) S.textAl = t.value;
+  else if (t.dataset.tvert !== undefined && one?.type === "terminals") { pushUndo(); if (t.checked) one.vert = true; else delete one.vert; afterChange(false); }
   else if (t.dataset.termpe !== undefined && one) { pushUndo(); one.pe = t.value; afterChange(false); }
   else if (t.dataset.termdraw !== undefined && one?.type === "terminals") { pushUndo(); if (t.value === "off") one.noterm = true; else delete one.noterm; afterChange(); }
   else if (t.dataset.dp === "maker" && one?.type === "part" && isDispo()) renderRight(); // NH: Liste der Grössen folgt dem Hersteller
@@ -1618,7 +1728,7 @@ onPanel("click", (e) => {
   if (b.dataset.act.startsWith("dp")) { dispoAct(b.dataset.act, b); return; } // Zählerplatte bestücken, Masse aus-/einblenden
   if (b.dataset.act.startsWith("cab")) { dispoCabAct(b.dataset.act, b, selectedItems()[0]); return; } // Schrank: Feld anfügen, löschen, Montageplatten
   const one = selectedItems()[0];
-  ({ rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, dupsheet: duplicateSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
+  ({ autowire: autoWire, rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, dupsheet: duplicateSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
 });
 
 let addHeld = false, addTimer = 0; // langes Drücken auf + öffnet die Auswahl statt ein Blatt anzulegen
@@ -1626,6 +1736,7 @@ $("#sheetbar").addEventListener("click", (e) => {
   const step = e.target.closest("[data-step]");
   if (step) stepSheet(Number(step.dataset.step));
   else if (e.target.closest("[data-gosheet]")) sheetMenu.toggle($("#sheet-cur"));
+  else if (e.target.closest("[data-starjump]")) jumpStar(1);
   else if (e.target.closest("[data-addsheet]")) { if (addHeld) addHeld = false; else if (addMenu.open) addMenu.hide(false); else addSameKind(); }
 });
 $("#sheetbar").addEventListener("pointerdown", (e) => {
@@ -1644,6 +1755,38 @@ $("#sheet-find").addEventListener("input", renderSheetList);
 // Blattmenü (CJ 18.10.2026): Rechtsklick oder gedrückt halten auf dem Blattnamen, einer Zeile der Blattliste oder (elplexaCAD) einer
 // Blatt-Kachel der Übersicht. data-ctx = Index des Blatts. Gedrückt halten wie beim Plus-Knopf (450 ms), der folgende Klick fällt weg.
 let ctxSheet = -1, ctxHub = false, ctxTimer = 0, ctxHeld = false;
+const CTX_SEL = "[data-ctx], [data-modctx], [data-savectx], [data-hold]";
+// Klick-Regel überall (CJ 18.10.2026): kurzer Klick = Standard, Rechtsklick oder gedrückt halten (450 ms) = Menü, gleich wie beim
+// Plus-Knopf und am Blattnamen. Elemente mit data-hold: Werkzeug Leitung (Leiterzahl, Art), Text (Drehung, Ausrichtung),
+// Speichern (v3: Speichern unter), Exportieren (Klick öffnet hier schon das Menü, es gibt keinen Standard).
+const holdEl = document.createElement("div"); holdEl.className = "menu"; holdEl.id = "hold-menu"; holdEl.setAttribute("role", "menu"); holdEl.hidden = true; $("#app").append(holdEl);
+const holdMenu = makeMenu(holdEl, { left: true, beforeShow: () => closeEditor(true) });
+const holdMi = (act, title, on = false, sub = "") => `<button class="mi${on ? " on" : ""}" role="menuitem" data-hact="${act}" tabindex="-1" aria-checked="${on}"><span class="mt"><span class="mh">${R.esc(title)}</span>${sub ? `<span class="ms">${R.esc(sub)}</span>` : ""}</span></button>`;
+function holdHTML(k) {
+  if (k === "wire") return `<div class="ctx-head">Leitung: Leiter pro Zug</div>` + Object.entries(BUNDLE_LABELS).map(([n, l]) => holdMi(`b:${n}`, l, Number(n) === S.bundleN)).join("")
+    + `<div class="ctx-head">Art der Leitung</div>` + Object.entries(WIRE_KINDS).map(([v, o]) => holdMi(`k:${v}`, o.label, v === S.wireKind)).join("");
+  if (k === "text") return `<div class="ctx-head">Text: Drehung</div>` + [0, 90, 180, 270].map((v) => holdMi(`r:${v}`, `${v}°`, (S.textR || 0) === v)).join("")
+    + `<div class="ctx-head">Ausrichtung</div>` + [["", "Links"], ["c", "Mittig"], ["r", "Rechts"]].map(([v, l]) => holdMi(`a:${v}`, l, (S.textAl || "") === v)).join("");
+  if (k === "star") return `<div class="ctx-head">Markierte Blätter (★)</div>` + pinned().map((i) => holdMi(`go:${i}`, `${sheetLabel(S.doc.sheets[i], i)}${S.doc.sheets[i].meta.TITEL && !T.isDeck(S.doc.sheets[i]) ? ` · ${S.doc.sheets[i].meta.TITEL}` : ""}`, i === S.active)).join("");
+  return holdMi("save", "Speichern", false, "In die geöffnete Datei (⌘S)") + holdMi("as", "Speichern unter …", false, "Neue Datei wählen (⇧⌘S)");
+}
+function holdOpen(el) {
+  const k = el.dataset.hold;
+  if (k === "export") { exportMenu.show(el); return; }
+  holdEl.dataset.k = k; holdEl.setAttribute("aria-label", k === "save" ? "Speichern" : el.textContent.trim());
+  holdEl.innerHTML = holdHTML(k); holdMenu.show(el);
+  const r = el.getBoundingClientRect(); // unten kein Platz (Blattleiste): über dem Knopf
+  if (holdEl.getBoundingClientRect().bottom > innerHeight - 8) holdEl.style.top = `${Math.max(8, r.top - 4 - holdEl.offsetHeight)}px`;
+}
+holdEl.addEventListener("click", (e) => {
+  const a = e.target.closest("[data-hact]")?.dataset.hact; if (!a) return;
+  const [t, v] = a.split(":");
+  if (t === "save" || t === "as") { saveJson(t === "as"); return; }
+  if (t === "go") { switchSheet(Number(v)); return; }
+  if (t === "b") S.bundleN = Number(v); else if (t === "k") S.wireKind = v; else if (t === "r") S.textR = Number(v); else if (t === "a") S.textAl = v;
+  const tool = t === "b" || t === "k" ? "wire" : "text";
+  if (S.tool !== tool) setTool(tool); else { renderRight(); renderOverlay(); updateHint(); }
+});
 const ctxMenu = makeMenu($("#sheet-ctx"), { up: true, beforeShow: () => {
   const sh = S.doc.sheets[ctxSheet], deck = T.isDeck(sh);
   $("#sheet-ctx .ctx-head").textContent = `${sheetLabel(sh, ctxSheet)}${sh.meta.TITEL ? ` · ${sh.meta.TITEL}` : ""}`;
@@ -1656,11 +1799,11 @@ function openCtx(el) {
   ctxSheet = i; ctxHub = !!el.closest("#el-hub");
   ctxMenu.show(el.closest("#sheet-menu") ? $("#sheet-cur") : el); // Zeile der Blattliste: die Liste schliesst, Menü am Blattnamen
 }
-const ctxOpen = (el) => (ELPLEXA && S.shared ? null : el.dataset.savectx !== undefined ? ELPLEXA && EL_S.saveCtx.show(el) : el.dataset.modctx ? ELPLEXA && elModCtx(el) : openCtx(el)); // Speichern-Knopf, Modul-Kachel (elplexaCAD) oder Blatt
-document.addEventListener("contextmenu", (e) => { const el = e.target.closest?.("[data-ctx], [data-modctx], [data-savectx]"); if (el) { e.preventDefault(); clearTimeout(ctxTimer); ctxOpen(el); } });
+const ctxOpen = (el) => (ELPLEXA && S.shared ? null : el.dataset.hold !== undefined ? holdOpen(el) : el.dataset.savectx !== undefined ? ELPLEXA && EL_S.saveCtx.show(el) : el.dataset.modctx ? ELPLEXA && elModCtx(el) : openCtx(el)); // Speichern-Knopf, Modul-Kachel (elplexaCAD) oder Blatt
+document.addEventListener("contextmenu", (e) => { const el = e.target.closest?.(CTX_SEL); if (el) { e.preventDefault(); clearTimeout(ctxTimer); ctxOpen(el); } });
 document.addEventListener("pointerdown", (e) => {
   ctxHeld = false; clearTimeout(ctxTimer);
-  const el = e.target.closest?.("[data-ctx], [data-modctx], [data-savectx]");
+  const el = e.target.closest?.(CTX_SEL);
   if (el && e.button === 0) ctxTimer = setTimeout(() => { ctxHeld = true; ctxOpen(el); }, 450);
 });
 for (const ev of ["pointerup", "pointercancel", "pointermove"]) document.addEventListener(ev, (e) => { if (ev !== "pointermove" || Math.abs(e.movementX) + Math.abs(e.movementY) > 4) clearTimeout(ctxTimer); });
@@ -1674,9 +1817,49 @@ $("#sheet-ctx").addEventListener("click", async (e) => {
   else if (b.dataset.ctxact === "dup") duplicateSheet();
   else if (b.dataset.ctxact === "del") { await deleteSheet(); if (hub) elHub(true); }
 });
+// Blätter umsortieren (CJ 18.10.2026): in der Blattliste eine Zeile ziehen oder Alt+Pfeil. Nur innerhalb derselben Art und desselben
+// Moduls (gleicher Rang in titel.js), die Arten bleiben in ihrer festen Folge. Blattnummern (Schriftfeld) bleiben, wie sie sind.
+const canMove = (a, b) => a !== b && S.doc.sheets[a] && S.doc.sheets[b] && !T.isDeck(S.doc.sheets[a]) && T.sheetRank(S.doc.sheets[a]) === T.sheetRank(S.doc.sheets[b]);
+function moveSheet(from, to) {
+  if (!canMove(from, to)) return false;
+  const moved = S.doc.sheets[from];
+  change(() => { const cur = S.model, [sh] = S.doc.sheets.splice(from, 1); S.doc.sheets.splice(to, 0, sh); S.active = S.doc.sheets.indexOf(cur); }, { panel: false }); // offenes Blatt bleibt offen
+  if (sheetMenu.open) { renderSheetList(); document.querySelector(`#sheet-menu [data-sheet="${S.doc.sheets.indexOf(moved)}"]`)?.focus(); }
+  return true;
+}
+let sDrag = null, sDragJust = false; // { from, y, on, el, to }
+$("#sheet-menu .slist").addEventListener("pointerdown", (e) => {
+  const b = e.target.closest("[data-sheet]");
+  if (!b || e.button !== 0 || $("#sheet-find").value.trim()) return; // gefilterte Liste: nicht ziehen
+  sDrag = { from: Number(b.dataset.sheet), y: e.clientY, on: false, el: null };
+});
+document.addEventListener("pointermove", (e) => {
+  if (!sDrag) return;
+  if (!sDrag.on && Math.abs(e.clientY - sDrag.y) > 6) { sDrag.on = true; clearTimeout(ctxTimer); document.querySelector(`#sheet-menu [data-sheet="${sDrag.from}"]`)?.closest(".srow").classList.add("drag-src"); }
+  if (!sDrag.on) return;
+  const row = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("#sheet-menu [data-sheet]"), to = row ? Number(row.dataset.sheet) : -1;
+  sDrag.el?.classList.remove("drop-above", "drop-below");
+  sDrag.el = canMove(sDrag.from, to) ? row.closest(".srow") : null;
+  sDrag.el?.classList.add(to < sDrag.from ? "drop-above" : "drop-below"); sDrag.to = to;
+});
+document.addEventListener("pointerup", () => {
+  const d = sDrag; sDrag = null; if (!d?.on) return;
+  document.querySelectorAll("#sheet-menu .drag-src, #sheet-menu .drop-above, #sheet-menu .drop-below").forEach((el) => el.classList.remove("drag-src", "drop-above", "drop-below"));
+  sDragJust = true; setTimeout(() => { sDragJust = false; }, 0); // der folgende Klick öffnet das Blatt nicht
+  if (d.el) moveSheet(d.from, d.to);
+});
+$("#sheet-menu").addEventListener("keydown", (e) => {
+  const b = e.target.closest?.("[data-sheet]");
+  if (!b || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  e.preventDefault(); e.stopPropagation();
+  const rows = [...document.querySelectorAll("#sheet-menu [data-sheet]")].map((r) => Number(r.dataset.sheet)), i = rows.indexOf(Number(b.dataset.sheet));
+  const to = rows[i + (e.key === "ArrowUp" ? -1 : 1)];
+  if (to !== undefined && !moveSheet(rows[i], to)) toast("Nur innerhalb derselben Blattart und desselben Moduls verschiebbar.");
+}, true);
 $("#sheet-menu").addEventListener("click", (e) => {
   const sa = e.target.closest("[data-sheetact]");
   if (sa) { (sa.dataset.sheetact === "dup" ? duplicateSheet : deleteSheet)(); return; } // aktives Blatt (CJ 18.10.2026)
+  if (sDragJust) return;
   const pin = e.target.closest("[data-pin]"), t = e.target.closest("[data-sheet]");
   if (pin) { togglePin(Number(pin.dataset.pin)); renderSheetList(); } else if (t) switchSheet(Number(t.dataset.sheet));
 });
@@ -1717,7 +1900,7 @@ document.fonts?.ready.then(fitTopbar);
 // Seitenleisten ziehbar (CJ 18.10.2026): Griff am Rand der Zeichenfläche, 200 bis 440 px, Doppelklick = Standardbreite, Pfeiltasten ±16 px.
 // Breite je Gerät in localStorage (fehlt = Standard aus style.css), ohne Animation. Unter 860 px Overlay-Leisten, dort ist der Griff aus.
 const SIDE_KEY = "schemacad.leisten", SIDE_MIN = 200, SIDE_MAX = 440, SIDE_VAR = { left: "--lw", right: "--rw" }, appEl = $("#app");
-const sideEl = (side) => (side === "left" ? leftEl : rightEl);
+const sideEl = (side) => (side === "left" ? $("#left") : rightEl);
 function sideSet(side, w) {
   if (w == null) appEl.style.removeProperty(SIDE_VAR[side]);
   else appEl.style.setProperty(SIDE_VAR[side], `${Math.round(Math.min(SIDE_MAX, Math.max(SIDE_MIN, w)))}px`);
@@ -1764,6 +1947,8 @@ popEl.addEventListener("dragover", (e) => {
 popEl.addEventListener("drop", (e) => { const r = e.target.closest?.(".pv-wr"), from = Number(e.dataTransfer.getData(WR_DT)); if (!r || !from) return; e.preventDefault(); wrDropOff(); PV.moveWr(from, Number(r.dataset.wrrow)); });
 popEl.addEventListener("dragend", wrDropOff);
 const exportMenu = makeMenu($("#export-menu"), { beforeShow: () => closeEditor(true) });
+$("#btn-export").dataset.hold = "export"; // Rechtsklick oder halten öffnet dasselbe Menü (Klick-Regel)
+if (!ELPLEXA) { $("#btn-save").dataset.hold = "save"; $("#btn-save").title = "Speichern (⌘S). Rechtsklick oder gedrückt halten: Speichern unter …"; }
 $("#btn-export").addEventListener("click", (e) => exportMenu.toggle(e.currentTarget));
 $("#btn-export").addEventListener("keydown", (e) => { if (e.key === "ArrowDown") { e.preventDefault(); exportMenu.show(e.currentTarget); } });
 $("#btn-search").addEventListener("click", searchDialog);
@@ -1875,7 +2060,7 @@ function elSheetBar() {
     + `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt im Modul (Bild auf)" aria-label="Vorheriges Blatt"${pos <= 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Blätter dieses Moduls (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${pos + 1} von ${idx.length}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt im Modul (Bild ab)" aria-label="Nächstes Blatt"${pos >= idx.length - 1 ? " disabled" : ""}>›</button>`
-    + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>`;
+    + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>` + starBtn();
   if (keep) document.getElementById(keep)?.focus();
   if (open) renderSheetList();
 }

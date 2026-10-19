@@ -74,7 +74,8 @@ const label = (k) => ({ OBJEKT: "Objekt", AUFTRAG: "Auftrag", SCHEMA: "Schema", 
 export const SHEET_ORDER = ["title", "toc", "schema", "legend", "dispo", "pv", "pvtab"];
 // Rang eines Blatts in der festen Reihenfolge. Blätter mit gleichem Rang (gleiche Art, gleiches Modul) behalten ihre Reihenfolge
 // in der Datei; diese lässt sich in der Blattliste per Ziehen ändern (CJ 18.10.2026, app.js moveSheet).
-export const sheetRank = (s) => { const k = s.kind || "schema", v = s.var || 1; return k === "title" ? 0 : k === "toc" ? 1 : k === "schema" ? 100 + v : k === "legend" ? 199 : k === "dispo" ? 200 + v : 300 + v * 2 + (k === "pvtab" ? 1 : 0); };
+// Übergebene Dispo mit ins (D3, CJ 19.10.2026): Rang des Schema-Moduls ins, steht dann zwischen dessen Schemablättern.
+export const sheetRank = (s) => { const k = s.kind || "schema", v = s.var || 1; return k === "title" ? 0 : k === "toc" ? 1 : k === "schema" ? 100 + v : k === "dispo" && s.ins ? 100 + s.ins : k === "legend" ? 199 : k === "dispo" ? 200 + v : 300 + v * 2 + (k === "pvtab" ? 1 : 0); };
 // Wunsch D3 (CJ 19.10.2026): Blattnummer bleibt frei wählbar. Ein verschobenes Blatt (list[k], list = Blätter gleichen Rangs in neuer Folge,
 // from = sein alter Platz) nimmt die Nummer seines neuen Platzes: Vorgänger + 1, ganz vorne die Nummer des Nachfolgers. Die folgenden Blätter
 // zählen um 1 hoch, bis zur nächsten Lücke (Nummer grösser als die vorherige) oder einer Nummer, die keine Zahl ist. Nach hinten verschoben
@@ -95,11 +96,13 @@ export function renumberMoved(list, k, from = k) {
   return out;
 }
 export function syncDeck(doc) {
+  const ho = handedOver(doc); // Dispo nicht mehr übergeben (Ansicht gelöscht): zurück an ihren Platz bei den Dispositionen
+  for (const s of doc.sheets) if (s.kind === "dispo" && s.ins && !ho.has(s.sid)) delete s.ins;
   // Module mehrfach (18.10.2026): je Modul nacheinander (Schema 1, Schema 2, Legende, Dispo 1, Dispo 2, PV 1 mit Übersicht, PV 2 mit Übersicht)
   doc.sheets = doc.sheets.map((s, i) => [s, i]).sort((a, b) => sheetRank(a[0]) - sheetRank(b[0]) || a[1] - b[1]).map((e) => e[0]);
   const leg = doc.sheets.find((s) => s.kind === "legend");
   if (leg?.kind === "legend") {
-    const nums = doc.sheets.filter((s) => !s.kind || s.kind === "title" || s.kind === "toc").map((s) => parseInt(s.meta.BLATT, 10)).filter(Number.isFinite);
+    const nums = doc.sheets.filter((s) => !s.kind || s.kind === "title" || s.kind === "toc" || s.ins).map((s) => parseInt(s.meta.BLATT, 10)).filter(Number.isFinite);
     Object.assign(leg.meta, { TITEL: "Sicherungslegende", BLATT: String(Math.max(0, ...nums) + 1) });
   }
   const t = titleOf(doc), toc = doc.sheets.find((s) => s.kind === "toc");

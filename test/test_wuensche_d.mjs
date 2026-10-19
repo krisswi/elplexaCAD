@@ -1,6 +1,6 @@
 // Wünsche D (CJ 19.10.2026): D2 Inhaltsverzeichnis nur Schema und übergebene Dispo, D3 Blattnummern beim Verschieben. Aufruf aus web-src: node test/test_wuensche_d.mjs
 import assert from "node:assert";
-import { newDoc, newSheet } from "../src/model.js";
+import { newDoc, newSheet, serializeModel, parseModel } from "../src/model.js";
 import * as T from "../src/titel.js";
 
 const sheet = (kind, no) => { const s = newSheet(kind); s.meta.BLATT = String(no); return s; };
@@ -47,3 +47,34 @@ assert.deepStrictEqual(rows.map((r) => r.no), ["1", "2", "3", "4", "5", "Dispo 2
 assert.strictEqual(d.sheets[rows.at(-1).i], dB, "Zeile zeigt aufs richtige Blatt");
 assert.strictEqual(T.tocPageCount(d), 1);
 console.log("Wünsche D: alle Prüfungen bestanden");
+
+// D3 Nachtrag (CJ 19.10.2026): übergebene Dispo zwischen die Schemablätter, Beispiel CJ im ganzen Dokument
+export function beispielDoc() {
+  const doc = newDoc(); doc.sheets[0].meta.BLATT = "2";
+  for (const n of [3, 4, 5, 10, 40]) doc.sheets.push(sheet(undefined, n));
+  doc.sheets.forEach((s, i) => { s.meta.TITEL = "Schema " + s.meta.BLATT; s.sid = 500 + i; });
+  const dp = sheet("dispo", 41); dp.sid = 77; dp.meta.TITEL = "Dispo UV"; doc.sheets.push(dp);
+  doc.sheets.find((s) => s.meta.BLATT === "10").items.push({ id: 91, type: "dispoview", src: 77, x: 20, y: 30, den: 10, bx: 0, by: 0, bw: 100, bh: 100, title: "Dispo UV", items: [] });
+  doc.noTitle = doc.noToc = true; T.ensureDeck(doc, null, { shift: false }); doc.nextId = 1000;
+  return doc;
+}
+{
+  const doc = beispielDoc(), dp = doc.sheets.find((s) => s.kind === "dispo");
+  assert.ok(T.sheetRank(dp) > T.sheetRank(doc.sheets[0]), "ohne ins: Dispo nach den Schemablättern");
+  // wie moveSheet: ins setzen, zwischen 3 und 4 einsetzen, Reihenfolge abgleichen, nummerieren
+  dp.ins = 1; doc.sheets.splice(doc.sheets.indexOf(dp), 1); doc.sheets.splice(doc.sheets.findIndex((s) => s.meta.BLATT === "4" && !s.kind), 0, dp);
+  T.syncDeck(doc);
+  const grp = doc.sheets.filter((s) => T.sheetRank(s) === T.sheetRank(dp));
+  T.renumberMoved(grp, grp.indexOf(dp)); T.syncDeck(doc); // wie afterChange: Legende nach der höchsten Nummer
+  assert.deepStrictEqual(doc.sheets.filter((s) => s.kind !== "legend").map((s) => s.meta.TITEL + "=" + s.meta.BLATT),
+    ["Schema 2=2", "Schema 3=3", "Dispo UV=4", "Schema 4=5", "Schema 5=6", "Schema 10=10", "Schema 40=40"], "Beispiel CJ mit übergebener Dispo");
+  assert.deepStrictEqual(T.tocRows(doc).map((r) => r.no), ["2", "3", "Dispo 4", "5", "6", "10", "40", "41"], "Inhaltsverzeichnis folgt (Legende 41 am Schluss)");
+  const ser = serializeModel(doc), back = parseModel(ser);
+  assert.strictEqual(back.sheets.find((s) => s.kind === "dispo").ins, 1, "ins bleibt beim Speichern und Laden");
+  assert.strictEqual(JSON.parse(ser).version, 17);
+  // Ansicht gelöscht: Dispo nicht mehr übergeben, geht zurück zu den Dispositionen
+  doc.sheets.find((s) => s.meta.TITEL === "Schema 10").items = [];
+  T.syncDeck(doc);
+  assert.ok(!dp.ins && doc.sheets.at(-1) === dp, "nicht mehr übergeben: ins weg, Dispo wieder hinten");
+  console.log("Wünsche D Nachtrag: Dispo zwischen Schemablättern ok");
+}

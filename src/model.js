@@ -75,7 +75,8 @@ export function parseModel(text) {
     if (m.kind === "legend") m.show = cleanShow(rs.show, rs.cols); // Legende: angehakte Spalten (legende.js)
     if (m.kind === "dispo") { m.sid = isNum(rs.sid) ? rs.sid : 0; if (rs.dims === false) m.dims = false; if (rs.doors === false) m.doors = false; // Fenster „Ansicht“
       if (isNum(rs.dimH) && rs.dimH > 0) m.dimH = rs.dimH; if (isNum(rs.dimP) && rs.dimP > 0) m.dimP = rs.dimP; // Masstext im Plan und auf dem Schema (seit 16.10.2026)
-      if (Array.isArray(rs.dimsOff) && rs.dimsOff.length) m.dimsOff = rs.dimsOff.filter((k) => typeof k === "string"); } // ausgeblendete automatische Masse
+      if (Array.isArray(rs.dimsOff) && rs.dimsOff.length) m.dimsOff = rs.dimsOff.filter((k) => typeof k === "string"); // ausgeblendete automatische Masse
+      if (Number.isInteger(rs.ins) && rs.ins >= 1 && rs.ins <= 99) m.ins = rs.ins; } // übergebene Dispo zwischen den Blättern von Schema-Modul ins (D3, 19.10.2026)
     if (m.kind === "pv") { m.sid = isNum(rs.sid) ? rs.sid : 0; const bg = cleanBg(rs.bg, assets); if (bg) m.bg = bg; const ly = cleanLayers(rs.layers); if (ly) m.layers = ly; }
     if (m.kind === "pv") { const pa = cleanPaper(rs.paper); if (pa) m.paper = pa; } // Papier und Druckmassstab (Schritt 7)
     if (m.kind === "pv") { const hi = cleanHide(rs.hide); if (hi) m.hide = hi; } // Druckteile (5l)
@@ -286,6 +287,6 @@ export function serializeModel(m, { noAssets = false } = {}) {
   const usesV14 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.r) || /^ZW_(CT|SICH|PK1?|ZAEHLER2)$/.test(i.sym || ""))); // Wandlermessung BKW, gedrehte Texte (17.10.2026)
   const usesV15 = sheets.some((sh) => sh.items.some((i) => i.type === "shape" || (i.type === "text" && i.c))); // freies Zeichnen, Textfarbe (18.10.2026)
   const usesV16 = sheets.some((sh) => sh.var) || !!m.mods; // Module mehrfach (18.10.2026): ältere Stände würden Module vermischen
-  const usesV17 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.al) || (i.type === "terminals" && (i.lab || i.vert)) || i.type === "ctrl")); // Wünsche CJ 19.10.2026: Textausrichtung, Klemmentexte, Steuerkasten
+  const usesV17 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.al) || (i.type === "terminals" && (i.lab || i.vert)) || i.type === "ctrl")) || sheets.some((sh) => sh.ins); // Wünsche CJ 19.10.2026: Textausrichtung, Klemmentexte, Steuerkasten, Dispo im Schema (ins)
   return JSON.stringify({ ...rest, version: usesV17 ? 17 : usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
 }

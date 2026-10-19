@@ -1,5 +1,5 @@
 // SchemaCAD: Editor. Zustand, Bedienung, Dateien.
-import { newDoc, newSheet, parseModel, serializeModel, WIRE_KINDS, LEGEND_KEYS, setProjectMeta, cleanInfo, cleanProject, modBase, modOf, modKey, modName } from "./model.js";
+import { newDoc, newSheet, parseModel, serializeModel, WIRE_KINDS, LEGEND_KEYS, setProjectMeta, cleanInfo, cleanProject, modBase, modOf, modKey, modName, modVar } from "./model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, anchorX, variantByKey, hasTrenner, bmkLetter } from "./symbols.js";
 import { splitWandlerDoc, routeWm, wmParts } from "./wandler.js";
 import { insertFeed } from "./eingang.js";
@@ -796,7 +796,7 @@ function addSheet(v) {
 }
 // Nächste freie Blattnummer der Schemablätter, neues Schemablatt mit Grundverkabelung
 function nextSheetNo() {
-  const nums = S.doc.sheets.filter((sh) => !sh.kind || sh.kind === "title" || sh.kind === "toc").map((sh) => parseInt(sh.meta.BLATT, 10)).filter(Number.isFinite);
+  const nums = S.doc.sheets.filter((sh) => !sh.kind || sh.kind === "title" || sh.kind === "toc" || sh.ins).map((sh) => parseInt(sh.meta.BLATT, 10)).filter(Number.isFinite);
   return String(nums.length ? Math.max(...nums) + 1 : S.doc.noTitle && S.doc.noToc ? 1 : 3); // erstes Schemablatt: Titelseite und Inhalt kommen dazu (Blatt 1 und 2)
 }
 function makeSheet(no, { base = true } = {}) { const sh = newSheet(); sh.meta.BLATT = no; if (base) sh.items.push(...baseItems(nextId)); return sh; } // base: false = ohne Grundverkabelung (Blatt aus „An Schema“, CJ 16.10.)
@@ -1826,15 +1826,23 @@ $("#sheet-ctx").addEventListener("click", async (e) => {
 // Blätter umsortieren (CJ 18.10.2026): in der Blattliste eine Zeile ziehen oder Alt+Pfeil. Nur innerhalb derselben Art und desselben
 // Moduls (gleicher Rang in titel.js), die Arten bleiben in ihrer festen Folge. Wunsch D3 (CJ 19.10.2026): das Blatt nimmt die Nummer
 // seines neuen Platzes, die folgenden zählen bis zur nächsten Lücke hoch (T.renumberMoved); BMK folgen über renumberAll in change.
-const canMove = (a, b) => a !== b && S.doc.sheets[a] && S.doc.sheets[b] && !T.isDeck(S.doc.sheets[a]) && T.sheetRank(S.doc.sheets[a]) === T.sheetRank(S.doc.sheets[b]);
-function moveSheet(from, to) {
+// Übergebene Dispo (CJ 19.10.2026): lässt sich zwischen Schemablätter ziehen (Feld ins = Schema-Modul) und auf eine andere Dispo zurück.
+function crossMove(A, B) {
+  if (A?.kind !== "dispo" || !B) return false;
+  if (!B.kind || (B.kind === "dispo" && B.ins)) return T.handedOver(S.doc).has(A.sid) && (B.kind ? B.ins : B.var || 1) !== A.ins ? "in" : false;
+  return B.kind === "dispo" && A.ins && !B.ins ? "out" : false;
+}
+const canMove = (a, b) => a !== b && S.doc.sheets[a] && S.doc.sheets[b] && !T.isDeck(S.doc.sheets[a]) && (T.sheetRank(S.doc.sheets[a]) === T.sheetRank(S.doc.sheets[b]) || !!crossMove(S.doc.sheets[a], S.doc.sheets[b]));
+function moveSheet(from, to, after = false) { // after: hinter das Zielblatt (Alt+↑ über die Legende hinweg)
   if (!canMove(from, to)) return false;
   const moved = S.doc.sheets[from];
   let re = [];
   change(() => {
-    const cur = S.model, rank = T.sheetRank(S.doc.sheets[from]), g0 = S.doc.sheets.filter((s) => T.sheetRank(s) === rank).indexOf(S.doc.sheets[from]);
-    const [sh] = S.doc.sheets.splice(from, 1); S.doc.sheets.splice(to, 0, sh); S.active = S.doc.sheets.indexOf(cur); // offenes Blatt bleibt offen
-    const grp = S.doc.sheets.filter((s) => T.sheetRank(s) === rank);
+    const cur = S.model, A = S.doc.sheets[from], B = S.doc.sheets[to], cross = T.sheetRank(A) !== T.sheetRank(B) && crossMove(A, B);
+    const g0 = cross ? undefined : S.doc.sheets.filter((s) => T.sheetRank(s) === T.sheetRank(A)).indexOf(A); // von aussen: gilt wie nach vorn
+    if (cross === "in") A.ins = B.kind ? B.ins : B.var || 1; else if (cross === "out") delete A.ins;
+    const [sh] = S.doc.sheets.splice(from, 1); S.doc.sheets.splice(after && from > to ? to + 1 : to, 0, sh); S.active = S.doc.sheets.indexOf(cur); // offenes Blatt bleibt offen
+    const rank = T.sheetRank(sh), grp = S.doc.sheets.filter((s) => T.sheetRank(s) === rank);
     re = T.renumberMoved(grp, grp.indexOf(sh), g0);
   }, { panel: false });
   if (re.length) { renderRight(); toast(`Neue Blattnummer: ${re.map((s) => sheetLabel(s, S.doc.sheets.indexOf(s))).join(", ")}.`); }
@@ -1867,8 +1875,10 @@ $("#sheet-menu").addEventListener("keydown", (e) => {
   if (!b || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
   e.preventDefault(); e.stopPropagation();
   const rows = [...document.querySelectorAll("#sheet-menu [data-sheet]")].map((r) => Number(r.dataset.sheet)), i = rows.indexOf(Number(b.dataset.sheet));
-  const to = rows[i + (e.key === "ArrowUp" ? -1 : 1)];
-  if (to !== undefined && !moveSheet(rows[i], to)) toast("Nur innerhalb derselben Blattart und desselben Moduls verschiebbar.");
+  const d = e.key === "ArrowUp" ? -1 : 1;
+  let j = i + d; while (rows[j] !== undefined && T.isDeck(S.doc.sheets[rows[j]]) && !canMove(rows[i], rows[j])) j += d; // übergebene Dispo springt über die Legende
+  const to = rows[j];
+  if (to !== undefined && !moveSheet(rows[i], to, j !== i + d)) toast("Nur innerhalb derselben Blattart und desselben Moduls verschiebbar, übergebene Dispos auch zwischen die Schemablätter.");
 }, true);
 $("#sheet-menu").addEventListener("click", (e) => {
   const sa = e.target.closest("[data-sheetact]");
@@ -2079,7 +2089,9 @@ function elSheetBar() {
   if (open) renderSheetList();
 }
 function elSheetList() {
-  const q = $("#sheet-find").value.trim().toLowerCase(), idx = elIdx();
+  const q = $("#sheet-find").value.trim().toLowerCase(), m = elMod(), ho = T.handedOver(S.doc);
+  // Schema-Modul: übergebene Dispos dazu, damit sie sich zwischen die Schemablätter ziehen lassen (CJ 19.10.2026)
+  const idx = E.baseOf(m) !== "schema" ? elIdx() : S.doc.sheets.map((sh, i) => (E.moduleOf(sh) === m || (sh.kind === "dispo" && ho.has(sh.sid) && (!sh.ins || sh.ins === modVar(m))) ? i : -1)).filter((i) => i >= 0);
   const rows = idx.map((i) => ({ sh: S.doc.sheets[i], i, label: sheetLabel(S.doc.sheets[i], i), title: S.doc.sheets[i].meta.TITEL || "" })).filter((r) => !q || `${r.label} ${r.title}`.toLowerCase().includes(q));
   $("#sheet-menu .slist").innerHTML = rows.length ? rows.map(({ sh, i, label, title }, n) => `<div class="srow"><button class="mi${i === S.active ? " on" : ""}" data-sheet="${i}" data-ctx="${i}" tabindex="-1"${i === S.active ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${R.esc(label)}</span><span class="ms">${R.esc(title || "ohne Titel")}</span></span><span class="pos">${idx.indexOf(i) + 1}</span></button><button class="pin" data-pin="${i}" tabindex="-1" title="${sh.pin ? "Markierung entfernen" : "Blatt markieren"} (M für das aktive Blatt)" aria-label="${sh.pin ? "Markierung entfernen" : "Blatt markieren"}" aria-pressed="${!!sh.pin}">${sh.pin ? "★" : "☆"}</button></div>`).join("") : `<div class="empty">Kein Blatt gefunden</div>`;
 }

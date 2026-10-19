@@ -45,6 +45,37 @@ body.el-hubopen #sheetbar, body.el-hubopen #zoombar, body.el-hubopen .pvbar, bod
 .el-row input { flex: 1; min-width: 0; height: 30px; padding: 0 6px; margin-right: -6px; font: inherit; color: var(--ink); text-align: right; background: transparent; border: 1px solid transparent; border-radius: 6px; }
 .el-proj input:focus-visible, .el-time input:focus-visible { outline: 2px solid var(--el-green); outline-offset: 0; background: #fff; }
 @media (hover: hover) and (pointer: fine) { .el-row input:hover, .el-name:hover { background: var(--hover); } }
+/* Adresse und Gebäude (GWR), CJ 19.10.2026: zwei Felder je Zeile, GWR-Daten aufklappbar (zu = nur im Hintergrund) */
+.el-row2 { gap: 4px; } .el-row2 > span { margin-right: 8px; }
+.el-row2 .el-nr, .el-row2 .el-plz { flex: none; width: 60px; }
+.el-row2 .el-plz { margin-right: 0; }
+.el-row2 input[role="combobox"]:focus { text-align: left; } /* Suche: Text beim Tippen links */
+.el-gwr { border-bottom: 1px solid var(--panel-line); font-size: 13.5px; }
+.el-gwr summary { display: flex; align-items: center; gap: 8px; min-height: 34px; cursor: pointer; list-style: none; border-radius: 6px; }
+.el-gwr summary::-webkit-details-marker { display: none; }
+.el-gwr summary::after { content: ""; width: 6px; height: 6px; margin: 0 4px 3px auto; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); flex: none; }
+.el-gwr[open] summary::after { transform: rotate(-135deg); margin-bottom: -3px; }
+.el-gwr summary:focus-visible { outline: 2px solid var(--el-green); outline-offset: 0; }
+@media (hover: hover) and (pointer: fine) { .el-gwr summary:hover { background: var(--hover); } }
+.el-gsum { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex: 1; min-width: 0; }
+.el-gt { color: var(--muted); flex: none; }
+.el-gs { color: var(--ink); text-align: right; }
+.el-gbody { display: grid; gap: 8px; padding: 4px 0 12px; }
+.el-gacts { display: flex; justify-content: flex-end; }
+.el-ggrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.el-gv { display: grid; gap: 1px; min-width: 0; align-content: start; }
+.el-gv span { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.el-gv b { font-weight: 400; overflow-wrap: anywhere; }
+.el-gbody .el-note { margin: 0; }
+.el-wtab { overflow-x: auto; border-radius: 8px; border: 1px solid var(--panel-line); }
+.el-wtab table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+.el-wtab th { font-size: 11px; font-weight: 600; text-align: left; color: var(--muted); background: var(--panel); padding: 5px 8px; }
+.el-wtab td { padding: 5px 8px; border-top: 1px solid var(--panel-line); font-variant-numeric: tabular-nums; }
+.el-wtab:focus-visible { outline: 2px solid var(--el-green); outline-offset: 1px; }
+.el-adrlist { max-height: 320px; overflow: auto; }
+.el-adrlist .mi { align-items: center; }
+.el-adrlist .mi[aria-selected="true"] { background: var(--hover); }
+.el-adrnone { margin: 0; padding: 8px 10px; font-size: 13px; color: var(--muted); }
 .el-name { width: 100%; margin: 0 0 4px -6px; padding: 2px 6px; font: 600 19px/1.3 var(--font); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 6px; text-overflow: ellipsis; }
 .el-eyerow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
 /* Projektstatus: Pille, darüber ein unsichtbares Auswahlfeld */

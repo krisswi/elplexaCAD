@@ -3,6 +3,7 @@
 import { esc } from "./render.js";
 import { cell } from "./auswertung.js";
 import { modOf, modVar, modName } from "./model.js";
+import { adrHTML, gwrHTML } from "./gwr.js";
 
 export const MODULES = [
   { id: "schema", label: "Schema", sub: "Stromlaufschema mit Grundverkabelung", color: "#2f6db3" },
@@ -101,7 +102,8 @@ export function hubHTML(doc, o) {
     <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span>${ro ? statusPill(st) : `<label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label>`}</div>
       <input class="el-name" data-elp="name" value="${esc(o.name)}"${ro ? ` aria-label="Projektname" readonly` : ` aria-label="Projektname (klicken zum Umbenennen)" title="Klicken zum Umbenennen"`} spellcheck="false">${fileHint}
       ${fld("OBJEKT", "Objekt")}${fld("AUFTRAG", "Auftrag")}${fld("BAUHERR", "Bauherr")}${fld("INDEX", "Index")}
-      ${ro ? "" : `<p class="el-note">Gilt für die Schriftfelder aller Blätter und Module, Bauherr auch für die Titelseite. Einzelne Blätter lassen sich im Schriftfeld weiter ändern.</p>
+      ${adrHTML(doc.project?.adr, ro)}${gwrHTML(doc.project?.gwr, { open: o.gwrOpen, busy: o.gwrBusy, ro })}
+      ${ro ? "" : `<p class="el-note">Objekt, Auftrag und Index gelten für die Schriftfelder aller Blätter und Module, Bauherr auch für die Titelseite. Einzelne Blätter lassen sich im Schriftfeld weiter ändern.</p>
       <div class="el-acts"><button class="btn primary" data-elact="pdf"><span class="ic" data-ic="pdf"></span><span>Plansatz-PDF …</span></button></div>`}</section>
     ${ro ? sharedHTML(o.shared) : `<section class="el-projs" aria-label="Projekte"><div class="el-eyerow"><span class="el-eye">Projekte</span><button class="btn outline small" data-elact="newproj"><span class="ic" data-ic="plus"></span><span>Neues Projekt …</span></button></div>
       <div id="el-recent" class="el-recent"></div>

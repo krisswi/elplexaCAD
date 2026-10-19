@@ -8,6 +8,7 @@ import { syncMains, cleanMain } from "./hauptlinien.js";
 import { splitWandlerDoc } from "./wandler.js";
 import { cleanShape, isColor, SHAPE_LAYER } from "./formen.js";
 import { cleanAssets, cleanBg, usedAssets, cleanLayers, cleanPvItem, cleanLayerId, cleanPvDoc, PV_ITEMS, checkStrings, cleanPaper, anlageFromSheet, tidyPv, cleanHide, cleanPmid, cleanNorth, cleanStrk } from "./pv.js";
+import { cleanAdr, cleanGwr } from "./gwr.js";
 
 export const FORMAT = "schemacad";
 export const VERSION = 16; // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
@@ -157,6 +158,10 @@ export function cleanProject(o) {
       .map((e) => ({ k: e.k, d: e.d, s: Math.round(e.s), m: (Array.isArray(e.m) ? e.m : []).filter((x) => ["schema", "dispo", "pv"].includes(x)), ...(e.x === "ok" || e.x === "weg" ? { x: e.x } : {}) }));
     if (a.length) p.auto = a;
   }
+  // Adresse und GWR (CJ 19.10.2026, gwr.js)
+  const adr = cleanAdr(o.adr), gwr = cleanGwr(o.gwr);
+  if (adr) p.adr = adr;
+  if (gwr) p.gwr = gwr;
   // Online-Kopie (Schritt 3): ID der Zeile und Stand beim letzten Online-Speichern, für die Konfliktprüfung
   if (o.online && /^[0-9a-f-]{36}$/.test(o.online.id) && typeof o.online.at === "string") p.online = { id: o.online.id, at: o.online.at };
   return Object.keys(p).length ? p : null;

@@ -3,6 +3,8 @@
 // Tabelle in Papier-mm (1:1), y nach oben, oben links bei (0, 0). Druck (Schritt 7): A4 quer mit Plankopf, über mehrere Seiten (tablePages).
 import * as P from "./pv.js";
 import * as R from "./render.js";
+import { tminNin } from "./gwr.js";
+
 
 const COLS = [ // Bezeichnung, Breite in mm, Wert, rechtsbündig
   ["Plan", 30, (r, doc) => `Stringplan ${doc.sheets[r.si].meta?.BLATT || r.si + 1}`],
@@ -138,7 +140,7 @@ export function makePvTab(c) {
     toast(n ? `${n} WR-Typ${n > 1 ? "en" : ""} übernommen.` : "Keine neuen WR-Typen (gleiche Namen werden übersprungen).", n ? undefined : "error");
   }
   function action(el) {
-    ({ itnew: () => editInv(null), itedit: () => editInv(invTypes().find((t) => t.id === el.dataset.it)), itdel: () => deleteInv(el.dataset.it), itcatsave: saveCatalog, itcatload: loadCatalog, itcatcloud: cloudCatalog })[el.dataset.pvact]?.();
+    ({ itnew: () => editInv(null), itedit: () => editInv(invTypes().find((t) => t.id === el.dataset.it)), itdel: () => deleteInv(el.dataset.it), itcatsave: saveCatalog, itcatload: loadCatalog, itcatcloud: cloudCatalog, tminset: () => setPv((pv) => { pv.tmin = Number(el.dataset.v); }) })[el.dataset.pvact]?.();
   }
   // Rechts: Tmin (Text, Komma und − erlaubt, leer = keine Angabe) und Zuordnung WR-Nummer → WR-Typ
   function option(el) {
@@ -160,7 +162,15 @@ export function makePvTab(c) {
     + `<section class="section"><h2 class="section-title">Stringübersicht</h2><p class="note">Füllt sich automatisch aus den Strings aller Stringpläne. Tmin und Wechselrichter: rechts, Druck: oben.</p></section>`;
   // Teile für das Fenster Wechselrichter und Druck (UI Schritt 6 Teil 2, pvedit.js popHTML)
   const note = (t) => `<p class="note">${t}</p>`;
-  const tminHTML = () => { const tmin = S.doc.pv?.tmin; return `<div class="field"><label>Tmin in °C (tiefste Modultemperatur)</label><input type="text" data-pvopt="tmin" value="${tmin === undefined ? "" : P.fmtNum(tmin)}" placeholder="z. B. −20" autocomplete="off" spellcheck="false"></div>` + note("Gilt für die ganze Datei. Kein Vorgabewert, bitte für den Standort eingeben.") + TMIN_NOTE; };
+  const tminHTML = () => { const tmin = S.doc.pv?.tmin; return `<div class="field"><label>Tmin in °C (tiefste Modultemperatur)</label><input type="text" data-pvopt="tmin" value="${tmin === undefined ? "" : P.fmtNum(tmin)}" placeholder="z. B. −20" autocomplete="off" spellcheck="false"></div>` + note("Gilt für die ganze Datei. Kein Vorgabewert, bitte für den Standort eingeben.") + tminSug(tmin) + TMIN_NOTE; };
+  // Vorschlag aus der Höhe des Gebäudes (GWR in der Projektübersicht, CJ 19.10.2026), nur auf Knopfdruck übernommen
+  const tminSug = (tmin) => {
+    const h = S.doc.project?.gwr?.h, opts = tminNin(h);
+    if (!opts.length) return "";
+    const lbl = (v) => `${P.fmtNum(v).replace("-", "−")} °C`, why = (v) => (opts.length > 1 ? (v === 0 ? " (Neigung unter 15°)" : " (über 15°)") : "");
+    return `<div class="pv-tminsug"><p class="note">Höhe ${h} m ü. M. (GWR): Vorschlag nach NIN ${opts.map((v) => lbl(v) + why(v)).join(" bzw. ")}.</p><div class="row">${opts.map((v) => tmin === v
+      ? `<span class="note">✓ ${lbl(v)} gesetzt</span>` : `<button class="btn outline small" data-pvact="tminset" data-v="${v}">${lbl(v)}${why(v)} übernehmen</button>`).join("")}</div></div>`;
+  };
   // Datenblatt (WR-Typ) für WR-Nummer nr
   const wrSelect = (nr) => { const cur = S.doc.pv?.wr?.[nr] ?? ""; return `<select data-pvopt="wr" data-nr="${nr}" aria-label="WR ${nr}: Datenblatt"><option value="">(kein Datenblatt)</option>${invTypes().map((t) => `<option value="${R.esc(t.id)}"${t.id === cur ? " selected" : ""}>${R.esc(t.name)}</option>`).join("")}</select>`; };
   function invCatHTML() {

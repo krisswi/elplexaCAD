@@ -5,6 +5,8 @@
 import { W, H, M_OUT, M_IN, TB_H } from "./frame.js";
 import * as R from "./render.js";
 import { cleanInfo, LEGEND_DEFAULT } from "./model.js";
+import { adrText } from "./gwr.js";
+
 export { cleanInfo };
 
 export const DECK = new Set(["title", "toc", "legend"]); // ohne Zeichenobjekte, von der App verwaltet
@@ -12,7 +14,7 @@ export const isDeck = (sh) => DECK.has(sh?.kind);
 export const PROJECT_FIELDS = ["OBJEKT", "AUFTRAG", "SCHEMA", "GEZEICHNET", "DATUM"]; // gelten für alle Blätter
 export const INFO_FIELDS = [ // nur Titelseite. Firma merkt sich die App (CJ 14.10.)
   { key: "BAUHERR", label: "Bauherr" },
-  { key: "BAUHERR_ADR", label: "Adresse Bauherr / Objekt", multi: true },
+  { key: "BAUHERR_ADR", label: typeof ELPLEXA !== "undefined" && ELPLEXA ? "Adresse Bauherr" : "Adresse Bauherr / Objekt", multi: true }, // elplexaCAD: Objektadresse aus der Projektübersicht
   { key: "FIRMA", label: "Firma", firm: true },
   { key: "FIRMA_ADR", label: "Adresse Firma", multi: true, firm: true },
 ];
@@ -119,7 +121,7 @@ function pageSVG(meta, inner) {
 }
 
 // Titelseite: oben Firma mit Logo, Mitte Objekt, Auftrag, Schema, unten links Bauherr, unten rechts Änderungsindex
-export function titleSVG(sheet) {
+export function titleSVG(sheet, adr = "") { // adr: Objektadresse aus dem Projekt (elplexaCAD, CJ 19.10.2026)
   const m = sheet.meta, info = sheet.info || cleanInfo({});
   let s = "";
   const top = H - M_IN - 8, L = M_IN + 8, Rr = W - M_IN - 8;
@@ -133,7 +135,8 @@ export function titleSVG(sheet) {
   s += txt(L, cy + 12, "Elektroschema", { h: 3.5, fill: SOFT });
   s += txt(L, cy, m.OBJEKT || "Objekt (rechts eingeben)", { h: 9, bold: true, w: Rr - L, fill: m.OBJEKT ? INK : SOFT });
   const sub = [m.AUFTRAG && `Auftrag ${m.AUFTRAG}`, m.SCHEMA && `Schema ${m.SCHEMA}`].filter(Boolean).join("  ·  ");
-  if (sub) s += txt(L, cy - 10, sub, { h: 4, fill: MUTED, w: Rr - L });
+  if (adr) s += txt(L, cy - 9, adr, { h: 4.2, w: Rr - L });
+  if (sub) s += txt(L, cy - (adr ? 16 : 10), sub, { h: 4, fill: MUTED, w: Rr - L });
   // Bauherr
   const by = 92;
   s += txt(L, by, "Bauherr", { h: 2.8, fill: SOFT, bold: true });
@@ -203,7 +206,7 @@ export function deckBounds(doc, sheet) {
 // Druck: eine A4-Seite (quer) je Seite, Aufbau wie das Schemablatt in files.js
 export function deckPrintPages(doc, sheet) {
   const page = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"><g transform="matrix(1 0 0 -1 0 ${H})">${inner}</g></svg>`;
-  if (sheet.kind === "title") return [page(titleSVG(sheet))];
+  if (sheet.kind === "title") return [page(titleSVG(sheet, adrText(doc.project?.adr)))];
   return Array.from({ length: tocPageCount(doc) }, (_, p) => page(tocSVG(doc, sheet, p)));
 }
 

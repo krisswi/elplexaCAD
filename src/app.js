@@ -33,6 +33,8 @@ import { cloudMenu, cloudUser, cloudLogin, cloudLogout, projList, projSave, proj
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
+import { fetchGwr, searchAdr, adrText } from "./gwr.js";
+
 
 const $ = (s) => document.querySelector(s);
 const stage = $("#stage"), svg = $("#svg"), world = $("#world");
@@ -211,7 +213,7 @@ function renderSheet() {
   const pat = $("#gridpat");
   pat.setAttribute("width", S.grid.size); pat.setAttribute("height", S.grid.size);
   pat.querySelector("circle").setAttribute("r", isDispo() || isPv() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
-  gSheet.innerHTML = S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
+  gSheet.innerHTML = S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
 function renderItems() { $("#dims-on").checked = S.model.dims !== false; gItems.innerHTML = isDeck() ? "" : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
 const pickable = () => (isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
@@ -1391,6 +1393,32 @@ function poleKey(key) {
   return true;
 }
 
+// Tab überall (CJ 19.10.2026): rechte Leiste, Fenster am Stringplan und Übersicht zeichnen beim Verlassen eines Felds neu (change),
+// der Fokus ginge dabei verloren. Darum führt Tab das selbst aus: Feld übernehmen (blur → change), dann im neu gezeichneten Bereich
+// das nächste bzw. (Shift) vorherige Feld wählen. Das Feld wird nach id oder erstem data-Attribut wiedergefunden.
+const TAB_FOCUS = "input:not([type=hidden]), select, textarea, button, summary, a[href], [tabindex]";
+const tabList = (root) => [...root.querySelectorAll(TAB_FOCUS)].filter((el) => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
+function tabKey(el) {
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  const a = [...el.attributes].find((x) => x.name.startsWith("data-") && x.value);
+  return a ? `[${a.name}="${CSS.escape(a.value)}"]` : null;
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || e.altKey || e.metaKey || e.ctrlKey) return;
+  const t = e.target;
+  if (!(t instanceof HTMLElement) || !t.matches("input, select, textarea")) return;
+  const root = t.closest("#right, #pv-pop, #el-hub");
+  if (!root) return;
+  const before = tabList(root), at = before.indexOf(t), key = tabKey(t), nth = key ? [...root.querySelectorAll(key)].indexOf(t) : -1;
+  e.preventDefault(); e.stopPropagation();
+  t.blur(); // übernimmt den Wert, zeichnet ggf. neu
+  const now = tabList(root), same = t.isConnected ? t : key ? root.querySelectorAll(key)[nth] : null;
+  let k = same ? now.indexOf(same) : -1;
+  if (k < 0) k = Math.min(at, now.length) - (e.shiftKey ? 0 : 1); // Feld weg: an gleicher Stelle weiter
+  const next = now[k + (e.shiftKey ? -1 : 1)] || (same && now.includes(same) ? same : null);
+  if (next) { next.focus(); if (next.select && next.matches("input:not([type=checkbox]):not([type=radio]):not([type=date])")) next.select(); }
+}, true);
+
 window.addEventListener("keydown", (e) => {
   if ($("#modal-root .modal-back")) return; // Dialog offen: keine Tastenkürzel
   if (ELPLEXA && elHubKey(e)) return;
@@ -1919,10 +1947,11 @@ function elInit() {
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
     else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv,
-      onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
+      gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("change", (e) => { const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); });
   hub.addEventListener("submit", (e) => { e.preventDefault(); elTimeAdd(); });
+  adrInit(hub);
   hub.addEventListener("keydown", (e) => { const r = e.key === "Enter" && e.target.closest?.("[data-elz]"); if (r) { e.preventDefault(); elZeitResolve(r.dataset.elz, true); } }); // Enter in der Zeile übernimmt
   hub.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches?.("input[data-elp]")) { e.preventDefault(); e.target.blur(); } }); // Enter übernimmt
   hub.addEventListener("click", (e) => { const b = e.target.closest("[data-elshare]"); if (b && !b.disabled) elShareDialog(b.dataset.elshare); });
@@ -1942,8 +1971,9 @@ function elHub(show, { keepFocus = false } = {}) {
     finishWire(); closeEditor(true); elZeitPause(); // in der Übersicht läuft keine Zeit
     const today = elDay(Date.now());
     const file = S.fileHandle?.name || "", suggest = `${baseName()}.elplexa.json`;
+    const gd = h.querySelector("#el-gwr"); if (gd) EL_S.gwrOpen = gd.open; // GWR-Feld bleibt beim Neuzeichnen offen oder zu
     h.innerHTML = S.shared && !EL_S.shareInfo ? (EL_S.shareFail ? E.shareFailHTML(EL_S.shareFail.grund, EL_S.shareFail.msg) : E.shareLoadHTML())
-      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null });
+      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy });
     for (const el of h.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
     E.recentList().then((l) => { EL_S.recent = l; const r = h.querySelector("#el-recent"); if (r) r.innerHTML = E.recentHTML(l); });
     elOnlineDraw();
@@ -1965,12 +1995,88 @@ function elSetProject(k, v) {
     const p = elProj();
     if (k === "name") p.name = v;
     else if (k === "status") p.status = v;
+    else if (k.startsWith("adr:")) { const a = (p.adr ||= {}); if (v) a[k.slice(4)] = v; else delete a[k.slice(4)]; if (!Object.keys(a).length) delete p.adr; }
     else if (k === "BAUHERR") { const info = E.bauherrInfo(S.doc) || (S.doc.info = cleanInfo({})); info.BAUHERR = v; }
     else { (p.meta ||= {})[k] = v; for (const sh of S.doc.sheets) sh.meta[k] = v; }
   }, { panel: false });
   setProjectMeta(S.doc.project?.meta);
   if (k === "name" && !S.fileHandle) setFileName(v); // noch ohne Datei: Kopf zeigt den Projektnamen
   elHub(true, { keepFocus: true });
+}
+// GWR abrufen (CJ 19.10.2026, gwr.js): ersetzt project.gwr, füllt leere PLZ/Ort
+async function elGwr() {
+  if (EL_S.gwrBusy) return;
+  EL_S.gwrBusy = true; EL_S.gwrOpen = true; elHub(true, { keepFocus: true });
+  try {
+    const doc = S.doc, r = await fetchGwr(doc.project?.adr);
+    if (S.doc !== doc) return; // inzwischen anderes Projekt geöffnet
+    change(() => { const p = elProj(); p.adr = r.adr; p.gwr = r.gwr; }, { panel: false });
+    toast(`GWR abgerufen: EGID ${r.gwr.egid}.`);
+  } catch (err) { toast(err.message, "error"); }
+  finally { EL_S.gwrBusy = false; if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); }
+}
+// Adresssuche beim Tippen (CJ 19.10.2026): im Feld Strasse tippen (ab 3 Zeichen), Vorschläge darunter. Pfeiltasten und Enter oder Klick wählen,
+// Esc schliesst. Die Auswahl füllt Strasse, Nr., PLZ, Ort und holt gleich das GWR. Ältere Antworten werden verworfen (seq).
+const ADR = { list: null, items: [], i: -1, seq: 0, timer: 0, input: null };
+function adrInit(hub) {
+  const l = document.createElement("div");
+  l.id = "el-adrlist"; l.className = "menu instant el-adrlist"; l.setAttribute("role", "listbox"); l.setAttribute("aria-label", "Adressvorschläge"); l.hidden = true;
+  $("#app").append(l); ADR.list = l;
+  l.addEventListener("mousedown", (e) => { e.preventDefault(); const o = e.target.closest("[data-adr]"); if (o) adrPick(Number(o.dataset.adr)); }); // Fokus bleibt im Feld
+  hub.addEventListener("input", (e) => { if (e.target.dataset?.elp === "adr:str") adrQuery(e.target); });
+  hub.addEventListener("focusout", (e) => { if (e.target === ADR.input) adrClose(); });
+  hub.addEventListener("scroll", adrClose, { passive: true });
+  hub.addEventListener("keydown", (e) => {
+    if (e.target !== ADR.input || l.hidden) return;
+    const n = ADR.items.length;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); if (n) adrMark(e.key === "ArrowDown" ? (ADR.i + 1) % n : ADR.i <= 0 ? n - 1 : ADR.i - 1); }
+    else if (e.key === "Enter" && n) { e.preventDefault(); e.stopPropagation(); adrPick(Math.max(0, ADR.i)); } // Enter ohne Auswahl nimmt den ersten Vorschlag
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); adrClose(); }
+  }, true);
+}
+function adrQuery(input) {
+  ADR.input = input; clearTimeout(ADR.timer);
+  const q = input.value.trim();
+  if (q.length < 3) { ADR.seq++; adrClose(); return; }
+  ADR.timer = setTimeout(async () => {
+    const seq = ++ADR.seq;
+    let r;
+    try { r = await searchAdr(q); } catch { r = null; }
+    if (seq !== ADR.seq || document.activeElement !== input) return;
+    adrShow(r);
+  }, 200);
+}
+function adrShow(r) {
+  const l = ADR.list, inp = ADR.input;
+  ADR.items = r || []; ADR.i = -1;
+  l.innerHTML = r === null ? `<p class="el-adrnone">Suche nicht erreichbar. Adresse von Hand eingeben.</p>` : !r.length ? `<p class="el-adrnone">Keine Adresse gefunden.</p>`
+    : r.map((a, k) => `<button class="mi" role="option" id="el-adr-${k}" data-adr="${k}" tabindex="-1" aria-selected="false"><span class="mt"><span class="mh">${R.esc([a.str, a.nr].filter(Boolean).join(" "))}</span><span class="ms">${R.esc([a.plz, a.ort].filter(Boolean).join(" "))}</span></span></button>`).join("");
+  const row = inp.closest(".el-row").getBoundingClientRect();
+  Object.assign(l.style, { left: `${row.left}px`, top: `${row.bottom + 4}px`, width: `${row.width}px` });
+  l.hidden = false; inp.setAttribute("aria-expanded", "true"); inp.removeAttribute("aria-activedescendant");
+}
+function adrMark(i) {
+  ADR.i = i;
+  ADR.list.querySelectorAll("[data-adr]").forEach((b, k) => b.setAttribute("aria-selected", String(k === ADR.i)));
+  const o = ADR.i >= 0 ? $(`#el-adr-${ADR.i}`) : null;
+  if (o) { ADR.input.setAttribute("aria-activedescendant", o.id); o.scrollIntoView({ block: "nearest" }); } else ADR.input.removeAttribute("aria-activedescendant");
+}
+function adrClose() {
+  clearTimeout(ADR.timer);
+  if (!ADR.list || ADR.list.hidden) return;
+  ADR.list.hidden = true; ADR.items = []; ADR.i = -1;
+  ADR.input?.setAttribute("aria-expanded", "false"); ADR.input?.removeAttribute("aria-activedescendant");
+}
+function adrPick(k) {
+  const a = ADR.items[k];
+  if (!a) return;
+  adrClose(); ADR.seq++;
+  ADR.input.value = a.str; ADR.input.blur(); // übernimmt die Strasse statt des Suchworts (change), bevor neu gezeichnet wird
+  const adr = Object.fromEntries(Object.entries(a).filter(([, v]) => v));
+  change(() => { elProj().adr = adr; }, { panel: false });
+  elHub(true);
+  $('#el-hub [data-elp="adr:str"]')?.focus();
+  elGwr();
 }
 function elTimeAdd() {
   const d = $("#el-td").value, h = Number($("#el-th").value.trim().replace(",", ".")), n = $("#el-tn").value.trim();

@@ -1189,7 +1189,7 @@ export function makePv(c) {
   const TAB = T.makePvTab({ ...c, pickFile, cloudMenu }), isTab = () => S.model.kind === "pvtab";
   const tab = (f, g) => (...a) => (isTab() ? g(...a) : f(...a));
   // Fenster Module und Wechselrichter: Daten der Datei, auf Stringplan und Stringübersicht dieselben Aktionen
-  const TAB_ACTS = new Set(["itnew", "itedit", "itdel", "itcatsave", "itcatload", "itcatcloud"]), DOC_ACTS = new Set(["mtnew", "mtedit", "mtdel", "catsave", "catload", "catcloud", "wradd", "wrrm"]);
+  const TAB_ACTS = new Set(["itnew", "itedit", "itdel", "itcatsave", "itcatload", "itcatcloud", "tminset"]), DOC_ACTS = new Set(["mtnew", "mtedit", "mtdel", "catsave", "catload", "catcloud", "wradd", "wrrm"]);
   const TAB_OPTS = new Set(["tmin", "wr"]), DOC_OPTS = new Set(["mppt", "str"]);
   return { isPv, activeLayer: act, setActive: tab(setActive, () => {}), sheetSVG: tab(sheetSVG, () => `<rect class="dispo-bg" x="-1e6" y="-1e6" width="2e6" height="2e6"/>`),
     itemsSVG: tab(() => itemsSVG() + printFrameSVG(), () => PR.tableScreenSVG(S.model, S.doc)), overlaySVG: tab(overlaySVG, () => ""), bounds: tab(bounds, () => PR.tableScreenBounds(S.model, S.doc)), snap: tab(snap, (w) => ({ x: w.x, y: w.y })),

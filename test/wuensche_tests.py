@@ -91,19 +91,23 @@ with sync_playwright() as p:
 
     # ---------- B6: Blätter umsortieren ----------
     page.click("[data-addsheet]"); page.wait_for_timeout(100)
-    order = lambda: [s["meta"]["BLATT"] for s in D()["sheets"] if not s.get("kind")]
+    page.evaluate("window.__schemacad.doc.sheets.forEach((s, i) => { if (!s.kind) s.meta.TITEL = 'T' + i; })")  # Blätter erkennen am Titel (Nummern ändern sich seit D3)
+    order = lambda: [s["meta"]["TITEL"] for s in D()["sheets"] if not s.get("kind")]
+    nums = lambda: [s["meta"]["BLATT"] for s in D()["sheets"] if not s.get("kind")]
+    n0 = nums()
     before = order(); page.keyboard.press("g"); page.wait_for_timeout(100)
     act = page.evaluate("window.__schemacad.active")
     page.focus(f'#sheet-menu [data-sheet="{act}"]'); page.keyboard.press("Alt+ArrowUp"); page.wait_for_timeout(100)
     after = order()
     check("Alt+↑ in der Blattliste: Schemablatt eine Stelle nach vorn", after == before[:-2] + [before[-1], before[-2]], (before, after))
-    check("offenes Blatt bleibt offen", D()["sheets"][page.evaluate("window.__schemacad.active")]["meta"]["BLATT"] == before[-1])
+    check("offenes Blatt bleibt offen", D()["sheets"][page.evaluate("window.__schemacad.active")]["meta"]["TITEL"] == before[-1])
+    check("D3: verschobenes Blatt nimmt die Nummer seines Platzes, das nächste zählt hoch", nums() == n0 and "Neue Blattnummer" in page.inner_text("body"), (n0, nums()))
     rows = page.locator("#sheet-menu .srow"); n = rows.count()
     src = page.locator(f'#sheet-menu [data-sheet="{page.evaluate("window.__schemacad.active")}"]').bounding_box()
     dst = page.locator(f'#sheet-menu [data-sheet="{page.evaluate("window.__schemacad.active") + 1}"]').bounding_box()
     page.mouse.move(src["x"] + 30, src["y"] + src["height"] / 2); page.mouse.down()
     page.mouse.move(dst["x"] + 30, dst["y"] + dst["height"] / 2, steps=6); page.mouse.up(); page.wait_for_timeout(120)
-    check("Ziehen in der Blattliste stellt die Reihenfolge wieder her", order() == before, order())
+    check("Ziehen in der Blattliste stellt die Reihenfolge wieder her, Nummern wieder in Folge", order() == before and nums() == n0, (order(), nums()))
     tt = [s.get("kind") for s in D()["sheets"]]
     check("Titelseite und Inhalt bleiben vorn", tt[:2] == ["title", "toc"], tt)
     page.keyboard.press("Escape")

@@ -58,8 +58,8 @@ assert.deepStrictEqual(w.sheets.map((s) => s.kind || "schema"), ["title", "toc",
 console.log("Neues Dokument ok");
 
 // Inhaltsverzeichnis und Änderungsindex
-assert.deepStrictEqual(T.tocRows(d).map((r) => r.no), ["1", "2", "3", "12", "13", "Dispo 1"]);
-assert.deepStrictEqual(T.tocRows(d).map((r) => r.art), ["Titelseite", "Inhaltsverzeichnis", "Schema", "Schema", "Sicherungslegende", "Disposition"]);
+assert.deepStrictEqual(T.tocRows(d).map((r) => r.no), ["1", "2", "3", "12", "13"]); // Dispo nicht übergeben: nicht im Inhalt (Wunsch D2, 19.10.2026)
+assert.deepStrictEqual(T.tocRows(d).map((r) => r.art), ["Titelseite", "Inhaltsverzeichnis", "Schema", "Schema", "Sicherungslegende"]);
 assert.strictEqual(T.tocPageCount(d), 1);
 const many = newDoc(); for (let i = 0; i < 60; i++) many.sheets.push(newSheet()); T.ensureDeck(many);
 assert.strictEqual(T.tocPageCount(many), 3);

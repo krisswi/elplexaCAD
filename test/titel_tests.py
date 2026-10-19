@@ -34,17 +34,16 @@ with sync_playwright() as p:
     cur = lambda: page.inner_text("#sheet-cur")
     def go(i): page.click("#sheet-cur"); page.click(f'#sheet-menu [data-sheet="{i}"]'); page.wait_for_timeout(120)
     def fill(sel, v): page.locator(sel).fill(v); page.locator("#svg").focus(); page.wait_for_timeout(80)
-    def meta(tag, v, proj=False):  # Schemablatt: Schriftfeld seit UI Schritt 6 im Fenster oben (Knopf „Schriftfeld“), danach schliessen
-        if page.is_hidden("#pv-pop"): page.click("#btn-blatt"); page.wait_for_timeout(60)
-        if proj and not page.locator("#pv-pop details.proj").evaluate("e => e.open"): page.click("#pv-pop details.proj summary")
-        page.locator(f'#pv-pop input[data-meta="{tag}"]').fill(v); page.keyboard.press("Escape"); page.wait_for_timeout(80)
+    def meta(tag, v, proj=False):  # Schriftfeld seit Wunsch D1 (19.10.2026) rechts ohne Auswahl
+        for _ in range(2):  # Esc: erst Werkzeug, dann Auswahl weg
+            if page.locator(f'#right input[data-meta="{tag}"]').count() == 0: page.locator("#svg").focus(); page.keyboard.press("Escape"); page.wait_for_timeout(60)
+        if proj and not page.locator("#right details.proj").evaluate("e => e.open"): page.click("#right details.proj summary")
+        page.locator(f'#right input[data-meta="{tag}"]').fill(v); page.keyboard.press("Escape"); page.wait_for_timeout(80)
     page.goto(URL); page.wait_for_timeout(300)
     page.keyboard.press("Escape"); page.wait_for_timeout(100)
     d = D()
     check("Neu: Titelseite, Inhalt, Blatt 3, aktiv ist Blatt 3", [s.get("kind") for s in d["sheets"]] == ["title", "toc", None, "legend"] and d["active"] == 2 and "Blatt 3" in cur() and "3 von 4" in cur(), cur())
-    page.click("#btn-blatt"); page.wait_for_timeout(60)
-    check("Schemablatt: Schriftfeld oben, Projektangaben eingeklappt", page.locator("#pv-pop details.proj").count() == 1 and not page.locator("#pv-pop details.proj").evaluate("e => e.open") and page.locator('#pv-pop input[data-meta="TITEL"]').is_visible() and page.locator('#right input[data-meta]').count() == 0)
-    page.keyboard.press("Escape")
+    check("Schemablatt: Schriftfeld rechts (D1), Projektangaben eingeklappt", page.locator("#right details.proj").count() == 1 and not page.locator("#right details.proj").evaluate("e => e.open") and page.locator('#right input[data-meta="TITEL"]').is_visible() and page.locator("#btn-blatt").count() == 0)
     # Titelseite: Projekt, Bauherr, Firma
     page.keyboard.press("PageUp"); page.keyboard.press("PageUp"); page.wait_for_timeout(120)
     check("Titelseite: keine Werkzeuge, kein Raster, Felder rechts", kind() == "title" and "Titelseite" in cur() and page.locator('[data-tool]').count() == 0 and page.is_hidden("#grid-size") and page.is_hidden("#mag-on") and page.locator('[data-info="BAUHERR"]').count() == 1)

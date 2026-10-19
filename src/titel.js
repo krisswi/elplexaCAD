@@ -75,6 +75,25 @@ export const SHEET_ORDER = ["title", "toc", "schema", "legend", "dispo", "pv", "
 // Rang eines Blatts in der festen Reihenfolge. Blätter mit gleichem Rang (gleiche Art, gleiches Modul) behalten ihre Reihenfolge
 // in der Datei; diese lässt sich in der Blattliste per Ziehen ändern (CJ 18.10.2026, app.js moveSheet).
 export const sheetRank = (s) => { const k = s.kind || "schema", v = s.var || 1; return k === "title" ? 0 : k === "toc" ? 1 : k === "schema" ? 100 + v : k === "legend" ? 199 : k === "dispo" ? 200 + v : 300 + v * 2 + (k === "pvtab" ? 1 : 0); };
+// Wunsch D3 (CJ 19.10.2026): Blattnummer bleibt frei wählbar. Ein verschobenes Blatt (list[k], list = Blätter gleichen Rangs in neuer Folge,
+// from = sein alter Platz) nimmt die Nummer seines neuen Platzes: Vorgänger + 1, ganz vorne die Nummer des Nachfolgers. Die folgenden Blätter
+// zählen um 1 hoch, bis zur nächsten Lücke (Nummer grösser als die vorherige) oder einer Nummer, die keine Zahl ist. Nach hinten verschoben
+// (Annahme Claude): die übersprungenen Blätter rücken vor und zählen ab der alten Nummer des Blatts herunter, bis zur ersten Lücke; so macht
+// Zurückziehen den Schritt rückgängig. Gibt die geänderten Blätter zurück.
+const blattNo = (sh) => { const t = String(sh?.meta?.BLATT ?? "").trim(); return /^\d+$/.test(t) ? Number(t) : null; };
+export function renumberMoved(list, k, from = k) {
+  if (!list[k]) return [];
+  const out = [];
+  const set = (sh, n) => { if (blattNo(sh) !== n) { sh.meta.BLATT = String(n); out.push(sh); } };
+  let free = from < k ? blattNo(list[k]) : null; // alte Nummer, frei geworden
+  for (let j = from; j < k && free !== null; j++) { const n = blattNo(list[j]); if (n === null || n !== free + 1) break; set(list[j], free); free = n; }
+  const prev = k > 0 ? blattNo(list[k - 1]) : null;
+  let last = prev !== null ? prev + 1 : blattNo(list[k + 1]);
+  if (last === null) return out;
+  set(list[k], last);
+  for (let j = k + 1; j < list.length; j++) { const n = blattNo(list[j]); if (n === null || n > last) break; set(list[j], ++last); }
+  return out;
+}
 export function syncDeck(doc) {
   // Module mehrfach (18.10.2026): je Modul nacheinander (Schema 1, Schema 2, Legende, Dispo 1, Dispo 2, PV 1 mit Übersicht, PV 2 mit Übersicht)
   doc.sheets = doc.sheets.map((s, i) => [s, i]).sort((a, b) => sheetRank(a[0]) - sheetRank(b[0]) || a[1] - b[1]).map((e) => e[0]);
@@ -173,8 +192,12 @@ function revTableSVG(revs, x0, yTop, x1) {
 const TOC_COLS = [["Blatt", 34], ["Art", 40], ["Titel", 160], ["Index", 18]];
 const TOC_X = M_IN + 12, TOC_TOP = H - M_IN - 26, TOC_RH = 5.5, TOC_ROWS = 26;
 export const sheetNo = (sh, i) => (sh.kind === "pvtab" ? "–" : `${sh.kind === "dispo" ? "Dispo " : sh.kind === "pv" ? "Stringplan " : ""}${sh.meta.BLATT || i + 1}`);
-export function tocRows(doc) { return doc.sheets.map((sh, i) => ({ i, no: sheetNo(sh, i), art: kindLabel(sh), titel: sh.meta.TITEL || "", idx: sh.meta.INDEX || "" })); }
-export const tocPageCount = (doc) => Math.max(1, Math.ceil(doc.sheets.length / TOC_ROWS));
+// Wunsch D2 (CJ 19.10.2026): nur Blätter des Schemas (Titelseite, Inhalt, Schemablätter, Legende). Eine Disposition nur, wenn sie an ein
+// Schemablatt übergeben ist (Ansicht „dispoview“ mit ihrer sid), Stringplan, Stringübersicht und andere Pläne nie.
+export const handedOver = (doc) => new Set(doc.sheets.flatMap((sh) => (sh.kind ? [] : sh.items.filter((it) => it.type === "dispoview").map((it) => it.src))));
+export const inToc = (sh, ho) => !sh.kind || sh.kind === "title" || sh.kind === "toc" || sh.kind === "legend" || (sh.kind === "dispo" && sh.sid !== undefined && ho.has(sh.sid));
+export function tocRows(doc) { const ho = handedOver(doc); return doc.sheets.map((sh, i) => ({ sh, i })).filter(({ sh }) => inToc(sh, ho)).map(({ sh, i }) => ({ i, no: sheetNo(sh, i), art: kindLabel(sh), titel: sh.meta.TITEL || "", idx: sh.meta.INDEX || "" })); }
+export const tocPageCount = (doc) => Math.max(1, Math.ceil(tocRows(doc).length / TOC_ROWS));
 // Eine Seite des Inhaltsverzeichnisses (p = 0, 1, …). Zeilen tragen data-sheet zum Anspringen.
 export function tocSVG(doc, sheet, p = 0) {
   const n = tocPageCount(doc), rows = tocRows(doc).slice(p * TOC_ROWS, (p + 1) * TOC_ROWS);

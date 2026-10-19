@@ -93,7 +93,7 @@ const snapshot = () => JSON.stringify({ sheets: S.doc.sheets, nextId: S.doc.next
 const docText = (noAssets = false) => serializeModel({ ...S.doc, active: S.active, ...(usedCustom(S.doc).length ? { symbols: usedCustom(S.doc) } : {}) }, { noAssets });
 const PV = makePv({ S, $, TOOLS, toast, change, openModal, chooseDialog, formDialog, confirmDialog, setTool, renderSheet, renderItems, renderOverlay, updateHint, applyView, fitView, nextId, markDirty, renderLeft, renderRight, download: (...a) => download(...a), openEditor: (...a) => openEditor(...a) });
 const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp: dispoApplyDp, setTfAll, cabAct: dispoCabAct, cornerKey: dispoCornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
-  makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, snapBase, change, moveItem, setTool, afterSheetChange, sheetLabel, nextSheetNo, makeSheet });
+  makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, snapBase, change, moveItem, setTool, afterSheetChange, sheetLabel, nextSheetNo, makeSheet, blattHTML });
 
 function toWorld(sx, sy) { return { x: (sx - S.view.x) / S.view.z, y: H - (sy - S.view.y) / S.view.z }; }
 function toScreen(x, y) { return { x: S.view.x + x * S.view.z, y: S.view.y + (H - y) * S.view.z }; }
@@ -533,9 +533,15 @@ function sheetPopHTML(kind) {
   const plus = (act, label, dis) => `<div class="row"><button class="btn outline small" data-act="${act}"${dis ? " disabled" : ""}>${R.icons.plus.replace("<svg", '<svg width="16" height="16"')}${label}</button></div>`;
   if (kind === "ansicht") return ansichtHTML();
   if (kind === "haupt") return head("Hauptlinien", "L1, L2, L3, N oben, PE unten") + (hasBase(S.model.items) ? "" : plus("base", "Grundverkabelung einfügen")) + plus("feed", "Eingangsverdrahtung einfügen", S.model.main?.l === "feed") + mainPanelHTML() + plus("addrail", "Weitere Hauptlinie", !hasBase(S.model.items));
-  if (isDispo()) return head("Schriftfeld", "Angaben dieser Disposition") + META_FIELDS.filter((f) => ["OBJEKT", "TITEL", "GEZEICHNET", "DATUM"].includes(f.tag)).map((f) => fieldHTML(f.label, `data-meta="${f.tag}"`, S.model.meta[f.tag] ?? "")).join("");
-  return head("Schriftfeld", "Angaben dieses Blatts") + META_FIELDS.filter((f) => !T.PROJECT_FIELDS.includes(f.tag)).map((f) => fieldHTML(f.label, `data-meta="${f.tag}"`, S.model.meta[f.tag] ?? "")).join("")
-    + `<details class="proj"><summary>Projektangaben (gelten für alle Blätter)</summary>${META_FIELDS.filter((f) => T.PROJECT_FIELDS.includes(f.tag)).map((f) => fieldHTML(f.label, `data-meta="${f.tag}"`, S.model.meta[f.tag] ?? "")).join("")}${T.titleOf(S.doc) ? `<div class="row"><button class="btn outline small" data-act="gotitle">Zur Titelseite</button></div>` : ""}</details>`;
+  return "";
+}
+// Schriftfeld (Wunsch D1, CJ 19.10.2026): im Schema und in der Disposition wieder rechts in der Leiste ohne Auswahl (vorher Knopf oben),
+// im Stringplan bleibt es im Fenster Druck. Schema: Felder des Blatts, Projektangaben eingeklappt; Dispo: Objekt, Titel, Gezeichnet, Datum.
+function blattHTML() {
+  const f = (list) => list.map((m) => fieldHTML(m.label, `data-meta="${m.tag}"`, S.model.meta[m.tag] ?? "")).join("");
+  if (isDispo()) return f(META_FIELDS.filter((m) => ["OBJEKT", "TITEL", "GEZEICHNET", "DATUM"].includes(m.tag)));
+  return f(META_FIELDS.filter((m) => !T.PROJECT_FIELDS.includes(m.tag)))
+    + `<details class="proj"><summary>Projektangaben (gelten für alle Blätter)</summary>${f(META_FIELDS.filter((m) => T.PROJECT_FIELDS.includes(m.tag)))}${T.titleOf(S.doc) ? `<div class="row"><button class="btn outline small" data-act="gotitle">Zur Titelseite</button></div>` : ""}</details>`;
 }
 // Ziel ändern: ein anderes Blatt, das schon auf dieses Ziel zeigte, geht wieder aufs nächste Blatt. Das Ziel nimmt die Linien an.
 function setMainEnd(t) {
@@ -571,10 +577,10 @@ function cableNote(it) {
 // Fenster Module, Wechselrichter (rechte Leiste) und Druck (oben) im Stringplan und in der Stringübersicht (UI Schritt 6 Teil 2, 18.10.2026). Hängt am Knopf, blockiert den Plan nicht.
 let pvPop = null, popKind = null;
 const popEl = $("#pv-pop");
-const SHEET_POPS = new Set(["blatt", "haupt", "ansicht"]);
+const SHEET_POPS = new Set(["haupt", "ansicht"]);
 const popHTML = () => (SHEET_POPS.has(popKind) ? sheetPopHTML(popKind) : PV.popHTML(popKind, { head, fieldHTML, META_FIELDS }));
 function renderPvBar() {
-  const on = isPv(), doc = !on && !isDeck(); // Schema und Disposition: Schriftfeld, Hauptlinien nur im Schema
+  const on = isPv(), doc = !on && !isDeck(); // Schema: Hauptlinien, Disposition: Ansicht (Schriftfeld rechts, D1)
   $("#pv-bar").hidden = !on; $("#doc-bar").hidden = !doc; $("#btn-haupt").hidden = isDispo(); $("#btn-ansicht").hidden = !isDispo();
   if (!pvPop) return;
   if (pvPop.open && (SHEET_POPS.has(popKind) ? !doc || (popKind === "haupt" && isDispo()) || (popKind === "ansicht" && !isDispo()) : !on)) { pvPop.hide(false); return; }
@@ -656,7 +662,7 @@ function renderRightPanel() {
     else if (S.tool === "place" && S.placeSym !== TERMINALS && familyOf(S.placeSym)?.variants.length > 1) h += `<div class="prop-head"><h2>Neues Symbol</h2></div>` + poleSelect("data-placepoles", familyOf(S.placeSym), S.placeSym);
     else if (S.tool === "text") h += `<div class="prop-head"><h2>Neuer Text</h2></div><div class="field"><label>Texthöhe in mm</label><input type="number" min="1" max="20" step="0.5" data-newth value="${S.textH}"></div>` + (isSchema() ? turnHTML(S.textR, S.textAl, "data-newt") : "") + styleHTML([{ type: "text", c: S.textC }]);
     else if (shapeTool(S.tool)) h += head(`Neue Form: ${shapeTool(S.tool).label}`) + styleHTML([{ type: "shape", k: shapeTool(S.tool).k, ...S.shapeStyle }]);
-    h += head(sheetLabel(S.model, S.active), S.model.meta.TITEL || "ohne Blatttitel") + `<p class="note">Hauptlinien: ${R.esc(mainSummary())}.</p>`;
+    h += head(sheetLabel(S.model, S.active), "Schriftfeld") + blattHTML() + `<p class="note">Hauptlinien: ${R.esc(mainSummary())}.</p>`;
     h += `<div class="row"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
   }
   rightEl.innerHTML = h;
@@ -1818,12 +1824,20 @@ $("#sheet-ctx").addEventListener("click", async (e) => {
   else if (b.dataset.ctxact === "del") { await deleteSheet(); if (hub) elHub(true); }
 });
 // Blätter umsortieren (CJ 18.10.2026): in der Blattliste eine Zeile ziehen oder Alt+Pfeil. Nur innerhalb derselben Art und desselben
-// Moduls (gleicher Rang in titel.js), die Arten bleiben in ihrer festen Folge. Blattnummern (Schriftfeld) bleiben, wie sie sind.
+// Moduls (gleicher Rang in titel.js), die Arten bleiben in ihrer festen Folge. Wunsch D3 (CJ 19.10.2026): das Blatt nimmt die Nummer
+// seines neuen Platzes, die folgenden zählen bis zur nächsten Lücke hoch (T.renumberMoved); BMK folgen über renumberAll in change.
 const canMove = (a, b) => a !== b && S.doc.sheets[a] && S.doc.sheets[b] && !T.isDeck(S.doc.sheets[a]) && T.sheetRank(S.doc.sheets[a]) === T.sheetRank(S.doc.sheets[b]);
 function moveSheet(from, to) {
   if (!canMove(from, to)) return false;
   const moved = S.doc.sheets[from];
-  change(() => { const cur = S.model, [sh] = S.doc.sheets.splice(from, 1); S.doc.sheets.splice(to, 0, sh); S.active = S.doc.sheets.indexOf(cur); }, { panel: false }); // offenes Blatt bleibt offen
+  let re = [];
+  change(() => {
+    const cur = S.model, rank = T.sheetRank(S.doc.sheets[from]), g0 = S.doc.sheets.filter((s) => T.sheetRank(s) === rank).indexOf(S.doc.sheets[from]);
+    const [sh] = S.doc.sheets.splice(from, 1); S.doc.sheets.splice(to, 0, sh); S.active = S.doc.sheets.indexOf(cur); // offenes Blatt bleibt offen
+    const grp = S.doc.sheets.filter((s) => T.sheetRank(s) === rank);
+    re = T.renumberMoved(grp, grp.indexOf(sh), g0);
+  }, { panel: false });
+  if (re.length) { renderRight(); toast(`Neue Blattnummer: ${re.map((s) => sheetLabel(s, S.doc.sheets.indexOf(s))).join(", ")}.`); }
   if (sheetMenu.open) { renderSheetList(); document.querySelector(`#sheet-menu [data-sheet="${S.doc.sheets.indexOf(moved)}"]`)?.focus(); }
   return true;
 }
@@ -1878,7 +1892,7 @@ pvPop = makeMenu(popEl, { left: true, form: true, beforeShow: () => closeEditor(
 // Knöpfe oben (Druck, Schriftfeld, Hauptlinien, Ansicht) und im Stringplan rechts ohne Auswahl die Zeilen Module und Wechselrichter (18.10.2026)
 function togglePop(b) {
   if (pvPop.open && pvPop.anchorId() === b.id) { pvPop.hide(); return; }
-  popKind = b.dataset.pop; popEl.setAttribute("aria-label", { mod: "Module", wr: "Wechselrichter", druck: "Druck", blatt: "Schriftfeld", haupt: "Hauptlinien", ansicht: "Ansicht" }[popKind]);
+  popKind = b.dataset.pop; popEl.setAttribute("aria-label", { mod: "Module", wr: "Wechselrichter", druck: "Druck", haupt: "Hauptlinien", ansicht: "Ansicht" }[popKind]);
   popEl.innerHTML = popHTML(); popEl.scrollTop = 0;
   if (pvPop.open) pvPop.hide(false);
   pvPop.show(b, { beside: rightEl.contains(b) && innerWidth > 600 ? rightEl : null }); // Handy: rechte Leiste liegt unten, Fenster unter der Zeile

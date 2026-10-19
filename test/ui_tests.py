@@ -24,10 +24,11 @@ with sync_playwright() as p:
     M = lambda: page.evaluate("window.__schemacad.model")
     def go(i): page.click("#sheet-cur"); page.click(f'#sheet-menu [data-sheet="{i}"]')  # Blatt über die Blattliste wählen
     def add_dispo(): page.click("#sheet-add", button="right"); page.click('[data-new="dispo"]')
-    def meta(tag, v, proj=False):  # Schriftfeld seit UI Schritt 6 im Fenster oben (Knopf „Schriftfeld“), danach schliessen
-        if page.is_hidden("#pv-pop"): page.click("#btn-blatt"); page.wait_for_timeout(60)
-        if proj and not page.locator("#pv-pop details.proj").evaluate("e => e.open"): page.click("#pv-pop details.proj summary")
-        page.locator(f'#pv-pop input[data-meta="{tag}"]').fill(v); page.keyboard.press("Escape"); page.wait_for_timeout(80)
+    def meta(tag, v, proj=False):  # Schriftfeld seit Wunsch D1 (19.10.2026) rechts ohne Auswahl
+        for _ in range(2):  # Esc: erst Werkzeug, dann Auswahl weg
+            if page.locator(f'#right input[data-meta="{tag}"]').count() == 0: page.locator("#svg").focus(); page.keyboard.press("Escape"); page.wait_for_timeout(60)
+        if proj and not page.locator("#right details.proj").evaluate("e => e.open"): page.click("#right details.proj summary")
+        page.locator(f'#right input[data-meta="{tag}"]').fill(v); page.keyboard.press("Escape"); page.wait_for_timeout(80)
     of = lambda t: [i for i in M()["items"] if i["type"] == t and not i.get("main")]  # ohne die automatischen Verweise der Grundverkabelung
 
     # Grundverkabelung beim Start

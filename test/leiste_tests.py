@@ -22,16 +22,12 @@ with sync_playwright() as p:
     page.click("[data-addsheet]"); page.wait_for_timeout(120)  # Blatt 3 und 4
 
     # Schema: Knöpfe oben, rechts nur Stand
-    check("Schema: Knöpfe Schriftfeld und Hauptlinien oben, keine Stringplan-Knöpfe", vis("#btn-blatt") and vis("#btn-haupt") and not vis("#pv-bar"))
-    check("Schema rechts ohne Auswahl: keine Felder, Stand der Hauptlinien, Blatt löschen", page.locator("#right input, #right select").count() == 0 and "kommt von Blatt 3" in page.inner_text("#right") and page.locator('#right [data-act="delsheet"]').count() == 1, page.inner_text("#right"))
-    page.click("#btn-blatt"); page.wait_for_timeout(200)
-    geo = page.evaluate("(() => { const m = document.querySelector('#pv-pop').getBoundingClientRect(), k = document.querySelector('#btn-blatt').getBoundingClientRect(); return [m.left - k.left, m.top - k.bottom, m.right <= innerWidth, m.bottom <= innerHeight]; })()")
-    check("Fenster Schriftfeld hängt unter dem Knopf, im Bild", abs(geo[0]) < 1 and 0 <= geo[1] <= 8 and geo[2] and geo[3] and page.get_attribute("#btn-blatt", "aria-expanded") == "true", geo)
-    check("Schriftfeld: Blatttitel, Blatt, Index, Projektangaben eingeklappt", page.locator("#pv-pop input[data-meta]:visible").count() == 3 and page.locator("#pv-pop details.proj").count() == 1)
-    page.locator('#pv-pop input[data-meta="TITEL"]').fill("Unterverteilung UV1"); page.wait_for_timeout(80)
-    check("Tippen lässt das Fenster offen", vis("#pv-pop") and page.evaluate("document.activeElement.dataset.meta") == "TITEL")
+    check("Schema: Knopf Hauptlinien oben, kein Knopf Schriftfeld (D1), keine Stringplan-Knöpfe", page.locator("#btn-blatt").count() == 0 and vis("#btn-haupt") and not vis("#pv-bar"))
+    check("Schema rechts ohne Auswahl: Schriftfeld (Titel, Blatt, Index), Projektangaben eingeklappt, Stand der Hauptlinien, Blatt löschen", page.locator("#right input[data-meta]:visible").count() == 3 and page.locator("#right details.proj").count() == 1 and "kommt von Blatt 3" in page.inner_text("#right") and page.locator('#right [data-act="delsheet"]').count() == 1, page.inner_text("#right"))
+    page.locator('#right input[data-meta="TITEL"]').fill("Unterverteilung UV1"); page.wait_for_timeout(80)
+    check("Tippen: Fokus bleibt im Feld", page.evaluate("document.activeElement.dataset.meta") == "TITEL")
     page.keyboard.press("Escape"); page.wait_for_timeout(80)
-    check("Esc schliesst, Fokus auf dem Knopf, Titel gesetzt", not vis("#pv-pop") and page.evaluate("document.activeElement.id") == "btn-blatt" and D()["sheets"][3]["meta"]["TITEL"] == "Unterverteilung UV1")
+    check("Esc: Titel gesetzt, Blattleiste nachgeführt", D()["sheets"][3]["meta"]["TITEL"] == "Unterverteilung UV1")
     page.click("#btn-haupt"); page.wait_for_timeout(120)
     check("Fenster Hauptlinien: Anfang, Ende, weitere Hauptlinie", page.locator("#pv-pop [data-mainl]").count() == 1 and page.locator("#pv-pop [data-mainr]").count() == 1 and page.locator('#pv-pop [data-act="addrail"]').count() == 1)
     page.select_option("#pv-pop [data-mainr]", "col:4"); page.wait_for_timeout(120)
@@ -44,13 +40,10 @@ with sync_playwright() as p:
 
     # Disposition: nur Schriftfeld
     page.click("#sheet-add", button="right"); page.click('[data-new="dispo"]'); page.wait_for_timeout(150)
-    check("Dispo: Schriftfeld oben, keine Hauptlinien", vis("#btn-blatt") and not vis("#btn-haupt") and vis("#btn-handover"))
-    check("Dispo rechts ohne Auswahl: keine Felder, kein doppeltes „An Schema“", page.locator("#right input").count() == 0 and page.locator('#right [data-act="handover"]').count() == 0 and page.locator('#right [data-act="delsheet"]').count() == 1)
-    page.click("#btn-blatt"); page.wait_for_timeout(120)
-    check("Dispo Schriftfeld: Objekt, Titel, Gezeichnet, Datum", page.locator("#pv-pop input[data-meta]").count() == 4)
-    page.keyboard.press("Escape")
+    check("Dispo: kein Knopf Schriftfeld, keine Hauptlinien, An Schema oben", page.locator("#btn-blatt").count() == 0 and not vis("#btn-haupt") and vis("#btn-handover"))
+    check("Dispo rechts ohne Auswahl: Schriftfeld Objekt, Titel, Gezeichnet, Datum, kein doppeltes „An Schema“", page.locator("#right input[data-meta]").count() == 4 and page.locator('#right [data-act="handover"]').count() == 0 and page.locator('#right [data-act="delsheet"]').count() == 1)
     # Titelseite, Stringplan: keine Schema-Knöpfe
-    go(0); check("Titelseite: keine Knöpfe Schriftfeld/Hauptlinien", not vis("#doc-bar"))
+    go(0); check("Titelseite: keine Knöpfe Hauptlinien", not vis("#doc-bar"))
     page.click("#sheet-add", button="right"); page.click('[data-new="pv"]'); page.wait_for_timeout(200)
     if page.locator(".modal").count(): page.keyboard.press("Escape")
     check("Stringplan: eigene Knöpfe, keine Schema-Knöpfe", vis("#pv-bar") and not vis("#doc-bar"))

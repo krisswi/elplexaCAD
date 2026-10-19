@@ -292,6 +292,22 @@ export function makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, sn
   }
   // Textgrösse pro Bauteil (CJ 16.10.): Prozent der bisherigen Grösse, gespeichert als Faktor tf. Texte aussen: 100 % = 10 mm (16.10.2026)
   const tfField = (it) => numField("Textgrösse (%, 100 = Vorgabe)", "tfp", Math.round((it.tf ?? 1) * 100), { min: 10, step: 10 });
+  // Textgrösse für viele auf einmal (CJ 19.10.2026): Mehrfachauswahl = nur die Gewählten, nichts gewählt = alle Bauteile des Blatts
+  const TF_TYPES = new Set(["cabinet", "plate", "part", "device", "cable"]);
+  const tfTargets = () => { const sel = selectedItems().filter((i) => TF_TYPES.has(i.type)); return sel.length ? sel : S.model.items.filter((i) => TF_TYPES.has(i.type)); };
+  function tfGroupHTML(what) {
+    const its = tfTargets(); if (!its.length) return "";
+    const ps = [...new Set(its.map((i) => Math.round((i.tf ?? 1) * 100)))], b = (d, label) => `<button class="btn outline small" data-act="dptf" data-d="${d}">${label}</button>`;
+    return head("Textgrösse", `${what}: ${its.length} Bauteile${ps.length > 1 ? `, jetzt ${Math.min(...ps)}–${Math.max(...ps)} %` : ""}`)
+      + `<div class="field"><label>Alle auf (%, 100 = Vorgabe)</label><input type="number" data-dptfall value="${ps.length === 1 ? ps[0] : ""}" placeholder="gemischt" min="10" step="10"></div>`
+      + `<div class="row">${b(-10, "− 10 %")}${b(10, "+ 10 %")}${b(0, "100 %")}</div>`;
+  }
+  // set: alle auf v %; d: alle um d Prozentpunkte (Unterschiede bleiben), d = 0 setzt auf 100 %
+  function setTfAll({ v, d }) {
+    const its = tfTargets(); if (!its.length) return;
+    const put = (i, p) => { p = Math.max(10, Math.round(p)); if (p === 100) delete i.tf; else i.tf = p / 100; };
+    change(() => { for (const i of its) put(i, v !== undefined ? v : d === 0 ? 100 : Math.round((i.tf ?? 1) * 100) + d); });
+  }
   // Mehrzeiliger Text: je Zeile ein Feld (CJ 16.10., ersetzt „|“)
   function linesHTML(p) {
     const ls = K.textLines(p);
@@ -429,7 +445,7 @@ export function makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, sn
         + `<div class="row">${b("b", "Unten", "Unterkanten bündig")}${b("cy", "Mitte", "Waagrechte Mitten bündig")}${b("t", "Oben", "Oberkanten bündig")}</div>`
         + head("Verteilen", "gleiche Abstände, äussere Teile bleiben (ab 3 Teilen)")
         + `<div class="row">${b("dh", "Waagrecht", "Gleiche Abstände von links nach rechts", 3)}${b("dv", "Senkrecht", "Gleiche Abstände von unten nach oben", 3)}</div>`
-        + (n < sel.filter((i) => D.PLAN_TYPES.has(i.type)).length ? `<p class="note">Teile in einer gewählten Platte wandern mit der Platte.</p>` : "") + dupDel();
+        + (n < sel.filter((i) => D.PLAN_TYPES.has(i.type)).length ? `<p class="note">Teile in einer gewählten Platte wandern mit der Platte.</p>` : "") + tfGroupHTML("Auswahl") + dupDel();
     }
     const np = (label, key, opt = {}) => numField(label, key, S.dp[key], { attr: "data-dpnew", min: 1, ...opt });
     const sym = S.tool === "place" ? S.placeSym : null;
@@ -446,6 +462,7 @@ export function makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, sn
     } else if (S.tool === "text") h += head("Neuer Text") + np("Texthöhe in mm", "textH");
     else if (S.tool === "dim") h += head("Bemassung") + `<p class="note">Zwei Punkte klicken, dann die Lage der Masslinie. Zwischen den Punkten gezogen = waagrecht bzw. senkrecht. Fängt Ecken, Kantenmitten und Kanten, Alt = frei. Esc bricht ab.</p>`;
     h += head("Disposition", S.model.meta.TITEL || "Verteileraufbau, Einheit mm") + `<p class="note">${S.model.items.filter((i) => i.type === "plate").length} Platten, ${S.model.items.filter((i) => i.type === "device").length} Geräte. Schriftfeld und „An Schema“ oben.</p>`;
+    h += tfGroupHTML("Ganzes Blatt, nichts gewählt");
     h += `<div class="row"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${S.doc.sheets.length < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
     return h;
   }
@@ -508,6 +525,7 @@ export function makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, sn
       return;
     }
     if (act === "dpzaehler" || act === "dpmessung") fillMeter(one, act === "dpzaehler" ? "zaehler" : "messung");
+    else if (act === "dptf") setTfAll({ d: Number(b.dataset.d) });
     else if (act === "dpdimoff") hideDimSel();
     else if (act === "dpdimson") change(() => { delete S.model.dimsOff; }, { panel: false });
   }
@@ -532,5 +550,5 @@ export function makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, sn
 
   const draftCancel = () => { if (!S.dpDraft) return false; S.dpDraft = null; return true; };
   const draftEsc = () => (S.dpDraft?.sym === "D:CABLE" && S.dpDraft.pts.length >= 2 ? draftFinish() : draftCancel());
-  return { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp, cabAct, cornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML, dispoPanel };
+  return { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp, setTfAll, cabAct, cornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML, dispoPanel };
 }

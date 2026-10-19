@@ -88,7 +88,7 @@ const nextId = () => S.doc.nextId++;
 const snapshot = () => JSON.stringify({ sheets: S.doc.sheets, nextId: S.doc.nextId, pv: S.doc.pv, noTitle: S.doc.noTitle, noToc: S.doc.noToc, info: S.doc.info, mods: S.doc.mods, ...(ELPLEXA ? { project: S.doc.project } : {}) }); // pv: Modultypen (Stringplan), project: elplexaCAD
 const docText = (noAssets = false) => serializeModel({ ...S.doc, active: S.active, ...(usedCustom(S.doc).length ? { symbols: usedCustom(S.doc) } : {}) }, { noAssets });
 const PV = makePv({ S, $, TOOLS, toast, change, openModal, chooseDialog, formDialog, confirmDialog, setTool, renderSheet, renderItems, renderOverlay, updateHint, applyView, fitView, nextId, markDirty, renderLeft, renderRight, download: (...a) => download(...a), openEditor: (...a) => openEditor(...a) });
-const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp: dispoApplyDp, cabAct: dispoCabAct, cornerKey: dispoCornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
+const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp: dispoApplyDp, setTfAll, cabAct: dispoCabAct, cornerKey: dispoCornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
   makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, snapBase, change, moveItem, setTool, afterSheetChange, sheetLabel, nextSheetNo, makeSheet });
 
 function toWorld(sx, sy) { return { x: (sx - S.view.x) / S.view.z, y: H - (sy - S.view.y) / S.view.z }; }
@@ -328,7 +328,7 @@ function hintText() {
     if (S.tool === "text") return "Klicken setzt einen Text, die Eingabetaste bestätigt.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
     if (S.tool === "dim") return S.dimDraft?.p2 ? "Bemassung: Klick setzt die Masslinie. Zwischen den Punkten = waagrecht bzw. senkrecht. Esc bricht ab." : S.dimDraft ? "Bemassung: zweiten Punkt klicken (Ecken, Kantenmitten, Kanten rasten ein, Alt = frei). Esc bricht ab." : "Bemassung: ersten Punkt klicken. Masse auswählen und mit Entf löschen, automatische Masse mit Entf ausblenden.";
-    return "Klick wählt (Platte am Rand), Shift mehrere, Ziehen auf leerer Fläche wählt mit Rahmen. Griffe ändern die Grösse, Doppelklick auf ein Mass tippt es ein, Alt ohne Hilfslinien.";
+    return "Klick wählt (Platte am Rand), Shift oder ⌘ mehrere (nochmals klicken wählt ab), Ziehen auf leerer Fläche wählt mit Rahmen. Griffe ändern die Grösse, Doppelklick auf ein Mass tippt es ein, Alt ohne Hilfslinien.";
   }
   if (S.tool === "place" && templateOf(S.placeSym)) return `Abgang ${templateOf(S.placeSym).label}: Klicken in eine freie Spalte setzt Geräte, Leitungen zu den Hauptlinien und Klemmen mit Kabel. Esc beendet.`;
   if (S.tool === "place") return S.placeSym === TERMINALS ? "Klemmenleiste: Klicken setzt die obere Kante auf die gewählte Stelle, die Klemmen hängen darunter. Esc beendet." : `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht${familyOf(S.placeSym)?.variants.length > 1 ? `, 1 bis 4 Polzahl, N Neutralleiter${hasTrenner(S.placeSym) ? ", T N-Trenner" : ""}` : ""}, Esc beendet. Der Fang rastet auf Feldmitten ein, Alt schaltet ihn aus.`;
@@ -1191,7 +1191,7 @@ stage.addEventListener("pointerdown", (e) => {
   if (isDeck()) { deckTap(e.target); return; }
   stage.setPointerCapture(e.pointerId);
   const w = toWorld(sx, sy);
-  const add = isPv() && (e.metaKey || e.ctrlKey); // Stringplan: ⌘ + Klick oder Rahmen ergänzt die Auswahl, nur aktive Ebene (5o)
+  const add = (isPv() || isDispo()) && (e.metaKey || e.ctrlKey); // ⌘ + Klick oder Rahmen ergänzt die Auswahl bzw. wählt einzeln ab; Stringplan nur aktive Ebene (5o), Disposition seit 19.10.2026
   const ha = S.tool === "select" && !e.shiftKey ? handleAt(w.x, w.y) : null;
   if (ha) {
     const o = JSON.parse(JSON.stringify(ha.it));
@@ -1213,7 +1213,7 @@ stage.addEventListener("pointerdown", (e) => {
   } else if (S.tool === "select") {
     S.dimSel = null;
     const hit = isPv() ? hitTest(w.x, w.y, PV.layerPick()) : hitTest(w.x, w.y); // Stringplan: Klick, Shift und ⌘ nur auf der aktiven Ebene (5s)
-    const other = add && !hit && hitTest(w.x, w.y, PV.otherLayers());
+    const other = add && isPv() && !hit && hitTest(w.x, w.y, PV.otherLayers());
     if (other) toast(PV.layerNote(other)); // ⌘ + Klick auf ein Objekt einer anderen Ebene (5w)
     if (hit) {
       const ids = groupIds(hit, e.altKey);
@@ -1586,6 +1586,7 @@ onPanel("change", (e) => {
     if (refId) { const ref = S.model.items.find((i) => i.id === refId); if (ref) offerLink(ref); }
     return;
   }
+  if (t.dataset.dptfall !== undefined && isDispo()) { const v = parseFloat(t.value); if (v >= 10) setTfAll({ v }); return; } // Textgrösse für Auswahl oder ganzes Blatt (CJ 19.10.)
   if (t.dataset.dpnum && isDispo()) { if (!setDimNum(t.dataset.dpnum, parseFloat(t.value))) toast("Wert ausserhalb des Bereichs.", "error"); return; } // Fenster „Ansicht“: Masstext
   if (t.dataset.dpview && isDispo()) { const k = t.dataset.dpview; change(() => { if (t.checked) delete S.model[k]; else S.model[k] = false; }, { panel: false }); return; } // Fenster „Ansicht“: Masse, Türen
   if (t.dataset.dpdims !== undefined && one && one.type === "dispoview") { pushUndo(); if (t.checked) one.dims = true; else delete one.dims; afterChange(); }

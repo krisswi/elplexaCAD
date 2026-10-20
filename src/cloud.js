@@ -10,9 +10,12 @@ const SESSION_KEY = "schemacad.cloud.v1";
 
 let sess = null;
 try { sess = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { /* ohne Speicher: Anmeldung gilt nur bis zum Schliessen */ }
+let onSession = null; // elplexaCAD: Konto-Kreis neu zeichnen, wenn sich die Anmeldung ändert (Fenster, abgelaufen, Abmelden im Katalog)
+export const cloudOnSession = (fn) => { onSession = fn; };
 function keep(s) {
   sess = s;
   try { if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); } catch { /* ohne Speicher weiterarbeiten */ }
+  try { onSession?.(); } catch { /* Anzeige darf die Anmeldung nicht stören */ }
 }
 
 async function call(path, opt = {}) {

@@ -25,7 +25,7 @@ export const modIds = (doc) => [...new Set(doc.sheets.map(modOf))].sort((a, b) =
 export const modStatus = (doc, id) => doc.mods?.[id]?.st || MOD_STATUS[0];
 const MST_IDS = ["of", "ia", "ge", "ve", "re", "ar"];
 export const modPill = (doc, id, edit) => { const st = modStatus(doc, id), d = `class="el-mst" data-ms="${MST_IDS[MOD_STATUS.indexOf(st)]}"`;
-  return edit ? `<span ${d} role="button" aria-haspopup="menu" aria-expanded="false" id="el-ms-${tileId(id).slice(8)}" tabindex="-1" data-elmst="${id}" title="Modulstatus: ${esc(st)}. Klick oder Taste S: ändern">${esc(st)}</span>` : `<span ${d} title="Modulstatus">${esc(st)}</span>`; };
+  return edit ? `<span ${d} data-elmst="${id}" title="Modulstatus: ${esc(st)}. Klick, Taste S oder Rechtsklick › Status: ändern">${esc(st)}</span>` : `<span ${d} title="Modulstatus">${esc(st)}</span>`; }; // kein role=button: steht im Kachel-Knopf
 export function modStatusMenuHTML(doc, id) {
   const cur = modStatus(doc, id);
   return `<div class="ctx-head">Status · ${esc(modName(doc, id))}</div>` + MOD_STATUS.map((s, i) => `<button class="mi" role="menuitemradio" aria-checked="${s === cur}" data-elmstset="${esc(s)}" tabindex="-1"><span class="el-mst" data-ms="${MST_IDS[i]}">${esc(s)}</span></button>`).join("");
@@ -112,19 +112,20 @@ export function hubHTML(doc, o) {
   const fileHint = o.file && o.suggest !== o.file ? `<p class="el-note">Datei: ${esc(o.file)}. Speichern unter (⇧⌘S) schlägt „${esc(o.suggest)}“ vor.</p>` : "";
   const tiles = modIds(doc).map((id, n) => { // Taste N = N-te Kachel (CJ 20.10.2026, nur in der Übersicht), bis 9
     const m = modById(id), idx = modIdx(doc, id);
-    return `<button class="el-tile" id="${tileId(id)}"${ro ? "" : ` draggable="true"`} data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${modPill(doc, id, !ro)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
+    return `<button class="el-tile" id="${tileId(id)}"${ro ? "" : ` draggable="true"`} data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${ro ? "" : modPill(doc, id, true)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
   }).join("");
   // Zweite Stufe (Etappe 2b, CJ 20.10.2026): Pfad und Reiter oben, Tipp-Zeile unten. Nicht in der geteilten Ansicht. Nur Reiter, die etwas tun.
   const todayH = Math.round((doc.project?.time || []).filter((e) => e.d === o.today).reduce((a, e) => a + e.h, 0) * 100) / 100;
   const sub = ro ? "" : `<nav class="el-subbar" aria-label="Pfad und Reiter"><span class="el-path">${(o.tab || "projekte") === "projekte" ? (o.pview ? `<button class="el-pathlink" data-eltab="projekte" title="Zur Projektliste">Projekte</button><span class="el-sl" aria-hidden="true">›</span><b>${esc(o.name)}</b>` : "") : ""}</span>
-    <div class="el-tabs" role="tablist" aria-label="Bereiche">${[["projekte", "Projekte"], ["zeit", "Zeit"], ["profil", "Profil"]].map(([k, t]) => `<button class="el-tab" role="tab" id="el-tab-${k}" data-eltab="${k}" aria-selected="${(o.tab || "projekte") === k}">${t}</button>`).join("")}</div><span class="el-sp"></span>
+    <div class="el-tabs" role="tablist" aria-label="Bereiche">${[["projekte", "Projekte"], ["zeit", "Zeit"], ["profil", "Profil"]].map(([k, t]) => `<button class="el-tab" role="tab" id="el-tab-${k}" data-eltab="${k}" aria-controls="el-tabpanel" aria-selected="${(o.tab || "projekte") === k}" tabindex="${(o.tab || "projekte") === k ? 0 : -1}">${t}</button>`).join("")}</div><span class="el-sp"></span>
     <button class="btn small el-chip" data-elact="timechip" title="Stunden für dieses Projekt eintragen" aria-label="Heute ${fmtH(todayH)} Stunden, Zeit eintragen"><span class="el-chipl">Heute </span>${fmtH(todayH)} h <span aria-hidden="true">＋</span></button>
     <button class="btn small el-helpbtn" data-elact="help" title="Alle Tasten (?)" aria-label="Alle Tasten zeigen">?</button></nav>`;
   const tip = ro || o.tip === false ? "" : `<div class="el-tip" role="note"><span class="el-tiptxt"><b>Tipp</b> 1 bis 9 öffnet die Kachel an dieser Stelle · S Status · ⌥ ← → Reihenfolge · Rechtsklick auf die Kachel: Umbenennen, Duplizieren, Löschen · ? alle Tasten</span><button class="btn icon el-tipx" data-elact="tipoff" title="Tipp-Zeile ausblenden (wieder einblenden über ?)" aria-label="Tipp-Zeile ausblenden"><span aria-hidden="true">×</span></button></div>`;
-  if (!ro && o.tab === "zeit") return `${sub}<div class="el-hubin el-pview">${timeTabHTML({ ...(o.zeit || {}), today: o.today })}</div>${tip}`;
-  if (!ro && o.tab === "profil") return `${sub}<div class="el-hubin el-pview">${profileHTML({ ...(o.profil || {}), tip: o.tip !== false })}</div>${tip}`;
-  if (!ro && (o.tab || "projekte") === "projekte" && !o.pview) return `${sub}<div class="el-hubin el-pview">${projectsHTML({ ...(o.projs || {}), cur: { name: o.name, status: st, ...projSummary(doc), file: o.file, onlineId: doc.project?.online?.id } })}</div>${tip}`;
-  return `${sub}<div class="el-hubin"><div class="el-col">
+  const pan = `role="tabpanel" id="el-tabpanel" aria-labelledby="el-tab-${o.tab || "projekte"}"`;
+  if (!ro && o.tab === "zeit") return `${sub}<div class="el-hubin el-pview" ${pan}>${timeTabHTML({ ...(o.zeit || {}), today: o.today })}</div>${tip}`;
+  if (!ro && o.tab === "profil") return `${sub}<div class="el-hubin el-pview" ${pan}>${profileHTML({ ...(o.profil || {}), tip: o.tip !== false })}</div>${tip}`;
+  if (!ro && (o.tab || "projekte") === "projekte" && !o.pview) return `${sub}<div class="el-hubin el-pview" ${pan}>${projectsHTML({ ...(o.projs || {}), cur: { name: o.name, status: st, ...projSummary(doc), t: o.curT, onlineId: doc.project?.online?.id } })}</div>${tip}`;
+  return `${sub}<div class="el-hubin"${ro ? "" : ` ${pan}`}><div class="el-col">
     <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span>${ro ? statusPill(st) : `<label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label>`}</div>
       <input class="el-name" data-elp="name" value="${esc(o.name)}"${ro ? ` aria-label="Projektname" readonly` : ` aria-label="Projektname (klicken zum Umbenennen)" title="Klicken zum Umbenennen"`} spellcheck="false">${fileHint}
       ${fld("OBJEKT", "Objekt")}${fld("AUFTRAG", "Auftrag")}${fld("BAUHERR", "Bauherr")}${fld("INDEX", "Index")}
@@ -144,26 +145,32 @@ export function hubHTML(doc, o) {
 // o = { recent, online (null = nicht geladen), user, err, busy, filter, sort, view }
 export const projFilters = () => ["Alle", ...projectStatus()]; // als Funktion: im SchemaCAD-Bau fällt alles weg
 const projWhen = (t) => { const d = new Date(t); return Number.isNaN(+d) ? "" : d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+// Stabiler Schlüssel für die eigene Reihenfolge (Ziehen): lokal der Dateiname, online die Kennung
+export const projKey = (x) => (x.src === "online" ? `o:${x.id}` : `l:${x.file}`);
 export function projItems(o) {
-  const loc = (o.recent || []).filter((e) => !(o.cur?.file && e.file === o.cur.file)).map((e, k) => ({ src: "lokal", k, name: e.name || e.file, status: e.status || "", obj: e.sum?.obj || "", mods: e.sum?.mods || null, n: e.sum?.n ?? null, h: e.sum?.h ?? null, t: e.t || 0, hint: e.handle ? "" : "Datei wählen" }));
+  // k = Platz in der ungefilterten Liste „zuletzt geöffnet“ (EL_S.recent): öffnen und entfernen arbeiten damit, also vor dem Filtern vergeben
+  const loc = (o.recent || []).map((e, k) => ({ src: "lokal", k, file: e.file, name: e.name || e.file, status: e.status || "", obj: e.sum?.obj || "", mods: e.sum?.mods || null, n: e.sum?.n ?? null, h: e.sum?.h ?? null, t: e.t || 0, hint: e.handle ? "" : "Datei wählen" }))
+    .filter((x) => !(o.cur?.t != null && x.t === o.cur.t)); // das offene Projekt steht als eigene Kachel; gleichnamige andere Dateien bleiben
   const onl = (o.online || []).filter((e) => !(o.cur?.onlineId && e.id === o.cur.onlineId)).map((e) => { const s = onlineSummary(e); return { src: "online", id: e.id, name: e.name, status: e.status || "", obj: s?.obj || "", mods: null, n: null, h: s ? s.h : null, t: Date.parse(e.updated_at) || 0, hint: "" }; });
   let all = [...loc, ...onl];
   if (o.filter && o.filter !== "Alle") all = all.filter((x) => x.status === o.filter);
-  return o.sort === "name" ? all.sort((a, b) => a.name.localeCompare(b.name, "de")) : all.sort((a, b) => b.t - a.t);
+  if (o.sort === "name") return all.sort((a, b) => a.name.localeCompare(b.name, "de"));
+  if (o.sort === "eigene") { const ord = o.order || [], pos = (x) => { const p = ord.indexOf(projKey(x)); return p < 0 ? Infinity : p; }; return all.sort((a, b) => (pos(a) === pos(b) ? b.t - a.t : pos(a) < pos(b) ? -1 : 1)); }
+  return all.sort((a, b) => b.t - a.t);
 }
 export function projectsHTML(o) {
   const items = projItems(o), view = o.view === "liste" ? "liste" : "kacheln";
   const opt = (v, t, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${t}</option>`;
   const bar = `<div class="el-pbar"><label>Status <select data-elf="filter" aria-label="Nach Status filtern">${projFilters().map((f) => opt(f, f, o.filter || "Alle")).join("")}</select></label>
-    <label>Sortierung <select data-elf="sort" aria-label="Sortierung">${opt("zuletzt", "Zuletzt", o.sort || "zuletzt")}${opt("name", "Name", o.sort)}</select></label>
+    <label>Sortierung <select data-elf="sort" aria-label="Sortierung">${opt("zuletzt", "Zuletzt", o.sort || "zuletzt")}${opt("name", "Name", o.sort)}${opt("eigene", "Eigene Reihenfolge", o.sort)}</select></label>
     <span class="el-sp"></span><div class="el-vsw" role="group" aria-label="Ansicht">${[["kacheln", "Kacheln"], ["liste", "Liste"]].map(([v, t]) => `<button class="btn small" data-elview="${v}" aria-pressed="${v === view}">${t}</button>`).join("")}</div>
-    <button class="btn outline small" data-elact="newproj"><span class="ic" data-ic="plus"></span><span>Neues Projekt …</span></button></div>`;
+    ${o.user ? `<button class="btn outline small" data-elact="onlist"${o.busy ? " disabled" : ""} title="Online-Projekte jetzt neu laden">Neu laden</button>` : ""}<button class="btn outline small" data-elact="newproj"><span class="ic" data-ic="plus"></span><span>Neues Projekt …</span></button></div>`;
   const dots = (x) => (x.mods ? x.mods.map(([b, st]) => { const m = MODULES.find((q) => q.id === b); return `<i class="el-pd" style="background:${m?.color || "#999"}" title="${esc(m?.label || b)}: ${esc(st)}"></i>`; }).join("") : "");
   const card = (x) => {
     const attr = x.src === "online" ? `data-elonline="${esc(x.id)}"` : `data-elrecent="${x.k}"`;
     const meta = [x.n !== null ? `${x.n} ${x.n === 1 ? "Blatt" : "Blätter"}` : "", x.h !== null ? `${fmtH(x.h)} h` : "", x.t ? projWhen(x.t) : ""].filter(Boolean).join(" · ");
-    const key = x.src === "online" ? `o:${x.id}` : `l:${x.k}`, on = !!o.sel?.has(key);
-    return `<button class="el-ptile${on ? " sel" : ""}" id="el-pt-${esc(key.replace(":", "-"))}" ${attr} data-projctx="${esc(key)}" data-selkey="${esc(key)}" aria-pressed="${on}" title="${x.src === "online" ? "Online-Projekt öffnen" : x.hint ? "Dieser Browser merkt sich nur den Namen: Datei wählen" : "Öffnen"}"><span class="el-ph"><span class="el-pn">${esc(x.name)}</span>${x.status ? statusPill(x.status) : ""}</span><span class="el-po">${esc(x.obj) || "–"}</span><span class="el-pm">${dots(x)}${esc(meta)}</span><span class="el-pw">${x.src === "online" ? "online" : "lokal"}${x.hint ? " · " + x.hint : ""}</span></button>`;
+    const key = x.src === "online" ? `o:${x.id}` : `l:${x.k}`, on = !!o.sel?.has(key); // key = Auswahl (Platz in der Liste), pkey = Ziehen (stabil)
+    return `<button class="el-ptile${on ? " sel" : ""}" id="el-pt-${esc(key.replace(":", "-"))}" draggable="true" ${attr} data-projctx="${esc(key)}" data-selkey="${esc(key)}" data-pkey="${esc(projKey(x))}" title="${x.src === "online" ? "Online-Projekt öffnen" : x.hint ? "Dieser Browser merkt sich nur den Namen: Datei wählen" : "Öffnen"}"><span class="el-ph"><span class="el-pn">${esc(x.name)}</span>${x.status ? statusPill(x.status) : ""}</span><span class="el-po">${esc(x.obj) || "–"}</span><span class="el-pm">${dots(x)}${esc(meta)}</span><span class="el-pw">${x.src === "online" ? "online" : "lokal"}${x.hint ? " · " + x.hint : ""}${on ? `<span class="sr"> (gewählt)</span>` : ""}</span></button>`;
   };
   const cur = o.cur && (!o.filter || o.filter === "Alle" || o.filter === o.cur.status) ? o.cur : null;
   const curCard = cur ? `<button class="el-ptile cur" id="el-pt-cur" data-elact="projview" title="Dieses Projekt ist geöffnet: Projektdaten und Module"><span class="el-ph"><span class="el-pn">${esc(cur.name)}</span>${cur.status ? statusPill(cur.status) : ""}</span><span class="el-po">${esc(cur.obj) || "–"}</span><span class="el-pm">${cur.mods.map(([b, s]) => { const m = MODULES.find((q) => q.id === b); return `<i class="el-pd" style="background:${m?.color || "#999"}" title="${esc(m?.label || b)}: ${esc(s)}"></i>`; }).join("")}${cur.n} ${cur.n === 1 ? "Blatt" : "Blätter"}${cur.h ? ` · ${fmtH(cur.h)} h` : ""}</span><span class="el-pw"><b class="el-open">geöffnet</b></span></button>` : "";
@@ -221,7 +228,7 @@ export function timeTabHTML(o) {
   const cellH = (h) => (h ? fmtH(h) : `<span aria-hidden="true">–</span><span class="sr">0 Stunden</span>`);
   const head = `<div class="el-pbar"><div class="el-vsw" role="group" aria-label="Woche"><button class="btn small" data-elwk="-1" aria-label="Vorherige Woche">‹</button><button class="btn small" data-elwk="0">Diese Woche</button><button class="btn small" data-elwk="1" aria-label="Nächste Woche">›</button></div>
     <span class="el-wk"><b>KW ${w.kw.w}</b> · ${fmtD(w.days[0])} – ${fmtD(w.days[6])}</span><span class="el-sp"></span>${o.at ? `<span class="el-stand${stale ? " alt" : ""}">Stand von ${hhmm(o.at)}${stale ? " (alt)" : ""}</span>` : ""}<span class="el-sum">Summe <b>${fmtH(w.total)} h</b>${w.incomplete ? ` <i class="el-incomplete">unvollständig</i>` : ""}</span>
-    <button class="btn outline small" data-elact="zeitcsv"${w.rows.length ? "" : " disabled"}>Woche als CSV</button></div>`;
+    ${o.user ? `<button class="btn outline small" data-elact="onlist"${o.busy ? " disabled" : ""} title="Online-Projekte jetzt neu laden">Neu laden</button>` : ""}<button class="btn outline small" data-elact="zeitcsv"${w.rows.length ? "" : " disabled"}>Woche als CSV</button></div>`;
   const unk = `<button class="el-unk" type="button" title="Stunden nicht geladen" aria-label="Stunden nicht geladen" data-elact="onlist">?</button>`;
   const table = w.rows.length ? `<div class="el-wscroll" role="region" aria-label="Wochenzeit, seitlich scrollbar" tabindex="0"><table class="el-wtab${stale ? " alt" : ""}"><caption class="sr">Stunden je Projekt und Tag, Kalenderwoche ${w.kw.w}</caption><thead><tr><th scope="col">Projekt</th>${w.days.map((d, i) => `<th scope="col"${d === o.today ? ' class="el-today" aria-current="date"' : ""}>${WD[i]} <span>${d.slice(8)}.${d.slice(5, 7)}.</span>${d === o.today ? `<span class="sr"> (heute)</span>` : ""}</th>`).join("")}<th scope="col">Summe</th></tr></thead>
     <tbody>${w.rows.map((r) => `<tr><th scope="row">${esc(r.name)}${r.local ? ` <i class="el-loc" title="Das offene Projekt zählt mit dem Stand der Datei">offen, lokal</i>` : ""}${r.known ? "" : ` ${unk}`}</th>${r.known ? r.days.map((h) => `<td>${cellH(h)}</td>`).join("") : `<td colspan="7" class="el-unkcell">Stunden nicht geladen</td>`}<td class="el-rs2">${r.known ? cellH(r.sum) : "?"}</td></tr>`).join("")}</tbody>
@@ -236,12 +243,12 @@ export function timeTabHTML(o) {
 }
 
 // Reiter „Profil“ (Etappe 6, CJ 20.10.2026): Anmeldung mit E-Mail und Passwort (vorher Fenster und Konto-Menü), Abmelden, Gast-Hinweis, Firma, Tipp-Zeile
-// o = { user, busy, msg (Fehlertext der Anmeldung), tip, locked }
+// o = { user, busy, msg (Fehlertext der Anmeldung), mail, pw (Eingaben bleiben beim Neuzeichnen und nach einem Fehler, das Passwort nur bis zum Fehler), tip, locked }
 export function profileHTML(o) {
   const login = o.user ? `<p class="el-prow">Angemeldet als <b>${esc(o.user)}</b></p><div class="el-acts"><button class="btn outline" id="el-pf-logout" data-elact="logout"${o.busy ? " disabled" : ""}>Abmelden</button></div>`
     : `<p class="el-note">Gast: Ohne Anmeldung arbeitest du mit Dateien auf diesem Rechner${o.locked ? "; im Netz lässt sich dann nur als DXF speichern" : ""}. Anmelden für Projektdatei, PDF, Listen und Online-Projekte.</p>
-      <form class="el-pform" id="el-pf-form" autocomplete="on" novalidate><label class="el-row"><span>E-Mail</span><input id="el-pf-mail" type="email" autocomplete="username" spellcheck="false"></label>
-      <label class="el-row"><span>Passwort</span><input id="el-pf-pw" type="password" autocomplete="current-password"></label>
+      <form class="el-pform" id="el-pf-form" autocomplete="on" novalidate><label class="el-row"><span>E-Mail</span><input id="el-pf-mail" type="email" autocomplete="username" spellcheck="false" value="${esc(o.mail || "")}"></label>
+      <label class="el-row"><span>Passwort</span><input id="el-pf-pw" type="password" autocomplete="current-password" value="${esc(o.pw || "")}"></label>
       ${o.msg ? `<p class="el-perr" role="alert"><span>${esc(o.msg)}</span></p>` : ""}<div class="el-acts"><button class="btn primary" type="submit"${o.busy ? " disabled" : ""}>${o.busy ? "Anmelden …" : "Anmelden"}</button></div></form>`;
   return `<section class="el-projs el-pwrap el-profile" aria-label="Profil"><div class="el-eyerow"><span class="el-eye">Anmeldung</span></div>${login}
     <div class="el-eyerow"><span class="el-eye">Firma</span></div><label class="el-row"><span>Firma</span><select disabled aria-label="Firma wechseln"><option>–</option></select></label>
@@ -262,12 +269,13 @@ async function recentPut(list) {
 }
 const same = async (a, b) => { try { return !!(a && b && (await a.isSameEntry(b))); } catch { return false; } };
 // e = { file, name, status, handle }; gleiche Datei (oder ohne Dateizugriff gleicher Dateiname) kommt nach vorn, höchstens 8
-export async function recentAdd(e) {
+export async function recentAdd(e) { // gibt den Zeitstempel t des Eintrags zurück (merkt sich das offene Projekt in der Liste)
   const list = await recentList(), keep = [];
   for (const x of list) if (!(e.handle ? await same(x.handle, e.handle) : !x.handle && x.file === e.file)) keep.push(x);
   let entry = { ...e, t: Date.now() };
   try { structuredClone(entry); } catch { entry = { ...entry, handle: null }; }
   await recentPut([entry, ...keep].slice(0, 8));
+  return entry.t;
 }
 export async function recentDrop(k) { const list = await recentList(); list.splice(k, 1); await recentPut(list); }
 export async function recentDropMany(ks) { const list = await recentList(); for (const k of [...ks].sort((a, b) => b - a)) list.splice(k, 1); await recentPut(list); } // Auswahl entfernen (Etappe 5)

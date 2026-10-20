@@ -103,7 +103,7 @@ with sync_playwright() as p:
     check("Alter Eintrag ohne sum: Kachel mit «–», nichts «undefined» oder «null»", alt.count() == 1 and "–" in txt and "undefined" not in txt and "null" not in txt and "NaN" not in txt, txt)
     # Rückfall: lehnt der Server die schlanke Abfrage ab (400), gilt die alte
     srv["selects"].clear(); srv["bad"] = True
-    page.click("#el-tab-zeit"); page.wait_for_timeout(300); page.click("#el-tab-projekte"); page.wait_for_timeout(700)
+    page.click('.el-pbar [data-elact="onlist"]'); page.wait_for_timeout(700)
     check("Status 400: zweite, alte Abfrage ohne pm/pt, Liste lädt trotzdem", len(srv["selects"]) >= 2 and any("pm:" in x for x in srv["selects"]) and any("pm:" not in x for x in srv["selects"]) and cnt() >= N_ON, [srv["selects"], cnt()])
     srv["bad"] = False
 

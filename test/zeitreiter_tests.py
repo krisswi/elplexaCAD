@@ -49,6 +49,7 @@ with sync_playwright() as p:
     vis = lambda s: page.is_visible(s)
     flat = lambda sel: " ".join(page.inner_text(sel).split())
     txt = lambda sel: [c.strip() for c in page.evaluate(f"[...document.querySelectorAll('{sel}')].map((e) => e.textContent)")]
+    page.add_init_script("window.__off = 0; const __n = Date.now.bind(Date); Date.now = () => __n() + window.__off;")  # Uhr vorstellbar: Reiterwechsel lädt nur bei Stand über 60 s neu
     page.goto(URL); page.wait_for_timeout(300)
     page.click("#el-tab-zeit"); page.wait_for_timeout(250)
     check("Gast: Hinweis, keine Tabelle", "Nicht angemeldet" in page.inner_text(".el-pwrap") and not vis(".el-wtab"))
@@ -79,16 +80,20 @@ with sync_playwright() as p:
     check("CSV = Tabelle: Projekt Eins 3.75, Projekt Zwei 4.5", lines[1].endswith(";3.75") and lines[2].endswith(";4.5") and lines[1].startswith("Projekt Eins"), lines[1:3])
     check("Hinweis: nur Online-Projekte", "Nur Online-Projekte" in page.inner_text(".el-pwrap"))
 
-    # beim Wechsel in den Reiter neu laden
-    g0 = srv["gets"]; page.click("#el-tab-projekte"); page.wait_for_timeout(500); page.click("#el-tab-zeit"); page.wait_for_timeout(500)
-    check("Beim Wechsel in den Reiter wird die Liste neu geladen", srv["gets"] >= g0 + 2, [g0, srv["gets"]])
+    # Reiterwechsel lädt nur bei Stand über 60 s neu; «Neu laden» immer
+    g0 = srv["gets"]; page.click("#el-tab-projekte"); page.wait_for_timeout(400); page.click("#el-tab-zeit"); page.wait_for_timeout(400)
+    check("Reiterwechsel innerhalb von 60 s: keine neue Abfrage (schont Supabase)", srv["gets"] == g0, [g0, srv["gets"]])
+    page.click('.el-pbar [data-elact="onlist"]'); page.wait_for_timeout(500)
+    check("«Neu laden» holt die Liste sofort", srv["gets"] == g0 + 1, [g0, srv["gets"]])
+    page.evaluate("window.__off = 61000"); g1 = srv["gets"]; page.click("#el-tab-projekte"); page.wait_for_timeout(600); page.click("#el-tab-zeit"); page.wait_for_timeout(500)
+    check("Reiterwechsel nach über 60 s lädt neu", srv["gets"] == g1 + 1, [g1, srv["gets"]])
     # Fehler (540): die alte Tabelle bleibt, als «alt» markiert
-    srv["mode"] = "paused"; page.click("#el-tab-projekte"); page.wait_for_timeout(400); page.click("#el-tab-zeit"); page.wait_for_timeout(700)
+    srv["mode"] = "paused"; page.click('.el-pbar [data-elact="onlist"]'); page.wait_for_timeout(700)
     check("Fehler 540: alte Tabelle bleibt, markiert «alt», Hinweis auf den älteren Stand", vis(".el-wtab.alt") and "(alt)" in page.inner_text(".el-stand") and "älteren Stand" in page.inner_text(".el-perr") and page.locator(".el-wtab tbody tr").count() == 2, page.inner_text(".el-pwrap")[:300])
     srv["mode"] = "ok"; page.click('.el-perr [data-elact="onlist"]'); page.wait_for_timeout(600)
     check("Erneut versuchen: Fehler weg, Tabelle nicht mehr «alt»", not vis(".el-perr") and not vis(".el-wtab.alt"))
     # Rückfall auf die alte Abfrage: Stunden unbekannt
-    srv["mode"] = "bad"; page.click("#el-tab-projekte"); page.wait_for_timeout(500); page.click("#el-tab-zeit"); page.wait_for_timeout(800)
+    srv["mode"] = "bad"; page.click('.el-pbar [data-elact="onlist"]'); page.wait_for_timeout(800)
     check("Stunden unbekannt: «?» als Knopf mit Beschreibung, Summe «unvollständig»", page.locator(".el-unk").count() == 2 and page.get_attribute(".el-unk >> nth=0", "aria-label") == "Stunden nicht geladen" and "unvollständig" in page.inner_text(".el-sum"), page.inner_text(".el-pwrap")[:300])
     with page.expect_download() as dl2:
         page.click('[data-elact="zeitcsv"]')

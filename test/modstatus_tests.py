@@ -38,6 +38,11 @@ with sync_playwright() as p:
     page.click('#el-mstpop [data-elmstset="Geprüft"]'); page.wait_for_timeout(200)
     check("Status gesetzt, Kachel zeigt ihn, Projektstatus unabhängig", pill(1) == "Geprüft" and mods()["dispo"]["st"] == "Geprüft" and page.evaluate("window.__schemacad.doc.project?.status || 'In Arbeit'") == "In Arbeit")
     check("Datei steigt auf Version 18", page.evaluate("window.__schemacad.doc.version") == 18)
+    # ⌘Z in der Übersicht: Status und Reihenfolge sind Änderungen der Datei
+    page.focus("#el-tile-dispo"); page.keyboard.press("Meta+z"); page.wait_for_timeout(250)
+    check("⌘Z in der Übersicht nimmt den Status zurück", pill(1) == "Offen" and "st" not in mods().get("dispo", {}), mods())
+    page.focus("#el-tile-dispo"); page.keyboard.press("Meta+Shift+z"); page.wait_for_timeout(250)
+    check("⇧⌘Z stellt ihn wieder her", pill(1) == "Geprüft", pill(1))
     # Taste S an gewählter Kachel
     page.focus("#el-tile-pv"); key("s"); page.wait_for_timeout(100)
     check("Taste S öffnet das Statusmenü der Kachel", page.is_visible("#el-mstpop"))

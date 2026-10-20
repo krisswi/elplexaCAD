@@ -58,7 +58,7 @@ assert.deepStrictEqual(order, ["pv", "schema:2", "schema", "dispo"]);
 assert.ok(/id="el-tile-pv"[^]*?<kbd>1<\/kbd>/.test(h) && /id="el-tile-dispo"[^]*?<kbd>4<\/kbd>/.test(h));
 const ro = hubHTML(back, { name: "T", today: "x", label: () => "B", shared: {} });
 assert.ok(!ro.includes("S ändert den Status") && ro.includes("0 die Übersicht"), "geteilte Ansicht: keine Bearbeiten-Tasten im Hinweis");
-assert.ok(!ro.includes("data-elmst") && ro.includes('class="el-mst"'), "geteilte Ansicht: Status nur zu sehen");
+assert.ok(!ro.includes("data-elmst") && !ro.includes("el-mst"), "geteilte Ansicht: keine Statuspille (CJ entscheidet, ob sie gezeigt wird)");
 assert.strictEqual((modStatusMenuHTML(back, "pv").match(/data-elmstset/g) || []).length, 6);
 assert.ok(modStatusMenuHTML(back, "pv").includes('aria-checked="true"'));
 assert.ok(keysHTML().includes("Modulstatus"));

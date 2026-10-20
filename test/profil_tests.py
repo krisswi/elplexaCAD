@@ -63,10 +63,14 @@ with sync_playwright() as p:
     # falsches Passwort
     page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "falsch"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(400)
     check("Falsches Passwort: Meldung im Profil, weiter Gast", "falsch" in page.inner_text(".el-profile .el-perr") and "Gast" in page.inner_text("#el-acct"), page.inner_text(".el-profile")[:200])
+    check("Falsches Passwort: E-Mail bleibt stehen, Passwort leer", page.input_value("#el-pf-mail") == "test@beispiel.ch" and page.input_value("#el-pf-pw") == "")
     # kein Netz
     srv["mode"] = "offline"
     page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(400)
     check("Kein Netz: Meldung «Keine Verbindung», weiter Gast", "Keine Verbindung" in page.inner_text(".el-profile .el-perr") and "Gast" in page.inner_text("#el-acct"), page.inner_text(".el-profile")[:200])
+    check("Kein Netz: E-Mail bleibt stehen", page.input_value("#el-pf-mail") == "test@beispiel.ch")
+    page.fill("#el-pf-pw", "tipp"); page.evaluate("window.dispatchEvent(new Event('resize'))"); page.click("#el-tab-zeit"); page.click("#el-tab-profil"); page.wait_for_timeout(200)
+    check("E-Mail bleibt auch beim Wechsel der Reiter stehen", page.input_value("#el-pf-mail") == "test@beispiel.ch")
     # richtig
     srv["mode"] = "ok"
     page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(500)
@@ -74,6 +78,31 @@ with sync_playwright() as p:
     page.screenshot(path=str(OUT / "pr_angemeldet.png"))
     page.click("#el-pf-logout"); page.wait_for_timeout(400)
     check("Abmelden: wieder Gast mit Anmeldeformular", vis("#el-pf-form") and "Gast" in page.inner_text("#el-acct"))
+    # Reiter: Barrierefreiheit, Pfeiltasten, Tasten 1 bis 9 nur bei Modulkacheln
+    check("Reiterfläche: tabpanel mit aria-labelledby auf den gewählten Reiter, Reiter mit aria-controls", page.get_attribute("#el-tabpanel", "role") == "tabpanel" and page.get_attribute("#el-tabpanel", "aria-labelledby") == "el-tab-profil" and page.get_attribute("#el-tab-profil", "aria-controls") == "el-tabpanel")
+    check("Roving-Tabindex: nur der gewählte Reiter ist per Tab erreichbar", page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.tabIndex)") == [-1, -1, 0])
+    page.focus("#el-tab-profil"); page.keyboard.press("ArrowLeft"); page.wait_for_timeout(250)
+    check("Pfeil links: Reiter Zeit gewählt und fokussiert", page.get_attribute("#el-tab-zeit", "aria-selected") == "true" and page.evaluate("document.activeElement.id") == "el-tab-zeit")
+    page.keyboard.press("Home"); page.wait_for_timeout(250)
+    check("Pos1: erster Reiter (Projekte)", page.get_attribute("#el-tab-projekte", "aria-selected") == "true")
+    page.keyboard.press("End"); page.wait_for_timeout(250)
+    page.evaluate("document.activeElement.blur()"); page.keyboard.press("1"); page.wait_for_timeout(250)
+    check("Taste 1 im Reiter Profil öffnet kein Modul", vis("#el-hub") and page.get_attribute("#el-tab-profil", "aria-selected") == "true")
+    page.click("#el-tab-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)
+    check("Statuspille ist kein Knopf im Knopf (kein role=button)", page.locator(".el-mst[role=button]").count() == 0 and page.locator(".el-tile .el-mst[data-elmst]").count() >= 1)
+    page.click("#el-tile-schema", button="right"); page.click('[data-elmodact="st"]'); page.wait_for_timeout(250)
+    check("Rechtsklick › Status … öffnet das Statusmenü der Kachel", vis("#el-mstpop"))
+    page.keyboard.press("Escape"); page.wait_for_timeout(150)
+
+    # Anmeldung über das Fenster (Feedback ohne Login): der Konto-Kreis zeichnet sich von selbst neu
+    page.click("#el-tab-profil"); page.wait_for_timeout(150)
+    check("Wieder Gast", "Gast" in page.inner_text("#el-acct"))
+    page.click("#el-fb"); page.wait_for_timeout(300)
+    page.fill('.modal [data-f="e"]', "test@beispiel.ch"); page.fill('.modal [data-f="p"]', "attrappe"); page.click(".modal [data-ok]"); page.wait_for_timeout(600)
+    if vis(".modal"): page.keyboard.press("Escape"); page.wait_for_timeout(200)
+    check("Anmeldung über das Fenster: Konto-Kreis zeigt sofort den Namen, Profil den Abmelden-Knopf", "test" in page.inner_text("#el-acct") and vis("#el-pf-logout"), page.inner_text("#el-acct"))
+    page.click("#el-pf-logout"); page.wait_for_timeout(300)
+
     # Konto-Kreis aus dem Modul
     page.click("#el-tab-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)
     page.click(".el-mod-open, #el-tile-schema") if vis("#el-tile-schema") else None

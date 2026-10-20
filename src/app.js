@@ -30,7 +30,7 @@ import { startDialog } from "./start.js";
 import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel, varOf, newVar } from "./pv.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
-import { cloudMenu, cloudUser, cloudSignIn, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen } from "./cloud.js";
+import { cloudMenu, cloudUser, cloudSignIn, cloudOnSession, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen } from "./cloud.js";
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
@@ -177,6 +177,7 @@ function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S
 function updateUndoButtons() { $("#btn-undo").disabled = !S.undo.length; $("#btn-redo").disabled = !S.redo.length; }
 
 let autosaveTimer = 0;
+let elCurT = null; // elplexaCAD: Zeitstempel des Eintrags „zuletzt geöffnet“, der zum offenen Projekt gehört (null = keiner)
 function markDirty() {
   if (ELPLEXA && S.shared) return; // geteilte Ansicht: nie „ungespeichert“, keine Absturz-Sicherung
   S.dirty = true;
@@ -2063,6 +2064,7 @@ async function newDocument() {
   freshDoc(kind);
 }
 function freshDoc(kind) {
+  elCurT = null;
   const k0 = S.model.kind;
   S.doc = newDoc(); S.active = 0; S.sel.clear(); S.undo = []; S.redo = []; S.fileHandle = null; S.wireDraft = null;
   try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* egal */ }
@@ -2174,6 +2176,7 @@ function elBarInit() {
 }
 function elInit() {
   elBarInit();
+  cloudOnSession(() => { elAcctDraw(); if (EL_S.hub && !EL_S.hub.hidden && EL_S.tab === "profil" && !EL_S.pfBusy) elHub(true, { keepFocus: true }); }); // Anmeldung geändert (Fenster, abgelaufen, Abmelden im Katalog)
   const crumb = document.createElement("div"); crumb.id = "el-crumb"; crumb.className = "el-crumb";
   $("#topbar .filechip").after(crumb);
   const bare = document.createElement("button"); bare.className = "btn icon el-barebtn"; bare.id = "el-bare"; bare.dataset.elact = "bare";
@@ -2195,7 +2198,7 @@ function elInit() {
   EL_S.modMenu = makeMenu(mm, { left: true, beforeShow: () => { mm.innerHTML = E.modMenuHTML(S.doc, EL_S.hub.hidden ? elMod() : null); } });
   EL_S.addMenu = makeMenu(am, { left: true, beforeShow: () => { am.innerHTML = E.addModMenuHTML(S.doc); } });
   const mc = mm.cloneNode(); mc.id = "el-modctx"; mc.setAttribute("aria-label", "Modul");
-  mc.innerHTML = `<div class="ctx-head"></div>` + [["open", "list", "Öffnen", ""], ["ren", "text", "Umbenennen", "Eigener Name, z. B. Schema HV"], ["dup", "copy", "Duplizieren", "Ganzes Modul, unabhängig vom Original"], ["del", "trash", "Löschen", "Mit allen Blättern, Rückgängig möglich"]]
+  mc.innerHTML = `<div class="ctx-head"></div>` + [["open", "list", "Öffnen", ""], ["st", "list", "Status …", "Offen, In Arbeit, Geprüft, Versendet, Revision, Archiviert"], ["ren", "text", "Umbenennen", "Eigener Name, z. B. Schema HV"], ["dup", "copy", "Duplizieren", "Ganzes Modul, unabhängig vom Original"], ["del", "trash", "Löschen", "Mit allen Blättern, Rückgängig möglich"]]
     .map(([a, ic, t, sub]) => `<button class="mi${a === "del" ? " danger" : ""}" role="menuitem" data-elmodact="${a}" tabindex="-1"><span class="ic">${R.icons[ic]}</span><span class="mt"><span class="mh">${t}</span>${sub ? `<span class="ms">${sub}</span>` : ""}</span></button>`).join("");
   $("#app").append(mc);
   EL_S.modCtx = makeMenu(mc, { left: true, beforeShow: () => {
@@ -2228,17 +2231,17 @@ function elInit() {
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-eltab], [data-elwk], [data-elview], [data-elsheet], [data-elmore], [data-elmst], [data-elmstset], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
-    if ((e.metaKey || e.ctrlKey) && b.classList.contains("el-ptile")) { e.preventDefault(); const k = b.dataset.selkey; (EL_S.sel ??= new Set())[EL_S.sel.has(k) ? "delete" : "add"](k); elHub(true, { keepFocus: true }); document.querySelector(`.el-ptile[data-selkey="${k}"]`)?.focus(); return; } // ⌘-Klick oder ⌘ Enter: mehrere wählen
+    if ((e.metaKey || e.ctrlKey) && b.classList.contains("el-ptile") && b.dataset.selkey) { e.preventDefault(); const k = b.dataset.selkey; (EL_S.sel ??= new Set())[EL_S.sel.has(k) ? "delete" : "add"](k); elHub(true, { keepFocus: true }); document.querySelector(`.el-ptile[data-selkey="${k}"]`)?.focus(); return; } // ⌘-Klick oder ⌘ Enter: mehrere wählen
     if (b.dataset.eltab) {
       EL_S.tab = b.dataset.eltab; if (EL_S.tab === "projekte") EL_S.pview = false;
-      const reload = ["projekte", "zeit"].includes(EL_S.tab) && !S.shared && cloudUser() && !EL_S.onbusy; // beim Wechsel in den Reiter neu laden, bis dahin gilt der alte Stand
+      const reload = ["projekte", "zeit"].includes(EL_S.tab) && !S.shared && cloudUser() && !EL_S.onbusy && (!EL_S.onAt || Date.now() - EL_S.onAt > LIST_MAX_AGE); // beim Wechsel in den Reiter neu laden, wenn der Stand älter als 60 s ist (sonst «Neu laden»)
       if (reload) EL_S.autoTried = true;
       elHub(true, { keepFocus: true }); document.getElementById("el-tab-" + EL_S.tab)?.focus();
       if (reload) elOnlineList();
     }
     else if (b.dataset.elwk) { const cur = EL_S.week || E.weekStart(elDay(Date.now())); EL_S.week = b.dataset.elwk === "0" ? E.weekStart(elDay(Date.now())) : E.weekShift(cur, Number(b.dataset.elwk)); elHub(true, { keepFocus: true }); }
     else if (b.dataset.elview) { EL_S.pf.view = b.dataset.elview; elHub(true, { keepFocus: true }); }
-    else if (b.dataset.elmst) { EL_S.stMod = b.dataset.elmst; EL_S.stPop.toggle(b); } // Modulstatus wählen
+    else if (b.dataset.elmst) { EL_S.stMod = b.dataset.elmst; EL_S.stPop.toggle(b.closest(".el-tile") || b); } // Modulstatus wählen; Menü an der Kachel, Fokus kehrt dorthin zurück
     else if (b.dataset.elmstset) { setModStatus(EL_S.stMod, b.dataset.elmstset); elHub(true, { keepFocus: true }); document.getElementById(E.tileId(EL_S.stMod))?.focus(); } // Fokus zurück auf die Kachel
     else if (b.dataset.elmore) { EL_S.popMod = b.dataset.elmore; EL_S.shPop.toggle(b); } // alle Blätter des Moduls
     else if (b.dataset.elpdf) printPdf(E.modIdx(S.doc, b.dataset.elpdf).map((i) => S.doc.sheets[i]), `_${modName(S.doc, b.dataset.elpdf)}`); // Modul als PDF, Login-Regel in printPdf
@@ -2251,13 +2254,31 @@ function elInit() {
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
     else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv, zeitcsv: elZeitCsv, projview: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
-      gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
+      gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
+  hub.addEventListener("keydown", (e) => { // Reiter mit Pfeiltasten (Roving-Tabindex)
+    const t = e.target.closest?.(".el-tab"); if (!t || e.altKey || e.metaKey || e.ctrlKey) return;
+    const tabs = [...hub.querySelectorAll(".el-tab")], i = tabs.indexOf(t), n = e.key === "ArrowRight" ? (i + 1) % tabs.length : e.key === "ArrowLeft" ? (i + tabs.length - 1) % tabs.length : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -1;
+    if (n < 0) return; e.preventDefault(); e.stopPropagation(); tabs[n].click();
+  });
+  hub.addEventListener("dragstart", (e) => { // Projektkachel ziehen: eigene Reihenfolge
+    const p = e.target.closest?.(".el-ptile[data-pkey]"); if (!p) return;
+    EL_S.pdrag = p.dataset.pkey; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", p.dataset.pkey); p.classList.add("el-drag");
+  });
+  hub.addEventListener("dragover", (e) => { const p = e.target.closest?.(".el-ptile[data-pkey]"); if (!EL_S.pdrag || !p) return; e.preventDefault(); for (const x of hub.querySelectorAll(".el-ptile.el-over")) if (x !== p) x.classList.remove("el-over"); p.classList.toggle("el-over", p.dataset.pkey !== EL_S.pdrag); });
+  hub.addEventListener("drop", (e) => {
+    const p = e.target.closest?.(".el-ptile[data-pkey]"); if (!EL_S.pdrag || !p) return; e.preventDefault();
+    const keys = [...hub.querySelectorAll(".el-ptile[data-pkey]")].map((x) => x.dataset.pkey), from = keys.indexOf(EL_S.pdrag), to = keys.indexOf(p.dataset.pkey); EL_S.pdrag = null;
+    if (from < 0 || to < 0 || from === to) return;
+    keys.splice(to, 0, ...keys.splice(from, 1)); elProjOrderSet(keys); EL_S.pf.sort = "eigene"; EL_S.sel?.clear(); elHub(true, { keepFocus: true });
+  });
+  hub.addEventListener("dragend", () => { EL_S.pdrag = null; for (const x of hub.querySelectorAll(".el-ptile.el-drag, .el-ptile.el-over")) x.classList.remove("el-drag", "el-over"); });
   hub.addEventListener("dragstart", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!t) return; EL_S.drag = t.dataset.modctx; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.dataset.modctx); t.classList.add("el-drag"); });
   hub.addEventListener("dragover", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!EL_S.drag || !t) return; e.preventDefault(); for (const x of hub.querySelectorAll(".el-over")) if (x !== t) x.classList.remove("el-over"); t.classList.toggle("el-over", t.dataset.modctx !== EL_S.drag); });
   hub.addEventListener("drop", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!EL_S.drag || !t) return; e.preventDefault(); const id = EL_S.drag; EL_S.drag = null; if (moveModuleTo(id, t.dataset.modctx)) { elHub(true, { keepFocus: true }); document.getElementById(E.tileId(id))?.focus(); } });
   hub.addEventListener("dragend", () => { EL_S.drag = null; for (const x of hub.querySelectorAll(".el-drag, .el-over")) x.classList.remove("el-drag", "el-over"); });
-  hub.addEventListener("change", (e) => { if (e.target.dataset?.eltip !== undefined) { elTipSet(e.target.checked); return; } const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); else if (e.target.dataset?.elf) { EL_S.pf[e.target.dataset.elf] = e.target.value; elHub(true, { keepFocus: true }); } });
+  hub.addEventListener("change", (e) => { if (e.target.dataset?.eltip !== undefined) { elTipSet(e.target.checked); return; } const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); else if (e.target.dataset?.elf) { EL_S.pf[e.target.dataset.elf] = e.target.value; EL_S.sel?.clear(); elHub(true, { keepFocus: true }); } });
+  hub.addEventListener("input", (e) => { if (e.target.id === "el-pf-mail") EL_S.pfMail = e.target.value; else if (e.target.id === "el-pf-pw") EL_S.pfPw = e.target.value; });
   hub.addEventListener("submit", (e) => { e.preventDefault(); if (e.target.id === "el-pf-form") elProfileLogin(); else elTimeAdd(); });
   adrInit(hub);
   hub.addEventListener("keydown", (e) => { const r = e.key === "Enter" && e.target.closest?.("[data-elz]"); if (r) { e.preventDefault(); elZeitResolve(r.dataset.elz, true); } }); // Enter in der Zeile übernimmt
@@ -2265,8 +2286,8 @@ function elInit() {
   hub.addEventListener("click", (e) => { const b = e.target.closest("[data-elshare]"); if (b && !b.disabled) elShareDialog(b.dataset.elshare); });
   addEventListener("el-file", (e) => { // files.js: gespeichert oder geöffnet
     elZeitDoc({ file: !EL_S.fromOnline });
-    if (EL_S.fromOnline) return; // aus der Online-Ablage geöffnet: keine Datei, nicht unter „zuletzt geöffnet“
-    E.recentAdd({ file: e.detail.file, name: elName(), status: E.statusOf(S.doc), handle: e.detail.handle || null, sum: E.projSummary(S.doc) }).then(() => { if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); });
+    if (EL_S.fromOnline) { elCurT = null; return; } // aus der Online-Ablage geöffnet: keine Datei, nicht unter „zuletzt geöffnet“
+    E.recentAdd({ file: e.detail.file, name: elName(), status: E.statusOf(S.doc), handle: e.detail.handle || null, sum: E.projSummary(S.doc) }).then((t) => { elCurT = t; EL_S.sel?.clear(); if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); });
   });
   elZeitInit(); elSync(); elHub(true);
   if (S.shared) elShareLoad();
@@ -2283,10 +2304,11 @@ function elHub(show, { keepFocus = false, tab = null } = {}) {
     const file = S.fileHandle?.name || "", suggest = `${baseName()}.elplexa.json`;
     const gd = h.querySelector("#el-gwr"); if (gd) EL_S.gwrOpen = gd.open; // GWR-Feld bleibt beim Neuzeichnen offen oder zu
     h.innerHTML = S.shared && !EL_S.shareInfo ? (EL_S.shareFail ? E.shareFailHTML(EL_S.shareFail.grund, EL_S.shareFail.msg) : E.shareLoadHTML())
-      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy, tip: elTipOn(), tab: EL_S.tab, pview: EL_S.pview, profil: { user: cloudUser(), busy: EL_S.pfBusy, msg: EL_S.pfMsg, locked: elLocked() }, zeit: elZeitData(), projs: { recent: EL_S.recent, online: EL_S.onlist ?? null, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, ...EL_S.pf, sel: EL_S.sel } });
+      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy, tip: elTipOn(), tab: EL_S.tab, pview: EL_S.pview, curT: elCurT, profil: { user: cloudUser(), busy: EL_S.pfBusy, msg: EL_S.pfMsg, mail: EL_S.pfMail, pw: EL_S.pfPw, locked: elLocked() }, zeit: elZeitData(), projs: { recent: EL_S.recent, online: EL_S.onlist ?? null, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, ...EL_S.pf, sel: EL_S.sel, order: elProjOrder() } });
     for (const el of h.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
     E.recentList().then((l) => {
       const key = (x) => JSON.stringify((x || []).map((e) => [e.file, e.t])), changed = key(EL_S.recent) !== key(l);
+      if (changed) EL_S.sel?.clear(); // Plätze in der Liste haben sich geändert
       EL_S.recent = l; const r = h.querySelector("#el-recent"); if (r) r.innerHTML = E.recentHTML(l);
       if (changed && EL_S.tab === "projekte" && !EL_S.pview && !EL_S.hub.hidden) elHub(true, { keepFocus: true }); // Kacheln mit den geladenen Einträgen
     });
@@ -2668,6 +2690,7 @@ async function elModAct(a) {
   const id = EL_S.ctxMod;
   if (!id) return;
   if (a === "open") { elOpen(id, { exact: true }); return; }
+  if (a === "st") { EL_S.stMod = id; const t = document.getElementById(E.tileId(id)); if (t) setTimeout(() => EL_S.stPop.show(t), 0); return; }
   if (a === "ren") await renameModule(id);
   else if (a === "dup") { const nid = duplicateModule(id); if (nid) toast(`Kopie angelegt: „${modName(S.doc, nid)}“. Umbenennen: Rechtsklick auf die Kachel.`); }
   else if (a === "del") await deleteModule(id);
@@ -2678,7 +2701,11 @@ function elBare() {
   $("#el-bare").setAttribute("aria-pressed", String(on));
   requestAnimationFrame(() => applyView());
 }
+const LIST_MAX_AGE = 60000; // ms: Reiterwechsel lädt die Online-Liste nur neu, wenn der Stand älter ist (schont das Gratis-Supabase)
 const elTabLive = () => !(EL_S.tab === "projekte" && EL_S.pview); // Listen, Zeit und Profil zeichnen sich bei Online-Antworten neu
+// Eigene Reihenfolge der Projektkacheln (Etappe 6): Schlüssel in der Reihenfolge, im Browser gemerkt (localStorage)
+const elProjOrder = () => { try { const a = JSON.parse(localStorage.getItem("elplexacad.projorder") || "[]"); return Array.isArray(a) ? a.filter((x) => typeof x === "string") : []; } catch { return []; } };
+function elProjOrderSet(keys) { try { localStorage.setItem("elplexacad.projorder", JSON.stringify(keys.slice(0, 500))); } catch { /* egal */ } }
 // Tipp-Zeile der Übersicht (2b): ein- und ausblendbar, im Browser gemerkt
 const elTipOn = () => { try { return localStorage.getItem("elplexacad.tipp") !== "0"; } catch { return true; } };
 function elTipSet(on) { try { localStorage.setItem("elplexacad.tipp", on ? "1" : "0"); } catch { /* egal */ } if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); }
@@ -2686,16 +2713,18 @@ function elTipSet(on) { try { localStorage.setItem("elplexacad.tipp", on ? "1" :
 async function elProfileLogin() {
   const email = $("#el-pf-mail")?.value.trim() || "", pw = $("#el-pf-pw")?.value || "";
   if (EL_S.pfBusy) return;
+  EL_S.pfMail = email; EL_S.pfPw = pw; // bleiben beim Neuzeichnen stehen
   if (!email || !pw) { EL_S.pfMsg = "Bitte E-Mail und Passwort eingeben."; elHub(true, { keepFocus: true }); return; }
   EL_S.pfBusy = true; EL_S.pfMsg = null; elHub(true, { keepFocus: true });
-  try { await cloudSignIn(email, pw); toast(`Angemeldet als ${cloudUser()}.`); EL_S.autoTried = false; EL_S.onlist = null; }
-  catch (err) { EL_S.pfMsg = err.status === 400 ? "E-Mail oder Passwort falsch." : err.message || String(err); }
-  finally { EL_S.pfBusy = false; elAcctDraw(); if (!EL_S.hub.hidden) elHub(true); }
+  try { await cloudSignIn(email, pw); toast(`Angemeldet als ${cloudUser()}.`); EL_S.autoTried = false; EL_S.onlist = null; EL_S.pfMail = ""; EL_S.pfPw = ""; }
+  catch (err) { EL_S.pfMsg = err.status === 400 ? "E-Mail oder Passwort falsch." : err.message || String(err); EL_S.pfPw = ""; } // E-Mail bleibt, Passwort nicht
+  finally { EL_S.pfBusy = false; elAcctDraw(); if (!EL_S.hub.hidden) { elHub(true); if (EL_S.pfMsg) document.getElementById("el-pf-pw")?.focus(); } }
 }
 function elHelp() { openModal("Tasten in elplexaCAD", E.keysHTML() + `<div class="actions"><button class="btn outline" data-tip>${elTipOn() ? "Tipp-Zeile ausblenden" : "Tipp-Zeile einblenden"}</button><button class="btn primary" data-c>Schliessen</button></div>`, (b, done) => { if (b.matches("[data-tip]")) { elTipSet(!elTipOn()); done(null); } else done(null); }, null, "[data-c]"); }
 // Tasten ohne ⌘: 1 bis 3 Module, 0 Übersicht, § Leisten, ? Hilfe. true = Taste gehört elplexaCAD
 function elKey(e) {
   const mods = E.MODULES.filter((m) => !m.later);
+  if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden && !(EL_S.tab === "projekte" && EL_S.pview)) return false; // Projekte, Zeit, Profil haben keine Modulkacheln
   if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden) { const id = E.modIds(S.doc)[Number(e.key) - 1]; if (id) elOpen(id, { exact: true }); else toast(`Kein Modul an Stelle ${e.key}.`); return true; } // Übersicht: N-te Kachel (20.10.2026)
   if (/^[1-9]$/.test(e.key)) { const n = Number(e.key); if (n <= mods.length) elOpen(mods[n - 1].id, { create: false }); else if (E.MODULES[n - 1]) toast(`${E.MODULES[n - 1].label} kommt später.`); else return false; return true; }
   if (e.key === "0") { elHub(EL_S.hub.hidden); return true; }
@@ -2708,11 +2737,15 @@ function elHubKey(e) {
   if (!EL_S.hub || EL_S.hub.hidden) return false;
   const t = e.target, typing = t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA");
   if (typing) return false;
-  if (e.metaKey || e.ctrlKey) { const k = e.key.toLowerCase(); return !(k === "s" || k === "o"); }
+  if (e.metaKey || e.ctrlKey) {
+    const k = e.key.toLowerCase();
+    if (k === "z" && EL_S.tab === "projekte" && EL_S.pview) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); elHub(true, { keepFocus: true }); return true; } // Status und Reihenfolge der Module sind Änderungen der Datei: ⌘Z gilt auch hier
+    return !(k === "s" || k === "o");
+  }
   if (e.key === "Escape") { if (EL_S.sel?.size) { EL_S.sel.clear(); elHub(true, { keepFocus: true }); return true; } elHub(false); return true; } // erst die Auswahl aufheben
   const tile = t instanceof HTMLElement ? t.closest(".el-tile[data-modctx]") : null; // Kachel gewählt: S = Status, ⌥ ← → = Platz tauschen
   if (tile && e.altKey && !e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); if (moveModule(tile.dataset.modctx, e.key === "ArrowLeft" ? -1 : 1)) elHub(true, { keepFocus: true }); return true; }
-  if (tile && !e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); EL_S.stMod = tile.dataset.modctx; EL_S.stPop.toggle(tile.querySelector(".el-mst")); return true; }
+  if (tile && !e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); EL_S.stMod = tile.dataset.modctx; EL_S.stPop.toggle(tile); return true; }
   if (!e.altKey && elKey(e)) e.preventDefault();
   return !["Tab", "Enter", " "].includes(e.key); // Tab und Enter bedienen die Kacheln
 }

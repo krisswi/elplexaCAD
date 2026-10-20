@@ -45,13 +45,12 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
     check("Nach Speichern: „Gespeichert“", page.inner_text("#el-savetxt") == "Gespeichert" and not vis("#dirty"), page.inner_text("#el-savetxt"))
 
-    # Konto-Kreis: Gast (file: = nicht gesperrt)
-    page.click("#el-acct"); page.wait_for_timeout(120)
-    t = page.inner_text("#el-acctmenu")
-    check("Konto-Menü als Gast: „Gast“ und „Anmelden“", "Gast" in t and page.is_visible('#el-acctmenu [data-elact="login"]') and not page.is_visible('#el-acctmenu [data-elact="logout"]'), t)
+    # Konto-Kreis: Gast (file: = nicht gesperrt); Klick führt zum Reiter Profil
+    check("Konto-Kreis zeigt «Gast»", "Gast" in page.inner_text("#el-acct"))
+    page.click("#el-acct"); page.wait_for_timeout(200)
+    t = page.inner_text(".el-profile")
+    check("Konto-Kreis führt zum Reiter Profil: Gast-Hinweis, Anmeldeformular", page.get_attribute("#el-tab-profil", "aria-selected") == "true" and "Gast" in t and vis("#el-pf-form"), t[:120])
     page.screenshot(path=str(OUT / "kf_konto.png"))
-    page.keyboard.press("Escape"); page.wait_for_timeout(100)
-    check("Esc schliesst das Konto-Menü", not vis("#el-acctmenu"))
 
     # Platz: Hauptknöpfe bleiben im Bild, Leiste läuft nicht über
     for w in (1100, 1280, 1440):

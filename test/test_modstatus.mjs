@@ -51,7 +51,7 @@ const old = JSON.stringify({ ...JSON.parse(serializeModel(mk())), version: 16, m
 const o = parseModel(old); assert.deepStrictEqual(o.mods, { pv: { name: "PV Ost" } }); assert.strictEqual(JSON.parse(serializeModel(o)).version, 16);
 
 // Anzeige: Pille, Taste N = Stelle der Kachel
-const h = hubHTML(back, { name: "T", today: "2026-10-20", label: () => "B" });
+const h = hubHTML(back, { name: "T", today: "2026-10-20", label: () => "B", pview: true });
 assert.ok(h.includes('data-elmst="pv"') && h.includes(">Geprüft<"));
 const order = [...h.matchAll(/data-elopen="([^"]+)" data-exact/g)].map((m) => m[1]);
 assert.deepStrictEqual(order, ["pv", "schema:2", "schema", "dispo"]);

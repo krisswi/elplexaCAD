@@ -113,13 +113,14 @@ export function hubHTML(doc, o) {
   }).join("");
   // Zweite Stufe (Etappe 2b, CJ 20.10.2026): Pfad und Reiter oben, Tipp-Zeile unten. Nicht in der geteilten Ansicht. Nur Reiter, die etwas tun.
   const todayH = Math.round((doc.project?.time || []).filter((e) => e.d === o.today).reduce((a, e) => a + e.h, 0) * 100) / 100;
-  const sub = ro ? "" : `<nav class="el-subbar" aria-label="Pfad und Reiter"><span class="el-path">Projektübersicht<span class="el-sl" aria-hidden="true">/</span><b>${esc(o.name)}</b></span>
-    <div class="el-tabs" role="tablist" aria-label="Bereiche">${[["proj", "Projekt"], ["projekte", "Projekte"], ["zeit", "Zeit"]].map(([k, t]) => `<button class="el-tab" role="tab" id="el-tab-${k}" data-eltab="${k}" aria-selected="${(o.tab || "proj") === k}">${t}</button>`).join("")}</div><span class="el-sp"></span>
+  const sub = ro ? "" : `<nav class="el-subbar" aria-label="Pfad und Reiter"><span class="el-path">${(o.tab || "projekte") === "projekte" ? (o.pview ? `<button class="el-pathlink" data-eltab="projekte" title="Zur Projektliste">Projekte</button><span class="el-sl" aria-hidden="true">›</span><b>${esc(o.name)}</b>` : "") : ""}</span>
+    <div class="el-tabs" role="tablist" aria-label="Bereiche">${[["projekte", "Projekte"], ["zeit", "Zeit"], ["profil", "Profil"]].map(([k, t]) => `<button class="el-tab" role="tab" id="el-tab-${k}" data-eltab="${k}" aria-selected="${(o.tab || "projekte") === k}">${t}</button>`).join("")}</div><span class="el-sp"></span>
     <button class="btn small el-chip" data-elact="timechip" title="Stunden für dieses Projekt eintragen" aria-label="Heute ${fmtH(todayH)} Stunden, Zeit eintragen">Heute ${fmtH(todayH)} h <span aria-hidden="true">＋</span></button>
     <button class="btn small el-helpbtn" data-elact="help" title="Alle Tasten (?)" aria-label="Alle Tasten zeigen">?</button></nav>`;
   const tip = ro || o.tip === false ? "" : `<div class="el-tip" role="note"><span class="el-tiptxt"><b>Tipp</b> 1 bis 9 öffnet die Kachel an dieser Stelle · S Status · ⌥ ← → Reihenfolge · Rechtsklick auf die Kachel: Umbenennen, Duplizieren, Löschen · ? alle Tasten</span><button class="btn icon el-tipx" data-elact="tipoff" title="Tipp-Zeile ausblenden (wieder einblenden über ?)" aria-label="Tipp-Zeile ausblenden"><span aria-hidden="true">×</span></button></div>`;
   if (!ro && o.tab === "zeit") return `${sub}<div class="el-hubin el-pview">${timeTabHTML({ ...(o.zeit || {}), today: o.today })}</div>${tip}`;
-  if (!ro && o.tab === "projekte") return `${sub}<div class="el-hubin el-pview">${projectsHTML(o.projs || {})}</div>${tip}`;
+  if (!ro && o.tab === "profil") return `${sub}<div class="el-hubin el-pview">${profileHTML({ ...(o.profil || {}), tip: o.tip !== false })}</div>${tip}`;
+  if (!ro && (o.tab || "projekte") === "projekte" && !o.pview) return `${sub}<div class="el-hubin el-pview">${projectsHTML({ ...(o.projs || {}), cur: { name: o.name, status: st, ...projSummary(doc), file: o.file, onlineId: doc.project?.online?.id } })}</div>${tip}`;
   return `${sub}<div class="el-hubin"><div class="el-col">
     <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span>${ro ? statusPill(st) : `<label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label>`}</div>
       <input class="el-name" data-elp="name" value="${esc(o.name)}"${ro ? ` aria-label="Projektname" readonly` : ` aria-label="Projektname (klicken zum Umbenennen)" title="Klicken zum Umbenennen"`} spellcheck="false">${fileHint}
@@ -141,8 +142,8 @@ export function hubHTML(doc, o) {
 export const projFilters = () => ["Alle", ...projectStatus()]; // als Funktion: im SchemaCAD-Bau fällt alles weg
 const projWhen = (t) => { const d = new Date(t); return Number.isNaN(+d) ? "" : d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" }); };
 export function projItems(o) {
-  const loc = (o.recent || []).map((e, k) => ({ src: "lokal", k, name: e.name || e.file, status: e.status || "", obj: e.sum?.obj || "", mods: e.sum?.mods || null, n: e.sum?.n ?? null, h: e.sum?.h ?? null, t: e.t || 0, hint: e.handle ? "" : "Datei wählen" }));
-  const onl = (o.online || []).map((e) => { const s = onlineSummary(e.proj); return { src: "online", id: e.id, name: e.name, status: e.status || "", obj: s?.obj || "", mods: null, n: null, h: s ? s.h : null, t: Date.parse(e.updated_at) || 0, hint: "" }; });
+  const loc = (o.recent || []).filter((e) => !(o.cur?.file && e.file === o.cur.file)).map((e, k) => ({ src: "lokal", k, name: e.name || e.file, status: e.status || "", obj: e.sum?.obj || "", mods: e.sum?.mods || null, n: e.sum?.n ?? null, h: e.sum?.h ?? null, t: e.t || 0, hint: e.handle ? "" : "Datei wählen" }));
+  const onl = (o.online || []).filter((e) => !(o.cur?.onlineId && e.id === o.cur.onlineId)).map((e) => { const s = onlineSummary(e.proj); return { src: "online", id: e.id, name: e.name, status: e.status || "", obj: s?.obj || "", mods: null, n: null, h: s ? s.h : null, t: Date.parse(e.updated_at) || 0, hint: "" }; });
   let all = [...loc, ...onl];
   if (o.filter && o.filter !== "Alle") all = all.filter((x) => x.status === o.filter);
   return o.sort === "name" ? all.sort((a, b) => a.name.localeCompare(b.name, "de")) : all.sort((a, b) => b.t - a.t);
@@ -161,9 +162,11 @@ export function projectsHTML(o) {
     const key = x.src === "online" ? `o:${x.id}` : `l:${x.k}`, on = !!o.sel?.has(key);
     return `<button class="el-ptile${on ? " sel" : ""}" id="el-pt-${esc(key.replace(":", "-"))}" ${attr} data-projctx="${esc(key)}" data-selkey="${esc(key)}" aria-pressed="${on}" title="${x.src === "online" ? "Online-Projekt öffnen" : x.hint ? "Dieser Browser merkt sich nur den Namen: Datei wählen" : "Öffnen"}"><span class="el-ph"><span class="el-pn">${esc(x.name)}</span>${x.status ? statusPill(x.status) : ""}</span><span class="el-po">${esc(x.obj) || "–"}</span><span class="el-pm">${dots(x)}${esc(meta)}</span><span class="el-pw">${x.src === "online" ? "online" : "lokal"}${x.hint ? " · " + x.hint : ""}</span></button>`;
   };
+  const cur = o.cur && (!o.filter || o.filter === "Alle" || o.filter === o.cur.status) ? o.cur : null;
+  const curCard = cur ? `<button class="el-ptile cur" id="el-pt-cur" data-elact="projview" title="Dieses Projekt ist geöffnet: Projektdaten und Module"><span class="el-ph"><span class="el-pn">${esc(cur.name)}</span>${cur.status ? statusPill(cur.status) : ""}</span><span class="el-po">${esc(cur.obj) || "–"}</span><span class="el-pm">${cur.mods.map(([b, s]) => { const m = MODULES.find((q) => q.id === b); return `<i class="el-pd" style="background:${m?.color || "#999"}" title="${esc(m?.label || b)}: ${esc(s)}"></i>`; }).join("")}${cur.n} ${cur.n === 1 ? "Blatt" : "Blätter"}${cur.h ? ` · ${fmtH(cur.h)} h` : ""}</span><span class="el-pw"><b class="el-open">geöffnet</b></span></button>` : "";
   let body;
-  if (!items.length) body = `<p class="el-note el-empty">${(o.recent?.length || o.online?.length) ? "Kein Projekt mit diesem Status." : "Noch keine Projekte. Gespeicherte und geöffnete Projekte erscheinen hier."}</p>`;
-  else body = view === "liste" ? `<div class="el-plist">${items.map(card).join("")}</div>` : `<div class="el-pgrid">${items.map(card).join("")}</div>`;
+  if (!items.length && !cur) body = `<p class="el-note el-empty">${((o.filter && o.filter !== "Alle") || o.recent?.length || o.online?.length) ? "Kein Projekt mit diesem Status." : "Noch keine Projekte. Gespeicherte und geöffnete Projekte erscheinen hier."}</p>`;
+  else body = view === "liste" ? `<div class="el-plist">${curCard}${items.map(card).join("")}</div>` : `<div class="el-pgrid">${curCard}${items.map(card).join("")}</div>`;
   const nSel = o.sel?.size || 0, nLoc = [...(o.sel || [])].filter((k) => k.startsWith("l:")).length;
   const selbar = nSel ? `<div class="el-selbar" role="status"><span><b>${nSel}</b> gewählt${nSel > nLoc ? ` (Online-Projekte bleiben)` : ""}</span><button class="btn outline small" data-elact="selrm"${nLoc ? "" : " disabled"}>Aus der Liste entfernen</button><button class="btn outline small" data-elact="selclr">Auswahl aufheben (Esc)</button></div>` : "";
   const notes = [`<p class="el-note">⌘-Klick wählt mehrere. Rechtsklick: Öffnen oder aus der Liste entfernen. Lokale Projekte kennt der Browser nur über «zuletzt geöffnet» (höchstens 8). Online-Projekte zeigen Objekt und Stunden, nicht Blattzahl und Module.</p>`];
@@ -210,6 +213,20 @@ export function timeTabHTML(o) {
   else if (o.items === null || !o.loaded) notes.unshift(`<p class="el-note">${o.busy ? "Online-Projekte werden geladen …" : `Online-Projekte noch nicht geladen. <button class="el-link" data-elact="onlist">Jetzt laden</button>`}</p>`);
   else if (!w.rows.length) notes.unshift(`<p class="el-note el-empty">Noch keine Online-Projekte.</p>`);
   return `<section class="el-projs el-pwrap" aria-label="Zeit über alle Projekte">${head}${table}${notes.join("")}</section>`;
+}
+
+// Reiter „Profil“ (Etappe 6, CJ 20.10.2026): Anmeldung mit E-Mail und Passwort (vorher Fenster und Konto-Menü), Abmelden, Gast-Hinweis, Firma, Tipp-Zeile
+// o = { user, busy, msg (Fehlertext der Anmeldung), tip, locked }
+export function profileHTML(o) {
+  const login = o.user ? `<p class="el-prow">Angemeldet als <b>${esc(o.user)}</b></p><div class="el-acts"><button class="btn outline" id="el-pf-logout" data-elact="logout"${o.busy ? " disabled" : ""}>Abmelden</button></div>`
+    : `<p class="el-note">Gast: Ohne Anmeldung arbeitest du mit Dateien auf diesem Rechner${o.locked ? "; im Netz lässt sich dann nur als DXF speichern" : ""}. Anmelden für Projektdatei, PDF, Listen und Online-Projekte.</p>
+      <form class="el-pform" id="el-pf-form" autocomplete="on" novalidate><label class="el-row"><span>E-Mail</span><input id="el-pf-mail" type="email" autocomplete="username" spellcheck="false"></label>
+      <label class="el-row"><span>Passwort</span><input id="el-pf-pw" type="password" autocomplete="current-password"></label>
+      ${o.msg ? `<p class="el-perr" role="alert"><span>${esc(o.msg)}</span></p>` : ""}<div class="el-acts"><button class="btn primary" type="submit"${o.busy ? " disabled" : ""}>${o.busy ? "Anmelden …" : "Anmelden"}</button></div></form>`;
+  return `<section class="el-projs el-pwrap el-profile" aria-label="Profil"><div class="el-eyerow"><span class="el-eye">Anmeldung</span></div>${login}
+    <div class="el-eyerow"><span class="el-eye">Firma</span></div><label class="el-row"><span>Firma</span><select disabled aria-label="Firma wechseln"><option>–</option></select></label>
+    <p class="el-note">Firma wechseln gibt es noch nicht: die App kennt noch keine Firmendaten (Mandanten-Verwaltung folgt).</p>
+    <div class="el-eyerow"><span class="el-eye">Anzeige</span></div><label class="chk"><input type="checkbox" data-eltip${o.tip ? " checked" : ""}> <span>Tipp-Zeile unten zeigen</span></label></section>`;
 }
 
 // Zuletzt geöffnete Projekte (im Browser, IndexedDB): Name, Status, Zeit und, wo der Browser es kann, der Dateizugriff (FileSystemFileHandle).

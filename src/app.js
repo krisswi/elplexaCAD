@@ -30,7 +30,7 @@ import { startDialog } from "./start.js";
 import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel, varOf, newVar } from "./pv.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
-import { cloudMenu, cloudUser, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen } from "./cloud.js";
+import { cloudMenu, cloudUser, cloudSignIn, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen } from "./cloud.js";
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
@@ -2101,7 +2101,7 @@ function insertBase() {
 // ---------- elplexaCAD (Aufbau B, CJ 17.10.2026; nur im Bau `node build.mjs elplexa`) ----------
 // Module = Blattarten derselben Datei (elplexa.js). Das offene Modul folgt aus dem aktiven Blatt; Blattleiste, Plus-Menü
 // und Blatt vor/zurück bleiben im Modul. Projektübersicht über allem ausser Kopf- und Statusleiste.
-const EL_S = { tab: "proj", pf: {}, hub: null, last: {}, lastOf: {}, modMenu: null, addMenu: null };
+const EL_S = { tab: "projekte", pview: true, pf: {}, hub: null, last: {}, lastOf: {}, modMenu: null, addMenu: null };
 const elMod = () => E.moduleOf(S.model);
 const elIdx = () => E.modIdx(S.doc, elMod());
 function elSheetBar() {
@@ -2146,9 +2146,9 @@ function elSaveState() {
 const ACCT_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="3.5"/><path d="M5 20c.8-3.6 3.5-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>`;
 function elAcctDraw() {
   const b = $("#el-acct"), u = cloudUser(); if (!b) return;
-  b.innerHTML = u ? R.esc(u[0].toUpperCase()) : ACCT_SVG;
+  b.innerHTML = `<span class="av">${u ? R.esc(u[0].toUpperCase()) : ACCT_SVG}</span><span class="nm">${u ? R.esc(u.split("@")[0]) : "Gast"}</span>`;
   b.classList.toggle("in", !!u); b.classList.toggle("lock", !u && elLocked());
-  b.title = u ? `Konto: ${u}` : elLocked() ? "Nicht angemeldet. Klick: anmelden (ohne Anmeldung nur DXF)" : "Gast, nicht angemeldet. Klick: Konto";
+  b.title = u ? `Angemeldet als ${u}. Klick: Profil` : elLocked() ? "Nicht angemeldet. Klick: im Profil anmelden (ohne Anmeldung nur DXF)" : "Gast, nicht angemeldet. Klick: Profil";
   b.setAttribute("aria-label", b.title);
 }
 function elBarInit() {
@@ -2166,17 +2166,10 @@ function elBarInit() {
   ss.innerHTML = `<span class="el-okdot" id="el-okdot"></span><span id="el-savetxt"></span>`; ss.prepend($("#dirty"));
   $("#topbar .menuwrap").before(ss);
   // Konto-Kreis mit Menü: Anmelden und Abmelden (vorher im Bereich Online der Übersicht)
-  const ab = document.createElement("button"); ab.className = "el-acctbtn"; ab.id = "el-acct"; ab.type = "button"; ab.setAttribute("aria-haspopup", "menu"); ab.setAttribute("aria-expanded", "false");
+  const ab = document.createElement("button"); ab.className = "el-acctbtn"; ab.id = "el-acct"; ab.type = "button";
   $("#topbar .menuwrap").after(ab);
-  const am = document.createElement("div"); am.className = "menu"; am.id = "el-acctmenu"; am.setAttribute("role", "menu"); am.setAttribute("aria-label", "Konto"); am.hidden = true;
-  $("#app").append(fm, am);
-  EL_S.acctMenu = makeMenu(am, { beforeShow: () => {
-    const u = cloudUser();
-    am.innerHTML = `<div class="ctx-head">${u ? `Angemeldet: ${R.esc(u)}` : "Gast, nicht angemeldet"}</div>` + (u
-      ? `<button class="mi" role="menuitem" data-elact="logout" tabindex="-1"><span class="mt"><span class="mh">Abmelden</span><span class="ms">Projektdatei, PDF und Online dann gesperrt, nur DXF</span></span></button>`
-      : `<button class="mi" role="menuitem" data-elact="login" tabindex="-1"><span class="mt"><span class="mh">Anmelden</span><span class="ms">Für Projektdatei, PDF, Listen und Online-Projekte</span></span></button>`);
-  } });
-  ab.addEventListener("click", () => EL_S.acctMenu.toggle(ab));
+  $("#app").append(fm);
+  ab.addEventListener("click", () => elHub(true, { tab: "profil" })); // Konto-Kreis: Profil (Anmeldung, Abmelden)
   elAcctDraw(); elSaveState();
 }
 function elInit() {
@@ -2236,7 +2229,7 @@ function elInit() {
     const b = e.target.closest("[data-eltab], [data-elwk], [data-elview], [data-elsheet], [data-elmore], [data-elmst], [data-elmstset], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
     if ((e.metaKey || e.ctrlKey) && b.classList.contains("el-ptile")) { e.preventDefault(); const k = b.dataset.selkey; (EL_S.sel ??= new Set())[EL_S.sel.has(k) ? "delete" : "add"](k); elHub(true, { keepFocus: true }); document.querySelector(`.el-ptile[data-selkey="${k}"]`)?.focus(); return; } // ⌘-Klick oder ⌘ Enter: mehrere wählen
-    if (b.dataset.eltab) { EL_S.tab = b.dataset.eltab; elHub(true, { keepFocus: true }); document.getElementById("el-tab-" + EL_S.tab)?.focus(); }
+    if (b.dataset.eltab) { EL_S.tab = b.dataset.eltab; if (EL_S.tab === "projekte") EL_S.pview = false; elHub(true, { keepFocus: true }); document.getElementById("el-tab-" + EL_S.tab)?.focus(); }
     else if (b.dataset.elwk) { const cur = EL_S.week || E.weekStart(elDay(Date.now())); EL_S.week = b.dataset.elwk === "0" ? E.weekStart(elDay(Date.now())) : E.weekShift(cur, Number(b.dataset.elwk)); elHub(true, { keepFocus: true }); }
     else if (b.dataset.elview) { EL_S.pf.view = b.dataset.elview; elHub(true, { keepFocus: true }); }
     else if (b.dataset.elmst) { EL_S.stMod = b.dataset.elmst; EL_S.stPop.toggle(b); } // Modulstatus wählen
@@ -2251,15 +2244,15 @@ function elInit() {
     else if (b.dataset.elrecent) elOpenRecent(Number(b.dataset.elrecent));
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
-    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv, zeitcsv: elZeitCsv, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { EL_S.tab = "proj"; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
+    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv, zeitcsv: elZeitCsv, projview: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
       gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("dragstart", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!t) return; EL_S.drag = t.dataset.modctx; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.dataset.modctx); t.classList.add("el-drag"); });
   hub.addEventListener("dragover", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!EL_S.drag || !t) return; e.preventDefault(); for (const x of hub.querySelectorAll(".el-over")) if (x !== t) x.classList.remove("el-over"); t.classList.toggle("el-over", t.dataset.modctx !== EL_S.drag); });
   hub.addEventListener("drop", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!EL_S.drag || !t) return; e.preventDefault(); const id = EL_S.drag; EL_S.drag = null; if (moveModuleTo(id, t.dataset.modctx)) { elHub(true, { keepFocus: true }); document.getElementById(E.tileId(id))?.focus(); } });
   hub.addEventListener("dragend", () => { EL_S.drag = null; for (const x of hub.querySelectorAll(".el-drag, .el-over")) x.classList.remove("el-drag", "el-over"); });
-  hub.addEventListener("change", (e) => { const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); else if (e.target.dataset?.elf) { EL_S.pf[e.target.dataset.elf] = e.target.value; elHub(true, { keepFocus: true }); } });
-  hub.addEventListener("submit", (e) => { e.preventDefault(); elTimeAdd(); });
+  hub.addEventListener("change", (e) => { if (e.target.dataset?.eltip !== undefined) { elTipSet(e.target.checked); return; } const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); else if (e.target.dataset?.elf) { EL_S.pf[e.target.dataset.elf] = e.target.value; elHub(true, { keepFocus: true }); } });
+  hub.addEventListener("submit", (e) => { e.preventDefault(); if (e.target.id === "el-pf-form") elProfileLogin(); else elTimeAdd(); });
   adrInit(hub);
   hub.addEventListener("keydown", (e) => { const r = e.key === "Enter" && e.target.closest?.("[data-elz]"); if (r) { e.preventDefault(); elZeitResolve(r.dataset.elz, true); } }); // Enter in der Zeile übernimmt
   hub.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches?.("input[data-elp]")) { e.preventDefault(); e.target.blur(); } }); // Enter übernimmt
@@ -2273,24 +2266,26 @@ function elInit() {
   if (S.shared) elShareLoad();
 }
 // Übersicht zeigen (show) oder schliessen; beim Schliessen bleibt das zuletzt offene Modul. keepFocus: neu zeichnen, Fokus bleibt
-function elHub(show, { keepFocus = false } = {}) {
+function elHub(show, { keepFocus = false, tab = null } = {}) {
   if (!show && S.shared && !EL_S.shareInfo) return; // geteilte Ansicht: Übersicht bleibt, bis das Projekt geladen ist
   const h = EL_S.hub, f = keepFocus && document.activeElement?.closest?.("#el-hub") ? (document.activeElement.id ? "#" + document.activeElement.id : document.activeElement.dataset.elp ? `[data-elp="${document.activeElement.dataset.elp}"]` : document.activeElement.dataset.elf ? `[data-elf="${document.activeElement.dataset.elf}"]` : document.activeElement.dataset.elview ? `[data-elview="${document.activeElement.dataset.elview}"]` : null) : null;
   if (show) {
+    if (EL_S.hub.hidden) { EL_S.tab = "projekte"; EL_S.pview = true; } // aus dem Modul zurück: das offene Projekt
+    if (tab) { EL_S.tab = tab; if (tab === "projekte") EL_S.pview = false; }
     finishWire(); closeEditor(true); elZeitPause(); // in der Übersicht läuft keine Zeit
     const today = elDay(Date.now());
     const file = S.fileHandle?.name || "", suggest = `${baseName()}.elplexa.json`;
     const gd = h.querySelector("#el-gwr"); if (gd) EL_S.gwrOpen = gd.open; // GWR-Feld bleibt beim Neuzeichnen offen oder zu
     h.innerHTML = S.shared && !EL_S.shareInfo ? (EL_S.shareFail ? E.shareFailHTML(EL_S.shareFail.grund, EL_S.shareFail.msg) : E.shareLoadHTML())
-      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy, tip: elTipOn(), tab: EL_S.tab, zeit: elZeitData(), projs: { recent: EL_S.recent, online: EL_S.onlist ?? null, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, ...EL_S.pf, sel: EL_S.sel } });
+      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy, tip: elTipOn(), tab: EL_S.tab, pview: EL_S.pview, profil: { user: cloudUser(), busy: EL_S.pfBusy, msg: EL_S.pfMsg, locked: elLocked() }, zeit: elZeitData(), projs: { recent: EL_S.recent, online: EL_S.onlist ?? null, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, ...EL_S.pf, sel: EL_S.sel } });
     for (const el of h.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
     E.recentList().then((l) => {
       const key = (x) => JSON.stringify((x || []).map((e) => [e.file, e.t])), changed = key(EL_S.recent) !== key(l);
       EL_S.recent = l; const r = h.querySelector("#el-recent"); if (r) r.innerHTML = E.recentHTML(l);
-      if (changed && EL_S.tab === "projekte" && !EL_S.hub.hidden) elHub(true, { keepFocus: true }); // Kacheln mit den geladenen Einträgen
+      if (changed && EL_S.tab === "projekte" && !EL_S.pview && !EL_S.hub.hidden) elHub(true, { keepFocus: true }); // Kacheln mit den geladenen Einträgen
     });
     elOnlineDraw();
-    if (["projekte", "zeit"].includes(EL_S.tab) && !S.shared && cloudUser() && EL_S.onlist == null && !EL_S.onbusy && !EL_S.autoTried) { EL_S.autoTried = true; elOnlineList(); } // einmal je Anmeldung automatisch laden
+    if (elTabLive() && EL_S.tab !== "profil" && !S.shared && cloudUser() && EL_S.onlist == null && !EL_S.onbusy && !EL_S.autoTried) { EL_S.autoTried = true; elOnlineList(); } // einmal je Anmeldung automatisch laden
   }
   h.hidden = !show; document.body.classList.toggle("el-hubopen", show);
   $("#btn-new").title = show ? "Neues Projekt anlegen" : "Neues Dokument: Schema, Disposition oder Stringplan";
@@ -2512,7 +2507,7 @@ async function elOpenRecent(k) {
     if (p !== "granted") p = await e.handle.requestPermission({ mode: "readwrite" });
     if (p !== "granted") { toast("Ohne Erlaubnis lässt sich die Datei nicht öffnen. Datei über Öffnen (⌘O) wählen."); return; }
     const f = await e.handle.getFile();
-    EL_S.tab = "proj"; // geöffnet: zurück zum Projekt
+    EL_S.tab = "projekte"; EL_S.pview = true; // geöffnet: zurück zum Projekt
     await loadText(await f.text(), e.handle.name, e.handle);
   } catch (err) {
     toast(`„${e.file}“ liess sich nicht öffnen (${err.message || err}). Sie ist vielleicht verschoben; Eintrag entfernt.`, "error");
@@ -2543,9 +2538,9 @@ async function elLogin() {
 }
 async function elOnline(fn) { // sperrt die Knöpfe während der Anfrage
   if (EL_S.onbusy) return;
-  EL_S.onbusy = true; elOnlineDraw(); if (["projekte", "zeit"].includes(EL_S.tab) && !EL_S.hub.hidden) elHub(true, { keepFocus: true });
+  EL_S.onbusy = true; elOnlineDraw(); if (elTabLive() && !EL_S.hub.hidden) elHub(true, { keepFocus: true });
   try { await fn(); } catch (err) { toast(err.message || String(err), "error"); }
-  finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) { elOnlineDraw(); if (["projekte", "zeit"].includes(EL_S.tab)) elHub(true, { keepFocus: true }); } }
+  finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) { elOnlineDraw(); if (elTabLive()) elHub(true, { keepFocus: true }); } }
 }
 const elOnlineList = () => elOnline(async () => { try { const l = await projList(); if (l) EL_S.onlist = l; EL_S.onerr = null; } catch (err) { EL_S.onerr = err.message || String(err); throw err; } });
 const elLogout = () => elOnline(async () => { await cloudLogout(); EL_S.onlist = null; EL_S.onerr = null; EL_S.autoTried = false; toast("Abgemeldet."); elAcctDraw(); });
@@ -2622,7 +2617,7 @@ function elOnlineOpen(id) {
     if (S.dirty && !(await confirmDialog("Ungespeicherte Änderungen", "Beim Öffnen gehen die Änderungen am aktuellen Dokument verloren.", "Trotzdem öffnen"))) return;
     const doc = await projOpen(id);
     if (!doc) return;
-    EL_S.tab = "proj";
+    EL_S.tab = "projekte"; EL_S.pview = true;
     EL_S.fromOnline = true;
     try { await loadText(JSON.stringify(doc), doc.project?.name || "Online-Projekt", null); } finally { EL_S.fromOnline = false; }
     elHub(true);
@@ -2676,9 +2671,20 @@ function elBare() {
   $("#el-bare").setAttribute("aria-pressed", String(on));
   requestAnimationFrame(() => applyView());
 }
+const elTabLive = () => !(EL_S.tab === "projekte" && EL_S.pview); // Listen, Zeit und Profil zeichnen sich bei Online-Antworten neu
 // Tipp-Zeile der Übersicht (2b): ein- und ausblendbar, im Browser gemerkt
 const elTipOn = () => { try { return localStorage.getItem("elplexacad.tipp") !== "0"; } catch { return true; } };
 function elTipSet(on) { try { localStorage.setItem("elplexacad.tipp", on ? "1" : "0"); } catch { /* egal */ } if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); }
+// Anmeldung im Reiter Profil (Etappe 6): Fehler stehen im Reiter (falsche Daten, kein Netz)
+async function elProfileLogin() {
+  const email = $("#el-pf-mail")?.value.trim() || "", pw = $("#el-pf-pw")?.value || "";
+  if (EL_S.pfBusy) return;
+  if (!email || !pw) { EL_S.pfMsg = "Bitte E-Mail und Passwort eingeben."; elHub(true, { keepFocus: true }); return; }
+  EL_S.pfBusy = true; EL_S.pfMsg = null; elHub(true, { keepFocus: true });
+  try { await cloudSignIn(email, pw); toast(`Angemeldet als ${cloudUser()}.`); EL_S.autoTried = false; EL_S.onlist = null; }
+  catch (err) { EL_S.pfMsg = err.status === 400 ? "E-Mail oder Passwort falsch." : err.message || String(err); }
+  finally { EL_S.pfBusy = false; elAcctDraw(); if (!EL_S.hub.hidden) elHub(true); }
+}
 function elHelp() { openModal("Tasten in elplexaCAD", E.keysHTML() + `<div class="actions"><button class="btn outline" data-tip>${elTipOn() ? "Tipp-Zeile ausblenden" : "Tipp-Zeile einblenden"}</button><button class="btn primary" data-c>Schliessen</button></div>`, (b, done) => { if (b.matches("[data-tip]")) { elTipSet(!elTipOn()); done(null); } else done(null); }, null, "[data-c]"); }
 // Tasten ohne ⌘: 1 bis 3 Module, 0 Übersicht, § Leisten, ? Hilfe. true = Taste gehört elplexaCAD
 function elKey(e) {

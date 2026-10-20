@@ -323,3 +323,24 @@ body.el-shared #el-file, body.el-shared #el-savestate, body.el-shared #el-acct {
 .el-tile[draggable="true"] { cursor: grab; }
 .el-tile.el-drag { opacity: .5; }
 .el-tile.el-over { outline: 2px dashed var(--el-dark); outline-offset: 2px; }
+
+/* Etappe 6: Profil, Pfad-Link, Konto-Pille, Markierung «geöffnet» */
+.el-pathlink { font: inherit; font-size: 13px; color: var(--muted); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.el-pathlink:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .el-pathlink:hover { color: var(--ink); } }
+.el-acctbtn { width: auto; min-width: 30px; padding: 0 10px 0 3px; gap: 6px; display: inline-flex; align-items: center; border-radius: 15px; }
+.el-acctbtn .av { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; font-weight: 600; }
+.el-acctbtn.in .av { background: var(--el-dark); color: #fff; }
+.el-acctbtn.in { background: #fff; color: var(--ink); }
+.el-acctbtn .nm { font-size: 13px; font-weight: 600; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#topbar.tb-5 .el-acctbtn .nm, #topbar.tb-6 .el-acctbtn .nm { display: none; }
+#topbar.tb-5 .el-acctbtn, #topbar.tb-6 .el-acctbtn { padding: 0 3px; }
+.el-ptile.cur { border-color: var(--el-dark); background: #f3f6f2; }
+.el-open { color: var(--el-dark); font-weight: 600; }
+.el-profile { max-width: 520px; }
+.el-pform { display: grid; gap: 6px; }
+.el-prow { margin: 0; font-size: 14px; }
+.el-perr { margin: 0; }
+#el-hub:not([hidden]) { display: flex; flex-direction: column; } /* Tipp-Zeile bleibt unten, auch bei kurzem Inhalt */
+#el-hub .el-hubin { flex: 1 0 auto; width: 100%; box-sizing: border-box; }
+#el-hub .el-tip { margin-top: auto; }

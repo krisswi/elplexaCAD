@@ -36,9 +36,8 @@ with sync_playwright() as p:
     page.goto(URL); page.wait_for_timeout(300)
     page.click("#el-tab-zeit"); page.wait_for_timeout(250)
     check("Gast: Hinweis, keine Tabelle", "Nicht angemeldet" in page.inner_text(".el-pwrap") and not vis(".el-wtab"))
-    page.click("#el-acct"); page.click('#el-acctmenu [data-elact="login"]'); page.wait_for_timeout(150)
-    page.fill('.modal [data-f="e"]', "test@beispiel.ch"); page.fill('.modal [data-f="p"]', "attrappe"); page.click(".modal [data-ok]"); page.wait_for_timeout(600)
-    page.click("#el-tab-projekt" if False else "#el-tab-proj"); page.click("#el-tab-zeit"); page.wait_for_timeout(700)
+    page.click("#el-acct"); page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(600)
+    page.click("#el-tab-zeit"); page.wait_for_timeout(700)
     check("Angemeldet: Tabelle mit einer Zeile je Online-Projekt", vis(".el-wtab") and page.locator(".el-wtab tbody tr").count() == 2, page.inner_text(".el-pwrap")[:200])
     # diese Woche enthält keine Stunden → zurück bis 2026-10-12: Woche wählen über «‹» bis passende Woche
     page.evaluate("0")
@@ -65,7 +64,7 @@ with sync_playwright() as p:
     check("CSV = Tabelle: Projekt Eins 3.75, Projekt Zwei 4.5", lines[1].endswith(";3.75") and lines[2].endswith(";4.5") and lines[1].startswith("Projekt Eins"), lines[1:3])
     check("Hinweis: nur Online-Projekte", "Nur Online-Projekte" in page.inner_text(".el-pwrap"))
     # Zeit-Chip im Projekt
-    page.click("#el-tab-proj"); page.wait_for_timeout(200)
+    page.click("#el-tab-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)
     check("Zeit-Chip «Heute 0 h» im Projekt", "Heute 0 h" in page.inner_text(".el-chip"))
     page.click(".el-chip"); page.wait_for_timeout(200)
     check("Chip fokussiert das Stundenfeld", page.evaluate("document.activeElement.id") == "el-th")

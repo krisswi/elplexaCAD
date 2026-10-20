@@ -97,6 +97,8 @@ export async function cloudMenu(table, what, items, merge) {
 export const PROJ_MAX = 5_000_000; // Zeichen Projekt-JSON ohne PDF, gleiche Grenze in der Datenbank
 export const PDF_MAX = 52428800; // Bytes je PDF (50 MiB), Grenze des Buckets (Gratis-Plan)
 export const cloudUser = () => sess?.email || null;
+// Anmeldung aus dem Reiter Profil (ohne Fenster). Wirft bei falschen Daten (status 400) oder fehlender Verbindung.
+export const cloudSignIn = (email, password) => token("password", { email, password });
 export const cloudLogin = async () => !!(await ensure()); // Anmelden (Knopf in der Übersicht); true = angemeldet
 export async function cloudLogout() {
   try { if (sess) await call("/auth/v1/logout", { method: "POST", headers: { Authorization: `Bearer ${sess.access_token}` } }); } catch { /* lokal trotzdem abmelden */ }

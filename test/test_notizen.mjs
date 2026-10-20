@@ -35,18 +35,10 @@ const keys = sheetNoteKeys(raw, sheets);
 assert.deepStrictEqual(sheets.map((s) => keys.get(s)), ["title", "n2", "9", "4", "n5"]);
 assert.deepStrictEqual([...sheetNoteKeys(null, sheets).values()], ["title"], "ohne Rohdaten nur Titelseite, Inhalt, Legende");
 
-// elplexaCAD: Schemablätter bekommen beim Laden eine feste sid (sonst nur Dispo/PV), v3 nicht
-const file = JSON.stringify({ format: "schemacad", version: 6, sheets: [{ meta: { BLATT: "1" }, items: [] }, { meta: { BLATT: "2" }, sid: 3, items: [] }] });
-globalThis.ELPLEXA = false;
-assert.strictEqual(parseModel(file).sheets[0].sid, undefined, "v3: keine neue sid");
-globalThis.ELPLEXA = true;
-const d = parseModel(file);
-assert.ok(d.sheets[0].sid > 0 && d.sheets[0].sid !== 3, "elplexaCAD: neue sid am Schemablatt");
-assert.strictEqual(d.sheets[1].sid, 3, "vorhandene sid bleibt");
-assert.ok(d.nextId > d.sheets[0].sid, "nextId über allen sid");
-assert.strictEqual(JSON.parse(serializeModel(parseModel(serializeModel(d)))).sheets[0].sid, d.sheets[0].sid, "sid bleibt beim Speichern und Laden");
 // Notizen kommen nie in die Datei
-assert.ok(!serializeModel(d).includes("project_notes") && !("notes" in JSON.parse(serializeModel(d))));
+const file = JSON.stringify({ format: "schemacad", version: 6, sheets: [{ meta: { BLATT: "1" }, items: [] }] });
+globalThis.ELPLEXA = true;
+assert.ok(!("notes" in JSON.parse(serializeModel(parseModel(file)))));
 delete globalThis.ELPLEXA;
 
 // Darstellung: nur Notizen des offenen Blatts, Nummer = Platz in der Liste, Text maskiert

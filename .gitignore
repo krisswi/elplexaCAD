@@ -1,6 +1,9 @@
 node_modules/
 dist/
 shots/
-test/ui_out.*
-test_out.dxf
 .DS_Store
+# Test-Ausgaben
+test/ui_out.*
+/test_*.dxf
+# Lokale Einstellungen von Claude Code
+.claude/settings.local.json

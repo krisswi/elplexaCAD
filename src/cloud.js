@@ -207,7 +207,7 @@ export async function feedbackSend({ shot, ...f }) {
 // Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026): Tabelle `project_shares` (nur eigene Zeilen, RLS), je Link ein geheimer Schlüssel
 // mit Ablauf (Vorgabe Datenbank 30 Tage) und Widerruf. Empfänger ohne Login lesen nur über die Funktion `share_open` (security definer)
 // und holen PDF-Dachpläne über die Edge Function `teilen-pdf` (signierte Adressen, 5 min). Nie direkt aus `projects` oder dem Bucket.
-export const SHARE_ONLINE = "https://krisswi.github.io/schemacad/"; // als lokale Datei (file:) zeigt der Link auf die Online-Adresse
+export const SHARE_ONLINE = "https://krisswi.github.io/elplexaCAD/"; // als lokale Datei (file:) zeigt der Link auf die Online-Adresse
 export const shareUrl = (token) => `${window.location.protocol.startsWith("http") ? window.location.origin + window.location.pathname : SHARE_ONLINE}?teilen=${token}`;
 // gültige Links eines eigenen Online-Projekts, neueste zuerst. null = Anmeldung abgebrochen.
 export const shareList = (projectId) => rest(`project_shares?project_id=eq.${encodeURIComponent(projectId)}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,token,expires_at,modules&order=created_at.desc`);

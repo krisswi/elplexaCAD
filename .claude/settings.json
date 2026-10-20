@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git push)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh release:*)",
+      "mcp__61cd897a-4a40-47d7-85bb-6be2ec040a82__apply_migration",
+      "mcp__61cd897a-4a40-47d7-85bb-6be2ec040a82__deploy_edge_function",
+      "mcp__61cd897a-4a40-47d7-85bb-6be2ec040a82__execute_sql"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(git commit -n:*)"
+    ]
+  }
+}

@@ -336,7 +336,7 @@ const fmtDay = (t) => new Date(t).toLocaleDateString("de-CH", { day: "2-digit", 
 export function sharedHTML(s) {
   const what = s.mods ? `${s.mods.length === 1 ? "das Modul" : "die Module"} ${s.mods.map((m) => `„${esc(m)}“`).join(", ")}` : "alle Module und Blätter";
   return `<section class="el-projs el-shared-info" aria-label="Geteilte Ansicht"><div class="el-eyerow"><span class="el-eye">Geteilte Ansicht</span><span class="el-st el-shpill">Nur ansehen</span></div>
-    <p>Mit dir geteilt: ${what}. Du kannst ansehen, aber nichts ändern, speichern oder drucken.</p>
+    <p>Mit dir geteilt: ${what}. Du kannst ansehen und Notizen oder Markierungen setzen (N, M), aber an der Zeichnung nichts ändern, speichern oder drucken.</p>
     ${s.at ? `<p class="el-note">Stand vom ${when2(s.at)}. Link gültig bis ${fmtDay(s.ablauf)}.</p>` : ""}</section>`;
 }
 const SHARE_GRUND = { abgelaufen: "Dieser Link ist abgelaufen.", widerrufen: "Dieser Link wurde vom Absender widerrufen.", modul_fehlt: "Das geteilte Modul gibt es in diesem Projekt nicht mehr.", ungueltig: "Dieser Link ist ungültig. Vielleicht ist er unvollständig kopiert oder das Projekt wurde gelöscht." };
@@ -351,7 +351,7 @@ export function shareDialogHTML(name, links, url, pick, nm) {
   const rows = links === null ? `<p class="el-note">Lädt …</p>` : links.length ? links.map((l) => `<div class="el-shrow"><input class="el-shurl" readonly value="${esc(url(l.token))}" aria-label="Link für ${esc(scope(l))}, gültig bis ${fmtDay(l.expires_at)}"><span class="el-shexp">${esc(scope(l))} · bis ${fmtDay(l.expires_at)}</span><button class="btn outline small" data-shcopy="${esc(l.token)}">Kopieren</button><button class="btn outline small el-danger" data-shrev="${esc(l.id)}">Widerrufen</button></div>`).join("")
     : `<p class="el-note">Noch kein gültiger Link.</p>`;
   const boxes = pick && pick.ids.length > 1 ? `<fieldset class="el-shpick"><legend>Neuer Link zeigt</legend>${pick.ids.map((id) => `<label class="chk"><input type="checkbox" data-shmod="${esc(id)}"${pick.on.has(id) ? " checked" : ""}> <span>${esc(nm(id))}</span></label>`).join("")}</fieldset>` : "";
-  return `<p>Wer den Link hat, sieht „${esc(name)}“ ohne Login, nur zum Ansehen: den zuletzt online gespeicherten Stand, ohne Zeiterfassung. Ein Link gilt 30 Tage und lässt sich jederzeit widerrufen.</p>
+  return `<p>Wer den Link hat, sieht „${esc(name)}“ ohne Login, nur zum Ansehen und für Notizen: den zuletzt online gespeicherten Stand, ohne Zeiterfassung. Ein Link gilt 30 Tage und lässt sich jederzeit widerrufen.</p>
     <div class="el-shlinks">${rows}</div>${boxes}<div class="actions"><button class="btn outline" data-c>Schliessen</button><button class="btn primary" data-shnew${links === null || (pick && !pick.on.size) ? " disabled" : ""}>Neuen Link erstellen</button></div>`;
 }
 export const shareLoadHTML = () => `<div class="el-hubin el-sharefail"><section class="el-proj" role="status"><span class="el-eye">Geteilte Ansicht</span><p>Das geteilte Projekt wird geladen …</p></section></div>`;

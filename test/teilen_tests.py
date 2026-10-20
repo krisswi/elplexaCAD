@@ -1,4 +1,4 @@
-# UI-Tests Teilen per Link (Meilenstein 2, Schritt 1 und Module teilen, 18.10.2026) gegen eine Attrappe statt Supabase. Vorher: node build.mjs elplexa
+# UI-Tests Teilen per Link (Meilenstein 2, Schritt 1 und Module teilen 18.10.2026, Notizen Schritt 2 20.10.2026) gegen eine Attrappe statt Supabase. Vorher: node build.mjs elplexa
 # Ersteller: Link erstellen, kopieren, widerrufen. Empfänger (?teilen=): ohne Login nur ansehen, nichts änderbar, eigene Sicherung bleibt.
 # Aufruf aus web-src: python3 test/teilen_tests.py [Ausgabeordner]
 import sys, tempfile, json, base64, hashlib, re
@@ -26,7 +26,9 @@ DATA = {"format": "schemacad", "version": 6, "active": 0, "nextId": 100, "pv": {
         "assets": {"a1": {"name": "dach.pdf", "type": "application/pdf", "sha": SHA}},
         "sheets": [{"meta": {"BLATT": "1", "TITEL": "Hauptverteilung"}, "sid": 1, "items": [{"id": 5, "type": "text", "x": 50, "y": 100, "h": 5, "s": "Geteilter Text"}]},
                    {"kind": "pv", "sid": 2, "meta": {"BLATT": "1"}, "bg": {"asset": "a1", "name": "dach.pdf", "page": 1, "w": 842, "h": 595}, "items": []}]}
-srv = {"shares": [], "calls": [], "grund": None, "saved": []}
+srv = {"shares": [], "calls": [], "grund": None, "saved": [], "notes": [], "ngrund": None, "nadd": []}
+# wie share_open in der Datenbank: Notiz-Kennung nk je Blatt (sid, title/toc/legend, sonst n<Platz>)
+NK = lambda d: {**d, "sheets": [{**sh, "nk": str(sh["sid"]) if sh.get("sid") else sh["kind"] if sh.get("kind") in ("title", "toc", "legend") else f"n{i + 1}"} for i, sh in enumerate(d["sheets"])]}
 
 def fake(route):
     req = route.request; u = urlparse(req.url); q = {k: v[0] for k, v in parse_qs(u.query).items()}; path = u.path
@@ -51,11 +53,25 @@ def fake(route):
     if path == "/rest/v1/rpc/share_open":
         tok = json.loads(req.post_data)["p_token"]
         if tok == TOKEN2 and not srv["grund"]:  # wie share_open in der Datenbank: nur Blätter der freigegebenen Module, Pläne nur von diesen
-            J({"ok": True, "name": "EFH Geteilt", "status": "Abgegeben", "data": {**DATA, "assets": {}, "sheets": [sh for sh in DATA["sheets"] if sh.get("kind") != "pv"]},
+            J({"ok": True, "name": "EFH Geteilt", "status": "Abgegeben", "data": {**NK(DATA), "assets": {}, "sheets": [sh for sh in NK(DATA)["sheets"] if sh.get("kind") != "pv"]},
                "updated_at": "2026-10-18T10:00:00Z", "ablauf": "2026-11-17T10:00:00Z", "modules": ["schema"]}); return
         ok = tok == TOKEN and not srv["grund"]
-        J({"ok": True, "name": "EFH Geteilt", "status": "Abgegeben", "data": DATA, "updated_at": "2026-10-18T10:00:00Z", "ablauf": "2026-11-17T10:00:00Z"} if ok
+        J({"ok": True, "name": "EFH Geteilt", "status": "Abgegeben", "data": NK(DATA), "updated_at": "2026-10-18T10:00:00Z", "ablauf": "2026-11-17T10:00:00Z"} if ok
           else {"ok": False, "grund": srv["grund"] or "ungueltig"}); return
+    if path.startswith("/rest/v1/rpc/share_note"):  # Notizen (Schritt 2): wie die Funktionen in der Datenbank, Grenzen über srv["ngrund"]
+        a = json.loads(req.post_data)
+        if a["p_token"] != TOKEN or srv["ngrund"] == "link": J({"ok": False, "grund": "link"}); return
+        if path.endswith("share_notes_list"):
+            J({"ok": True, "notes": [{**{k: v for k, v in n.items() if k != "guest"}, "mine": n["guest"] == a["p_guest"]} for n in srv["notes"]]}); return
+        if path.endswith("share_note_add"):
+            srv["nadd"].append(a)
+            if srv["ngrund"]: J({"ok": False, "grund": srv["ngrund"]}); return
+            n = {"id": f"n{len(srv['nadd'])}", "sheet": a["p_sheet"], "sheet_label": a["p_label"], "kind": a["p_kind"], "x": a["p_x"], "y": a["p_y"], "w": a["p_w"], "h": a["p_h"],
+                 "text": a["p_text"].strip(), "author": a["p_author"].strip(), "guest": a["p_guest"], "created_at": "2026-10-20T12:00:00Z", "status": "offen"}
+            srv["notes"].append(n); J({"ok": True, "id": n["id"], "created_at": n["created_at"]}); return
+        if path.endswith("share_note_delete"):
+            hit = [n for n in srv["notes"] if n["id"] == a["p_id"] and n["guest"] == a["p_guest"] and n["status"] == "offen"]
+            srv["notes"] = [n for n in srv["notes"] if n not in hit]; J({"ok": bool(hit)}); return
     if path == "/functions/v1/teilen-pdf":
         J({"ok": True, "urls": {SHA: "https://keqfieduhipnulpkhdbj.supabase.co/storage/v1/object/sign/projekt-pdf/x.pdf?token=t"}}); return
     if path.startswith("/storage/v1/object/sign/"): route.fulfill(status=200, content_type="application/pdf", body=PDF, headers={"Access-Control-Allow-Origin": "*"}); return
@@ -137,7 +153,7 @@ with sync_playwright() as p:
     check("Empfänger: Ziehen verschiebt nur die Ansicht", page.evaluate("window.__schemacad.view")["x"] != v0["x"] and json.dumps(D()["sheets"]) == d0)
     page.mouse.dblclick(cx, cy); page.wait_for_timeout(150)
     page.evaluate("window.__schemacad.sel") ;
-    for k in ["Delete", "Backspace", "l", "t", "r", "ArrowLeft", "n"]: key(page, k)
+    for k in ["Delete", "Backspace", "t", "r", "ArrowLeft", "w", "d"]: key(page, k)  # N, M, L sind seit Schritt 2 die Notiz-Tasten (eigener Abschnitt)
     for k in ["z", "d", "v", "s", "a"]: key(page, k, metaKey=True)
     key(page, "z", metaKey=True, shiftKey=True)
     page.wait_for_timeout(300)
@@ -220,6 +236,105 @@ with sync_playwright() as p:
     ctx, page = open_page(f"https://elplexa.test/?teilen={TOKEN2}")
     check("Modul gibt es nicht mehr: klare Meldung", "gibt es in diesem Projekt nicht mehr" in page.inner_text("#el-hub"), page.inner_text("#el-hub"))
     ctx.close(); srv["grund"] = None
+
+    # ---- Notizen und Markierungen (Meilenstein 2, Schritt 2, CJ 20.10.2026) ----
+    srv["notes"] = [{"id": "fremd", "sheet": "1", "sheet_label": "Blatt 1", "kind": "notiz", "x": 300, "y": 150, "w": 0, "h": 0, "text": "Notiz einer anderen Person",
+                     "author": "Andere Person", "guest": "00000000-0000-0000-0000-000000000000", "created_at": "2026-10-19T09:00:00Z", "status": "offen"}]
+    srv["calls"].clear()
+    ctx, page = open_page(f"https://elplexa.test/?teilen={TOKEN}")
+    D = lambda: page.evaluate("window.__schemacad.doc")
+    page.click("#el-hub [data-elopen]"); page.wait_for_timeout(300)
+    for _ in range(4):  # zum Schemablatt (das Modul öffnet beim zuletzt gezeigten Blatt, hier der Legende)
+        if not D()["sheets"][D()["active"]].get("kind"): break
+        key(page, "PageUp"); page.wait_for_timeout(150)
+    d0 = json.dumps(D()["sheets"])
+    check("Notizen: Leiste in der geteilten Ansicht, Zähler zeigt die Notiz der anderen Person", page.is_visible("#el-notebar") and page.inner_text("#el-notebar .el-ncount") == "1", page.inner_text("#el-notebar") if page.query_selector("#el-notebar") else "")
+    check("Notizen: Stecknadel der anderen Person auf dem Blatt", page.query_selector('#el-notes [data-note="fremd"]') is not None)
+    check("Notizen: kein Zugriff auf die Tabelle, nur Funktionen", not [c for c in srv["calls"] if "project_notes" in c] and "POST /rest/v1/rpc/share_notes_list" in srv["calls"], srv["calls"])
+    box = page.query_selector("#stage").bounding_box(); cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    key(page, "n")
+    check("Taste N: Werkzeug Notiz an", "on" in page.get_attribute('#el-notebar [data-elnote="notiz"]', "class"))
+    page.mouse.click(cx, cy); page.wait_for_timeout(200)
+    check("Klick aufs Blatt: Fenster mit Name (erstes Mal) und Text", page.is_visible('.modal [data-nf="author"]') and page.is_visible('.modal textarea[data-nf="text"]'))
+    check("Text höchstens 1000 Zeichen, Name höchstens 60 (Eingabefeld)", page.get_attribute(".modal textarea", "maxlength") == "1000" and page.get_attribute('.modal [data-nf="author"]', "maxlength") == "60")
+    page.fill('.modal [data-nf="author"]', "Test Person"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
+    check("Leerer Text: Meldung, nichts gesendet", "Bitte einen Text" in page.inner_text(".modal") and not srv["nadd"])
+    page.evaluate("document.querySelector('.modal textarea').value = 'x'.repeat(1001)"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
+    check("Text über 1000 Zeichen: Meldung, nichts gesendet", "zu lang" in page.inner_text(".modal") and not srv["nadd"])
+    page.fill(".modal textarea", "Bitte FI prüfen"); page.click(".modal [data-ok]"); page.wait_for_timeout(300)
+    a = srv["nadd"][-1] if srv["nadd"] else {}
+    check("Notiz gespeichert: Blatt-Kennung (sid), Art, Stelle im Blatt, Name", a.get("p_sheet") == "1" and a.get("p_kind") == "notiz" and 0 < a.get("p_x", -1) < 420 and 0 < a.get("p_y", -1) < 297 and a.get("p_author") == "Test Person" and a.get("p_label").startswith("Blatt "), a)
+    check("Notiz: Stecknadel 2 sichtbar, Zähler 2, Werkzeug aus", page.query_selector('#el-notes [data-note="n1"]') is not None and page.inner_text("#el-notebar .el-ncount") == "2" and "on" not in page.get_attribute('#el-notebar [data-elnote="notiz"]', "class"))
+    check("Notiz: Zeichnung unverändert, nicht im Projekt, nie „ungespeichert“", json.dumps(D()["sheets"]) == d0 and "Bitte FI" not in json.dumps(D()) and not page.evaluate("document.querySelector('#dirty').checkVisibility()"))
+    check("Gast-Name gemerkt", json.loads(page.evaluate("localStorage.getItem('elplexacad.gast')")).get("name") == "Test Person")
+    # Markierung: Rechteck aufziehen, zweites Mal ohne Namensfeld
+    key(page, "m")
+    page.mouse.move(cx - 100, cy - 60); page.mouse.down(); page.mouse.move(cx + 40, cy + 30, steps=5)
+    check("Markierung beim Ziehen gestrichelt sichtbar", page.query_selector("#el-notes .el-nmark.draft") is not None)
+    page.mouse.up(); page.wait_for_timeout(200)
+    check("Markierung: Fenster ohne Namensfeld (Name gemerkt)", page.is_visible(".modal textarea") and not page.query_selector('.modal [data-nf="author"]'))
+    page.fill(".modal textarea", "Hier fehlt die Klemme"); page.click(".modal [data-ok]"); page.wait_for_timeout(300)
+    a = srv["nadd"][-1]
+    check("Markierung gespeichert als Rechteck mit Kasten", a["p_kind"] == "rechteck" and a["p_w"] > 10 and a["p_h"] > 5 and a["p_author"] == "Test Person", a)
+    key(page, "m"); key(page, "m")
+    check("Nochmals M: Kreis", "Kreis" in page.inner_text('#el-notebar [data-elnote="mark"]'))
+    page.mouse.move(cx + 60, cy + 60); page.mouse.down(); page.mouse.move(cx + 120, cy + 100, steps=4); page.mouse.up(); page.wait_for_timeout(200)
+    page.fill(".modal textarea", "Kreis"); page.click(".modal [data-ok]"); page.wait_for_timeout(300)
+    check("Kreis gespeichert", srv["nadd"][-1]["p_kind"] == "kreis" and page.query_selector("#el-notes ellipse") is not None)
+    page.screenshot(path=str(OUT / "t8_notizen.png"))
+    check("Markierungen: Zeichnung unverändert", json.dumps(D()["sheets"]) == d0)
+    # Grenzen aus der Datenbank: Text bleibt im Fenster
+    for g, txt in [("voll", "300 Notizen"), ("zu_schnell", "kurzer Zeit")]:
+        srv["ngrund"] = g
+        if "on" not in page.get_attribute('#el-notebar [data-elnote="notiz"]', "class"): key(page, "n")  # nach Abbrechen bleibt das Werkzeug an
+        page.mouse.click(cx - 150, cy + 80); page.wait_for_timeout(200)
+        page.fill(".modal textarea", "Noch eine"); page.click(".modal [data-ok]"); page.wait_for_timeout(300)
+        check(f"Grenze „{g}“: Meldung, Text bleibt im Fenster", txt in page.inner_text(".modal") and page.input_value(".modal textarea") == "Noch eine", page.inner_text(".modal"))
+        page.click(".modal [data-c]"); page.wait_for_timeout(150)
+    srv["ngrund"] = None; key(page, "Escape")
+    check("Grenzen: nichts dazugekommen", len(srv["notes"]) == 4 and page.inner_text("#el-notebar .el-ncount") == "4")
+    # Klick auf fremde Stecknadel: ansehen ohne Löschen; Liste; eigene löschen
+    page.click('#el-notes [data-note="fremd"] circle'); page.wait_for_timeout(200)
+    m = page.inner_text(".modal")
+    check("Fremde Notiz: Text, Name, Blatt, kein Löschen", "Notiz einer anderen Person" in m and "Andere Person" in m and "Blatt 3" in m and not page.query_selector(".modal [data-ndel]"), m)
+    page.click(".modal [data-c]"); page.wait_for_timeout(150)
+    key(page, "l")
+    rows = page.evaluate("[...document.querySelectorAll('.modal .el-nrow')].map((r) => [r.innerText, !!r.querySelector('[data-ndel]')])")
+    check("Taste L: Liste mit allen 4 Notizen, löschen nur eigene", len(rows) == 4 and [r[1] for r in rows] == [False, True, True, True], rows)
+    page.screenshot(path=str(OUT / "t9_notizliste.png"))
+    page.click('.modal [data-ndel="n1"]'); page.wait_for_timeout(200); page.click('.modal [data-r="1"]'); page.wait_for_timeout(300)
+    check("Eigene Notiz gelöscht (Datenbank und Anzeige)", not [n for n in srv["notes"] if n["id"] == "n1"] and page.inner_text("#el-notebar .el-ncount") == "3" and not page.query_selector('#el-notes [data-note="n1"]'))
+    # anderes Blatt: Notiz auf dem Stringplan
+    key(page, "3"); page.wait_for_timeout(400)
+    check("Stringplan: Notizen von Blatt 1 nicht zu sehen", not page.query_selector('#el-notes [data-note="fremd"]'))
+    key(page, "n"); page.mouse.click(cx, cy); page.wait_for_timeout(200); page.fill(".modal textarea", "Dachfenster"); page.click(".modal [data-ok]"); page.wait_for_timeout(300)
+    check("Stringplan: Notiz mit Kennung des Stringplans (sid 2)", srv["nadd"][-1]["p_sheet"] == "2" and srv["nadd"][-1]["p_label"].startswith("Stringplan"), srv["nadd"][-1])
+    key(page, "l"); page.click('.modal [data-ngo="fremd"]'); page.wait_for_timeout(400)
+    check("Liste: Klick springt zum Blatt der Notiz", D()["sheets"][D()["active"]].get("sid") == 1 and page.query_selector('#el-notes [data-note="fremd"]') is not None, D()["active"])
+    # gesperrt bleibt gesperrt
+    for k in ["z", "s", "p"]: key(page, k, metaKey=True)
+    page.evaluate("document.querySelector('#btn-save').click(); document.querySelector('#btn-dxf').click(); document.querySelector('#btn-pdf').click()"); page.wait_for_timeout(300)
+    check("Mit Notizen: Speichern, Drucken, Export weiterhin gesperrt, Zeichnung unverändert", not page.is_visible(".modal") and "nur ansehen" in page.inner_text("#toasts") and json.dumps(D()["sheets"]) == d0)
+    page.reload(); page.wait_for_timeout(600); page.click("#el-hub [data-elopen]"); page.wait_for_timeout(300)
+    for _ in range(4):
+        if not D()["sheets"][D()["active"]].get("kind"): break
+        key(page, "PageUp"); page.wait_for_timeout(150)
+    check("Neu laden: Notizen aus der Datenbank, eigene weiter löschbar", page.inner_text("#el-notebar .el-ncount") == "4" and page.query_selector('#el-notes [data-note="n2"]') is not None)
+    # Link während des Arbeitens widerrufen
+    srv["ngrund"] = "link"
+    key(page, "n"); page.mouse.click(cx + 100, cy - 80); page.wait_for_timeout(200); page.fill(".modal textarea", "Zu spät"); page.click(".modal [data-ok]"); page.wait_for_timeout(300)
+    check("Widerrufen beim Speichern: Meldung, Text bleibt zum Kopieren", "nicht mehr gültig" in page.inner_text(".modal") and page.input_value(".modal textarea") == "Zu spät")
+    page.click(".modal [data-c]"); page.wait_for_timeout(150)
+    check("Widerrufen: Werkzeuge gesperrt, Liste bleibt", page.is_disabled('#el-notebar [data-elnote="notiz"]') and page.is_disabled('#el-notebar [data-elnote="mark"]') and not page.is_disabled('#el-notebar [data-elnote="liste"]'))
+    key(page, "n"); page.mouse.click(cx, cy); page.wait_for_timeout(200)
+    check("Widerrufen: Taste N setzt nichts mehr", not page.is_visible(".modal textarea"))
+    page.screenshot(path=str(OUT / "t10_notiz_widerrufen.png"))
+    ctx.close(); srv["ngrund"] = None
+    # Ersteller (ohne ?teilen=): keine Notiz-Leiste, keine Abfrage
+    srv["calls"].clear()
+    ctx, page = open_page("https://elplexa.test/", session=True); key(page, "1"); page.wait_for_timeout(200)
+    check("Ersteller: keine Notiz-Leiste, keine Notiz-Abfrage", not page.query_selector("#el-notebar") and not [c for c in srv["calls"] if "share_note" in c])
+    ctx.close()
 
     # ---- Ohne Internet: Meldung statt Absturz ----
     ctx = b.new_context(); page = ctx.new_page(); page.on("pageerror", lambda e: errors.append(str(e)))

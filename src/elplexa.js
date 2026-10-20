@@ -107,7 +107,12 @@ export function hubHTML(doc, o) {
     const m = modById(id), idx = modIdx(doc, id);
     return `<button class="el-tile" id="${tileId(id)}" data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${modPill(doc, id, !ro)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
   }).join("");
-  return `<div class="el-hubin"><div class="el-col">
+  // Zweite Stufe (Etappe 2b, CJ 20.10.2026): Pfad und Reiter oben, Tipp-Zeile unten. Nicht in der geteilten Ansicht. Nur Reiter, die etwas tun.
+  const sub = ro ? "" : `<nav class="el-subbar" aria-label="Pfad und Reiter"><span class="el-path">Projektübersicht<span class="el-sl" aria-hidden="true">/</span><b>${esc(o.name)}</b></span>
+    <div class="el-tabs" role="tablist" aria-label="Bereiche"><button class="el-tab" role="tab" id="el-tab-proj" aria-selected="true">Projekt</button></div><span class="el-sp"></span>
+    <button class="btn small el-helpbtn" data-elact="help" title="Alle Tasten (?)" aria-label="Alle Tasten zeigen">?</button></nav>`;
+  const tip = ro || o.tip === false ? "" : `<div class="el-tip" role="note"><span class="el-tiptxt"><b>Tipp</b> 1 bis 9 öffnet die Kachel an dieser Stelle · S Status · ⌥ ← → Reihenfolge · Rechtsklick auf die Kachel: Umbenennen, Duplizieren, Löschen · ? alle Tasten</span><button class="btn icon el-tipx" data-elact="tipoff" title="Tipp-Zeile ausblenden (wieder einblenden über ?)" aria-label="Tipp-Zeile ausblenden"><span aria-hidden="true">×</span></button></div>`;
+  return `${sub}<div class="el-hubin"><div class="el-col">
     <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span>${ro ? statusPill(st) : `<label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label>`}</div>
       <input class="el-name" data-elp="name" value="${esc(o.name)}"${ro ? ` aria-label="Projektname" readonly` : ` aria-label="Projektname (klicken zum Umbenennen)" title="Klicken zum Umbenennen"`} spellcheck="false">${fileHint}
       ${fld("OBJEKT", "Objekt")}${fld("AUFTRAG", "Auftrag")}${fld("BAUHERR", "Bauherr")}${fld("INDEX", "Index")}
@@ -119,8 +124,8 @@ export function hubHTML(doc, o) {
       <div id="el-online" class="el-online"></div></section>`}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
       ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button>`}</div>
-      <p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p></section>
-    ${ro ? "" : timeHTML(doc, o.today)}</div></div>`;
+      ${ro || o.tip === false ? `<p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p>` : ""}</section>
+    ${ro ? "" : timeHTML(doc, o.today)}</div></div>${tip}`;
 }
 
 // Zuletzt geöffnete Projekte (im Browser, IndexedDB): Name, Status, Zeit und, wo der Browser es kann, der Dateizugriff (FileSystemFileHandle).
@@ -193,7 +198,7 @@ export function crumbHTML(cur, st, name) {
 export const keysHTML = () => `<div class="el-keys">${[
   ["1 2 3", "Schema, Disposition, PV öffnen (in der Übersicht: die Kachel an dieser Stelle)"], ["0", "Projektübersicht"], ["S", "Übersicht, Kachel gewählt: Modulstatus ändern"], ["⌥ ← →", "Übersicht, Kachel gewählt: Modul nach vorn oder hinten"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
   ["Bild ↑ ↓", "Blatt zurück und vor, innerhalb des Moduls"], ["G", "Liste der Blätter des Moduls (Zeile ziehen oder Alt ↑ ↓ sortiert)"], ["M", "Blatt mit ★ markieren"], ["⇧ Bild ↑ ↓", "zum vorherigen und nächsten ★-Blatt, auch über Module"],
-  ["/", "Symbolsuche unten links"], ["⌘ Klick", "zur Auswahl dazu oder wieder ab"], ["?", "diese Hilfe"],
+  ["/", "Symbolsuche unten links"], ["⌘ Klick", "zur Auswahl dazu oder wieder ab"], ["⌘ O", "Öffnen"], ["⌘ S", "Speichern"], ["⇧ ⌘ S", "Speichern unter"], ["⌘ F", "Suchen und Ersetzen"], ["Esc", "schliesst Menü oder Fenster, in der Übersicht zurück ins Modul"], ["?", "diese Hilfe"],
 ].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im Schema gelten 1 bis 4 beim Setzen eines Geräts oder bei einem gewählten Gerät weiter für die Polzahl.</p>`;
 
 // Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026)

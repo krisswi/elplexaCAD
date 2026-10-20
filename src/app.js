@@ -2228,7 +2228,7 @@ function elInit() {
     else if (b.dataset.elrecent) elOpenRecent(Number(b.dataset.elrecent));
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
-    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv,
+    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv, help: elHelp, tipoff: () => elTipSet(false),
       gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("change", (e) => { const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); });
@@ -2255,7 +2255,7 @@ function elHub(show, { keepFocus = false } = {}) {
     const file = S.fileHandle?.name || "", suggest = `${baseName()}.elplexa.json`;
     const gd = h.querySelector("#el-gwr"); if (gd) EL_S.gwrOpen = gd.open; // GWR-Feld bleibt beim Neuzeichnen offen oder zu
     h.innerHTML = S.shared && !EL_S.shareInfo ? (EL_S.shareFail ? E.shareFailHTML(EL_S.shareFail.grund, EL_S.shareFail.msg) : E.shareLoadHTML())
-      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy });
+      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy, tip: elTipOn() });
     for (const el of h.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
     E.recentList().then((l) => { EL_S.recent = l; const r = h.querySelector("#el-recent"); if (r) r.innerHTML = E.recentHTML(l); });
     elOnlineDraw();
@@ -2622,7 +2622,10 @@ function elBare() {
   $("#el-bare").setAttribute("aria-pressed", String(on));
   requestAnimationFrame(() => applyView());
 }
-function elHelp() { openModal("Tasten in elplexaCAD", E.keysHTML() + `<div class="actions"><button class="btn primary" data-c>Schliessen</button></div>`, (b, done) => done(null), null, "[data-c]"); }
+// Tipp-Zeile der Übersicht (2b): ein- und ausblendbar, im Browser gemerkt
+const elTipOn = () => { try { return localStorage.getItem("elplexacad.tipp") !== "0"; } catch { return true; } };
+function elTipSet(on) { try { localStorage.setItem("elplexacad.tipp", on ? "1" : "0"); } catch { /* egal */ } if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); }
+function elHelp() { openModal("Tasten in elplexaCAD", E.keysHTML() + `<div class="actions"><button class="btn outline" data-tip>${elTipOn() ? "Tipp-Zeile ausblenden" : "Tipp-Zeile einblenden"}</button><button class="btn primary" data-c>Schliessen</button></div>`, (b, done) => { if (b.matches("[data-tip]")) { elTipSet(!elTipOn()); done(null); } else done(null); }, null, "[data-c]"); }
 // Tasten ohne ⌘: 1 bis 3 Module, 0 Übersicht, § Leisten, ? Hilfe. true = Taste gehört elplexaCAD
 function elKey(e) {
   const mods = E.MODULES.filter((m) => !m.later);

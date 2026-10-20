@@ -1,0 +1,4 @@
+#!/bin/sh
+# Sperre vor jedem Commit: rote node-Tests verhindern den Commit. Einschalten einmal je Klon: git config core.hooksPath .githooks
+echo "pre-commit: schnelle Tests …"
+sh scripts/test.sh --schnell || { echo "Commit gestoppt: Tests rot."; exit 1; }

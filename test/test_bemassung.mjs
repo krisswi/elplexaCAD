@@ -97,7 +97,11 @@ const dxf = exportDxf(back), ent = dxf.slice(dxf.indexOf("ENTITIES")), dt = [...
 assert.ok(dt.includes("300") && dt.includes("400") && !dt.includes("500"), "DXF: gesetztes Mass, ausgeblendete Breite fehlt: " + dt);
 assert.ok(/\n40\n3\.5\n/.test(ent), "DXF: Masstext 3,5 mm");
 // Bestehende Datei (Nachzeichnung UV vom 16.10.) öffnet unverändert
-const old = fs.readFileSync(new URL("../../../Referenzen/Baergen UV Stall nachgezeichnet.schemacad.json", import.meta.url), "utf8");
+// Die Datei liegt im Vault (Referenzen), nicht im öffentlichen Repo. Ordner über SCHEMACAD_REFERENZEN; fehlt sie (z. B. auf GitHub), entfällt dieser Teil.
+const REF = process.env.SCHEMACAD_REFERENZEN || `${process.env.HOME}/Desktop/Obsidian-Claude/SchemaCAD/Referenzen`;
+const oldPath = `${REF}/Baergen UV Stall nachgezeichnet.schemacad.json`;
+if (!fs.existsSync(oldPath)) { console.log("übersprungen: alte Datei Bärgen fehlt (" + oldPath + ")"); process.exit(0); }
+const old = fs.readFileSync(oldPath, "utf8");
 const o1 = parseModel(old), o2 = parseModel(serializeModel(o1));
 assert.deepStrictEqual(o2.sheets[0].items, o1.sheets[0].items);
 // seit 16.10.: Kasten und Zähler mit „|“ werden beim Laden in Zeilen umgerechnet, sonst unverändert, Bild gleich

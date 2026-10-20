@@ -180,14 +180,14 @@ let autosaveTimer = 0;
 function markDirty() {
   if (ELPLEXA && S.shared) return; // geteilte Ansicht: nie „ungespeichert“, keine Absturz-Sicherung
   S.dirty = true;
-  $("#dirty").hidden = false;
+  $("#dirty").hidden = false; if (ELPLEXA) elSaveState();
   clearTimeout(autosaveTimer);
   // Ist der Zwischenspeicher für eine PDF zu klein, ohne PDF speichern (der Plan muss dann neu geladen werden)
   const put = (t) => localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ name: S.fileName, text: t }));
   autosaveTimer = setTimeout(() => { try { put(docText()); } catch { try { put(docText(true)); } catch { /* ohne Speicher weiterarbeiten */ } } }, 400);
 }
-function markClean() { S.dirty = false; $("#dirty").hidden = true; clearTimeout(autosaveTimer); if (ELPLEXA && S.shared) return; try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* egal */ } } // geteilte Ansicht: Sicherung eigener Projekte bleibt
-function setFileName(n) { S.fileName = n; $("#file-name").textContent = n; document.title = n + (ELPLEXA ? " – elplexaCAD" : " – SchemaCAD"); }
+function markClean() { S.dirty = false; $("#dirty").hidden = true; if (ELPLEXA) elSaveState(); clearTimeout(autosaveTimer); if (ELPLEXA && S.shared) return; try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* egal */ } } // geteilte Ansicht: Sicherung eigener Projekte bleibt
+function setFileName(n) { S.fileName = n; $("#file-name").textContent = n; if (ELPLEXA) elSaveState(); document.title = n + (ELPLEXA ? " – elplexaCAD" : " – SchemaCAD"); }
 
 // ---------- Ansicht ----------
 function applyView() {
@@ -2125,7 +2125,53 @@ function elSync() {
   setProjectMeta(S.doc.project?.meta); // neue Blätter bekommen die Projektdaten (model.js newMeta)
   const c = $("#el-crumb"); if (c && EL_S.hub?.hidden !== false) c.innerHTML = E.crumbHTML(id, E.statusOf(S.doc), modName(S.doc, id));
 }
+// Kopfleiste (Übersicht Etappe 2a, CJ 20.10.2026, Variante 4): Datei-Menü links, Speicherstand mit Punkt und Text, Konto-Kreis rechts.
+// Speichern bleibt als Symbol (Hover: Speichern). Neu und Öffnen liegen im Datei-Menü; #btn-new und #btn-open bleiben verborgen im DOM.
+function elSaveState() {
+  const t = $("#el-savetxt"); if (!t) return;
+  const saved = !S.dirty && (S.fileHandle || S.doc.project?.online || S.fileName !== "Unbenannt");
+  $("#el-okdot").hidden = !!S.dirty;
+  t.textContent = S.dirty ? "Ungespeichert" : saved ? "Gespeichert" : "Neu";
+  $("#el-savestate").dataset.state = S.dirty ? "dirty" : saved ? "saved" : "new";
+}
+const ACCT_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="3.5"/><path d="M5 20c.8-3.6 3.5-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>`;
+function elAcctDraw() {
+  const b = $("#el-acct"), u = cloudUser(); if (!b) return;
+  b.innerHTML = u ? R.esc(u[0].toUpperCase()) : ACCT_SVG;
+  b.classList.toggle("in", !!u); b.classList.toggle("lock", !u && elLocked());
+  b.title = u ? `Konto: ${u}` : elLocked() ? "Nicht angemeldet. Klick: anmelden (ohne Anmeldung nur DXF)" : "Gast, nicht angemeldet. Klick: Konto";
+  b.setAttribute("aria-label", b.title);
+}
+function elBarInit() {
+  const fb = document.createElement("button"); fb.className = "btn"; fb.id = "el-file"; fb.type = "button"; fb.setAttribute("aria-haspopup", "menu"); fb.setAttribute("aria-expanded", "false"); fb.title = "Datei: Neu, Öffnen, Speichern";
+  fb.innerHTML = `<span class="ic">${R.icons.open}</span><span class="lbl">Datei</span><span class="caret" aria-hidden="true">▾</span>`;
+  $("#topbar .filechip").before(fb);
+  const fm = document.createElement("div"); fm.className = "menu"; fm.id = "el-filemenu"; fm.setAttribute("role", "menu"); fm.setAttribute("aria-label", "Datei"); fm.hidden = true;
+  const FILE = [["new", "new", "Neu", () => (EL_S.hub && !EL_S.hub.hidden ? "Neues Projekt anlegen" : "Neues Dokument: Schema, Disposition oder Stringplan")], ["open", "open", "Öffnen …", () => "Projektdatei wählen (⌘O)"], ["save", "save", "Speichern", () => "⌘S, bei Anmeldung lokal oder online"], ["as", "save", "Speichern unter …", () => "Neue Datei wählen (⇧⌘S)"], ["on", "save", "Online speichern", () => "Kopie in der Online-Ablage"]];
+  fm.innerHTML = FILE.map(([a, ic, t]) => `<button class="mi" role="menuitem" data-elfile="${a}" tabindex="-1"><span class="ic">${R.icons[ic]}</span><span class="mt"><span class="mh">${t}</span><span class="ms"></span></span></button>`).join("");
+  EL_S.fileMenu = makeMenu(fm, { left: true, beforeShow: () => { closeEditor(true); FILE.forEach(([a, , , sub]) => { fm.querySelector(`[data-elfile=${a}]`).querySelector(".ms").textContent = sub(); }); fm.querySelector('[data-elfile="on"]').hidden = !cloudUser(); } });
+  fb.addEventListener("click", () => EL_S.fileMenu.toggle(fb));
+  fm.addEventListener("click", (e) => { const a = e.target.closest("[data-elfile]")?.dataset.elfile; if (!a) return; ({ new: () => $("#btn-new").click(), open: () => openJson(), save: () => elSave(false), as: () => elSave(true), on: () => elOnlineSave() })[a](); });
+  // Speicherstand: Punkt und Text, rechts neben den Knöpfen
+  const ss = document.createElement("div"); ss.id = "el-savestate"; ss.className = "el-savestate"; ss.setAttribute("role", "status");
+  ss.innerHTML = `<span class="el-okdot" id="el-okdot"></span><span id="el-savetxt"></span>`; ss.prepend($("#dirty"));
+  $("#topbar .menuwrap").before(ss);
+  // Konto-Kreis mit Menü: Anmelden und Abmelden (vorher im Bereich Online der Übersicht)
+  const ab = document.createElement("button"); ab.className = "el-acctbtn"; ab.id = "el-acct"; ab.type = "button"; ab.setAttribute("aria-haspopup", "menu"); ab.setAttribute("aria-expanded", "false");
+  $("#topbar .menuwrap").after(ab);
+  const am = document.createElement("div"); am.className = "menu"; am.id = "el-acctmenu"; am.setAttribute("role", "menu"); am.setAttribute("aria-label", "Konto"); am.hidden = true;
+  $("#app").append(fm, am);
+  EL_S.acctMenu = makeMenu(am, { beforeShow: () => {
+    const u = cloudUser();
+    am.innerHTML = `<div class="ctx-head">${u ? `Angemeldet: ${R.esc(u)}` : "Gast, nicht angemeldet"}</div>` + (u
+      ? `<button class="mi" role="menuitem" data-elact="logout" tabindex="-1"><span class="mt"><span class="mh">Abmelden</span><span class="ms">Projektdatei, PDF und Online dann gesperrt, nur DXF</span></span></button>`
+      : `<button class="mi" role="menuitem" data-elact="login" tabindex="-1"><span class="mt"><span class="mh">Anmelden</span><span class="ms">Für Projektdatei, PDF, Listen und Online-Projekte</span></span></button>`);
+  } });
+  ab.addEventListener("click", () => EL_S.acctMenu.toggle(ab));
+  elAcctDraw(); elSaveState();
+}
 function elInit() {
+  elBarInit();
   const crumb = document.createElement("div"); crumb.id = "el-crumb"; crumb.className = "el-crumb";
   $("#topbar .filechip").after(crumb);
   const bare = document.createElement("button"); bare.className = "btn icon el-barebtn"; bare.id = "el-bare"; bare.dataset.elact = "bare";
@@ -2451,6 +2497,7 @@ async function elLogin() {
   let ok = false;
   try { ok = await cloudLogin(); } catch (err) { toast(err.message || String(err), "error"); }
   if (ok) toast(`Angemeldet als ${cloudUser()}.`);
+  elAcctDraw();
   if (!EL_S.hub.hidden) elOnlineDraw();
   return ok;
 }
@@ -2461,7 +2508,7 @@ async function elOnline(fn) { // sperrt die Knöpfe während der Anfrage
   finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) elOnlineDraw(); }
 }
 const elOnlineList = () => elOnline(async () => { const l = await projList(); if (l) EL_S.onlist = l; });
-const elLogout = () => elOnline(async () => { await cloudLogout(); EL_S.onlist = null; toast("Abgemeldet."); });
+const elLogout = () => elOnline(async () => { await cloudLogout(); EL_S.onlist = null; toast("Abgemeldet."); elAcctDraw(); });
 const elOnlineSave = () => elOnline(() => elOnlineSaveCore(false));
 // clean: über den Speichern-Knopf; der Online-Stand gilt dann als gespeichert (sonst merkt sich erst die Datei mit ⌘S den Stand)
 async function elOnlineSaveCore(clean) {

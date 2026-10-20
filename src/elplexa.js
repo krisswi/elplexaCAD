@@ -46,6 +46,10 @@ export function projectData(doc) {
 }
 export const statusOf = (doc) => doc.project?.status || "In Arbeit"; // Annahme: ohne Angabe „In Arbeit“
 const STATUS_IDS = () => ({ "Offerte": "of", "In Arbeit": "ia", "Abgegeben": "ab", "Abgeschlossen": "ag" });
+// Zusammenfassung fürs Projekt-Index (Etappe 3a): wird beim Speichern und Öffnen in „zuletzt geöffnet“ mitgeschrieben, damit die Projektkacheln ohne Dateizugriff Objekt, Module, Blattzahl und Zeit zeigen
+export const projSummary = (doc) => ({ obj: projectData(doc).OBJEKT, mods: modIds(doc).map((id) => [baseOf(id), doc.mods?.[id]?.st || MOD_STATUS[0]]), n: doc.sheets.length, h: Math.round(timeSum(doc) * 100) / 100 });
+// Online: nur der Teil `project` der Zeile (keine Blätter, keine PDF) → Objekt und Stunden. Blattzahl und Module gibt es online ohne Supabase-Änderung nicht.
+export const onlineSummary = (p) => (p && typeof p === "object" ? { obj: p.meta?.OBJEKT || "", h: Math.round((Array.isArray(p.time) ? p.time.reduce((a, e) => a + (Number(e.h) || 0), 0) : 0) * 100) / 100 } : null);
 export const statusPill = (st) => `<span class="el-st" data-st="${STATUS_IDS()[st] || "ia"}" title="Projektstatus">${esc(st)}</span>`;
 
 // Zeit: Stunden mit Komma, Datum JJJJ-MM-TT → TT.MM.JJJJ

@@ -2240,7 +2240,7 @@ function elInit() {
   addEventListener("el-file", (e) => { // files.js: gespeichert oder geöffnet
     elZeitDoc({ file: !EL_S.fromOnline });
     if (EL_S.fromOnline) return; // aus der Online-Ablage geöffnet: keine Datei, nicht unter „zuletzt geöffnet“
-    E.recentAdd({ file: e.detail.file, name: elName(), status: E.statusOf(S.doc), handle: e.detail.handle || null }).then(() => { if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); });
+    E.recentAdd({ file: e.detail.file, name: elName(), status: E.statusOf(S.doc), handle: e.detail.handle || null, sum: E.projSummary(S.doc) }).then(() => { if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); });
   });
   elZeitInit(); elSync(); elHub(true);
   if (S.shared) elShareLoad();

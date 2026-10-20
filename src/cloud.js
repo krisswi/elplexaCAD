@@ -112,7 +112,11 @@ async function storage(path, opt = {}) {
 async function sha256(bytes) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join(""); }
 
 // Liste der eigenen Online-Projekte, neueste zuerst. null = Anmeldung abgebrochen.
-export const projList = () => rest("projects?select=id,name,status,updated_at&order=updated_at.desc");
+// Mit `proj` (nur der Teil project der Zeile, für Objekt und Stunden in den Projektkacheln, Etappe 3a); lehnt der Server das ab, die alte schlanke Abfrage.
+export async function projList() {
+  try { return await rest("projects?select=id,name,status,updated_at,proj:data->project&order=updated_at.desc"); }
+  catch (err) { if (err.status !== 400) throw err; return rest("projects?select=id,name,status,updated_at&order=updated_at.desc"); }
+}
 
 // Speichern. doc = geparste Projektdatei, link = { id, at } (zuletzt gespeicherter Online-Stand) oder null.
 // force: Online-Stand überschreiben, auch wenn er neuer ist. Gibt { id, at } zurück, { conflict: at } wenn online neuer, null bei Abbruch.

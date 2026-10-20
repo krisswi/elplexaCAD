@@ -252,7 +252,8 @@ with sync_playwright() as p:
             if req.method == "GET":
                 rows = [r for r in srv["rows"].values() if rid is None or r["id"] == rid]
                 if q["select"] == "assets:data->assets": J([{"assets": r["data"].get("assets")} for r in rows]); return
-                J([{k: r[k] for k in q["select"].split(",")} for r in sorted(rows, key=lambda r: r["updated_at"], reverse=True)]); return
+                col = lambda r, k: r["data"].get(k.split("->")[1]) if "->" in k else r[k]  # „alias:data->feld“ wie PostgREST
+                J([{k.split(":")[0]: col(r, k.split(":")[-1]) for k in q["select"].split(",")} for r in sorted(rows, key=lambda r: r["updated_at"], reverse=True)]); return
             if req.method == "DELETE":
                 r = srv["rows"].pop(rid, None); J([{"id": r["id"]}] if r else []); return
             body = json.loads(req.post_data)

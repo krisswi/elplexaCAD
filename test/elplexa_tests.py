@@ -498,7 +498,7 @@ with sync_playwright() as p:
     page.click("#el-tile-schema .el-more"); page.wait_for_timeout(150); page.click(f"#el-shpop [data-elsheet='{pop[-1]}']"); page.wait_for_timeout(150)
     check("+N: Klick auf das letzte Blatt öffnet genau dieses", not hub() and active() == pop[-1] and not page.is_visible("#el-shpop"), active())
     key("0"); page.wait_for_timeout(200)
-    check("Modulkarte: Anzahl Blätter und Knopf PDF statt Beschreibung", page.inner_text("#el-tile-schema .el-ts").split() == [str(t["n"]), "Blätter", "PDF"], page.inner_text("#el-tile-schema .el-ts"))
+    check("Modulkarte: Anzahl Blätter und Knopf PDF statt Beschreibung, dazu Modulstatus", page.inner_text("#el-tile-schema .el-ts").split() == [str(t["n"]), "Blätter", "Offen", "PDF"], page.inner_text("#el-tile-schema .el-ts"))
     # Eigenes PDF (CJ 18.10.2026): öffnet im neuen Tab statt Druckdialog. Seiten = „/Type /Page“ im PDF, Grössen aus /MediaBox (pt).
     page.evaluate("window.__open = []; window.open = (u) => { window.__open.push(u); return {}; }; window.print = () => { window.__printed = true; }; 0")
     def pdf_pages():

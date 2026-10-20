@@ -2,7 +2,7 @@
 // Ein Modul ist eine Gruppe von Blattarten derselben Datei. Welches Modul offen ist, folgt aus dem aktiven Blatt.
 import { esc } from "./render.js";
 import { cell } from "./auswertung.js";
-import { modOf, modVar, modName } from "./model.js";
+import { modOf, modVar, modName, MOD_STATUS } from "./model.js";
 import { adrHTML, gwrHTML } from "./gwr.js";
 
 export const MODULES = [
@@ -18,8 +18,18 @@ export const modById = (id) => MODULES.find((m) => m.id === baseOf(id)); // als 
 
 // Titelseite, Inhalt und Legende gehören vorerst zum ersten Schema (sie gibt es nur mit Schemablatt)
 export const moduleOf = modOf;
-// Module des Projekts in fester Folge: Art wie MODULES, dann Nummer
-export const modIds = (doc) => [...new Set(doc.sheets.map(modOf))].sort((a, b) => MODULES.indexOf(modById(a)) - MODULES.indexOf(modById(b)) || modVar(a) - modVar(b));
+// Module des Projekts: zuerst die mit eigenem Platz (doc.mods[id].o, ⌥ + ←/→ in der Übersicht), dann in fester Folge: Art wie MODULES, dann Nummer
+const ordNo = (doc, id) => doc.mods?.[id]?.o ?? Infinity;
+export const modIds = (doc) => [...new Set(doc.sheets.map(modOf))].sort((a, b) => (ordNo(doc, a) === ordNo(doc, b) ? 0 : ordNo(doc, a) < ordNo(doc, b) ? -1 : 1) || MODULES.indexOf(modById(a)) - MODULES.indexOf(modById(b)) || modVar(a) - modVar(b));
+// Modulstatus (CJ 20.10.2026), unabhängig vom Projektstatus (Annahme). Ohne Eintrag: Offen
+export const modStatus = (doc, id) => doc.mods?.[id]?.st || MOD_STATUS[0];
+const MST_IDS = ["of", "ia", "ge", "ve", "re", "ar"];
+export const modPill = (doc, id, edit) => { const st = modStatus(doc, id), d = `class="el-mst" data-ms="${MST_IDS[MOD_STATUS.indexOf(st)]}"`;
+  return edit ? `<span ${d} role="button" aria-haspopup="menu" aria-expanded="false" id="el-ms-${tileId(id).slice(8)}" data-elmst="${id}" title="Modulstatus: ${esc(st)}. Klick oder Taste S: ändern">${esc(st)}</span>` : `<span ${d} title="Modulstatus">${esc(st)}</span>`; };
+export function modStatusMenuHTML(doc, id) {
+  const cur = modStatus(doc, id);
+  return `<div class="ctx-head">Status · ${esc(modName(doc, id))}</div>` + MOD_STATUS.map((s, i) => `<button class="mi" role="menuitemradio" aria-checked="${s === cur}" data-elmstset="${esc(s)}" tabindex="-1"><span class="el-mst" data-ms="${MST_IDS[i]}">${esc(s)}</span></button>`).join("");
+}
 export const tileId = (id) => `el-tile-${String(id).replace(":", "-")}`;
 export const modIdx = (doc, id) => doc.sheets.map((sh, i) => (moduleOf(sh) === id ? i : -1)).filter((i) => i >= 0);
 // Neues Blatt im Modul: welche Einträge des Plus-Menüs (data-new) dazugehören
@@ -93,10 +103,9 @@ export function hubHTML(doc, o) {
   const fld = (k, label) => `<label class="el-row"><span>${label}</span><input data-elp="${k}" value="${esc(pd[k])}" placeholder="–" spellcheck="false"${roA}></label>`;
   const opts = ["Offerte", "In Arbeit", "Abgegeben", "Abgeschlossen"].map((x) => `<option${x === st ? " selected" : ""}>${x}</option>`).join("");
   const fileHint = o.file && o.suggest !== o.file ? `<p class="el-note">Datei: ${esc(o.file)}. Speichern unter (⇧⌘S) schlägt „${esc(o.suggest)}“ vor.</p>` : "";
-  const keyOf = (id) => MODULES.filter((m) => !m.later).indexOf(modById(id)) + 1, seen = new Set();
-  const tiles = modIds(doc).map((id) => {
-    const m = modById(id), idx = modIdx(doc, id), first = !seen.has(m.id); seen.add(m.id);
-    return `<button class="el-tile" id="${tileId(id)}" data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${first ? `<kbd>${keyOf(id)}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
+  const tiles = modIds(doc).map((id, n) => { // Taste N = N-te Kachel (CJ 20.10.2026, nur in der Übersicht), bis 9
+    const m = modById(id), idx = modIdx(doc, id);
+    return `<button class="el-tile" id="${tileId(id)}" data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${modPill(doc, id, !ro)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
   }).join("");
   return `<div class="el-hubin"><div class="el-col">
     <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span>${ro ? statusPill(st) : `<label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label>`}</div>
@@ -110,7 +119,7 @@ export function hubHTML(doc, o) {
       <div id="el-online" class="el-online"></div></section>`}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
       ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button>`}</div>
-      <p class="el-note">Tasten: 1 bis ${MODULES.filter((m) => !m.later).length} öffnet ein Modul, 0 die Übersicht, ? alle Tasten.</p></section>
+      <p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, S ändert den Status, ⌥ ← → ordnet um, ? alle Tasten.</p></section>
     ${ro ? "" : timeHTML(doc, o.today)}</div></div>`;
 }
 
@@ -183,7 +192,7 @@ export function crumbHTML(cur, st, name) {
 }
 
 export const keysHTML = () => `<div class="el-keys">${[
-  ["1 2 3", "Schema, Disposition, PV öffnen"], ["0", "Projektübersicht"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
+  ["1 2 3", "Schema, Disposition, PV öffnen (in der Übersicht: die Kachel an dieser Stelle)"], ["0", "Projektübersicht"], ["S", "Übersicht, Kachel gewählt: Modulstatus ändern"], ["⌥ ← →", "Übersicht, Kachel gewählt: Modul nach vorn oder hinten"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
   ["Bild ↑ ↓", "Blatt zurück und vor, innerhalb des Moduls"], ["G", "Liste der Blätter des Moduls (Zeile ziehen oder Alt ↑ ↓ sortiert)"], ["M", "Blatt mit ★ markieren"], ["⇧ Bild ↑ ↓", "zum vorherigen und nächsten ★-Blatt, auch über Module"],
   ["/", "Symbolsuche unten links"], ["⌘ Klick", "zur Auswahl dazu oder wieder ab"], ["?", "diese Hilfe"],
 ].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im Schema gelten 1 bis 4 beim Setzen eines Geräts oder bei einem gewählten Gerät weiter für die Polzahl.</p>`;

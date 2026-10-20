@@ -1,5 +1,5 @@
 // SchemaCAD: Editor. Zustand, Bedienung, Dateien.
-import { newDoc, newSheet, parseModel, serializeModel, WIRE_KINDS, LEGEND_KEYS, setProjectMeta, cleanInfo, cleanProject, modBase, modOf, modKey, modName, modVar } from "./model.js";
+import { newDoc, newSheet, parseModel, serializeModel, WIRE_KINDS, LEGEND_KEYS, setProjectMeta, cleanInfo, cleanProject, modBase, modOf, modKey, modName, modVar, MOD_STATUS } from "./model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, anchorX, variantByKey, hasTrenner, bmkLetter } from "./symbols.js";
 import { splitWandlerDoc, routeWm, wmParts } from "./wandler.js";
 import { insertFeed } from "./eingang.js";
@@ -892,6 +892,18 @@ function duplicateModule(id) {
     m[nid] = { name: `${modName(S.doc, id)} (Kopie)`, ...(cont ? { cont } : {}) };
   });
   return nid;
+}
+// Modulstatus und Platz in der Übersicht (CJ 20.10.2026): doc.mods[id].st / .o, reisen mit Umbenennen, Rückgängig; Löschen räumt auf, Kopie startet ohne beides
+function setModStatus(id, st) {
+  if (!MOD_STATUS.includes(st) || E.modStatus(S.doc, id) === st) return;
+  change(() => { const m = (S.doc.mods ??= {}); m[id] = { ...m[id] }; if (st === MOD_STATUS[0]) delete m[id].st; else m[id].st = st; tidyMods(); }, { panel: false });
+}
+function moveModule(id, dir) {
+  const ids = E.modIds(S.doc), i = ids.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= ids.length) return false;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  change(() => { const m = (S.doc.mods ??= {}); ids.forEach((x, k) => { m[x] = { ...m[x], o: k + 1 }; }); }, { panel: false });
+  return true;
 }
 async function renameModule(id) {
   const r = await formDialog("Modul umbenennen", "Name in der Projektübersicht, zum Beispiel „Schema HV“ oder „PV Variante Ost“. Leer = Standardname.", [{ label: "Name", value: modName(S.doc, id) }], "Umbenennen");
@@ -2145,10 +2157,14 @@ function elInit() {
   sv.addEventListener("click", (e) => { const a = e.target.closest("[data-elsaveact]")?.dataset.elsaveact; if (a === "on") elSaveOnline(); else if (a) saveJson(a === "as"); });
   const sp = mm.cloneNode(); sp.id = "el-shpop"; sp.setAttribute("aria-label", "Blätter des Moduls"); $("#app").append(sp); // „+N“ der Modulkarte (CJ 18.10.2026)
   EL_S.shPop = makeMenu(sp, { left: true, beforeShow: () => { sp.innerHTML = E.sheetPopHTML(S.doc, EL_S.popMod, sheetLabel); } });
+  const mp = mm.cloneNode(); mp.id = "el-mstpop"; mp.setAttribute("aria-label", "Modulstatus"); $("#app").append(mp);
+  EL_S.stPop = makeMenu(mp, { left: true, beforeShow: () => { mp.innerHTML = E.modStatusMenuHTML(S.doc, EL_S.stMod); } });
   document.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-elsheet], [data-elmore], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
+    const b = e.target.closest("[data-elsheet], [data-elmore], [data-elmst], [data-elmstset], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
-    if (b.dataset.elmore) { EL_S.popMod = b.dataset.elmore; EL_S.shPop.toggle(b); } // alle Blätter des Moduls
+    if (b.dataset.elmst) { EL_S.stMod = b.dataset.elmst; EL_S.stPop.toggle(b); } // Modulstatus wählen
+    else if (b.dataset.elmstset) { setModStatus(EL_S.stMod, b.dataset.elmstset); elHub(true, { keepFocus: true }); }
+    else if (b.dataset.elmore) { EL_S.popMod = b.dataset.elmore; EL_S.shPop.toggle(b); } // alle Blätter des Moduls
     else if (b.dataset.elpdf) printPdf(E.modIdx(S.doc, b.dataset.elpdf).map((i) => S.doc.sheets[i]), `_${modName(S.doc, b.dataset.elpdf)}`); // Modul als PDF, Login-Regel in printPdf
     else if (b.dataset.elsheet) { elHub(false); switchSheet(Number(b.dataset.elsheet)); } // Blatt-Kachel: genau dieses Blatt (CJ 18.10.2026)
     else if (b.dataset.elopen) elOpen(b.dataset.elopen, { exact: b.dataset.exact !== undefined }); // exact: genau dieses Modul (Kachel), sonst Art
@@ -2555,6 +2571,7 @@ function elHelp() { openModal("Tasten in elplexaCAD", E.keysHTML() + `<div class
 // Tasten ohne ⌘: 1 bis 3 Module, 0 Übersicht, § Leisten, ? Hilfe. true = Taste gehört elplexaCAD
 function elKey(e) {
   const mods = E.MODULES.filter((m) => !m.later);
+  if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden) { const id = E.modIds(S.doc)[Number(e.key) - 1]; if (id) elOpen(id, { exact: true }); else toast(`Kein Modul an Stelle ${e.key}.`); return true; } // Übersicht: N-te Kachel (20.10.2026)
   if (/^[1-9]$/.test(e.key)) { const n = Number(e.key); if (n <= mods.length) elOpen(mods[n - 1].id, { create: false }); else if (E.MODULES[n - 1]) toast(`${E.MODULES[n - 1].label} kommt später.`); else return false; return true; }
   if (e.key === "0") { elHub(EL_S.hub.hidden); return true; }
   if (e.key === "§" || e.key === "`" || e.code === "Backquote") { if (EL_S.hub.hidden) elBare(); return true; }
@@ -2568,6 +2585,9 @@ function elHubKey(e) {
   if (typing) return false;
   if (e.metaKey || e.ctrlKey) { const k = e.key.toLowerCase(); return !(k === "s" || k === "o"); }
   if (e.key === "Escape") { elHub(false); return true; }
+  const tile = t instanceof HTMLElement ? t.closest(".el-tile[data-modctx]") : null; // Kachel gewählt: S = Status, ⌥ ← → = Platz tauschen
+  if (tile && e.altKey && !e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); if (moveModule(tile.dataset.modctx, e.key === "ArrowLeft" ? -1 : 1)) elHub(true, { keepFocus: true }); return true; }
+  if (tile && !e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); EL_S.stMod = tile.dataset.modctx; EL_S.stPop.toggle(tile.querySelector(".el-mst")); return true; }
   if (!e.altKey && elKey(e)) e.preventDefault();
   return !["Tab", "Enter", " "].includes(e.key); // Tab und Enter bedienen die Kacheln
 }

@@ -114,9 +114,10 @@ async function storage(path, opt = {}) {
 async function sha256(bytes) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join(""); }
 
 // Liste der eigenen Online-Projekte, neueste zuerst. null = Anmeldung abgebrochen.
-// Mit `proj` (nur der Teil project der Zeile, für Objekt und Stunden in den Projektkacheln, Etappe 3a); lehnt der Server das ab, die alte schlanke Abfrage.
+// Mit pm/pt/pa (nur project.meta, .time, .auto der Zeile, für Objekt, Stunden und vorläufige Zeit, Etappe 3a); lehnt der Server das ab, die alte schlanke Abfrage.
+// Risiko: Postgres liest dafür die jsonb-Spalte data je Zeile trotzdem ganz (bis 5 MB je Projekt); gegen das echte Supabase ungeprüft.
 export async function projList() {
-  try { return await rest("projects?select=id,name,status,updated_at,proj:data->project&order=updated_at.desc"); }
+  try { return await rest("projects?select=id,name,status,updated_at,pm:data->project->meta,pt:data->project->time,pa:data->project->auto&order=updated_at.desc"); }
   catch (err) { if (err.status !== 400) throw err; return rest("projects?select=id,name,status,updated_at&order=updated_at.desc"); }
 }
 

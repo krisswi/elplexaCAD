@@ -2229,7 +2229,13 @@ function elInit() {
     const b = e.target.closest("[data-eltab], [data-elwk], [data-elview], [data-elsheet], [data-elmore], [data-elmst], [data-elmstset], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
     if ((e.metaKey || e.ctrlKey) && b.classList.contains("el-ptile")) { e.preventDefault(); const k = b.dataset.selkey; (EL_S.sel ??= new Set())[EL_S.sel.has(k) ? "delete" : "add"](k); elHub(true, { keepFocus: true }); document.querySelector(`.el-ptile[data-selkey="${k}"]`)?.focus(); return; } // ⌘-Klick oder ⌘ Enter: mehrere wählen
-    if (b.dataset.eltab) { EL_S.tab = b.dataset.eltab; if (EL_S.tab === "projekte") EL_S.pview = false; elHub(true, { keepFocus: true }); document.getElementById("el-tab-" + EL_S.tab)?.focus(); }
+    if (b.dataset.eltab) {
+      EL_S.tab = b.dataset.eltab; if (EL_S.tab === "projekte") EL_S.pview = false;
+      const reload = ["projekte", "zeit"].includes(EL_S.tab) && !S.shared && cloudUser() && !EL_S.onbusy; // beim Wechsel in den Reiter neu laden, bis dahin gilt der alte Stand
+      if (reload) EL_S.autoTried = true;
+      elHub(true, { keepFocus: true }); document.getElementById("el-tab-" + EL_S.tab)?.focus();
+      if (reload) elOnlineList();
+    }
     else if (b.dataset.elwk) { const cur = EL_S.week || E.weekStart(elDay(Date.now())); EL_S.week = b.dataset.elwk === "0" ? E.weekStart(elDay(Date.now())) : E.weekShift(cur, Number(b.dataset.elwk)); elHub(true, { keepFocus: true }); }
     else if (b.dataset.elview) { EL_S.pf.view = b.dataset.elview; elHub(true, { keepFocus: true }); }
     else if (b.dataset.elmst) { EL_S.stMod = b.dataset.elmst; EL_S.stPop.toggle(b); } // Modulstatus wählen
@@ -2476,8 +2482,9 @@ function elZeitResolve(k, ok) {
 // Zeit über alle Projekte (Etappe 4): Woche und Online-Projekte; das offene, verknüpfte Projekt zählt mit dem Stand der Datei
 function elZeitData() {
   const mon = EL_S.week || E.weekStart(elDay(Date.now())), on = S.doc.project?.online?.id;
-  const items = (EL_S.onlist || []).map((e) => ({ id: e.id, name: e.name, time: e.id === on ? S.doc.project?.time || [] : Array.isArray(e.proj?.time) ? e.proj.time : e.proj ? [] : null }));
-  return { items, mon, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, loaded: EL_S.onlist != null };
+  const items = (EL_S.onlist || []).map((e) => e.id === on ? { id: e.id, name: e.name, time: S.doc.project?.time || [], local: true, auto: E.autoOpen(S.doc).length }
+    : { id: e.id, name: e.name, time: Array.isArray(e.pt) ? e.pt : "pt" in e ? [] : null, auto: E.autoOpenN(e.pa) }); // pt fehlt ganz = alte Abfrage: Stunden unbekannt
+  return { items, mon, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, loaded: EL_S.onlist != null, at: EL_S.onAt };
 }
 function elZeitCsv() { const d = elZeitData(); download(`Zeit_Woche_${d.mon}.csv`, E.timeWeekCsv(E.timeWeek(d.items, d.mon)), "text/csv"); toast("Wochenzeit als CSV in den Download-Ordner geladen."); }
 function elCsv() { download(`${baseName()}_Zeit.csv`, E.timeCsv(S.doc), "text/csv"); toast("Zeit als CSV in den Download-Ordner geladen."); }
@@ -2542,7 +2549,7 @@ async function elOnline(fn) { // sperrt die Knöpfe während der Anfrage
   try { await fn(); } catch (err) { toast(err.message || String(err), "error"); }
   finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) { elOnlineDraw(); if (elTabLive()) elHub(true, { keepFocus: true }); } }
 }
-const elOnlineList = () => elOnline(async () => { try { const l = await projList(); if (l) EL_S.onlist = l; EL_S.onerr = null; } catch (err) { EL_S.onerr = err.message || String(err); throw err; } });
+const elOnlineList = () => elOnline(async () => { try { const l = await projList(); if (l) { EL_S.onlist = l; EL_S.onAt = Date.now(); } EL_S.onerr = null; } catch (err) { EL_S.onerr = err.message || String(err); throw err; } });
 const elLogout = () => elOnline(async () => { await cloudLogout(); EL_S.onlist = null; EL_S.onerr = null; EL_S.autoTried = false; toast("Abgemeldet."); elAcctDraw(); });
 const elOnlineSave = () => elOnline(() => elOnlineSaveCore(false));
 // clean: über den Speichern-Knopf; der Online-Stand gilt dann als gespeichert (sonst merkt sich erst die Datei mit ⌘S den Stand)

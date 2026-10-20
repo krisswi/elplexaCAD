@@ -313,7 +313,7 @@ body.el-shared #el-file, body.el-shared #el-savestate, body.el-shared #el-acct {
 .el-wtab tfoot th, .el-wtab tfoot td { border-top: 2px solid var(--panel-line); border-bottom: 0; font-weight: 600; }
 .el-wtab i { font-style: normal; color: var(--muted); }
 .el-chip { gap: 6px; }
-@media (max-width: 1000px) { .el-chip { display: none; } }
+@media (max-width: 1000px) { .el-chipl { display: none; } }
 
 /* Bedienung (Etappe 5): Auswahl, Ziehen */
 .el-ptile.sel { border-color: var(--el-dark); box-shadow: inset 0 0 0 1px var(--el-dark); background: #f3f6f2; }
@@ -344,3 +344,19 @@ body.el-shared #el-file, body.el-shared #el-savestate, body.el-shared #el-acct {
 #el-hub:not([hidden]) { display: flex; flex-direction: column; } /* Tipp-Zeile bleibt unten, auch bei kurzem Inhalt */
 #el-hub .el-hubin { flex: 1 0 auto; width: 100%; box-sizing: border-box; }
 #el-hub .el-tip { margin-top: auto; }
+
+/* Zeit-Reiter: Barrierefreiheit, Stand, unbekannte Stunden (Review Etappe 4) */
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.el-wscroll { overflow-x: auto; }
+.el-wscroll:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+.el-stand { font-size: 12px; color: var(--muted); }
+.el-stand.alt { color: #8a4a06; font-weight: 600; }
+.el-incomplete { font-style: normal; font-size: 12px; font-weight: 600; color: #8a4a06; }
+.el-wtab.alt { opacity: .6; }
+.el-unk { font: inherit; font-size: 12px; font-weight: 600; width: 20px; height: 20px; padding: 0; color: #8a4a06; background: #fbecd6; border: 0; border-radius: 50%; cursor: pointer; }
+.el-unk:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+.el-unkcell { text-align: left !important; color: var(--muted); font-style: italic; }
+.el-loc { font-style: normal; font-size: 11.5px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+.el-wtab thead th span { display: inline; }
+.el-wtab .el-today { box-shadow: inset 0 -2px 0 var(--el-dark); }
+.el-autohint { color: #8a4a06; }

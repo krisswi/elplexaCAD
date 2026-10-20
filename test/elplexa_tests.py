@@ -252,7 +252,11 @@ with sync_playwright() as p:
             if req.method == "GET":
                 rows = [r for r in srv["rows"].values() if rid is None or r["id"] == rid]
                 if q["select"] == "assets:data->assets": J([{"assets": r["data"].get("assets")} for r in rows]); return
-                col = lambda r, k: r["data"].get(k.split("->")[1]) if "->" in k else r[k]  # „alias:data->feld“ wie PostgREST
+                def col(r, k):  # „alias:data->a->b“ wie PostgREST: Pfad in der Spalte data
+                    if "->" not in k: return r.get(k)
+                    v = r["data"]
+                    for part in k.split("->")[1:]: v = v.get(part) if isinstance(v, dict) else None
+                    return v
                 J([{k.split(":")[0]: col(r, k.split(":")[-1]) for k in q["select"].split(",")} for r in sorted(rows, key=lambda r: r["updated_at"], reverse=True)]); return
             if req.method == "DELETE":
                 r = srv["rows"].pop(rid, None); J([{"id": r["id"]}] if r else []); return

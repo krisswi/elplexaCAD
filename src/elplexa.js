@@ -40,16 +40,19 @@ const dot = (m) => `<span class="el-dot" style="background:${m.color}" aria-hidd
 // Projektdaten: aus der Übersicht (doc.project.meta), sonst wie bisher Schriftfeld des ersten Arbeitsblatts; Bauherr von der Titelseite
 const workSheet = (doc) => doc.sheets.find((sh) => !["title", "toc", "legend"].includes(sh.kind)) || doc.sheets[0];
 export const bauherrInfo = (doc) => doc.sheets.find((sh) => sh.kind === "title")?.info || doc.info || null;
+const objOf = (pm, w) => pm?.OBJEKT ?? w?.OBJEKT ?? ""; // eine Regel für lokal und online: Projektdaten vor Schriftfeld des Arbeitsblatts
 export function projectData(doc) {
   const pm = doc.project?.meta || {}, w = workSheet(doc)?.meta || {};
-  return { OBJEKT: pm.OBJEKT ?? w.OBJEKT ?? "", AUFTRAG: pm.AUFTRAG ?? w.AUFTRAG ?? "", BAUHERR: bauherrInfo(doc)?.BAUHERR ?? "", INDEX: pm.INDEX ?? w.INDEX ?? "" };
+  return { OBJEKT: objOf(pm, w), AUFTRAG: pm.AUFTRAG ?? w.AUFTRAG ?? "", BAUHERR: bauherrInfo(doc)?.BAUHERR ?? "", INDEX: pm.INDEX ?? w.INDEX ?? "" };
 }
 export const statusOf = (doc) => doc.project?.status || "In Arbeit"; // Annahme: ohne Angabe „In Arbeit“
 const STATUS_IDS = () => ({ "Offerte": "of", "In Arbeit": "ia", "Abgegeben": "ab", "Abgeschlossen": "ag" });
 // Zusammenfassung fürs Projekt-Index (Etappe 3a): wird beim Speichern und Öffnen in „zuletzt geöffnet“ mitgeschrieben, damit die Projektkacheln ohne Dateizugriff Objekt, Module, Blattzahl und Zeit zeigen
 export const projSummary = (doc) => ({ obj: projectData(doc).OBJEKT, mods: modIds(doc).map((id) => [baseOf(id), doc.mods?.[id]?.st || MOD_STATUS[0]]), n: doc.sheets.length, h: Math.round(timeSum(doc) * 100) / 100 });
-// Online: nur der Teil `project` der Zeile (keine Blätter, keine PDF) → Objekt und Stunden. Blattzahl und Module gibt es online ohne Supabase-Änderung nicht.
-export const onlineSummary = (p) => (p && typeof p === "object" ? { obj: p.meta?.OBJEKT || "", h: Math.round((Array.isArray(p.time) ? p.time.reduce((a, e) => a + (Number(e.h) || 0), 0) : 0) * 100) / 100 } : null);
+// Online: nur `pm` (project.meta), `pt` (project.time) und `pa` (project.auto) der Zeile (keine Blätter, keine PDF) → Objekt und Stunden. Ohne Blätter fehlt der Rückfall auf das Schriftfeld des Arbeitsblatts
+// (objOf): hat das Projekt kein Objekt in den Projektdaten, bleibt es leer und die Kachel zeigt «–». Blattzahl und Module gibt es online ohne Supabase-Änderung nicht.
+export const onlineSummary = (e) => (e && typeof e === "object" && ("pm" in e || "pt" in e) ? { obj: objOf(e.pm, null) || "", h: Math.round(validTime(e.pt).reduce((a, x) => a + x.h, 0) * 100) / 100 } : null);
+export const autoOpenN = (pa) => (Array.isArray(pa) ? pa.filter((x) => x && !x.x && x.s >= 60).length : 0);
 export const statusPill = (st) => `<span class="el-st" data-st="${STATUS_IDS()[st] || "ia"}" title="Projektstatus">${esc(st)}</span>`;
 
 // Zeit: Stunden mit Komma, Datum JJJJ-MM-TT → TT.MM.JJJJ
@@ -115,7 +118,7 @@ export function hubHTML(doc, o) {
   const todayH = Math.round((doc.project?.time || []).filter((e) => e.d === o.today).reduce((a, e) => a + e.h, 0) * 100) / 100;
   const sub = ro ? "" : `<nav class="el-subbar" aria-label="Pfad und Reiter"><span class="el-path">${(o.tab || "projekte") === "projekte" ? (o.pview ? `<button class="el-pathlink" data-eltab="projekte" title="Zur Projektliste">Projekte</button><span class="el-sl" aria-hidden="true">›</span><b>${esc(o.name)}</b>` : "") : ""}</span>
     <div class="el-tabs" role="tablist" aria-label="Bereiche">${[["projekte", "Projekte"], ["zeit", "Zeit"], ["profil", "Profil"]].map(([k, t]) => `<button class="el-tab" role="tab" id="el-tab-${k}" data-eltab="${k}" aria-selected="${(o.tab || "projekte") === k}">${t}</button>`).join("")}</div><span class="el-sp"></span>
-    <button class="btn small el-chip" data-elact="timechip" title="Stunden für dieses Projekt eintragen" aria-label="Heute ${fmtH(todayH)} Stunden, Zeit eintragen">Heute ${fmtH(todayH)} h <span aria-hidden="true">＋</span></button>
+    <button class="btn small el-chip" data-elact="timechip" title="Stunden für dieses Projekt eintragen" aria-label="Heute ${fmtH(todayH)} Stunden, Zeit eintragen"><span class="el-chipl">Heute </span>${fmtH(todayH)} h <span aria-hidden="true">＋</span></button>
     <button class="btn small el-helpbtn" data-elact="help" title="Alle Tasten (?)" aria-label="Alle Tasten zeigen">?</button></nav>`;
   const tip = ro || o.tip === false ? "" : `<div class="el-tip" role="note"><span class="el-tiptxt"><b>Tipp</b> 1 bis 9 öffnet die Kachel an dieser Stelle · S Status · ⌥ ← → Reihenfolge · Rechtsklick auf die Kachel: Umbenennen, Duplizieren, Löschen · ? alle Tasten</span><button class="btn icon el-tipx" data-elact="tipoff" title="Tipp-Zeile ausblenden (wieder einblenden über ?)" aria-label="Tipp-Zeile ausblenden"><span aria-hidden="true">×</span></button></div>`;
   if (!ro && o.tab === "zeit") return `${sub}<div class="el-hubin el-pview">${timeTabHTML({ ...(o.zeit || {}), today: o.today })}</div>${tip}`;
@@ -143,7 +146,7 @@ export const projFilters = () => ["Alle", ...projectStatus()]; // als Funktion: 
 const projWhen = (t) => { const d = new Date(t); return Number.isNaN(+d) ? "" : d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" }); };
 export function projItems(o) {
   const loc = (o.recent || []).filter((e) => !(o.cur?.file && e.file === o.cur.file)).map((e, k) => ({ src: "lokal", k, name: e.name || e.file, status: e.status || "", obj: e.sum?.obj || "", mods: e.sum?.mods || null, n: e.sum?.n ?? null, h: e.sum?.h ?? null, t: e.t || 0, hint: e.handle ? "" : "Datei wählen" }));
-  const onl = (o.online || []).filter((e) => !(o.cur?.onlineId && e.id === o.cur.onlineId)).map((e) => { const s = onlineSummary(e.proj); return { src: "online", id: e.id, name: e.name, status: e.status || "", obj: s?.obj || "", mods: null, n: null, h: s ? s.h : null, t: Date.parse(e.updated_at) || 0, hint: "" }; });
+  const onl = (o.online || []).filter((e) => !(o.cur?.onlineId && e.id === o.cur.onlineId)).map((e) => { const s = onlineSummary(e); return { src: "online", id: e.id, name: e.name, status: e.status || "", obj: s?.obj || "", mods: null, n: null, h: s ? s.h : null, t: Date.parse(e.updated_at) || 0, hint: "" }; });
   let all = [...loc, ...onl];
   if (o.filter && o.filter !== "Alle") all = all.filter((x) => x.status === o.filter);
   return o.sort === "name" ? all.sort((a, b) => a.name.localeCompare(b.name, "de")) : all.sort((a, b) => b.t - a.t);
@@ -177,40 +180,57 @@ export function projectsHTML(o) {
 }
 
 // Reiter „Zeit“ (Etappe 4, CJ 20.10.2026): Woche Montag bis Sonntag, eine Zeile je Online-Projekt, Summen je Tag und Projekt. Nur Online-Projekte (lokale kennt die Liste nicht ohne Dateizugriff).
-// Stunden kommen aus project.time der Online-Zeile (Etappe 3a); das offene, mit einer Online-Zeile verknüpfte Projekt zählt mit seinem aktuellen Stand.
+// Stunden kommen aus `pt` (project.time) der Online-Zeile (Etappe 3a); das offene, mit einer Online-Zeile verknüpfte Projekt zählt mit seinem lokalen Stand.
 const isoDay = (t) => new Date(t).toISOString().slice(0, 10);
-const dayNo = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 864e5;
+const dayNo = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 864e5; // UTC: Sommerzeit spielt keine Rolle
 const dayAt = (n) => isoDay(n * 864e5);
 export const weekStart = (d) => dayAt(dayNo(d) - ((dayNo(d) + 3) % 7)); // 1970-01-01 war ein Donnerstag
 export const weekShift = (mon, n) => dayAt(dayNo(mon) + 7 * n);
 export const weekDays = (mon) => Array.from({ length: 7 }, (_, i) => dayAt(dayNo(mon) + i));
+// ISO-Kalenderwoche (Woche mit dem Donnerstag im Jahr) als { y, w }
+export function isoWeek(d) {
+  const th = dayNo(weekStart(d)) + 3, y = new Date(th * 864e5).getUTCFullYear(), jan1 = Date.UTC(y, 0, 1) / 864e5;
+  return { y, w: Math.floor((th - jan1) / 7) + 1 };
+}
 const r2 = (h) => Math.round(h * 100) / 100;
-// items = [{ id, name, time: [{d,h,n}] | null }]; time null = Stunden nicht geladen (zählt 0, Zeile markiert)
+// Eintrag aus der Online-Zeile prüfen (kommt von aussen): gültiger Tag, Stunden 0 bis 24, höchstens 5000 Einträge je Projekt
+const TIME_MAX = 5000;
+export const validTime = (t) => (Array.isArray(t) ? t.slice(0, TIME_MAX).filter((e) => e && typeof e.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.d) && !Number.isNaN(Date.parse(e.d)) && typeof e.h === "number" && Number.isFinite(e.h) && e.h > 0 && e.h <= 24) : []);
+// items = [{ id, name, time: [{d,h,n}] | null, local?, auto? }]; time null = Stunden nicht geladen. Summen werden ungerundet addiert und erst zuletzt gerundet (wie timeSum im Projekt).
 export function timeWeek(items, mon) {
   const days = weekDays(mon);
-  const rows = items.map((it) => { const d = days.map((x) => r2((it.time || []).filter((e) => e.d === x).reduce((a, e) => a + e.h, 0))); return { id: it.id, name: it.name, known: !!it.time, days: d, sum: r2(d.reduce((a, b) => a + b, 0)) }; });
-  const dayTotals = days.map((_, i) => r2(rows.reduce((a, r) => a + r.days[i], 0)));
-  return { days, rows, dayTotals, total: r2(dayTotals.reduce((a, b) => a + b, 0)) };
+  const rows = items.map((it) => {
+    const t = it.time ? validTime(it.time) : null, raw = days.map((x) => (t ? t.filter((e) => e.d === x).reduce((a, e) => a + e.h, 0) : 0)), total = t ? t.filter((e) => days.includes(e.d)).reduce((a, e) => a + e.h, 0) : 0; // Summe in Eintragsfolge wie timeSum, nicht über die Tagessummen
+    return { id: it.id, name: it.name, known: !!t, local: !!it.local, auto: it.auto || 0, raw, days: raw.map(r2), sum: r2(total), rawSum: total };
+  });
+  const dayRaw = days.map((_, i) => rows.reduce((a, r) => a + r.raw[i], 0)), grand = rows.reduce((a, r) => a + r.rawSum, 0);
+  return { days, rows, dayTotals: dayRaw.map(r2), total: r2(grand), kw: isoWeek(mon), incomplete: rows.some((r) => !r.known), autoProjects: rows.filter((r) => r.auto > 0).length };
 }
 const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-// CSV wie timeCsv: Excel de-CH, Semikolon, BOM, Dezimalpunkt
+// CSV wie timeCsv: Excel de-CH, Semikolon, BOM, Dezimalpunkt. Unbekannte Stunden: Zellen leer, am Ende eine Hinweiszeile.
 export function timeWeekCsv(w) {
-  const row = (a) => a.map(cell).join(";"), n = (h) => String(r2(h));
-  return "\ufeff" + [row(["Projekt", ...w.days.map((d, i) => `${WD[i]} ${fmtD(d)}`), "Summe"]), ...w.rows.map((r) => row([r.name, ...r.days.map(n), n(r.sum)])), row(["Summe", ...w.dayTotals.map(n), n(w.total)])].join("\r\n") + "\r\n";
+  const row = (a) => a.map(cell).join(";"), n = (h) => String(r2(h)), unk = w.rows.filter((r) => !r.known);
+  const lines = [row(["Projekt", ...w.days.map((d, i) => `${WD[i]} ${fmtD(d)}`), "Summe"]), ...w.rows.map((r) => (r.known ? row([r.name, ...r.days.map(n), n(r.sum)]) : row([r.name, ...r.days.map(() => ""), "?"]))), row(["Summe", ...w.dayTotals.map(n), n(w.total)])];
+  if (unk.length) lines.push(row([`Hinweis: Stunden von ${unk.length} ${unk.length === 1 ? "Projekt" : "Projekten"} nicht geladen, Summe unvollständig`]));
+  return "\ufeff" + lines.join("\r\n") + "\r\n";
 }
-// o = { items, mon, today, user, err, busy, loaded }
+const hhmm = (t) => new Date(t).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" });
+// o = { items, mon, today, user, err, busy, loaded, at (Zeit des letzten Ladens) }
 export function timeTabHTML(o) {
-  const w = timeWeek(o.items || [], o.mon), cellH = (h) => (h ? fmtH(h) : "–");
+  const w = timeWeek(o.items || [], o.mon), stale = !!o.err && o.loaded;
+  const cellH = (h) => (h ? fmtH(h) : `<span aria-hidden="true">–</span><span class="sr">0 Stunden</span>`);
   const head = `<div class="el-pbar"><div class="el-vsw" role="group" aria-label="Woche"><button class="btn small" data-elwk="-1" aria-label="Vorherige Woche">‹</button><button class="btn small" data-elwk="0">Diese Woche</button><button class="btn small" data-elwk="1" aria-label="Nächste Woche">›</button></div>
-    <span class="el-wk"><b>${fmtD(w.days[0])} – ${fmtD(w.days[6])}</b></span><span class="el-sp"></span><span class="el-sum">Summe <b>${fmtH(w.total)} h</b></span>
+    <span class="el-wk"><b>KW ${w.kw.w}</b> · ${fmtD(w.days[0])} – ${fmtD(w.days[6])}</span><span class="el-sp"></span>${o.at ? `<span class="el-stand${stale ? " alt" : ""}">Stand von ${hhmm(o.at)}${stale ? " (alt)" : ""}</span>` : ""}<span class="el-sum">Summe <b>${fmtH(w.total)} h</b>${w.incomplete ? ` <i class="el-incomplete">unvollständig</i>` : ""}</span>
     <button class="btn outline small" data-elact="zeitcsv"${w.rows.length ? "" : " disabled"}>Woche als CSV</button></div>`;
-  const table = w.rows.length ? `<table class="el-wtab"><thead><tr><th scope="col">Projekt</th>${w.days.map((d, i) => `<th scope="col"${d === o.today ? ' class="el-today"' : ""}>${WD[i]}<span>${d.slice(8)}.${d.slice(5, 7)}.</span></th>`).join("")}<th scope="col">Summe</th></tr></thead>
-    <tbody>${w.rows.map((r) => `<tr><th scope="row">${esc(r.name)}${r.known ? "" : ` <i title="Stunden nicht geladen">?</i>`}</th>${r.days.map((h) => `<td>${cellH(h)}</td>`).join("")}<td class="el-rs2">${cellH(r.sum)}</td></tr>`).join("")}</tbody>
-    <tfoot><tr><th scope="row">Summe</th>${w.dayTotals.map((h) => `<td>${cellH(h)}</td>`).join("")}<td class="el-rs2">${cellH(w.total)}</td></tr></tfoot></table>` : "";
-  const notes = [`<p class="el-note">Nur Online-Projekte, lokale Projekte erscheinen nicht. Stunden trägst du im Projekt ein (Reiter Projekt).</p>`];
-  if (o.err) notes.unshift(`<div class="el-perr" role="alert"><span>${esc(o.err)}</span><button class="btn outline small" data-elact="onlist">Erneut versuchen</button></div>`);
+  const unk = `<button class="el-unk" type="button" title="Stunden nicht geladen" aria-label="Stunden nicht geladen" data-elact="onlist">?</button>`;
+  const table = w.rows.length ? `<div class="el-wscroll" role="region" aria-label="Wochenzeit, seitlich scrollbar" tabindex="0"><table class="el-wtab${stale ? " alt" : ""}"><caption class="sr">Stunden je Projekt und Tag, Kalenderwoche ${w.kw.w}</caption><thead><tr><th scope="col">Projekt</th>${w.days.map((d, i) => `<th scope="col"${d === o.today ? ' class="el-today" aria-current="date"' : ""}>${WD[i]} <span>${d.slice(8)}.${d.slice(5, 7)}.</span>${d === o.today ? `<span class="sr"> (heute)</span>` : ""}</th>`).join("")}<th scope="col">Summe</th></tr></thead>
+    <tbody>${w.rows.map((r) => `<tr><th scope="row">${esc(r.name)}${r.local ? ` <i class="el-loc" title="Das offene Projekt zählt mit dem Stand der Datei">offen, lokal</i>` : ""}${r.known ? "" : ` ${unk}`}</th>${r.known ? r.days.map((h) => `<td>${cellH(h)}</td>`).join("") : `<td colspan="7" class="el-unkcell">Stunden nicht geladen</td>`}<td class="el-rs2">${r.known ? cellH(r.sum) : "?"}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><th scope="row">Summe</th>${w.dayTotals.map((h) => `<td>${cellH(h)}</td>`).join("")}<td class="el-rs2">${cellH(w.total)}</td></tr></tfoot></table></div>` : "";
+  const notes = [`<p class="el-note">Nur Online-Projekte, lokale Projekte erscheinen nicht. Die Liste wird beim Öffnen des Reiters neu geladen. Stunden trägst du im Projekt ein.</p>`];
+  if (w.autoProjects) notes.unshift(`<p class="el-note el-autohint">${w.autoProjects} ${w.autoProjects === 1 ? "Projekt hat" : "Projekte haben"} vorläufige Zeit, sie zählt erst nach dem Übernehmen im Projekt.</p>`);
+  if (o.err) notes.unshift(`<div class="el-perr" role="alert"><span>${esc(o.err)}${o.loaded ? " Die Tabelle zeigt den älteren Stand." : ""}</span><button class="btn outline small" data-elact="onlist">Erneut versuchen</button></div>`);
   else if (!o.user) notes.unshift(`<p class="el-note">Nicht angemeldet: die Zeit über alle Projekte braucht die Online-Projekte. Anmelden: Konto-Kreis oben rechts.</p>`);
-  else if (o.items === null || !o.loaded) notes.unshift(`<p class="el-note">${o.busy ? "Online-Projekte werden geladen …" : `Online-Projekte noch nicht geladen. <button class="el-link" data-elact="onlist">Jetzt laden</button>`}</p>`);
+  else if (!o.loaded) notes.unshift(`<p class="el-note">${o.busy ? "Online-Projekte werden geladen …" : `Online-Projekte noch nicht geladen. <button class="el-link" data-elact="onlist">Jetzt laden</button>`}</p>`);
   else if (!w.rows.length) notes.unshift(`<p class="el-note el-empty">Noch keine Online-Projekte.</p>`);
   return `<section class="el-projs el-pwrap" aria-label="Zeit über alle Projekte">${head}${table}${notes.join("")}</section>`;
 }

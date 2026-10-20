@@ -65,7 +65,7 @@ assert.ok(keysHTML().includes("Modulstatus"));
 // Projekt-Index (Etappe 3a): Zusammenfassung für die Projektkacheln
 back.project = { meta: { OBJEKT: "Bärgen 268" }, time: [{ d: "2026-10-20", h: 1.5, n: "" }, { d: "2026-10-21", h: 0.25, n: "" }] };
 assert.deepStrictEqual(projSummary(back), { obj: "Bärgen 268", mods: [["pv", "Geprüft"], ["schema", "Offen"], ["schema", "Offen"], ["dispo", "Archiviert"]], n: back.sheets.length, h: 1.75 });
-assert.deepStrictEqual(onlineSummary(back.project), { obj: "Bärgen 268", h: 1.75 });
+assert.deepStrictEqual(onlineSummary({ pm: back.project.meta, pt: back.project.time }), { obj: "Bärgen 268", h: 1.75 });
 assert.strictEqual(onlineSummary(null), null);
-assert.deepStrictEqual(onlineSummary({}), { obj: "", h: 0 });
+assert.deepStrictEqual(onlineSummary({ pm: null, pt: null }), { obj: "", h: 0 });
 console.log("Modulstatus ok");

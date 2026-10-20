@@ -905,11 +905,20 @@ function setModStatus(id, st) {
   if (!MOD_STATUS.includes(st) || E.modStatus(S.doc, id) === st) return;
   change(() => { const m = (S.doc.mods ??= {}); m[id] = { ...m[id] }; if (st === MOD_STATUS[0]) delete m[id].st; else m[id].st = st; tidyMods(); }, { panel: false });
 }
+const setModOrder = (ids) => change(() => { const m = (S.doc.mods ??= {}); ids.forEach((x, k) => { m[x] = { ...m[x], o: k + 1 }; }); }, { panel: false });
 function moveModule(id, dir) {
   const ids = E.modIds(S.doc), i = ids.indexOf(id), j = i + dir;
   if (i < 0 || j < 0 || j >= ids.length) return false;
   [ids[i], ids[j]] = [ids[j], ids[i]];
-  change(() => { const m = (S.doc.mods ??= {}); ids.forEach((x, k) => { m[x] = { ...m[x], o: k + 1 }; }); }, { panel: false });
+  setModOrder(ids);
+  return true;
+}
+// Ziehen (Etappe 5): die gezogene Kachel nimmt den Platz der Ziel-Kachel ein
+function moveModuleTo(id, target) {
+  const ids = E.modIds(S.doc), i = ids.indexOf(id), j = ids.indexOf(target);
+  if (i < 0 || j < 0 || i === j) return false;
+  ids.splice(i, 1); ids.splice(j, 0, id);
+  setModOrder(ids);
   return true;
 }
 async function renameModule(id) {
@@ -1781,7 +1790,7 @@ $("#sheet-find").addEventListener("input", renderSheetList);
 // Blattmenü (CJ 18.10.2026): Rechtsklick oder gedrückt halten auf dem Blattnamen, einer Zeile der Blattliste oder (elplexaCAD) einer
 // Blatt-Kachel der Übersicht. data-ctx = Index des Blatts. Gedrückt halten wie beim Plus-Knopf (450 ms), der folgende Klick fällt weg.
 let ctxSheet = -1, ctxHub = false, ctxTimer = 0, ctxHeld = false;
-const CTX_SEL = "[data-ctx], [data-modctx], [data-savectx], [data-hold]";
+const CTX_SEL = "[data-ctx], [data-modctx], [data-projctx], [data-savectx], [data-hold]";
 // Klick-Regel überall (CJ 18.10.2026): kurzer Klick = Standard, Rechtsklick oder gedrückt halten (450 ms) = Menü, gleich wie beim
 // Plus-Knopf und am Blattnamen. Elemente mit data-hold: Werkzeug Leitung (Leiterzahl, Art), Text (Drehung, Ausrichtung),
 // Speichern (v3: Speichern unter), Exportieren (Klick öffnet hier schon das Menü, es gibt keinen Standard).
@@ -1825,7 +1834,7 @@ function openCtx(el) {
   ctxSheet = i; ctxHub = !!el.closest("#el-hub");
   ctxMenu.show(el.closest("#sheet-menu") ? $("#sheet-cur") : el); // Zeile der Blattliste: die Liste schliesst, Menü am Blattnamen
 }
-const ctxOpen = (el) => (ELPLEXA && S.shared ? null : el.dataset.hold !== undefined ? holdOpen(el) : el.dataset.savectx !== undefined ? ELPLEXA && EL_S.saveCtx.show(el) : el.dataset.modctx ? ELPLEXA && elModCtx(el) : openCtx(el)); // Speichern-Knopf, Modul-Kachel (elplexaCAD) oder Blatt
+const ctxOpen = (el) => (ELPLEXA && S.shared ? null : el.dataset.projctx ? elProjCtx(el) : el.dataset.hold !== undefined ? holdOpen(el) : el.dataset.savectx !== undefined ? ELPLEXA && EL_S.saveCtx.show(el) : el.dataset.modctx ? ELPLEXA && elModCtx(el) : openCtx(el)); // Speichern-Knopf, Modul-Kachel (elplexaCAD) oder Blatt
 document.addEventListener("contextmenu", (e) => { const el = e.target.closest?.(CTX_SEL); if (el) { e.preventDefault(); clearTimeout(ctxTimer); ctxOpen(el); } });
 document.addEventListener("pointerdown", (e) => {
   ctxHeld = false; clearTimeout(ctxTimer);
@@ -2211,11 +2220,22 @@ function elInit() {
   sv.addEventListener("click", (e) => { const a = e.target.closest("[data-elsaveact]")?.dataset.elsaveact; if (a === "on") elSaveOnline(); else if (a) saveJson(a === "as"); });
   const sp = mm.cloneNode(); sp.id = "el-shpop"; sp.setAttribute("aria-label", "Blätter des Moduls"); $("#app").append(sp); // „+N“ der Modulkarte (CJ 18.10.2026)
   EL_S.shPop = makeMenu(sp, { left: true, beforeShow: () => { sp.innerHTML = E.sheetPopHTML(S.doc, EL_S.popMod, sheetLabel); } });
+  const pc = mm.cloneNode(); pc.id = "el-projctx"; pc.setAttribute("aria-label", "Projekt");
+  pc.innerHTML = `<div class="ctx-head"></div>` + [["open", "list", "Öffnen", ""], ["rm", "trash", "Aus der Liste entfernen", "Nur der Eintrag, die Datei bleibt"]]
+    .map(([a, ic, t, sub]) => `<button class="mi" role="menuitem" data-elprojact="${a}" tabindex="-1"><span class="ic">${R.icons[ic]}</span><span class="mt"><span class="mh">${t}</span>${sub ? `<span class="ms">${sub}</span>` : ""}</span></button>`).join("");
+  $("#app").append(pc);
+  EL_S.projCtx = makeMenu(pc, { left: true, beforeShow: () => {
+    const k = EL_S.ctxProj || "", loc = k.startsWith("l:");
+    pc.querySelector(".ctx-head").textContent = loc ? "Lokales Projekt" : "Online-Projekt";
+    pc.querySelector('[data-elprojact="rm"]').hidden = !loc;
+  } });
+  pc.addEventListener("click", (e) => { const a = e.target.closest("[data-elprojact]")?.dataset.elprojact; if (a) elProjAct(a); });
   const mp = mm.cloneNode(); mp.id = "el-mstpop"; mp.setAttribute("aria-label", "Modulstatus"); $("#app").append(mp);
   EL_S.stPop = makeMenu(mp, { left: true, onOpen: () => mp.querySelector('[aria-checked="true"]')?.focus(), beforeShow: () => { mp.innerHTML = E.modStatusMenuHTML(S.doc, EL_S.stMod); } });
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-eltab], [data-elwk], [data-elview], [data-elsheet], [data-elmore], [data-elmst], [data-elmstset], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
+    if ((e.metaKey || e.ctrlKey) && b.classList.contains("el-ptile")) { e.preventDefault(); const k = b.dataset.selkey; (EL_S.sel ??= new Set())[EL_S.sel.has(k) ? "delete" : "add"](k); elHub(true, { keepFocus: true }); document.querySelector(`.el-ptile[data-selkey="${k}"]`)?.focus(); return; } // ⌘-Klick oder ⌘ Enter: mehrere wählen
     if (b.dataset.eltab) { EL_S.tab = b.dataset.eltab; elHub(true, { keepFocus: true }); document.getElementById("el-tab-" + EL_S.tab)?.focus(); }
     else if (b.dataset.elwk) { const cur = EL_S.week || E.weekStart(elDay(Date.now())); EL_S.week = b.dataset.elwk === "0" ? E.weekStart(elDay(Date.now())) : E.weekShift(cur, Number(b.dataset.elwk)); elHub(true, { keepFocus: true }); }
     else if (b.dataset.elview) { EL_S.pf.view = b.dataset.elview; elHub(true, { keepFocus: true }); }
@@ -2231,9 +2251,13 @@ function elInit() {
     else if (b.dataset.elrecent) elOpenRecent(Number(b.dataset.elrecent));
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
-    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv, zeitcsv: elZeitCsv, timechip: () => { EL_S.tab = "proj"; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
+    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv, zeitcsv: elZeitCsv, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { EL_S.tab = "proj"; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
       gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
+  hub.addEventListener("dragstart", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!t) return; EL_S.drag = t.dataset.modctx; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.dataset.modctx); t.classList.add("el-drag"); });
+  hub.addEventListener("dragover", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!EL_S.drag || !t) return; e.preventDefault(); for (const x of hub.querySelectorAll(".el-over")) if (x !== t) x.classList.remove("el-over"); t.classList.toggle("el-over", t.dataset.modctx !== EL_S.drag); });
+  hub.addEventListener("drop", (e) => { const t = e.target.closest?.(".el-tile[data-modctx]"); if (!EL_S.drag || !t) return; e.preventDefault(); const id = EL_S.drag; EL_S.drag = null; if (moveModuleTo(id, t.dataset.modctx)) { elHub(true, { keepFocus: true }); document.getElementById(E.tileId(id))?.focus(); } });
+  hub.addEventListener("dragend", () => { EL_S.drag = null; for (const x of hub.querySelectorAll(".el-drag, .el-over")) x.classList.remove("el-drag", "el-over"); });
   hub.addEventListener("change", (e) => { const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); else if (e.target.dataset?.elf) { EL_S.pf[e.target.dataset.elf] = e.target.value; elHub(true, { keepFocus: true }); } });
   hub.addEventListener("submit", (e) => { e.preventDefault(); elTimeAdd(); });
   adrInit(hub);
@@ -2258,7 +2282,7 @@ function elHub(show, { keepFocus = false } = {}) {
     const file = S.fileHandle?.name || "", suggest = `${baseName()}.elplexa.json`;
     const gd = h.querySelector("#el-gwr"); if (gd) EL_S.gwrOpen = gd.open; // GWR-Feld bleibt beim Neuzeichnen offen oder zu
     h.innerHTML = S.shared && !EL_S.shareInfo ? (EL_S.shareFail ? E.shareFailHTML(EL_S.shareFail.grund, EL_S.shareFail.msg) : E.shareLoadHTML())
-      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy, tip: elTipOn(), tab: EL_S.tab, zeit: elZeitData(), projs: { recent: EL_S.recent, online: EL_S.onlist ?? null, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, ...EL_S.pf } });
+      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy, tip: elTipOn(), tab: EL_S.tab, zeit: elZeitData(), projs: { recent: EL_S.recent, online: EL_S.onlist ?? null, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, ...EL_S.pf, sel: EL_S.sel } });
     for (const el of h.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
     E.recentList().then((l) => {
       const key = (x) => JSON.stringify((x || []).map((e) => [e.file, e.t])), changed = key(EL_S.recent) !== key(l);
@@ -2625,6 +2649,19 @@ function elModCtx(el) {
   EL_S.ctxMod = el.dataset.modctx;
   EL_S.modCtx.show(el);
 }
+// Projektkacheln im Reiter Projekte (Etappe 5): Rechtsklick-Menü, ⌘-Klick-Mehrfachwahl
+function elProjCtx(el) { EL_S.ctxProj = el.dataset.projctx; EL_S.projCtx.show(el); }
+async function elProjAct(a) {
+  const k = EL_S.ctxProj || "";
+  if (a === "open") { k.startsWith("l:") ? elOpenRecent(Number(k.slice(2))) : elOnlineOpen(k.slice(2)); return; }
+  if (a === "rm" && k.startsWith("l:")) { await E.recentDrop(Number(k.slice(2))); EL_S.sel?.clear(); elHub(true, { keepFocus: true }); toast("Aus der Liste entfernt. Die Datei bleibt."); }
+}
+async function elSelRemove() {
+  const ks = [...(EL_S.sel || [])].filter((k) => k.startsWith("l:")).map((k) => Number(k.slice(2)));
+  if (!ks.length) return;
+  await E.recentDropMany(ks); EL_S.sel.clear(); elHub(true, { keepFocus: true });
+  toast(`${ks.length} ${ks.length === 1 ? "Eintrag" : "Einträge"} aus der Liste entfernt. Die Dateien bleiben.`);
+}
 async function elModAct(a) {
   const id = EL_S.ctxMod;
   if (!id) return;
@@ -2659,7 +2696,7 @@ function elHubKey(e) {
   const t = e.target, typing = t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA");
   if (typing) return false;
   if (e.metaKey || e.ctrlKey) { const k = e.key.toLowerCase(); return !(k === "s" || k === "o"); }
-  if (e.key === "Escape") { elHub(false); return true; }
+  if (e.key === "Escape") { if (EL_S.sel?.size) { EL_S.sel.clear(); elHub(true, { keepFocus: true }); return true; } elHub(false); return true; } // erst die Auswahl aufheben
   const tile = t instanceof HTMLElement ? t.closest(".el-tile[data-modctx]") : null; // Kachel gewählt: S = Status, ⌥ ← → = Platz tauschen
   if (tile && e.altKey && !e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); if (moveModule(tile.dataset.modctx, e.key === "ArrowLeft" ? -1 : 1)) elHub(true, { keepFocus: true }); return true; }
   if (tile && !e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); EL_S.stMod = tile.dataset.modctx; EL_S.stPop.toggle(tile.querySelector(".el-mst")); return true; }

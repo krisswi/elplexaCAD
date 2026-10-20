@@ -109,7 +109,7 @@ export function hubHTML(doc, o) {
   const fileHint = o.file && o.suggest !== o.file ? `<p class="el-note">Datei: ${esc(o.file)}. Speichern unter (⇧⌘S) schlägt „${esc(o.suggest)}“ vor.</p>` : "";
   const tiles = modIds(doc).map((id, n) => { // Taste N = N-te Kachel (CJ 20.10.2026, nur in der Übersicht), bis 9
     const m = modById(id), idx = modIdx(doc, id);
-    return `<button class="el-tile" id="${tileId(id)}" data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${modPill(doc, id, !ro)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
+    return `<button class="el-tile" id="${tileId(id)}"${ro ? "" : ` draggable="true"`} data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${modPill(doc, id, !ro)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
   }).join("");
   // Zweite Stufe (Etappe 2b, CJ 20.10.2026): Pfad und Reiter oben, Tipp-Zeile unten. Nicht in der geteilten Ansicht. Nur Reiter, die etwas tun.
   const todayH = Math.round((doc.project?.time || []).filter((e) => e.d === o.today).reduce((a, e) => a + e.h, 0) * 100) / 100;
@@ -158,16 +158,19 @@ export function projectsHTML(o) {
   const card = (x) => {
     const attr = x.src === "online" ? `data-elonline="${esc(x.id)}"` : `data-elrecent="${x.k}"`;
     const meta = [x.n !== null ? `${x.n} ${x.n === 1 ? "Blatt" : "Blätter"}` : "", x.h !== null ? `${fmtH(x.h)} h` : "", x.t ? projWhen(x.t) : ""].filter(Boolean).join(" · ");
-    return `<button class="el-ptile" ${attr} title="${x.src === "online" ? "Online-Projekt öffnen" : x.hint ? "Dieser Browser merkt sich nur den Namen: Datei wählen" : "Öffnen"}"><span class="el-ph"><span class="el-pn">${esc(x.name)}</span>${x.status ? statusPill(x.status) : ""}</span><span class="el-po">${esc(x.obj) || "–"}</span><span class="el-pm">${dots(x)}${esc(meta)}</span><span class="el-pw">${x.src === "online" ? "online" : "lokal"}${x.hint ? " · " + x.hint : ""}</span></button>`;
+    const key = x.src === "online" ? `o:${x.id}` : `l:${x.k}`, on = !!o.sel?.has(key);
+    return `<button class="el-ptile${on ? " sel" : ""}" id="el-pt-${esc(key.replace(":", "-"))}" ${attr} data-projctx="${esc(key)}" data-selkey="${esc(key)}" aria-pressed="${on}" title="${x.src === "online" ? "Online-Projekt öffnen" : x.hint ? "Dieser Browser merkt sich nur den Namen: Datei wählen" : "Öffnen"}"><span class="el-ph"><span class="el-pn">${esc(x.name)}</span>${x.status ? statusPill(x.status) : ""}</span><span class="el-po">${esc(x.obj) || "–"}</span><span class="el-pm">${dots(x)}${esc(meta)}</span><span class="el-pw">${x.src === "online" ? "online" : "lokal"}${x.hint ? " · " + x.hint : ""}</span></button>`;
   };
   let body;
   if (!items.length) body = `<p class="el-note el-empty">${(o.recent?.length || o.online?.length) ? "Kein Projekt mit diesem Status." : "Noch keine Projekte. Gespeicherte und geöffnete Projekte erscheinen hier."}</p>`;
   else body = view === "liste" ? `<div class="el-plist">${items.map(card).join("")}</div>` : `<div class="el-pgrid">${items.map(card).join("")}</div>`;
-  const notes = [`<p class="el-note">Lokale Projekte kennt der Browser nur über «zuletzt geöffnet» (höchstens 8). Online-Projekte zeigen Objekt und Stunden, nicht Blattzahl und Module.</p>`];
+  const nSel = o.sel?.size || 0, nLoc = [...(o.sel || [])].filter((k) => k.startsWith("l:")).length;
+  const selbar = nSel ? `<div class="el-selbar" role="status"><span><b>${nSel}</b> gewählt${nSel > nLoc ? ` (Online-Projekte bleiben)` : ""}</span><button class="btn outline small" data-elact="selrm"${nLoc ? "" : " disabled"}>Aus der Liste entfernen</button><button class="btn outline small" data-elact="selclr">Auswahl aufheben (Esc)</button></div>` : "";
+  const notes = [`<p class="el-note">⌘-Klick wählt mehrere. Rechtsklick: Öffnen oder aus der Liste entfernen. Lokale Projekte kennt der Browser nur über «zuletzt geöffnet» (höchstens 8). Online-Projekte zeigen Objekt und Stunden, nicht Blattzahl und Module.</p>`];
   if (o.err) notes.unshift(`<div class="el-perr" role="alert"><span>${esc(o.err)}</span><button class="btn outline small" data-elact="onlist">Erneut versuchen</button></div>`);
   else if (!o.user) notes.unshift(`<p class="el-note">Nicht angemeldet: Online-Projekte erscheinen nach der Anmeldung (Konto-Kreis oben rechts).</p>`);
   else if (o.online === null) notes.unshift(`<p class="el-note">${o.busy ? "Online-Projekte werden geladen …" : `Online-Projekte noch nicht geladen. <button class="el-link" data-elact="onlist">Jetzt laden</button>`}</p>`);
-  return `<section class="el-projs el-pwrap" aria-label="Projekte">${bar}${body}${notes.join("")}</section>`;
+  return `<section class="el-projs el-pwrap" aria-label="Projekte">${bar}${selbar}${body}${notes.join("")}</section>`;
 }
 
 // Reiter „Zeit“ (Etappe 4, CJ 20.10.2026): Woche Montag bis Sonntag, eine Zeile je Online-Projekt, Summen je Tag und Projekt. Nur Online-Projekte (lokale kennt die Liste nicht ohne Dateizugriff).
@@ -230,6 +233,7 @@ export async function recentAdd(e) {
   await recentPut([entry, ...keep].slice(0, 8));
 }
 export async function recentDrop(k) { const list = await recentList(); list.splice(k, 1); await recentPut(list); }
+export async function recentDropMany(ks) { const list = await recentList(); for (const k of [...ks].sort((a, b) => b - a)) list.splice(k, 1); await recentPut(list); } // Auswahl entfernen (Etappe 5)
 export function recentHTML(list) {
   if (!list.length) return `<p class="el-note">Noch keine. Gespeicherte und geöffnete Projekte erscheinen hier.</p>`;
   const when = (t) => new Date(t).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });

@@ -101,6 +101,7 @@ export function parseModel(text) {
     if ((m.kind === "title" || m.kind === "toc" || m.kind === "legend") && m.items.length) throw new Error("Titelseite, Inhaltsverzeichnis und Legende enthalten keine eigenen Objekte.");
   }
   for (const sh of doc.sheets) if ((sh.kind === "dispo" || sh.kind === "pv") && !sh.sid) sh.sid = ++maxId;
+  if (typeof ELPLEXA !== "undefined" && ELPLEXA) for (const sh of doc.sheets) if (!sh.kind && !sh.sid) sh.sid = ++maxId; // elplexaCAD: feste Kennung auch fürs Schemablatt (Notizen im Teilen-Link, 20.10.2026); v3 behält sie
   if (Object.keys(assets).length) doc.assets = assets;
   const oldAn = !pv?.anlage && rawSheets.map((rs) => rs.kind === "pv" && anlageFromSheet(rs.anlage)).find(Boolean); // erste Fassung 5k: Anlage am Blatt
   if (oldAn) doc.pv = tidyPv({ ...pv, anlage: oldAn }); else if (pv) doc.pv = pv; // Katalog: Modultypen (Schritt 4), WR-Typen, Zuordnung und Tmin (Schritt 6)

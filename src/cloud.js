@@ -261,3 +261,10 @@ export async function shareOpen(token) {
   }
   return { doc: { ...r.data, ...(refs.length ? { assets } : {}) }, name: r.name, at: r.updated_at, ablauf: r.ablauf, modules: r.modules || null };
 }
+// Notizen und Markierungen (Meilenstein 2, Schritt 2, 20.10.2026): Tabelle `project_notes`, Empfänger nur über Funktionen mit Schlüssel.
+// guest = Zufallskennung des Browsers (nur «eigene löschen», nie ausgeliefert). Grenzen prüft die Datenbank (Länge, 300 je Link, 30 in 10 min).
+// Ergebnis jeweils { ok: true, … } oder { grund: "link" | "voll" | "zu_schnell" | "eingabe" | "fehlt" }; ohne Netz Fehler wie bei shareOpen.
+const rpc = async (fn, args) => { const r = await call(`/rest/v1/rpc/${fn}`, { method: "POST", body: JSON.stringify(args) }); return r?.ok ? r : { grund: r?.grund || "fehlt" }; };
+export const shareNotes = (token, guest) => rpc("share_notes_list", { p_token: token, p_guest: guest });
+export const shareNoteAdd = (token, guest, n) => rpc("share_note_add", { p_token: token, p_guest: guest, p_sheet: n.sheet, p_label: n.sheet_label, p_kind: n.kind, p_x: n.x, p_y: n.y, p_w: n.w, p_h: n.h, p_text: n.text, p_author: n.author });
+export const shareNoteDelete = (token, guest, id) => rpc("share_note_delete", { p_token: token, p_guest: guest, p_id: id });

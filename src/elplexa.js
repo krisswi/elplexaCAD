@@ -2,7 +2,7 @@
 // Ein Modul ist eine Gruppe von Blattarten derselben Datei. Welches Modul offen ist, folgt aus dem aktiven Blatt.
 import { esc } from "./render.js";
 import { cell } from "./auswertung.js";
-import { modOf, modVar, modName, MOD_STATUS } from "./model.js";
+import { modOf, modVar, modName, MOD_STATUS, projectStatus } from "./model.js";
 import { adrHTML, gwrHTML } from "./gwr.js";
 
 export const MODULES = [
@@ -113,9 +113,10 @@ export function hubHTML(doc, o) {
   }).join("");
   // Zweite Stufe (Etappe 2b, CJ 20.10.2026): Pfad und Reiter oben, Tipp-Zeile unten. Nicht in der geteilten Ansicht. Nur Reiter, die etwas tun.
   const sub = ro ? "" : `<nav class="el-subbar" aria-label="Pfad und Reiter"><span class="el-path">Projektübersicht<span class="el-sl" aria-hidden="true">/</span><b>${esc(o.name)}</b></span>
-    <div class="el-tabs" role="tablist" aria-label="Bereiche"><button class="el-tab" role="tab" id="el-tab-proj" aria-selected="true">Projekt</button></div><span class="el-sp"></span>
+    <div class="el-tabs" role="tablist" aria-label="Bereiche">${[["proj", "Projekt"], ["projekte", "Projekte"]].map(([k, t]) => `<button class="el-tab" role="tab" id="el-tab-${k}" data-eltab="${k}" aria-selected="${(o.tab || "proj") === k}">${t}</button>`).join("")}</div><span class="el-sp"></span>
     <button class="btn small el-helpbtn" data-elact="help" title="Alle Tasten (?)" aria-label="Alle Tasten zeigen">?</button></nav>`;
   const tip = ro || o.tip === false ? "" : `<div class="el-tip" role="note"><span class="el-tiptxt"><b>Tipp</b> 1 bis 9 öffnet die Kachel an dieser Stelle · S Status · ⌥ ← → Reihenfolge · Rechtsklick auf die Kachel: Umbenennen, Duplizieren, Löschen · ? alle Tasten</span><button class="btn icon el-tipx" data-elact="tipoff" title="Tipp-Zeile ausblenden (wieder einblenden über ?)" aria-label="Tipp-Zeile ausblenden"><span aria-hidden="true">×</span></button></div>`;
+  if (!ro && o.tab === "projekte") return `${sub}<div class="el-hubin el-pview">${projectsHTML(o.projs || {})}</div>${tip}`;
   return `${sub}<div class="el-hubin"><div class="el-col">
     <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span>${ro ? statusPill(st) : `<label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label>`}</div>
       <input class="el-name" data-elp="name" value="${esc(o.name)}"${ro ? ` aria-label="Projektname" readonly` : ` aria-label="Projektname (klicken zum Umbenennen)" title="Klicken zum Umbenennen"`} spellcheck="false">${fileHint}
@@ -130,6 +131,40 @@ export function hubHTML(doc, o) {
       ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button>`}</div>
       ${ro || o.tip === false ? `<p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p>` : ""}</section>
     ${ro ? "" : timeHTML(doc, o.today)}</div></div>${tip}`;
+}
+
+// Reiter „Projekte“ (Etappe 3b): Kacheln oder Liste aus „zuletzt geöffnet“ (lokal, höchstens 8) und den Online-Projekten. Filter nach Status, Sortierung.
+// o = { recent, online (null = nicht geladen), user, err, busy, filter, sort, view }
+export const projFilters = () => ["Alle", ...projectStatus()]; // als Funktion: im SchemaCAD-Bau fällt alles weg
+const projWhen = (t) => { const d = new Date(t); return Number.isNaN(+d) ? "" : d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+export function projItems(o) {
+  const loc = (o.recent || []).map((e, k) => ({ src: "lokal", k, name: e.name || e.file, status: e.status || "", obj: e.sum?.obj || "", mods: e.sum?.mods || null, n: e.sum?.n ?? null, h: e.sum?.h ?? null, t: e.t || 0, hint: e.handle ? "" : "Datei wählen" }));
+  const onl = (o.online || []).map((e) => { const s = onlineSummary(e.proj); return { src: "online", id: e.id, name: e.name, status: e.status || "", obj: s?.obj || "", mods: null, n: null, h: s ? s.h : null, t: Date.parse(e.updated_at) || 0, hint: "" }; });
+  let all = [...loc, ...onl];
+  if (o.filter && o.filter !== "Alle") all = all.filter((x) => x.status === o.filter);
+  return o.sort === "name" ? all.sort((a, b) => a.name.localeCompare(b.name, "de")) : all.sort((a, b) => b.t - a.t);
+}
+export function projectsHTML(o) {
+  const items = projItems(o), view = o.view === "liste" ? "liste" : "kacheln";
+  const opt = (v, t, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${t}</option>`;
+  const bar = `<div class="el-pbar"><label>Status <select data-elf="filter" aria-label="Nach Status filtern">${projFilters().map((f) => opt(f, f, o.filter || "Alle")).join("")}</select></label>
+    <label>Sortierung <select data-elf="sort" aria-label="Sortierung">${opt("zuletzt", "Zuletzt", o.sort || "zuletzt")}${opt("name", "Name", o.sort)}</select></label>
+    <span class="el-sp"></span><div class="el-vsw" role="group" aria-label="Ansicht">${[["kacheln", "Kacheln"], ["liste", "Liste"]].map(([v, t]) => `<button class="btn small" data-elview="${v}" aria-pressed="${v === view}">${t}</button>`).join("")}</div>
+    <button class="btn outline small" data-elact="newproj"><span class="ic" data-ic="plus"></span><span>Neues Projekt …</span></button></div>`;
+  const dots = (x) => (x.mods ? x.mods.map(([b, st]) => { const m = MODULES.find((q) => q.id === b); return `<i class="el-pd" style="background:${m?.color || "#999"}" title="${esc(m?.label || b)}: ${esc(st)}"></i>`; }).join("") : "");
+  const card = (x) => {
+    const attr = x.src === "online" ? `data-elonline="${esc(x.id)}"` : `data-elrecent="${x.k}"`;
+    const meta = [x.n !== null ? `${x.n} ${x.n === 1 ? "Blatt" : "Blätter"}` : "", x.h !== null ? `${fmtH(x.h)} h` : "", x.t ? projWhen(x.t) : ""].filter(Boolean).join(" · ");
+    return `<button class="el-ptile" ${attr} title="${x.src === "online" ? "Online-Projekt öffnen" : x.hint ? "Dieser Browser merkt sich nur den Namen: Datei wählen" : "Öffnen"}"><span class="el-ph"><span class="el-pn">${esc(x.name)}</span>${x.status ? statusPill(x.status) : ""}</span><span class="el-po">${esc(x.obj) || "–"}</span><span class="el-pm">${dots(x)}${esc(meta)}</span><span class="el-pw">${x.src === "online" ? "online" : "lokal"}${x.hint ? " · " + x.hint : ""}</span></button>`;
+  };
+  let body;
+  if (!items.length) body = `<p class="el-note el-empty">${(o.recent?.length || o.online?.length) ? "Kein Projekt mit diesem Status." : "Noch keine Projekte. Gespeicherte und geöffnete Projekte erscheinen hier."}</p>`;
+  else body = view === "liste" ? `<div class="el-plist">${items.map(card).join("")}</div>` : `<div class="el-pgrid">${items.map(card).join("")}</div>`;
+  const notes = [`<p class="el-note">Lokale Projekte kennt der Browser nur über «zuletzt geöffnet» (höchstens 8). Online-Projekte zeigen Objekt und Stunden, nicht Blattzahl und Module.</p>`];
+  if (o.err) notes.unshift(`<div class="el-perr" role="alert"><span>${esc(o.err)}</span><button class="btn outline small" data-elact="onlist">Erneut versuchen</button></div>`);
+  else if (!o.user) notes.unshift(`<p class="el-note">Nicht angemeldet: Online-Projekte erscheinen nach der Anmeldung (Konto-Kreis oben rechts).</p>`);
+  else if (o.online === null) notes.unshift(`<p class="el-note">${o.busy ? "Online-Projekte werden geladen …" : `Online-Projekte noch nicht geladen. <button class="el-link" data-elact="onlist">Jetzt laden</button>`}</p>`);
+  return `<section class="el-projs el-pwrap" aria-label="Projekte">${bar}${body}${notes.join("")}</section>`;
 }
 
 // Zuletzt geöffnete Projekte (im Browser, IndexedDB): Name, Status, Zeit und, wo der Browser es kann, der Dateizugriff (FileSystemFileHandle).

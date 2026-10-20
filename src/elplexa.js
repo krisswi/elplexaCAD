@@ -25,7 +25,7 @@ export const modIds = (doc) => [...new Set(doc.sheets.map(modOf))].sort((a, b) =
 export const modStatus = (doc, id) => doc.mods?.[id]?.st || MOD_STATUS[0];
 const MST_IDS = ["of", "ia", "ge", "ve", "re", "ar"];
 export const modPill = (doc, id, edit) => { const st = modStatus(doc, id), d = `class="el-mst" data-ms="${MST_IDS[MOD_STATUS.indexOf(st)]}"`;
-  return edit ? `<span ${d} role="button" aria-haspopup="menu" aria-expanded="false" id="el-ms-${tileId(id).slice(8)}" data-elmst="${id}" title="Modulstatus: ${esc(st)}. Klick oder Taste S: ändern">${esc(st)}</span>` : `<span ${d} title="Modulstatus">${esc(st)}</span>`; };
+  return edit ? `<span ${d} role="button" aria-haspopup="menu" aria-expanded="false" id="el-ms-${tileId(id).slice(8)}" tabindex="-1" data-elmst="${id}" title="Modulstatus: ${esc(st)}. Klick oder Taste S: ändern">${esc(st)}</span>` : `<span ${d} title="Modulstatus">${esc(st)}</span>`; };
 export function modStatusMenuHTML(doc, id) {
   const cur = modStatus(doc, id);
   return `<div class="ctx-head">Status · ${esc(modName(doc, id))}</div>` + MOD_STATUS.map((s, i) => `<button class="mi" role="menuitemradio" aria-checked="${s === cur}" data-elmstset="${esc(s)}" tabindex="-1"><span class="el-mst" data-ms="${MST_IDS[i]}">${esc(s)}</span></button>`).join("");
@@ -119,7 +119,7 @@ export function hubHTML(doc, o) {
       <div id="el-online" class="el-online"></div></section>`}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
       ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button>`}</div>
-      <p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, S ändert den Status, ⌥ ← → ordnet um, ? alle Tasten.</p></section>
+      <p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p></section>
     ${ro ? "" : timeHTML(doc, o.today)}</div></div>`;
 }
 
@@ -180,8 +180,8 @@ export function addModMenuHTML(doc) {
 
 export function modMenuHTML(doc, cur) {
   const ids = modIds(doc), act = MODULES.filter((m) => !m.later);
-  const rows = ids.map((id) => ({ id, m: modById(id), has: true })).concat(act.filter((m) => !ids.some((id) => baseOf(id) === m.id)).map((m) => ({ id: m.id, m, has: false })))
-    .sort((a, b) => MODULES.indexOf(a.m) - MODULES.indexOf(b.m) || modVar(a.id) - modVar(b.id));
+  // vorhandene Module in der Reihenfolge der Übersicht (eigene Reihenfolge), danach die noch nicht angelegten Arten
+  const rows = ids.map((id) => ({ id, m: modById(id), has: true })).concat(act.filter((m) => !ids.some((id) => baseOf(id) === m.id)).map((m) => ({ id: m.id, m, has: false })));
   return rows.map(({ id, m, has }) => `<button class="mi" role="menuitem" data-elopen="${id}"${has ? " data-exact" : ""} tabindex="-1"${id === cur ? ' aria-current="true"' : ""}>${dot(m)}<span class="mt"><span class="mh">${esc(has ? modName(doc, id) : m.label)}</span><span class="ms">${id === cur ? "Jetzt offen" : has ? `Taste ${act.indexOf(m) + 1}` : "Noch nicht im Projekt: wird angelegt"}</span></span></button>`).join("") + `<button class="mi" role="menuitem" data-elact="hub" tabindex="-1"><span class="el-dot" aria-hidden="true"></span><span class="mt"><span class="mh">Projektübersicht</span><span class="ms">Taste 0</span></span></button>`;
 }
 

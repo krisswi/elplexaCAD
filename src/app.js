@@ -874,6 +874,13 @@ function duplicateSheet() {
 // ---------- Module (CJ 18.10.2026): Schema, Disposition und PV mehrfach, je Modul eigener Name (doc.mods, model.js) ----------
 const modSheets = (id) => S.doc.sheets.filter((sh) => modOf(sh) === id && !T.isDeck(sh));
 const maxNo = (kind) => Math.max(0, ...S.doc.sheets.filter((s) => s.kind === kind).map((s) => parseInt(s.meta.BLATT, 10)).filter(Number.isFinite));
+// Eintrag eines gelöschten Moduls samt Verweisen „PV fortsetzen“ entfernen (Modul gelöscht oder letztes Blatt gefallen)
+function dropModEntry(id) {
+  const m = S.doc.mods; if (!m) return;
+  delete m[id];
+  if (id.startsWith("pv")) for (const e of Object.values(m)) if (e.cont === (Number(id.split(":")[1]) || 1)) delete e.cont;
+  tidyMods();
+}
 function tidyMods() { const m = S.doc.mods; if (!m) return; for (const k of Object.keys(m)) if (!Object.keys(m[k]).length) delete m[k]; if (!Object.keys(m).length) delete S.doc.mods; }
 // Ganzes Modul kopieren: neue Nummer, alle Blätter (ohne Titelseite, Inhalt, Legende), Name „… (Kopie)“. Rückgabe: Kennung des neuen Moduls.
 function duplicateModule(id) {
@@ -921,7 +928,7 @@ async function deleteModule(id) {
   change(() => {
     for (const sh of list) for (const it of sh.items) if (isRef(it)) unlinkRef(S.doc, it);
     S.doc.sheets = S.doc.sheets.filter((sh) => !list.includes(sh));
-    if (S.doc.mods) { delete S.doc.mods[id]; if (id.startsWith("pv")) for (const m of Object.values(S.doc.mods)) if (m.cont === (Number(id.split(":")[1]) || 1)) delete m.cont; tidyMods(); }
+    dropModEntry(id);
     S.active = Math.max(0, S.doc.sheets.indexOf(cur)); S.sel.clear();
   });
   afterSheetChange(k0, { reset: true });
@@ -938,10 +945,11 @@ async function deleteSheet() {
   if (workCount() < 2 || isDeck()) return;
   if (!(await confirmDialog("Blatt löschen?", `${sheetLabel(S.model, S.active)} mit allen Objekten wird gelöscht. Verknüpfte Verweise auf anderen Blättern werden wieder offen. Rückgängig ist möglich.`, "Blatt löschen"))) return;
   setTool("select");
-  const k0 = S.model.kind;
+  const k0 = S.model.kind, gone = modOf(S.model);
   change(() => {
     for (const it of S.model.items) if (isRef(it)) unlinkRef(S.doc, it);
     S.doc.sheets.splice(S.active, 1); S.active = Math.min(S.active, S.doc.sheets.length - 1); S.sel.clear();
+    if (!S.doc.sheets.some((sh) => modOf(sh) === gone)) dropModEntry(gone); // letztes Blatt des Moduls: Name, Status, Platz gehen nicht auf ein neues Modul gleicher Kennung über
     if (isDeck() && S.active > 0) S.active--; // nicht auf die Legende springen, sondern aufs vorherige Arbeitsblatt
   });
   afterSheetChange(k0);
@@ -2158,12 +2166,12 @@ function elInit() {
   const sp = mm.cloneNode(); sp.id = "el-shpop"; sp.setAttribute("aria-label", "Blätter des Moduls"); $("#app").append(sp); // „+N“ der Modulkarte (CJ 18.10.2026)
   EL_S.shPop = makeMenu(sp, { left: true, beforeShow: () => { sp.innerHTML = E.sheetPopHTML(S.doc, EL_S.popMod, sheetLabel); } });
   const mp = mm.cloneNode(); mp.id = "el-mstpop"; mp.setAttribute("aria-label", "Modulstatus"); $("#app").append(mp);
-  EL_S.stPop = makeMenu(mp, { left: true, beforeShow: () => { mp.innerHTML = E.modStatusMenuHTML(S.doc, EL_S.stMod); } });
+  EL_S.stPop = makeMenu(mp, { left: true, onOpen: () => mp.querySelector('[aria-checked="true"]')?.focus(), beforeShow: () => { mp.innerHTML = E.modStatusMenuHTML(S.doc, EL_S.stMod); } });
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-elsheet], [data-elmore], [data-elmst], [data-elmstset], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
     if (b.dataset.elmst) { EL_S.stMod = b.dataset.elmst; EL_S.stPop.toggle(b); } // Modulstatus wählen
-    else if (b.dataset.elmstset) { setModStatus(EL_S.stMod, b.dataset.elmstset); elHub(true, { keepFocus: true }); }
+    else if (b.dataset.elmstset) { setModStatus(EL_S.stMod, b.dataset.elmstset); elHub(true, { keepFocus: true }); document.getElementById(E.tileId(EL_S.stMod))?.focus(); } // Fokus zurück auf die Kachel
     else if (b.dataset.elmore) { EL_S.popMod = b.dataset.elmore; EL_S.shPop.toggle(b); } // alle Blätter des Moduls
     else if (b.dataset.elpdf) printPdf(E.modIdx(S.doc, b.dataset.elpdf).map((i) => S.doc.sheets[i]), `_${modName(S.doc, b.dataset.elpdf)}`); // Modul als PDF, Login-Regel in printPdf
     else if (b.dataset.elsheet) { elHub(false); switchSheet(Number(b.dataset.elsheet)); } // Blatt-Kachel: genau dieses Blatt (CJ 18.10.2026)

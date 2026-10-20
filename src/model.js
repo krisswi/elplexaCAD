@@ -104,7 +104,9 @@ export function parseModel(text) {
   doc.nextId = Math.max(maxId + 1, Number(o.nextId) || 1);
   doc.active = Math.max(0, Math.min(doc.sheets.length - 1, Number(o.active) || 0));
   splitWandlerDoc(doc); // alte Wandlermessung (ein Symbol) in Wandlerteil, Zähler und Leitungen zerlegen
-  const mods = cleanMods(o.mods); if (mods) doc.mods = mods; // Namen der Module, PV: Strings fortsetzen (18.10.2026)
+  const mods = cleanMods(o.mods);
+  if (mods) { for (const k of Object.keys(mods)) if (!doc.sheets.some((sh) => modOf(sh) === k)) delete mods[k]; } // Eintrag ohne Modul (z. B. gelöscht in älterem Stand) würde auf ein neues Modul gleicher Kennung übergehen
+  if (mods && Object.keys(mods).length) doc.mods = mods; // Namen der Module, PV: Strings fortsetzen (18.10.2026)
   if (o.noTitle === true) doc.noTitle = true; // Titelseite gelöscht (CJ 15.10.), kommt nicht von selbst wieder
   if (o.noToc === true) doc.noToc = true;
   if (typeof ELPLEXA !== "undefined" && ELPLEXA) { const pj = cleanProject(o.project); if (pj) doc.project = pj; } // elplexaCAD: Name, Status, Projektdaten, Zeit (SchemaCAD v3 liest das nicht)

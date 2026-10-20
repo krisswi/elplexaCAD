@@ -41,8 +41,11 @@ with sync_playwright() as p:
     # Taste S an gewählter Kachel
     page.focus("#el-tile-pv"); key("s"); page.wait_for_timeout(100)
     check("Taste S öffnet das Statusmenü der Kachel", page.is_visible("#el-mstpop"))
-    page.click('#el-mstpop [data-elmstset="Revision"]'); page.wait_for_timeout(200)
-    check("Revision gesetzt", mods()["pv"]["st"] == "Revision")
+    check("Menü fokussiert den gewählten Eintrag", page.evaluate("document.activeElement.dataset.elmstset") == "Offen")
+    page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    check("Esc: Menü zu, Fokus zurück auf der Kachel", not page.is_visible("#el-mstpop") and page.evaluate("!!document.activeElement.closest('#el-tile-pv')"))
+    key("s"); page.keyboard.press("ArrowDown"); page.keyboard.press("ArrowDown"); page.keyboard.press("ArrowDown"); page.keyboard.press("ArrowDown"); page.keyboard.press("Enter"); page.wait_for_timeout(250)
+    check("S, Pfeile, Enter wählt Revision, Fokus auf der Kachel", mods()["pv"]["st"] == "Revision" and page.evaluate("document.activeElement.id") == "el-tile-pv", [mods().get("pv"), page.evaluate("document.activeElement.id")])
     page.click('[data-elmst="pv"]'); page.click('#el-mstpop [data-elmstset="Offen"]'); page.wait_for_timeout(200)
     check("Offen entfernt den Eintrag", "pv" not in mods() or "st" not in mods()["pv"])
 
@@ -82,6 +85,17 @@ with sync_playwright() as p:
     page.evaluate("document.activeElement?.blur()"); key("0")  # Rückgängig gilt im Editor, nicht in der Übersicht
     page.keyboard.press("Meta+z"); page.wait_for_timeout(250)
     check("Rückgängig nimmt den Namen zurück, Status bleibt", "name" not in mods().get("pv", {}) and mods()["dispo"]["st"] == "Versendet")
+    # Letztes Blatt eines Moduls gelöscht: Eintrag weg, ein neues Modul gleicher Kennung erbt nichts
+    page.evaluate("document.activeElement?.blur()")
+    if not page.is_visible("#el-hub"): key("0")
+    page.click("#el-tile-dispo", button="right"); page.click('[data-elmodact="dup"]'); page.wait_for_timeout(250)
+    page.click('[data-elmst="dispo:2"]'); page.click('#el-mstpop [data-elmstset="Revision"]'); page.wait_for_timeout(200)
+    key("4")  # Kachel 4 = dispo:2
+    page.click("#sheet-cur", button="right"); page.wait_for_timeout(150); page.click('#sheet-ctx [data-ctxact="del"]'); page.wait_for_timeout(200)
+    page.click('.modal [data-r="1"]'); page.wait_for_timeout(300)
+    check("Letztes Blatt gelöscht: Modulkachel und Eintrag weg", "dispo:2" not in mods(), mods())
+    key("0"); page.click("#el-addmod"); page.wait_for_timeout(150); page.click('#el-addmenu [data-elnew="dispo"]'); page.wait_for_timeout(300); key("0")
+    check("Neues Modul gleicher Kennung startet Offen, ohne Platz", "dispo:2" in tiles() and "st" not in mods().get("dispo:2", {}) and "o" not in mods().get("dispo:2", {}), mods())
     check("keine Konsolenfehler", not errors, errors)
     b.close()
 print("Rot:" + str(fails) if fails else "alle ok")

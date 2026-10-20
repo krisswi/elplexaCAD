@@ -150,12 +150,12 @@ body.el-hubopen #sheetbar, body.el-hubopen #zoombar, body.el-hubopen .pvbar, bod
 .el-pdf:active { transform: scale(.96); }
 @media (hover: hover) and (pointer: fine) { .el-pdf:hover { border-color: var(--muted); } }
 /* Modulstatus (CJ 20.10.2026): Pille auf der Modulkachel, Auswahl im Menü */
-.el-mst { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; white-space: nowrap; color: #5a6775; background: #e8ecf0; }
-.el-mst[data-ms="ia"] { color: #2f4a66; background: #e3ebf4; }
-.el-mst[data-ms="ge"] { color: #1f6b3d; background: #dcf0e3; }
-.el-mst[data-ms="ve"] { color: #6b3f9a; background: #ede3f6; }
-.el-mst[data-ms="re"] { color: #8a4a06; background: #fbecd6; }
-.el-mst[data-ms="ar"] { color: #6b7480; background: #f0f1f3; }
+.el-mst { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; white-space: nowrap; box-sizing: border-box; color: #4a5560; background: #fff; border: 1px dashed #8a94a0; } /* Offen: leer, gestrichelt */
+.el-mst[data-ms="ia"] { color: #2f4a66; background: #e3ebf4; border: 0; }
+.el-mst[data-ms="ge"] { color: #1f6b3d; background: #dcf0e3; border: 0; }
+.el-mst[data-ms="ve"] { color: #6b3f9a; background: #ede3f6; border: 0; }
+.el-mst[data-ms="re"] { color: #8a4a06; background: #fbecd6; border: 0; }
+.el-mst[data-ms="ar"] { color: #4a515c; background: #e1e3e7; border: 0; } /* Kontrast alle ab 4,5:1 */
 span.el-mst[role="button"] { cursor: pointer; transition: transform 100ms var(--ease-out); }
 span.el-mst[role="button"]::after { content: "▾"; margin-left: 4px; font-size: 9px; }
 span.el-mst[role="button"]:active { transform: scale(.96); }

@@ -2,7 +2,7 @@
 // Aufruf: node test/test_modstatus.mjs [Ausgabe.dxf]
 import assert from "node:assert";
 import { newDoc, newSheet, parseModel, serializeModel, VERSION, MOD_STATUS, cleanMods } from "../src/model.js";
-import { modIds, modStatus, modPill, modStatusMenuHTML, hubHTML, keysHTML } from "../src/elplexa.js";
+import { modIds, modMenuHTML, modStatus, modPill, modStatusMenuHTML, hubHTML, keysHTML } from "../src/elplexa.js";
 
 assert.deepStrictEqual(MOD_STATUS, ["Offen", "In Arbeit", "Geprüft", "Versendet", "Revision", "Archiviert"], "Reihenfolge laut CJ");
 assert.strictEqual(VERSION, 18);
@@ -38,6 +38,14 @@ assert.deepStrictEqual(modIds(d2), ["dispo", "schema", "schema:2", "pv"]);
 assert.deepStrictEqual(cleanMods({ pv: { st: "Offen" }, dispo: { st: "Kaputt", o: 0 }, schema: { st: "Revision", o: 2.5, name: "A" } }), { schema: { name: "A", st: "Revision" } });
 assert.strictEqual(cleanMods({ pv: { st: "Offen" } }), null);
 
+// Eintrag ohne vorhandenes Modul fällt beim Laden weg (kein Übergang auf ein neues Modul gleicher Kennung)
+const orph = parseModel(JSON.stringify({ ...JSON.parse(serializeModel(mk())), version: 18, mods: { "pv:3": { st: "Revision", o: 1 }, pv: { st: "Geprüft" } } }));
+assert.deepStrictEqual(orph.mods, { pv: { st: "Geprüft" } });
+
+// Menü im Editor in der Reihenfolge der Übersicht
+const mm = modMenuHTML(back, null), pos = (id) => mm.indexOf(`data-elopen="${id}"`);
+assert.ok(pos("pv") < pos("schema:2") && pos("schema:2") < pos("schema") && pos("schema") < pos("dispo"), "Modulmenü folgt der eigenen Reihenfolge");
+
 // Alte Datei (Version 16 mit Namen) öffnet unverändert
 const old = JSON.stringify({ ...JSON.parse(serializeModel(mk())), version: 16, mods: { pv: { name: "PV Ost" } } });
 const o = parseModel(old); assert.deepStrictEqual(o.mods, { pv: { name: "PV Ost" } }); assert.strictEqual(JSON.parse(serializeModel(o)).version, 16);
@@ -49,6 +57,7 @@ const order = [...h.matchAll(/data-elopen="([^"]+)" data-exact/g)].map((m) => m[
 assert.deepStrictEqual(order, ["pv", "schema:2", "schema", "dispo"]);
 assert.ok(/id="el-tile-pv"[^]*?<kbd>1<\/kbd>/.test(h) && /id="el-tile-dispo"[^]*?<kbd>4<\/kbd>/.test(h));
 const ro = hubHTML(back, { name: "T", today: "x", label: () => "B", shared: {} });
+assert.ok(!ro.includes("S ändert den Status") && ro.includes("0 die Übersicht"), "geteilte Ansicht: keine Bearbeiten-Tasten im Hinweis");
 assert.ok(!ro.includes("data-elmst") && ro.includes('class="el-mst"'), "geteilte Ansicht: Status nur zu sehen");
 assert.strictEqual((modStatusMenuHTML(back, "pv").match(/data-elmstset/g) || []).length, 6);
 assert.ok(modStatusMenuHTML(back, "pv").includes('aria-checked="true"'));

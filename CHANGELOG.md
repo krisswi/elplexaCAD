@@ -3,7 +3,7 @@
 Neueste oben. Versionen nach dem Schema `Haupt.Neu.Fehler`: neue Funktionen erhöhen die mittlere Zahl, reine Fehlerbehebungen die letzte. Die Dateiversion (Feld `v` in der Projektdatei) zählt getrennt.
 
 ## Unveröffentlicht
-- Projektübersicht: Modulstatus je Modul (Offen, In Arbeit, Geprüft, Versendet, Revision, Archiviert) als Pille auf der Kachel, Taste S; Kacheln umordnen mit ⌥ ← →; Taste 1 bis 9 öffnet in der Übersicht die N-te Kachel. **Dateiversion 18** (nur wenn Status oder Reihenfolge benutzt wird; ältere Stände öffnen solche Dateien nicht).
+- Projektübersicht: Modulstatus je Modul (Offen, In Arbeit, Geprüft, Versendet, Revision, Archiviert) als Pille auf der Kachel, Taste S; Kacheln umordnen mit ⌥ ← →; Taste 1 bis 9 öffnet in der Übersicht die N-te Kachel. **Dateiversion 18** (nur wenn Status oder Reihenfolge benutzt wird; ältere Stände, auch main und `schemacad-v3.html`, lehnen solche Dateien ab). Review-Fixes: Status und Platz räumen auf, wenn das letzte Blatt eines Moduls fällt; Fokus bei Tastenbedienung; Kontrast der Pillen.
 - Neue Adresse https://krisswi.github.io/elplexaCAD/ (die alte leitet weiter, auch Teilen-Links). Arbeitsweise mit Git: Zweig pro Änderung, Tests auf GitHub vor dem Online-Stellen, Commit-Sperre, `npm run build` / `npm test` / `npm run vault`, Spec in `docs/spec.md`.
 - Test-Ausgaben (`test_*.dxf`) nicht mehr im Repo.
 

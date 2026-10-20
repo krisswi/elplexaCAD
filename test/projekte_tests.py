@@ -41,7 +41,7 @@ with sync_playwright() as p:
     vis = lambda s: page.is_visible(s)
     cnt = lambda: page.locator(".el-ptile").count()
     page.goto(URL); page.wait_for_timeout(300)
-    check("Reiter Projekt und Projekte", [t for t in page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)")] == ["Projekt", "Projekte"])
+    check("Reiter Projekt, Projekte, Zeit", [t for t in page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)")] == ["Projekt", "Projekte", "Zeit"])
     page.click("#el-tab-projekte"); page.wait_for_timeout(250)
     check("Leerzustand ohne Projekte", "Noch keine Projekte" in page.inner_text(".el-pwrap") and cnt() == 0)
     check("Gast: Hinweis zur Anmeldung, keine Fehlermeldung", "Nicht angemeldet" in page.inner_text(".el-pwrap") and not vis(".el-perr"))

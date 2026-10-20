@@ -300,3 +300,17 @@ body.el-shared #el-file, body.el-shared #el-savestate, body.el-shared #el-acct {
 .el-perr { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; font-size: 13px; color: #8a2a1e; background: #fbe9e5; border-radius: 8px; }
 .el-empty { padding: 18px 0; }
 @media (prefers-reduced-motion: reduce) { .el-ptile { transition: none; } .el-ptile:active { transform: none; } }
+
+/* Reiter Zeit (Etappe 4, CJ 20.10.2026): Woche, Zeile je Online-Projekt */
+.el-wk { font-size: 13px; color: var(--ink); }
+.el-wtab { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.el-wtab th, .el-wtab td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-line); white-space: nowrap; }
+.el-wtab thead th { font-size: 12px; font-weight: 600; color: var(--muted); }
+.el-wtab thead th span { display: block; font-weight: 400; }
+.el-wtab th[scope="row"], .el-wtab thead th:first-child { text-align: left; font-weight: 600; color: var(--ink); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.el-wtab .el-today { color: var(--ink); box-shadow: inset 0 -2px 0 var(--el-dark); }
+.el-wtab .el-rs2 { font-weight: 600; color: var(--ink); }
+.el-wtab tfoot th, .el-wtab tfoot td { border-top: 2px solid var(--panel-line); border-bottom: 0; font-weight: 600; }
+.el-wtab i { font-style: normal; color: var(--muted); }
+.el-chip { gap: 6px; }
+@media (max-width: 1000px) { .el-chip { display: none; } }

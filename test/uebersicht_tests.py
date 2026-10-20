@@ -19,7 +19,7 @@ with sync_playwright() as p:
     vis = lambda s: page.is_visible(s)
     page.goto(URL); page.wait_for_timeout(300)
     page.evaluate("localStorage.removeItem('elplexacad.tipp')"); page.reload(); page.wait_for_timeout(300)
-    check("Pfad und nur Reiter, die etwas tun: Projekt (gewählt) und Projekte", vis(".el-subbar") and "Projektübersicht" in page.inner_text(".el-path") and page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)") == ["Projekt", "Projekte"] and page.get_attribute("#el-tab-proj", "aria-selected") == "true")
+    check("Pfad und nur Reiter, die etwas tun: Projekt (gewählt), Projekte, Zeit", vis(".el-subbar") and "Projektübersicht" in page.inner_text(".el-path") and page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)") == ["Projekt", "Projekte", "Zeit"] and page.get_attribute("#el-tab-proj", "aria-selected") == "true")
     check("Tipp-Zeile da", vis(".el-tip") and "Tipp" in page.inner_text(".el-tip"))
     page.screenshot(path=str(OUT / "u2b_1440.png"))
     order = page.evaluate("""() => { const n = (s) => document.querySelector(s), f = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);

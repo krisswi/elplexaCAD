@@ -336,7 +336,7 @@ const fmtDay = (t) => new Date(t).toLocaleDateString("de-CH", { day: "2-digit", 
 export function sharedHTML(s) {
   const what = s.mods ? `${s.mods.length === 1 ? "das Modul" : "die Module"} ${s.mods.map((m) => `„${esc(m)}“`).join(", ")}` : "alle Module und Blätter";
   return `<section class="el-projs el-shared-info" aria-label="Geteilte Ansicht"><div class="el-eyerow"><span class="el-eye">Geteilte Ansicht</span><span class="el-st el-shpill">Nur ansehen</span></div>
-    <p>Mit dir geteilt: ${what}. Du kannst ansehen und Notizen oder Markierungen setzen (N, M), aber an der Zeichnung nichts ändern, speichern oder drucken.</p>
+    <p>Mit dir geteilt: ${what}. Du kannst ansehen, aber nichts ändern, speichern oder drucken.</p>
     ${s.at ? `<p class="el-note">Stand vom ${when2(s.at)}. Link gültig bis ${fmtDay(s.ablauf)}.</p>` : ""}</section>`;
 }
 const SHARE_GRUND = { abgelaufen: "Dieser Link ist abgelaufen.", widerrufen: "Dieser Link wurde vom Absender widerrufen.", modul_fehlt: "Das geteilte Modul gibt es in diesem Projekt nicht mehr.", ungueltig: "Dieser Link ist ungültig. Vielleicht ist er unvollständig kopiert oder das Projekt wurde gelöscht." };

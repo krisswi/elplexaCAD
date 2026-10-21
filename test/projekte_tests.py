@@ -46,8 +46,8 @@ with sync_playwright() as p:
     vis = lambda s: page.is_visible(s)
     cnt = lambda: page.locator(".el-ptile").count()
     page.goto(URL); page.wait_for_timeout(300)
-    check("Reiter Projekte, Zeit (Profil nur über den Konto-Kreis)", [t for t in page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)")] == ["Projekte", "Zeit"])
-    page.click("#el-tab-projekte"); page.wait_for_timeout(250)
+    check("Zeile 1: Projekte, Zeit (Profil nur über den Konto-Kreis)", page.evaluate("[...document.querySelectorAll('.el-navbtn')].map((t) => t.textContent)") == ["Projekte", "Zeit"])
+    page.click("#el-nav-projekte"); page.wait_for_timeout(250)
     check("Nur das geöffnete Projekt: erste Kachel mit «geöffnet»", cnt() == 1 and "geöffnet" in page.inner_text(".el-ptile.cur"))
     page.select_option('[data-elf="filter"]', "Abgeschlossen"); page.wait_for_timeout(200)
     check("Leerzustand: kein Projekt mit diesem Status", "Kein Projekt mit diesem Status" in page.inner_text(".el-pwrap") and cnt() == 0)
@@ -59,16 +59,16 @@ with sync_playwright() as p:
     page.evaluate("window.showSaveFilePicker = async () => ({ name: 'Lokal A.elplexa.json', createWritable: async () => ({ write: async () => {}, close: async () => {} }), isSameEntry: async () => false }); 0")
     page.click("#el-pt-cur"); page.wait_for_timeout(200); page.fill('[data-elp="OBJEKT"]', "Bärgen 268"); page.keyboard.press("Tab"); page.wait_for_timeout(200)
     page.click("#btn-save"); page.wait_for_timeout(500)
-    page.click("#el-file"); page.click('#el-filemenu [data-elfile="new"]'); page.wait_for_timeout(300)
+    page.click("#el-nav-projekte"); page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(300)
     if page.is_visible(".modal"): page.fill(".modal input", "Neues Projekt"); page.click(".modal [data-ok]"); page.wait_for_timeout(300)  # neues Projekt: das gespeicherte wird zu «zuletzt geöffnet»
     if not vis("#el-hub"): page.evaluate("document.activeElement?.blur()"); page.keyboard.press("0"); page.wait_for_timeout(250)
-    page.click("#el-tab-projekte"); page.wait_for_timeout(300)
+    page.click("#el-nav-projekte"); page.wait_for_timeout(300)
     check("Lokales Projekt als Kachel mit Objekt, Blattzahl, «lokal»", cnt() == 2 and "Bärgen 268" in page.inner_text(".el-ptile:not(.cur)") and "lokal" in page.inner_text(".el-ptile:not(.cur)") and "Blätter" in page.inner_text(".el-ptile:not(.cur)"), [page.inner_text(".el-ptile:not(.cur)") if cnt() > 1 else "", cnt()])
     check("Kachel zeigt Modul-Punkte", page.locator(".el-ptile:not(.cur) .el-pd").count() >= 1)
 
     # Online-Projekte: 50 Kacheln + 1 lokal
     page.click("#el-acct"); page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(600)
-    page.click("#el-tab-projekte"); page.wait_for_timeout(600)
+    page.click("#el-nav-projekte"); page.wait_for_timeout(600)
     check(f"Angemeldet: {N_ON} Online- und 1 lokales Projekt plus das geöffnete als Kacheln", cnt() == N_ON + 2, cnt())
     check("Online-Abfrage ohne ganzes data (nur project)", any("pm:data->project->meta" in s for s in srv["selects"]) and not any(s.endswith("data") or ",data" in s or "data," in s for s in srv["selects"]), srv["selects"])
     check("Online-Kachel zeigt Objekt und Stunden", "Objekt" in page.inner_text(".el-ptile[data-elonline]") and "1,5 h" in page.inner_text(".el-ptile[data-elonline]"))
@@ -97,7 +97,7 @@ with sync_playwright() as p:
     ent = idb()
     check("recentAdd speichert die Zusammenfassung (Objekt, Module, Blattzahl, Stunden)", ent and ent[0]["sum"] and ent[0]["sum"]["obj"] == "Bärgen 268" and isinstance(ent[0]["sum"]["n"], int) and isinstance(ent[0]["sum"]["mods"], list) and "h" in ent[0]["sum"], ent[:1])
     page.evaluate("() => new Promise((res) => { const r = indexedDB.open('elplexacad', 1); r.onsuccess = () => { const tx = r.result.transaction('kv', 'readwrite'), st = tx.objectStore('kv'), g = st.get('recent'); g.onsuccess = () => { st.put([...g.result, { file: 'alt.elplexa.json', name: 'Alter Eintrag', status: 'Offerte', handle: null, t: 1 }], 'recent'); }; tx.oncomplete = () => res(); }; })")
-    page.goto(URL); page.wait_for_timeout(400); page.click("#el-tab-projekte"); page.wait_for_timeout(600)
+    page.goto(URL); page.wait_for_timeout(400); page.click("#el-nav-projekte"); page.wait_for_timeout(600)
     alt = page.locator(".el-ptile:has-text('Alter Eintrag')")
     txt = alt.inner_text() if alt.count() else ""
     check("Alter Eintrag ohne sum: Kachel mit «–», nichts «undefined» oder «null»", alt.count() == 1 and "–" in txt and "undefined" not in txt and "null" not in txt and "NaN" not in txt, txt)
@@ -111,7 +111,7 @@ with sync_playwright() as p:
     srv["mode"] = "offline"
     page.goto(URL); page.wait_for_timeout(300)
     # nach Neuladen: Sitzung bleibt, Netz weg
-    page.click("#el-tab-projekte"); page.wait_for_timeout(600)
+    page.click("#el-nav-projekte"); page.wait_for_timeout(600)
     check("Kein Netz: Fehlerzeile mit «Erneut versuchen», lokale Kacheln bleiben", vis(".el-perr") and "Keine Verbindung" in page.inner_text(".el-perr"), page.inner_text(".el-pwrap")[:200])
     srv["mode"] = "paused"; page.click('.el-perr [data-elact="onlist"]'); page.wait_for_timeout(500)
     check("Online pausiert (540): Hinweis auf Resume", "pausiert" in page.inner_text(".el-perr"), page.inner_text(".el-pwrap")[:200])

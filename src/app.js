@@ -30,7 +30,7 @@ import { startDialog } from "./start.js";
 import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel, varOf, newVar } from "./pv.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
-import { cloudMenu, cloudUser, cloudSignIn, cloudOnSession, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen } from "./cloud.js";
+import { cloudMenu, cloudUser, cloudSignIn, cloudOnSession, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, projTimeAdd, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen } from "./cloud.js";
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
 import { openHand } from "./hand.js";
@@ -2137,9 +2137,11 @@ function elSync() {
   document.body.dataset.elmod = E.baseOf(id); EL_S.lastOf[E.baseOf(id)] = id;
   setProjectMeta(S.doc.project?.meta); // neue Blätter bekommen die Projektdaten (model.js newMeta)
   const c = $("#el-crumb"); if (c && EL_S.hub?.hidden !== false) c.innerHTML = E.crumbHTML(id, E.statusOf(S.doc), modName(S.doc, id));
+  if ($("#el-ptabs")) elBarSync();
 }
-// Kopfleiste (Übersicht Etappe 2a, CJ 20.10.2026, Variante 4): Datei-Menü links, Speicherstand mit Punkt und Text, Konto-Kreis rechts.
-// Speichern bleibt als Symbol (Hover: Speichern). Neu und Öffnen liegen im Datei-Menü; #btn-new und #btn-open bleiben verborgen im DOM.
+// Kopfleiste in zwei Zeilen (Paket C, Etappe 1, CJ 21.10.2026). Zeile 1 gilt für die ganze App: Logo · Projekte · Zeit · Rückgängig/Wiederholen · Suchen · Konto-Kreis.
+// Zeile 2 ist die Arbeitsleiste: links die offenen Tabs (Projekt, Zeit) oder im Modul Projektname · ‹ Übersicht / Modul; rechts «Heute X h ＋» · Speichern · Speicherstand · Exportieren.
+// Kein Datei-Menü mehr: Neu und Öffnen in der Projektliste, Speichern unter und online im Menü am Knopf Speichern, Kürzel ⌘O, ⌘S, ⇧⌘S bleiben.
 function elSaveState() {
   const t = $("#el-savetxt"); if (!t) return;
   const saved = !S.dirty && (S.fileHandle || S.doc.project?.online || S.fileName !== "Unbenannt");
@@ -2156,25 +2158,77 @@ function elAcctDraw() {
   b.setAttribute("aria-label", b.title);
 }
 function elBarInit() {
-  const fb = document.createElement("button"); fb.className = "btn"; fb.id = "el-file"; fb.type = "button"; fb.setAttribute("aria-haspopup", "menu"); fb.setAttribute("aria-expanded", "false"); fb.title = "Datei: Neu, Öffnen, Speichern";
-  fb.innerHTML = `<span class="ic">${R.icons.open}</span><span class="lbl">Datei</span><span class="caret" aria-hidden="true">▾</span>`;
-  $("#topbar .filechip").before(fb);
-  const fm = document.createElement("div"); fm.className = "menu"; fm.id = "el-filemenu"; fm.setAttribute("role", "menu"); fm.setAttribute("aria-label", "Datei"); fm.hidden = true;
-  const FILE = [["new", "new", "Neu", () => (EL_S.hub && !EL_S.hub.hidden ? "Neues Projekt anlegen" : "Neues Dokument: Schema, Disposition oder Stringplan")], ["open", "open", "Öffnen …", () => "Projektdatei wählen (⌘O)"], ["save", "save", "Speichern", () => "⌘S, bei Anmeldung lokal oder online"], ["as", "save", "Speichern unter …", () => "Neue Datei wählen (⇧⌘S)"], ["on", "save", "Online speichern", () => "Kopie in der Online-Ablage"]];
-  fm.innerHTML = FILE.map(([a, ic, t]) => `<button class="mi" role="menuitem" data-elfile="${a}" tabindex="-1"><span class="ic">${R.icons[ic]}</span><span class="mt"><span class="mh">${t}</span><span class="ms"></span></span></button>`).join("");
-  EL_S.fileMenu = makeMenu(fm, { left: true, beforeShow: () => { closeEditor(true); FILE.forEach(([a, , , sub]) => { fm.querySelector(`[data-elfile=${a}]`).querySelector(".ms").textContent = sub(); }); fm.querySelector('[data-elfile="on"]').hidden = !cloudUser(); } });
-  fb.addEventListener("click", () => EL_S.fileMenu.toggle(fb));
-  fm.addEventListener("click", (e) => { const a = e.target.closest("[data-elfile]")?.dataset.elfile; if (!a) return; ({ new: () => $("#btn-new").click(), open: () => openJson(), save: () => elSave(false), as: () => elSave(true), on: () => elOnlineSave() })[a](); });
-  // Speicherstand: Punkt und Text, rechts neben den Knöpfen
+  const tb = $("#topbar"), r1 = document.createElement("div"), r2 = document.createElement("div");
+  r1.className = "el-r1"; r2.className = "el-r2"; r2.setAttribute("role", "group"); r2.setAttribute("aria-label", "Arbeitsleiste");
+  // Zeile 1: Projekte und Zeit (Navigation), Hilfe, Konto-Kreis
+  const nav = document.createElement("nav"); nav.className = "el-nav"; nav.setAttribute("aria-label", "Bereiche");
+  nav.innerHTML = [["projekte", "Projekte", "Alle Projekte"], ["zeit", "Zeit", "Zeit über alle Projekte, öffnet den Tab Zeit"]].map(([k, t, ti]) => `<button class="btn el-navbtn" id="el-nav-${k}" data-elnav="${k}" type="button" title="${ti}">${t}</button>`).join("");
+  const help = document.createElement("button"); help.className = "btn icon el-helpbtn"; help.dataset.elact = "help"; help.type = "button"; help.title = "Alle Tasten (?)"; help.setAttribute("aria-label", "Alle Tasten zeigen"); help.textContent = "?";
+  const ab = document.createElement("button"); ab.className = "el-acctbtn"; ab.id = "el-acct"; ab.type = "button";
+  ab.addEventListener("click", () => elHub(true, { tab: "profil" })); // Konto-Kreis: Profil (Anmeldung, Abmelden)
+  const sp1 = document.createElement("div"); sp1.className = "spacer";
+  r1.append($("#topbar .brand"), nav, sp1, $("#btn-undo"), $("#btn-redo"), $("#topbar .sep"), $("#btn-search"), help, ab);
+  // Zeile 2: Tabs (Handy: ein Knopf mit dem Namen), Projektname, Pfad im Modul, Leisten der Module, rechte Gruppe
+  const tabs = document.createElement("div"); tabs.className = "el-ptabs"; tabs.id = "el-ptabs"; tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "Offene Tabs");
+  const tsel = document.createElement("button"); tsel.className = "btn el-tabsel"; tsel.id = "el-tabsel"; tsel.type = "button"; tsel.setAttribute("aria-haspopup", "menu"); tsel.setAttribute("aria-expanded", "false"); tsel.title = "Offene Tabs";
+  const fc = $("#topbar .filechip"); fc.id = "el-projname"; fc.setAttribute("role", "button"); fc.tabIndex = 0; fc.setAttribute("aria-haspopup", "menu"); fc.setAttribute("aria-expanded", "false"); fc.title = "Offene Tabs zeigen";
+  const chip = document.createElement("button"); chip.className = "btn small el-chip"; chip.id = "el-daychip"; chip.dataset.elact = "timechip"; chip.type = "button";
   const ss = document.createElement("div"); ss.id = "el-savestate"; ss.className = "el-savestate"; ss.setAttribute("role", "status");
   ss.innerHTML = `<span class="el-okdot" id="el-okdot"></span><span id="el-savetxt"></span>`; ss.prepend($("#dirty"));
-  $("#topbar .menuwrap").before(ss);
-  // Konto-Kreis mit Menü: Anmelden und Abmelden (vorher im Bereich Online der Übersicht)
-  const ab = document.createElement("button"); ab.className = "el-acctbtn"; ab.id = "el-acct"; ab.type = "button";
-  $("#topbar .menuwrap").after(ab);
-  $("#app").append(fm);
-  ab.addEventListener("click", () => elHub(true, { tab: "profil" })); // Konto-Kreis: Profil (Anmeldung, Abmelden)
+  const sp2 = document.createElement("div"); sp2.className = "spacer";
+  const right = document.createElement("div"); right.className = "el-right";
+  right.append(chip, $("#btn-save"), ss, $("#topbar .menuwrap"));
+  r2.append($("#btn-left"), tabs, tsel, fc, $("#pv-bar"), $("#doc-bar"), $("#btn-handover"), sp2, right, $("#btn-right"));
+  for (const x of [...tb.children]) if (x !== r1 && x !== r2 && !x.matches(".spacer")) r2.insertBefore(x, sp2); // was sonst noch in der Leiste liegt (ausgeblendete Knöpfe)
+  tb.querySelector(":scope > .spacer")?.remove();
+  tb.append(r1, r2); document.body.classList.add("el-2rows");
+  // Menü der offenen Tabs: am Projektnamen (im Modul) und am Handy-Knopf
+  const tm = document.createElement("div"); tm.className = "menu"; tm.id = "el-tabmenu"; tm.setAttribute("role", "menu"); tm.setAttribute("aria-label", "Offene Tabs"); tm.hidden = true;
+  $("#app").append(tm);
+  EL_S.tabMenu = makeMenu(tm, { left: true, beforeShow: () => { closeEditor(true); tm.innerHTML = elTabList().map((t) => `<button class="mi" role="menuitem" data-eltabgo="${t.k}" tabindex="-1"${t.on ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${R.esc(t.name)}</span><span class="ms">${t.on ? "Jetzt offen" : t.k === "zeit" ? "Zeit über alle Projekte" : "Projekt"}</span></span></button>`).join(""); } });
+  tsel.addEventListener("click", () => EL_S.tabMenu.toggle(tsel));
+  fc.addEventListener("click", () => EL_S.tabMenu.toggle(fc));
+  fc.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") { e.preventDefault(); EL_S.tabMenu.show(fc); } });
+  tm.addEventListener("click", (e) => { const k = e.target.closest("[data-eltabgo]")?.dataset.eltabgo; if (k) elTabGo(k); });
   elAcctDraw(); elSaveState();
+}
+// Offene Tabs (Etappe 1: das eine offene Projekt, dazu Zeit, sobald einmal geöffnet). on = gerade sichtbar
+function elTabList() {
+  const hub = EL_S.hub && !EL_S.hub.hidden, l = [{ k: "proj", name: elName(), on: !hub || (EL_S.tab === "projekte" && EL_S.pview) }];
+  if (EL_S.zeitTab) l.push({ k: "zeit", name: "Zeit", on: hub && EL_S.tab === "zeit" });
+  return l;
+}
+function elTabGo(k) {
+  if (k === "zeit") { EL_S.zeitTab = true; elNavTo("zeit"); }
+  else if (EL_S.hub.hidden) { /* Projekt-Tab im Modul: bleibt im Modul */ }
+  else { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }
+}
+// Zeile 1: Projekte (Liste) oder Zeit (öffnet den Tab Zeit). Lädt die Online-Liste neu, wenn sie älter als 60 s ist
+function elNavTo(k) {
+  if (k === "zeit") EL_S.zeitTab = true;
+  const reload = !S.shared && cloudUser() && !EL_S.onbusy && (!EL_S.onAt || Date.now() - EL_S.onAt > LIST_MAX_AGE);
+  if (reload) EL_S.autoTried = true;
+  elHub(true, { keepFocus: true, tab: k }); // tab: auch aus dem Modul direkt in diesen Bereich if (EL_S.hub.contains(document.activeElement)) { /* Fokus bleibt */ } else document.getElementById(k === "zeit" ? "el-tab-zeit" : "el-nav-projekte")?.focus();
+  if (reload) elOnlineList();
+}
+// Stunden heute: im Tab Zeit über alle geladenen Projekte, sonst für das offene Projekt
+function elTodayH(all) {
+  const today = elDay(Date.now()), sum = (t) => (Array.isArray(t) ? t : []).filter((e) => e.d === today).reduce((a, e) => a + (Number(e.h) || 0), 0);
+  if (!all) return Math.round(sum(S.doc.project?.time) * 100) / 100;
+  const on = S.doc.project?.online?.id, rows = (EL_S.onlist || []).filter((e) => e.id !== on);
+  return Math.round((sum(S.doc.project?.time) + rows.reduce((a, e) => a + sum(e.pt), 0)) * 100) / 100;
+}
+// Zeile 2 nachführen: Tabs, Handy-Knopf, Navigation, Tages-Chip, welche Teile sichtbar sind
+function elBarSync() {
+  const hub = EL_S.hub && !EL_S.hub.hidden, zeit = hub && EL_S.tab === "zeit", tabs = elTabList(), cur = tabs.find((t) => t.on);
+  document.body.dataset.elbar = !hub ? "modul" : zeit ? "zeit" : EL_S.tab === "projekte" && EL_S.pview ? "projekt" : EL_S.tab === "profil" ? "profil" : "liste";
+  $("#el-ptabs").innerHTML = tabs.map((t) => `<button class="el-ptab${t.k === "zeit" ? " el-ptab-zeit" : ""}" role="tab" id="el-tab-${t.k === "zeit" ? "zeit" : "proj"}" data-eltabgo="${t.k}" aria-controls="el-tabpanel" aria-selected="${t.on}" tabindex="${t.on || (!cur && t.k === "proj") ? 0 : -1}" title="${R.esc(t.name)}"><span class="el-ptn">${R.esc(t.name)}</span></button>`).join("");
+  const ts = $("#el-tabsel"); ts.innerHTML = `<span class="el-ptn">${R.esc(cur ? cur.name : hub && EL_S.tab === "profil" ? "Profil" : "Projekte")}</span><span class="caret" aria-hidden="true">▾</span>`;
+  for (const k of ["projekte", "zeit"]) { const b = $(`#el-nav-${k}`), on = hub && EL_S.tab === k && !(k === "projekte" && EL_S.pview); b.classList.toggle("on", on); if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
+  const h = elTodayH(zeit), c = $("#el-daychip");
+  c.innerHTML = `<span class="el-chipl">Heute </span>${E.fmtH(h)} h <span aria-hidden="true">＋</span>`;
+  c.title = zeit ? "Stunden für ein Online-Projekt eintragen" : "Stunden für dieses Projekt eintragen";
+  c.setAttribute("aria-label", `Heute ${E.fmtH(h)} Stunden, Zeit eintragen`);
 }
 function elInit() {
   elBarInit();
@@ -2183,7 +2237,7 @@ function elInit() {
   $("#topbar .filechip").after(crumb);
   const bare = document.createElement("button"); bare.className = "btn icon el-barebtn"; bare.id = "el-bare"; bare.dataset.elact = "bare";
   bare.title = "Seitenleisten aus und ein (§)"; bare.setAttribute("aria-label", "Seitenleisten aus und ein"); bare.setAttribute("aria-pressed", "false"); bare.innerHTML = R.icons.panelL;
-  $("#btn-undo").before(bare);
+  $("#topbar .el-r2 .el-right").before(bare);
   const fb = document.createElement("button"); fb.className = "btn el-fbbtn"; fb.id = "el-fb"; fb.dataset.elact = "feedback"; fb.type = "button";
   fb.title = "Fehler, Anregung oder Wunsch melden, mit Screenshot der Ansicht"; fb.innerHTML = `<span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H10l-4 4v-4H5z"/><path d="M9 9.5h6M9 12h4"/></svg></span><span class="lbl">Feedback melden</span>`;
   $("#statusbar").append(fb);
@@ -2232,7 +2286,7 @@ function elInit() {
   const mp = mm.cloneNode(); mp.id = "el-mstpop"; mp.setAttribute("aria-label", "Modulstatus"); $("#app").append(mp);
   EL_S.stPop = makeMenu(mp, { left: true, onOpen: () => mp.querySelector('[aria-checked="true"]')?.focus(), beforeShow: () => { mp.innerHTML = E.modStatusMenuHTML(S.doc, EL_S.stMod); } });
   document.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-eltab], [data-elwk], [data-elview], [data-elsheet], [data-elmore], [data-elmst], [data-elmstset], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
+    const b = e.target.closest("[data-eltab], [data-elnav], [data-elzopen], [data-elwk], [data-elview], [data-elsheet], [data-elmore], [data-elmst], [data-elmstset], [data-elpdf], [data-elact], [data-elopen], [data-elnew], [data-eltdel], [data-elrecent], [data-elonline], [data-elodel], [data-elzok], [data-elzweg]");
     if (!b || b.disabled) return;
     if ((e.metaKey || e.ctrlKey) && b.classList.contains("el-ptile") && b.dataset.selkey) { e.preventDefault(); const k = b.dataset.selkey; (EL_S.sel ??= new Set())[EL_S.sel.has(k) ? "delete" : "add"](k); elHub(true, { keepFocus: true }); document.querySelector(`.el-ptile[data-selkey="${k}"]`)?.focus(); return; } // ⌘-Klick oder ⌘ Enter: mehrere wählen
     if (b.dataset.eltab) {
@@ -2242,6 +2296,8 @@ function elInit() {
       elHub(true, { keepFocus: true }); document.getElementById("el-tab-" + EL_S.tab)?.focus();
       if (reload) elOnlineList();
     }
+    else if (b.dataset.elnav) elNavTo(b.dataset.elnav);
+    else if (b.dataset.elzopen) elZeitOpen(b.dataset.elzopen);
     else if (b.dataset.elwk) { const cur = EL_S.week || E.weekStart(elDay(Date.now())); EL_S.week = b.dataset.elwk === "0" ? E.weekStart(elDay(Date.now())) : E.weekShift(cur, Number(b.dataset.elwk)); elHub(true, { keepFocus: true }); }
     else if (b.dataset.elview) { EL_S.pf.view = b.dataset.elview; elHub(true, { keepFocus: true }); }
     else if (b.dataset.elmst) { EL_S.stMod = b.dataset.elmst; EL_S.stPop.toggle(b.closest(".el-tile") || b); } // Modulstatus wählen; Menü an der Kachel, Fokus kehrt dorthin zurück
@@ -2256,7 +2312,7 @@ function elInit() {
     else if (b.dataset.elrecent) elOpenRecent(Number(b.dataset.elrecent));
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
-    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, openfile: () => openJson(), csv: elCsv, zeitcsv: elZeitCsv, projview: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
+    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, openfile: () => openJson(), csv: elCsv, zeitcsv: elZeitCsv, projview: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { if (!EL_S.hub.hidden && EL_S.tab === "zeit") { $("#el-zh")?.focus(); return; } EL_S.tab = "projekte"; EL_S.pview = true; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
       hand: elHand, gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("keydown", (e) => { // Reiter mit Pfeiltasten (Roving-Tabindex)
@@ -2282,7 +2338,7 @@ function elInit() {
   hub.addEventListener("dragend", () => { EL_S.drag = null; for (const x of hub.querySelectorAll(".el-drag, .el-over")) x.classList.remove("el-drag", "el-over"); });
   hub.addEventListener("change", (e) => { if (e.target.dataset?.eltip !== undefined) { elTipSet(e.target.checked); return; } const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); else if (e.target.dataset?.elf) { EL_S.pf[e.target.dataset.elf] = e.target.value; EL_S.sel?.clear(); elHub(true, { keepFocus: true }); } });
   hub.addEventListener("input", (e) => { if (e.target.id === "el-pf-mail") EL_S.pfMail = e.target.value; else if (e.target.id === "el-pf-pw") EL_S.pfPw = e.target.value; });
-  hub.addEventListener("submit", (e) => { e.preventDefault(); if (e.target.id === "el-pf-form") elProfileLogin(); else elTimeAdd(); });
+  hub.addEventListener("submit", (e) => { e.preventDefault(); if (e.target.id === "el-pf-form") elProfileLogin(); else if (e.target.id === "el-zform") elZeitAdd(); else elTimeAdd(); });
   adrInit(hub);
   hub.addEventListener("keydown", (e) => { const r = e.key === "Enter" && e.target.closest?.("[data-elz]"); if (r) { e.preventDefault(); elZeitResolve(r.dataset.elz, true); } }); // Enter in der Zeile übernimmt
   hub.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches?.("input[data-elp]")) { e.preventDefault(); e.target.blur(); } }); // Enter übernimmt
@@ -2291,6 +2347,12 @@ function elInit() {
     elZeitDoc({ file: !EL_S.fromOnline });
     if (EL_S.fromOnline) { elCurT = null; return; } // aus der Online-Ablage geöffnet: keine Datei, nicht unter „zuletzt geöffnet“
     E.recentAdd({ file: e.detail.file, name: elName(), status: E.statusOf(S.doc), handle: e.detail.handle || null, sum: E.projSummary(S.doc) }).then((t) => { elCurT = t; EL_S.sel?.clear(); if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); });
+  });
+  $("#el-ptabs").addEventListener("click", (e) => { const k = e.target.closest("[data-eltabgo]")?.dataset.eltabgo; if (k) elTabGo(k); });
+  $("#el-ptabs").addEventListener("keydown", (e) => { // Tabs mit Pfeiltasten (Roving-Tabindex)
+    const t = e.target.closest?.(".el-ptab"); if (!t || e.altKey || e.metaKey || e.ctrlKey) return;
+    const all = [...$("#el-ptabs").querySelectorAll(".el-ptab")], i = all.indexOf(t), n = e.key === "ArrowRight" ? (i + 1) % all.length : e.key === "ArrowLeft" ? (i + all.length - 1) % all.length : e.key === "Home" ? 0 : e.key === "End" ? all.length - 1 : -1;
+    if (n < 0) return; e.preventDefault(); e.stopPropagation(); elTabGo(all[n].dataset.eltabgo); document.getElementById(all[n].id)?.focus();
   });
   elZeitInit(); elSync(); elHub(true);
   if (S.shared) elShareLoad();
@@ -2319,7 +2381,7 @@ function elHub(show, { keepFocus = false, tab = null } = {}) {
     if (elTabLive() && EL_S.tab !== "profil" && !S.shared && cloudUser() && EL_S.onlist == null && !EL_S.onbusy && !EL_S.autoTried) { EL_S.autoTried = true; elOnlineList(); } // einmal je Anmeldung automatisch laden
   }
   h.hidden = !show; document.body.classList.toggle("el-hubopen", show);
-  document.body.classList.toggle("el-hublist", show && !S.shared && !(EL_S.tab === "projekte" && EL_S.pview)); // Projekte, Zeit, Profil: Kopfleiste ohne Projektname, Datei-Menü und Speicherstand (CJ 21.10.2026)
+  elBarSync(); // Zeile 2: Tabs, Chip, sichtbare Teile je Ansicht (data-elbar)
   $("#btn-new").title = show ? "Neues Projekt anlegen" : "Neues Dokument: Schema, Disposition oder Stringplan";
   $("#el-crumb").innerHTML = show ? `<span class="el-hubtitle">Projektübersicht</span>${E.statusPill(E.statusOf(S.doc))}` : E.crumbHTML(elMod(), E.statusOf(S.doc), modName(S.doc, elMod()));
   if (f) h.querySelector(f)?.focus(); else if (keepFocus) { /* Fokus nicht auf eine Kachel springen lassen */ } else if (show) h.querySelector(".el-tile")?.focus(); else svg.focus();
@@ -2510,7 +2572,41 @@ function elZeitData() {
   const mon = EL_S.week || E.weekStart(elDay(Date.now())), on = S.doc.project?.online?.id;
   const items = (EL_S.onlist || []).map((e) => e.id === on ? { id: e.id, name: e.name, time: S.doc.project?.time || [], local: true, auto: E.autoOpen(S.doc).length }
     : { id: e.id, name: e.name, time: Array.isArray(e.pt) ? e.pt : "pt" in e ? [] : null, auto: E.autoOpenN(e.pa) }); // pt fehlt ganz = alte Abfrage: Stunden unbekannt
-  return { items, mon, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, loaded: EL_S.onlist != null, at: EL_S.onAt };
+  return { items, mon, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, loaded: EL_S.onlist != null, at: EL_S.onAt, pick: EL_S.zp || on || "", day: EL_S.zd || "" };
+}
+// Zeit-Reiter (CJ 21.10.2026): Klick auf ein Projekt öffnet es. Das offene Projekt zeigt seine Projektseite, ein anderes wird aus der Online-Ablage geladen
+function elZeitOpen(id) {
+  if (id === S.doc.project?.online?.id) { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); return; }
+  elOnlineOpen(id);
+}
+// Zeit direkt im Reiter erfassen, ohne das Projekt zu öffnen (nur Online-Projekte). Gleich gespeichert: das offene Projekt bekommt den
+// Eintrag in die Datei (wie im Projekt, sonst hätte die Datei einen älteren Online-Stand), jedes andere direkt online.
+async function elZeitAdd() {
+  const id = $("#el-zp").value, d = $("#el-zd").value, h = Number($("#el-zh").value.trim().replace(",", ".")), n = $("#el-zn").value.trim();
+  if (!id) { toast("Bitte ein Projekt wählen.", "error"); $("#el-zp").focus(); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { toast("Bitte ein Datum wählen.", "error"); return; }
+  if (!(h > 0 && h <= 24)) { toast("Stunden zwischen 0 und 24 eingeben, z. B. 1,5.", "error"); $("#el-zh").focus(); return; }
+  const e = { d, h: Math.round(h * 100) / 100, n };
+  EL_S.zp = id; // gewähltes Projekt bleibt für den nächsten Eintrag
+  if (id === S.doc.project?.online?.id) {
+    change(() => { (elProj().time ||= []).push(e); }, { panel: false });
+    elHub(true, { keepFocus: true }); $("#el-zh")?.focus();
+    toast(`${E.fmtH(e.h)} h im offenen Projekt eingetragen. Mit dem Projekt speichern (⌘S).`);
+    return;
+  }
+  if (EL_S.zbusy) return;
+  EL_S.zbusy = true; EL_S.zd = d; const btn = $("#el-zform [type=submit]"); if (btn) btn.disabled = true; // Eingaben bleiben stehen, bis es gespeichert ist
+  let ok = false;
+  try {
+    const r = await projTimeAdd(id, e);
+    if (r) {
+      const row = (EL_S.onlist || []).find((x) => x.id === id);
+      if (row) { row.pt = r.time; row.updated_at = r.at; }
+      toast(`${E.fmtH(e.h)} h bei „${row?.name || "Projekt"}“ eingetragen und online gespeichert.`); ok = true;
+    }
+  } catch (err) { toast(err.message || String(err), "error"); }
+  finally { EL_S.zbusy = false; if (btn?.isConnected) btn.disabled = false; }
+  if (ok && !EL_S.hub.hidden && EL_S.tab === "zeit") { elHub(true, { keepFocus: true }); $("#el-zh")?.focus(); } // Tabelle und Chip mit dem neuen Eintrag, Stunden und Notiz leer
 }
 function elZeitCsv() { const d = elZeitData(); download(`Zeit_Woche_${d.mon}.csv`, E.timeWeekCsv(E.timeWeek(d.items, d.mon)), "text/csv"); toast("Wochenzeit als CSV in den Download-Ordner geladen."); }
 function elCsv() { download(`${baseName()}_Zeit.csv`, E.timeCsv(S.doc), "text/csv"); toast("Zeit als CSV in den Download-Ordner geladen."); }

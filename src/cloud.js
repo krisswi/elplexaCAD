@@ -181,6 +181,23 @@ export async function projOpen(id) {
   return doc;
 }
 
+// Zeit direkt eintragen (Zeit-Reiter, CJ 21.10.2026), ohne das Projekt zu öffnen: Zeile lesen, Eintrag anhängen, nur schreiben, wenn sie
+// inzwischen niemand geändert hat (updated_at), sonst einmal neu lesen. PDF bleiben unberührt (data hält nur Verweise). Gibt { time, at } zurück, null bei Abbruch.
+export async function projTimeAdd(id, entry) {
+  for (let i = 0; i < 2; i++) {
+    const r = await rest(`projects?id=eq.${encodeURIComponent(id)}&select=data,updated_at`);
+    if (!r) return null;
+    if (!r.length) throw new Error("Dieses Online-Projekt gibt es nicht mehr.");
+    const { data, updated_at } = r[0], p = (data.project ||= {}), time = [...(Array.isArray(p.time) ? p.time : []), entry];
+    p.time = time;
+    const at = new Date().toISOString();
+    const w = await rest(`projects?id=eq.${encodeURIComponent(id)}&updated_at=eq.${encodeURIComponent(updated_at)}&select=updated_at`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ data, updated_at: at }) });
+    if (w === null) return null;
+    if (w.length) return { time, at: w[0].updated_at };
+  }
+  throw new Error("Das Projekt wurde gerade an einem anderen Ort gespeichert. Bitte nochmals eintragen.");
+}
+
 // Online-Projekt löschen, danach PDF aufräumen. null bei Abbruch.
 export async function projDelete(id) {
   const r = await rest(`projects?id=eq.${encodeURIComponent(id)}&select=id`, { method: "DELETE", headers: { Prefer: "return=representation" } });

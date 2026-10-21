@@ -19,12 +19,12 @@ with sync_playwright() as p:
     vis = lambda s: page.is_visible(s)
     page.goto(URL); page.wait_for_timeout(300)
     page.evaluate("localStorage.removeItem('elplexacad.tipp')"); page.reload(); page.wait_for_timeout(300)
-    check("Pfad und nur Reiter, die etwas tun: Projekte (gewählt), Zeit; Profil nur über den Konto-Kreis", vis(".el-subbar") and "Projekte" in page.inner_text(".el-path") and page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)") == ["Projekte", "Zeit"] and page.get_attribute("#el-tab-projekte", "aria-selected") == "true")
+    check("Zeile 1 nur Bereiche, die etwas tun: Projekte, Zeit; Zeile 2 Tab des Projekts gewählt; Profil nur über den Konto-Kreis", vis(".el-r2") and page.evaluate("[...document.querySelectorAll('.el-navbtn')].map((t) => t.textContent)") == ["Projekte", "Zeit"] and page.get_attribute("#el-tab-proj", "aria-selected") == "true")
     check("Tipp-Zeile da", vis(".el-tip") and "Tipp" in page.inner_text(".el-tip"))
     page.screenshot(path=str(OUT / "u2b_1440.png"))
     order = page.evaluate("""() => { const n = (s) => document.querySelector(s), f = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-      return [f(n('#topbar'), n('.el-subbar')), f(n('.el-subbar'), n('.el-hubin')), f(n('.el-hubin'), n('.el-tip'))]; }""")
-    check("Tab-Reihenfolge: Kopfleiste, Reiter, Inhalt, Tipp-Zeile", all(order), order)
+      return [f(n('.el-r1'), n('.el-r2')), f(n('#topbar'), n('.el-hubin')), f(n('.el-hubin'), n('.el-tip'))]; }""")
+    check("Tab-Reihenfolge: Zeile 1, Zeile 2, Inhalt, Tipp-Zeile", all(order), order)
 
     # Kürzel-Liste
     page.click(".el-helpbtn"); page.wait_for_timeout(200)
@@ -46,11 +46,11 @@ with sync_playwright() as p:
     page.evaluate("localStorage.removeItem('elplexacad.tipp')"); page.reload(); page.wait_for_timeout(300)
 
     # Esc: erst Menü, dann Übersicht bleibt
-    page.click("#el-file"); page.wait_for_timeout(120); page.keyboard.press("Escape"); page.wait_for_timeout(150)
-    check("Esc schliesst das Menü, Übersicht bleibt", not vis("#el-filemenu") and vis("#el-hub"))
+    page.click("#btn-export"); page.wait_for_timeout(120); page.keyboard.press("Escape"); page.wait_for_timeout(150)
+    check("Esc schliesst das Menü, Übersicht bleibt", not vis("#export-menu") and vis("#el-hub"))
     # schmal: heutiges Verhalten, keine zweite Stufe
     page.set_viewport_size({"width": 800, "height": 900}); page.wait_for_timeout(250)
-    check("Unter 860 px: keine zweite Stufe", not vis(".el-subbar") and not vis(".el-tip"))
+    check("Unter 860 px: Tabs als ein Knopf mit dem Namen, keine Tipp-Zeile", vis("#el-tabsel") and not vis("#el-ptabs") and not vis(".el-tip"))
     check("keine Konsolenfehler", not errors, errors)
     b.close()
 print("Rot:" + str(fails) if fails else "alle ok")

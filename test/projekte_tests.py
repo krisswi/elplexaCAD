@@ -46,7 +46,7 @@ with sync_playwright() as p:
     vis = lambda s: page.is_visible(s)
     cnt = lambda: page.locator(".el-ptile").count()
     page.goto(URL); page.wait_for_timeout(300)
-    check("Reiter Projekt, Projekte, Zeit", [t for t in page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)")] == ["Projekte", "Zeit", "Profil"])
+    check("Reiter Projekte, Zeit (Profil nur über den Konto-Kreis)", [t for t in page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)")] == ["Projekte", "Zeit"])
     page.click("#el-tab-projekte"); page.wait_for_timeout(250)
     check("Nur das geöffnete Projekt: erste Kachel mit «geöffnet»", cnt() == 1 and "geöffnet" in page.inner_text(".el-ptile.cur"))
     page.select_option('[data-elf="filter"]', "Abgeschlossen"); page.wait_for_timeout(200)

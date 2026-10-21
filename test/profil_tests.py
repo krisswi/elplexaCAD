@@ -35,7 +35,7 @@ with sync_playwright() as p:
     vis = lambda s: page.is_visible(s)
     tabs = lambda: page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.textContent)")
     page.goto(URL); page.wait_for_timeout(300)
-    check("Reihenfolge der Reiter: Projekte, Zeit, Profil, kein Reiter «Projekt»", tabs() == ["Projekte", "Zeit", "Profil"])
+    check("Reihenfolge der Reiter: Projekte, Zeit; kein Reiter «Projekt», Profil nur über den Konto-Kreis (CJ 21.10.2026)", tabs() == ["Projekte", "Zeit"])
     check("Start: das offene Projekt direkt geöffnet, Pfad «Projekte › Name»", vis(".el-mods") and "Projekte" in page.inner_text(".el-path") and "›" in page.inner_text(".el-path") and vis(".el-pathlink"))
     page.click(".el-pathlink"); page.wait_for_timeout(250)
     check("Klick auf «Projekte» im Pfad: Projektliste, erste Kachel «geöffnet»", vis(".el-pwrap") and not vis(".el-mods") and "geöffnet" in page.inner_text(".el-ptile.cur"))
@@ -48,7 +48,7 @@ with sync_playwright() as p:
 
     # Profil als Gast
     page.click("#el-acct"); page.wait_for_timeout(200)
-    check("Konto-Kreis zeigt «Gast» und führt zum Profil", page.get_attribute("#el-tab-profil", "aria-selected") == "true" and "Gast" in page.inner_text("#el-acct"))
+    check("Konto-Kreis zeigt «Gast» und führt zum Profil", vis(".el-profile") and "Gast" in page.inner_text("#el-acct"))
     t = page.inner_text(".el-profile")
     check("Profil: Gast-Hinweis, Anmeldung, Firma (noch nicht möglich), Tipp-Zeile", "Gast" in t and vis("#el-pf-form") and page.is_disabled(".el-profile select") and "Firma" in t and vis("[data-eltip]"))
     check("Altes Anmeldefeld ist weg: kein Anmelden im Bereich Online, kein Konto-Menü", not vis('[data-elact="login"]') and page.locator("#el-acctmenu").count() == 0)
@@ -69,7 +69,7 @@ with sync_playwright() as p:
     page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(400)
     check("Kein Netz: Meldung «Keine Verbindung», weiter Gast", "Keine Verbindung" in page.inner_text(".el-profile .el-perr") and "Gast" in page.inner_text("#el-acct"), page.inner_text(".el-profile")[:200])
     check("Kein Netz: E-Mail bleibt stehen", page.input_value("#el-pf-mail") == "test@beispiel.ch")
-    page.fill("#el-pf-pw", "tipp"); page.evaluate("window.dispatchEvent(new Event('resize'))"); page.click("#el-tab-zeit"); page.click("#el-tab-profil"); page.wait_for_timeout(200)
+    page.fill("#el-pf-pw", "tipp"); page.evaluate("window.dispatchEvent(new Event('resize'))"); page.click("#el-tab-zeit"); page.click("#el-acct"); page.wait_for_timeout(200)
     check("E-Mail bleibt auch beim Wechsel der Reiter stehen", page.input_value("#el-pf-mail") == "test@beispiel.ch")
     # richtig
     srv["mode"] = "ok"
@@ -79,15 +79,18 @@ with sync_playwright() as p:
     page.click("#el-pf-logout"); page.wait_for_timeout(400)
     check("Abmelden: wieder Gast mit Anmeldeformular", vis("#el-pf-form") and "Gast" in page.inner_text("#el-acct"))
     # Reiter: Barrierefreiheit, Pfeiltasten, Tasten 1 bis 9 nur bei Modulkacheln
-    check("Reiterfläche: tabpanel mit aria-labelledby auf den gewählten Reiter, Reiter mit aria-controls", page.get_attribute("#el-tabpanel", "role") == "tabpanel" and page.get_attribute("#el-tabpanel", "aria-labelledby") == "el-tab-profil" and page.get_attribute("#el-tab-profil", "aria-controls") == "el-tabpanel")
-    check("Roving-Tabindex: nur der gewählte Reiter ist per Tab erreichbar", page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.tabIndex)") == [-1, -1, 0])
-    page.focus("#el-tab-profil"); page.keyboard.press("ArrowLeft"); page.wait_for_timeout(250)
-    check("Pfeil links: Reiter Zeit gewählt und fokussiert", page.get_attribute("#el-tab-zeit", "aria-selected") == "true" and page.evaluate("document.activeElement.id") == "el-tab-zeit")
-    page.keyboard.press("Home"); page.wait_for_timeout(250)
-    check("Pos1: erster Reiter (Projekte)", page.get_attribute("#el-tab-projekte", "aria-selected") == "true")
+    # Profil ohne Reiter (CJ 21.10.2026): Fläche mit eigenem Namen, Pfad «Profil», kein Reiter gewählt
+    check("Profil: kein Reiter Profil, Fläche als Bereich «Profil», Pfad «Profil»", page.locator("#el-tab-profil").count() == 0 and page.get_attribute("#el-tabpanel", "aria-label") == "Profil" and "Profil" in page.inner_text(".el-path") and page.evaluate("[...document.querySelectorAll('.el-tab')].every((t) => t.getAttribute('aria-selected') === 'false')"))
+    page.click("#el-tab-zeit"); page.wait_for_timeout(200)
+    check("Reiterfläche: tabpanel mit aria-labelledby auf den gewählten Reiter, Reiter mit aria-controls", page.get_attribute("#el-tabpanel", "role") == "tabpanel" and page.get_attribute("#el-tabpanel", "aria-labelledby") == "el-tab-zeit" and page.get_attribute("#el-tab-zeit", "aria-controls") == "el-tabpanel")
+    check("Roving-Tabindex: nur der gewählte Reiter ist per Tab erreichbar", page.evaluate("[...document.querySelectorAll('.el-tab')].map((t) => t.tabIndex)") == [-1, 0])
+    page.focus("#el-tab-zeit"); page.keyboard.press("ArrowLeft"); page.wait_for_timeout(250)
+    check("Pfeil links: Reiter Projekte gewählt und fokussiert", page.get_attribute("#el-tab-projekte", "aria-selected") == "true" and page.evaluate("document.activeElement.id") == "el-tab-projekte")
     page.keyboard.press("End"); page.wait_for_timeout(250)
+    check("Ende: letzter Reiter (Zeit)", page.get_attribute("#el-tab-zeit", "aria-selected") == "true")
+    page.click("#el-acct"); page.wait_for_timeout(200)
     page.evaluate("document.activeElement.blur()"); page.keyboard.press("1"); page.wait_for_timeout(250)
-    check("Taste 1 im Reiter Profil öffnet kein Modul", vis("#el-hub") and page.get_attribute("#el-tab-profil", "aria-selected") == "true")
+    check("Taste 1 im Reiter Profil öffnet kein Modul", vis("#el-hub") and vis(".el-profile"))
     page.click("#el-tab-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)
     check("Statuspille ist kein Knopf im Knopf (kein role=button)", page.locator(".el-mst[role=button]").count() == 0 and page.locator(".el-tile .el-mst[data-elmst]").count() >= 1)
     page.click("#el-tile-schema", button="right"); page.click('[data-elmodact="st"]'); page.wait_for_timeout(250)
@@ -95,7 +98,7 @@ with sync_playwright() as p:
     page.keyboard.press("Escape"); page.wait_for_timeout(150)
 
     # Anmeldung über das Fenster (Feedback ohne Login): der Konto-Kreis zeichnet sich von selbst neu
-    page.click("#el-tab-profil"); page.wait_for_timeout(150)
+    page.click("#el-acct"); page.wait_for_timeout(150)
     check("Wieder Gast", "Gast" in page.inner_text("#el-acct"))
     page.click("#el-fb"); page.wait_for_timeout(300)
     page.fill('.modal [data-f="e"]', "test@beispiel.ch"); page.fill('.modal [data-f="p"]', "attrappe"); page.click(".modal [data-ok]"); page.wait_for_timeout(600)
@@ -108,7 +111,7 @@ with sync_playwright() as p:
     page.click(".el-mod-open, #el-tile-schema") if vis("#el-tile-schema") else None
     page.wait_for_timeout(250)
     page.click("#el-acct"); page.wait_for_timeout(250)
-    check("Konto-Kreis aus dem Modul: Übersicht mit Reiter Profil", vis("#el-hub") and page.get_attribute("#el-tab-profil", "aria-selected") == "true")
+    check("Konto-Kreis aus dem Modul: Übersicht mit Reiter Profil", vis("#el-hub") and vis(".el-profile"))
     check("keine Konsolenfehler", not errors, errors[:3])
     b.close()
 print("Rot:" + str(fails) if fails else "alle ok")

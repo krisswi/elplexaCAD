@@ -49,7 +49,7 @@ with sync_playwright() as p:
     check("Konto-Kreis zeigt «Gast»", "Gast" in page.inner_text("#el-acct"))
     page.click("#el-acct"); page.wait_for_timeout(200)
     t = page.inner_text(".el-profile")
-    check("Konto-Kreis führt zum Reiter Profil: Gast-Hinweis, Anmeldeformular", page.get_attribute("#el-tab-profil", "aria-selected") == "true" and "Gast" in t and vis("#el-pf-form"), t[:120])
+    check("Konto-Kreis führt zum Reiter Profil: Gast-Hinweis, Anmeldeformular", vis(".el-profile") and "Gast" in t and vis("#el-pf-form"), t[:120])
     page.screenshot(path=str(OUT / "kf_konto.png"))
 
     # Platz: Hauptknöpfe bleiben im Bild, Leiste läuft nicht über

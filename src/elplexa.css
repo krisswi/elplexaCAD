@@ -255,6 +255,8 @@ body.el-sharewait .filechip, body.el-sharewait #el-crumb .el-st { display: none;
 .el-acctbtn:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) { .el-acctbtn:hover { border-color: var(--muted); } }
 #topbar.tb-5 #el-savetxt { display: none; }
+/* Projekte, Zeit, Profil (CJ 21.10.2026): Projektname, Datei-Menü, Speicherstand und Knöpfe des Projekts nur im Projekt */
+body.el-hublist #el-file, body.el-hublist #topbar .filechip, body.el-hublist #el-crumb, body.el-hublist #el-savestate, body.el-hublist #btn-save, body.el-hublist #btn-undo, body.el-hublist #btn-redo, body.el-hublist #btn-search, body.el-hublist #topbar .sep, body.el-hublist #topbar .menuwrap { display: none !important; }
 body.el-shared #el-file, body.el-shared #el-savestate, body.el-shared #el-acct { display: none !important; }
 
 /* Zweite Stufe der Übersicht (Etappe 2b, CJ 20.10.2026): Pfad und Reiter oben, Tipp-Zeile unten; unter 860 px wie bisher ohne */

@@ -2217,13 +2217,14 @@ function elInit() {
   const sp = mm.cloneNode(); sp.id = "el-shpop"; sp.setAttribute("aria-label", "Blätter des Moduls"); $("#app").append(sp); // „+N“ der Modulkarte (CJ 18.10.2026)
   EL_S.shPop = makeMenu(sp, { left: true, beforeShow: () => { sp.innerHTML = E.sheetPopHTML(S.doc, EL_S.popMod, sheetLabel); } });
   const pc = mm.cloneNode(); pc.id = "el-projctx"; pc.setAttribute("aria-label", "Projekt");
-  pc.innerHTML = `<div class="ctx-head"></div>` + [["open", "list", "Öffnen", ""], ["rm", "trash", "Aus der Liste entfernen", "Nur der Eintrag, die Datei bleibt"]]
-    .map(([a, ic, t, sub]) => `<button class="mi" role="menuitem" data-elprojact="${a}" tabindex="-1"><span class="ic">${R.icons[ic]}</span><span class="mt"><span class="mh">${t}</span>${sub ? `<span class="ms">${sub}</span>` : ""}</span></button>`).join("");
+  pc.innerHTML = `<div class="ctx-head"></div>` + [["open", "list", "Öffnen", ""], ["rm", "trash", "Aus der Liste entfernen", "Nur der Eintrag, die Datei bleibt"], ["share", "list", "Link teilen …", "Nur ansehen, ohne Login"], ["odel", "trash", "Online löschen", "Nur die Online-Kopie, Dateien bleiben"]]
+    .map(([a, ic, t, sub]) => `<button class="mi${a === "odel" ? " danger" : ""}" role="menuitem" data-elprojact="${a}" tabindex="-1"><span class="ic">${R.icons[ic]}</span><span class="mt"><span class="mh">${t}</span>${sub ? `<span class="ms">${sub}</span>` : ""}</span></button>`).join("");
   $("#app").append(pc);
   EL_S.projCtx = makeMenu(pc, { left: true, beforeShow: () => {
     const k = EL_S.ctxProj || "", loc = k.startsWith("l:");
     pc.querySelector(".ctx-head").textContent = loc ? "Lokales Projekt" : "Online-Projekt";
     pc.querySelector('[data-elprojact="rm"]').hidden = !loc;
+    for (const a of ["share", "odel"]) pc.querySelector(`[data-elprojact="${a}"]`).hidden = loc; // Online-Projekte (vorher Liste im Projekt, CJ 21.10.2026)
   } });
   pc.addEventListener("click", (e) => { const a = e.target.closest("[data-elprojact]")?.dataset.elprojact; if (a) elProjAct(a); });
   const mp = mm.cloneNode(); mp.id = "el-mstpop"; mp.setAttribute("aria-label", "Modulstatus"); $("#app").append(mp);
@@ -2253,7 +2254,7 @@ function elInit() {
     else if (b.dataset.elrecent) elOpenRecent(Number(b.dataset.elrecent));
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
-    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv, zeitcsv: elZeitCsv, projview: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
+    else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, openfile: () => openJson(), csv: elCsv, zeitcsv: elZeitCsv, projview: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
       gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("keydown", (e) => { // Reiter mit Pfeiltasten (Roving-Tabindex)
@@ -2316,6 +2317,7 @@ function elHub(show, { keepFocus = false, tab = null } = {}) {
     if (elTabLive() && EL_S.tab !== "profil" && !S.shared && cloudUser() && EL_S.onlist == null && !EL_S.onbusy && !EL_S.autoTried) { EL_S.autoTried = true; elOnlineList(); } // einmal je Anmeldung automatisch laden
   }
   h.hidden = !show; document.body.classList.toggle("el-hubopen", show);
+  document.body.classList.toggle("el-hublist", show && !S.shared && !(EL_S.tab === "projekte" && EL_S.pview)); // Projekte, Zeit, Profil: Kopfleiste ohne Projektname, Datei-Menü und Speicherstand (CJ 21.10.2026)
   $("#btn-new").title = show ? "Neues Projekt anlegen" : "Neues Dokument: Schema, Disposition oder Stringplan";
   $("#el-crumb").innerHTML = show ? `<span class="el-hubtitle">Projektübersicht</span>${E.statusPill(E.statusOf(S.doc))}` : E.crumbHTML(elMod(), E.statusOf(S.doc), modName(S.doc, elMod()));
   if (f) h.querySelector(f)?.focus(); else if (keepFocus) { /* Fokus nicht auf eine Kachel springen lassen */ } else if (show) h.querySelector(".el-tile")?.focus(); else svg.focus();
@@ -2633,11 +2635,11 @@ async function elFeedback() {
 // Online-Projekt löschen (nur die Online-Kopie, Dateien bleiben). Zeigt die offene Datei darauf, fällt die Verknüpfung weg.
 function elOnlineDelete(id) {
   return elOnline(async () => {
-    const e = EL_S.onlist?.find((x) => x.id === id);
+    const e = EL_S.onlist?.find((x) => x.id === id) || (S.doc.project?.online?.id === id ? { name: elName() } : null); // auch aus dem Projekt, ohne geladene Liste
     if (!(await confirmDialog("Online-Projekt löschen?", `„${e?.name || "Projekt"}“ wird online gelöscht, samt PDF, die kein anderes Online-Projekt braucht. Dateien auf dem Rechner bleiben.`, "Online löschen"))) return;
     if (!(await projDelete(id))) return;
     if (S.doc.project?.online?.id === id) delete S.doc.project.online;
-    EL_S.onlist = EL_S.onlist.filter((x) => x.id !== id);
+    if (EL_S.onlist) EL_S.onlist = EL_S.onlist.filter((x) => x.id !== id);
     toast(`Online gelöscht: „${e?.name || "Projekt"}“.`);
   });
 }
@@ -2678,6 +2680,8 @@ function elProjCtx(el) { EL_S.ctxProj = el.dataset.projctx; EL_S.projCtx.show(el
 async function elProjAct(a) {
   const k = EL_S.ctxProj || "";
   if (a === "open") { k.startsWith("l:") ? elOpenRecent(Number(k.slice(2))) : elOnlineOpen(k.slice(2)); return; }
+  if (a === "share" && k.startsWith("o:")) { elShareDialog(k.slice(2)); return; }
+  if (a === "odel" && k.startsWith("o:")) { elOnlineDelete(k.slice(2)); return; }
   if (a === "rm" && k.startsWith("l:")) { await E.recentDrop(Number(k.slice(2))); EL_S.sel?.clear(); elHub(true, { keepFocus: true }); toast("Aus der Liste entfernt. Die Datei bleibt."); }
 }
 async function elSelRemove() {

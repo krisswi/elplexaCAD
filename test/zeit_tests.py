@@ -46,7 +46,7 @@ with sync_playwright() as p:
         with page.expect_file_chooser() as fc: page.keyboard.press("Meta+o")
         fc.value.set_files(str(path)); page.wait_for_timeout(300)
 
-    page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(150)
+    page.click("#el-tab-projekte"); page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(150)
     page.fill('.modal [data-f="0"]', "Zeittest"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     check("Neues Projekt: Schema offen, noch keine Zeit", not hub() and secs() == 0)
 
@@ -54,8 +54,8 @@ with sync_playwright() as p:
     work(4); check("4 min Arbeit = 4 min", near(secs(), 240), secs())
     page.clock.run_for(20 * MIN); check("20 min Leerlauf: nur 5 min nach der letzten Bewegung gezählt", near(secs(), 480), secs())
     work(2); check("weiter 2 min: 10 min, Leerlauf über 5 min zählt nicht", near(secs(), 600), secs())
-    s0 = secs()
     page.evaluate("document.hasFocus = () => false; window.dispatchEvent(new Event('blur'))")
+    s0 = secs()  # erst nach dem Blur messen: die Uhr läuft in echter Zeit weiter, auf langsamen Rechnern zählt sonst noch ein Takt davor
     work(3); check("Fenster im Hintergrund: keine Zeit", abs(secs() - s0) < 1, (s0, secs()))
     page.evaluate("delete document.hasFocus")
     s0 = secs(); key("0"); work(2)

@@ -10,9 +10,12 @@ const SESSION_KEY = "schemacad.cloud.v1";
 
 let sess = null;
 try { sess = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { /* ohne Speicher: Anmeldung gilt nur bis zum Schliessen */ }
+let onSession = null; // elplexaCAD: Konto-Kreis neu zeichnen, wenn sich die Anmeldung ändert (Fenster, abgelaufen, Abmelden im Katalog)
+export const cloudOnSession = (fn) => { onSession = fn; };
 function keep(s) {
   sess = s;
   try { if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); } catch { /* ohne Speicher weiterarbeiten */ }
+  try { onSession?.(); } catch { /* Anzeige darf die Anmeldung nicht stören */ }
 }
 
 async function call(path, opt = {}) {
@@ -97,6 +100,8 @@ export async function cloudMenu(table, what, items, merge) {
 export const PROJ_MAX = 5_000_000; // Zeichen Projekt-JSON ohne PDF, gleiche Grenze in der Datenbank
 export const PDF_MAX = 52428800; // Bytes je PDF (50 MiB), Grenze des Buckets (Gratis-Plan)
 export const cloudUser = () => sess?.email || null;
+// Anmeldung aus dem Reiter Profil (ohne Fenster). Wirft bei falschen Daten (status 400) oder fehlender Verbindung.
+export const cloudSignIn = (email, password) => token("password", { email, password });
 export const cloudLogin = async () => !!(await ensure()); // Anmelden (Knopf in der Übersicht); true = angemeldet
 export async function cloudLogout() {
   try { if (sess) await call("/auth/v1/logout", { method: "POST", headers: { Authorization: `Bearer ${sess.access_token}` } }); } catch { /* lokal trotzdem abmelden */ }
@@ -112,7 +117,12 @@ async function storage(path, opt = {}) {
 async function sha256(bytes) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join(""); }
 
 // Liste der eigenen Online-Projekte, neueste zuerst. null = Anmeldung abgebrochen.
-export const projList = () => rest("projects?select=id,name,status,updated_at&order=updated_at.desc");
+// Mit pm/pt/pa (nur project.meta, .time, .auto der Zeile, für Objekt, Stunden und vorläufige Zeit, Etappe 3a); lehnt der Server das ab, die alte schlanke Abfrage.
+// Risiko: Postgres liest dafür die jsonb-Spalte data je Zeile trotzdem ganz (bis 5 MB je Projekt); gegen das echte Supabase ungeprüft.
+export async function projList() {
+  try { return await rest("projects?select=id,name,status,updated_at,pm:data->project->meta,pt:data->project->time,pa:data->project->auto&order=updated_at.desc"); }
+  catch (err) { if (err.status !== 400) throw err; return rest("projects?select=id,name,status,updated_at&order=updated_at.desc"); }
+}
 
 // Speichern. doc = geparste Projektdatei, link = { id, at } (zuletzt gespeicherter Online-Stand) oder null.
 // force: Online-Stand überschreiben, auch wenn er neuer ist. Gibt { id, at } zurück, { conflict: at } wenn online neuer, null bei Abbruch.

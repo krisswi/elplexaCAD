@@ -41,9 +41,9 @@ with sync_playwright() as p:
 
     # Start ohne Projekt: immer in der Projektübersicht, keine Startauswahl (CJ 18.10.2026); dann Neues Projekt mit PV
     check("Start ohne Projekt: Projektübersicht, keine Startauswahl", hub() and not page.is_visible(".modal") and "Projektübersicht" in page.inner_text("#el-crumb"))
-    check("Start: Fokus in der Übersicht, „Neues Projekt …“ da", page.evaluate("!!document.activeElement.closest('#el-hub')") and page.is_visible('#el-hub [data-elact="newproj"]'))
+    check("Start: Fokus in der Übersicht, „Neu“ im Datei-Menü da", page.evaluate("!!document.activeElement.closest('#el-hub')") and page.is_visible("#el-file") and page.locator('#el-filemenu [data-elfile="new"]').count() == 1)
     page.screenshot(path=str(OUT / "e1_start.png"))
-    page.click("#btn-new"); page.wait_for_timeout(150) # Knopf „Neu“ in der Übersicht = Neues Projekt (CJ 18.10.2026)
+    page.click("#el-file"); page.click('#el-filemenu [data-elfile="new"]'); page.wait_for_timeout(150) # Knopf „Neu“ in der Übersicht = Neues Projekt (CJ 18.10.2026)
     check("Neu in der Übersicht: Dialog „Neues Projekt“, keine Startauswahl", page.is_visible('.modal [data-f="2"]') and not page.is_visible("[data-start]"))
     page.select_option('.modal [data-f="2"]', "pv"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     d = D()
@@ -213,11 +213,15 @@ with sync_playwright() as p:
     open_file(out); d2 = D()
     check("Projekt mit Name, Status, Zeit: Speichern und Laden gleich", d1 == d2 and d2["project"]["status"] == "Abgegeben" and d2["project"]["time"][0]["h"] == 1.25, d2.get("project"))
     page.wait_for_timeout(300); key("0") if not hub() else None; page.wait_for_timeout(300)
-    rec = page.inner_text("#el-recent")
-    check("Zuletzt geöffnet: Projekt mit Status (ohne Dateizugriff nur Name)", "Projekt Rundlauf" in rec and "Abgegeben" in rec and "Datei wählen" in rec, rec)
+    page.click("#el-tab-projekte"); page.wait_for_timeout(200)  # zuletzt geöffnet steht im Reiter Projekte (CJ 21.10.2026)
+    rec = page.inner_text("#el-tabpanel")
+    check("Zuletzt geöffnet: Projekt mit Status (ohne Dateizugriff nur Name)", "Projekt Rundlauf" in rec and "Abgegeben" in rec, rec)
+    check("Reiter Projekte: Kopfleiste ohne Datei-Menü, Projektname, Speicherstand", all(page.is_hidden(s) for s in ("#el-file", "#topbar .filechip", "#el-savestate", "#btn-save")))
+    page.click("#el-pt-cur"); page.wait_for_timeout(150)
+    check("Im Projekt: Datei-Menü und Speicherstand wieder da, kein Reiter Profil", page.is_visible("#el-file") and page.is_visible("#el-savestate") and page.locator("#el-tab-profil").count() == 0)
     # Neues Projekt: bei ungespeicherten Änderungen nachfragen
     page.fill('#el-hub [data-elp="OBJEKT"]', "geändert"); page.press('#el-hub [data-elp="OBJEKT"]', "Enter"); page.wait_for_timeout(120)
-    page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(150)
+    page.click("#el-tab-projekte"); page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(150)
     page.fill('.modal [data-f="0"]', "EFH Sonnenweg"); page.fill('.modal [data-f="1"]', "Familie Muster"); page.select_option('.modal [data-f="2"]', "dispo")
     page.click(".modal [data-ok]"); page.wait_for_timeout(150)
     asked = page.is_visible(".modal") and "Neu beginnen?" in page.inner_text(".modal")
@@ -252,7 +256,12 @@ with sync_playwright() as p:
             if req.method == "GET":
                 rows = [r for r in srv["rows"].values() if rid is None or r["id"] == rid]
                 if q["select"] == "assets:data->assets": J([{"assets": r["data"].get("assets")} for r in rows]); return
-                J([{k: r[k] for k in q["select"].split(",")} for r in sorted(rows, key=lambda r: r["updated_at"], reverse=True)]); return
+                def col(r, k):  # „alias:data->a->b“ wie PostgREST: Pfad in der Spalte data
+                    if "->" not in k: return r.get(k)
+                    v = r["data"]
+                    for part in k.split("->")[1:]: v = v.get(part) if isinstance(v, dict) else None
+                    return v
+                J([{k.split(":")[0]: col(r, k.split(":")[-1]) for k in q["select"].split(",")} for r in sorted(rows, key=lambda r: r["updated_at"], reverse=True)]); return
             if req.method == "DELETE":
                 r = srv["rows"].pop(rid, None); J([{"id": r["id"]}] if r else []); return
             body = json.loads(req.post_data)
@@ -294,22 +303,24 @@ with sync_playwright() as p:
     toasts = lambda: page.evaluate("[...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' | ')")
     def clear_toasts(): page.evaluate("document.querySelectorAll('#toasts .toast').forEach((t) => t.remove())")
     key("0"); page.wait_for_timeout(150)
-    on = page.inner_text("#el-online")
-    check("Online: Bereich in der Übersicht mit „Online speichern“ und Liste", "Online speichern" in on and "Online-Projekte zeigen" in on, on)
+    check("Online: ohne Anmeldung im Projekt kein Online-Bereich und kein Login-Feld (CJ 21.10.2026)", page.locator("#el-online").count() == 0 and page.locator("#el-hub #el-pf-form").count() == 0)
     check("Online: ohne Klick keine Anfrage an den Server", srv["calls"] == [], srv["calls"])
     check("Online: Datei mit PDF geladen", d0.get("assets", {}).get("a1", {}).get("data") == B64 and d0["project"]["name"] == "PV Online")
     page.screenshot(path=str(OUT / "e13_online_leer.png"))
-    # Speichern mit Anmeldung (Testwerte für die Attrappe)
-    page.click('#el-hub [data-elact="onsave"]'); page.wait_for_timeout(150)
-    check("Online speichern fragt nach Anmeldung", page.is_visible(".modal") and "Anmelden" in page.inner_text(".modal"))
-    page.fill('.modal [data-f="e"]', "test@beispiel.ch"); page.fill('.modal [data-f="p"]', "attrappe"); page.click(".modal [data-ok]"); page.wait_for_timeout(600)
+    # Anmelden über den Konto-Kreis (Profil), dann online speichern (Testwerte für die Attrappe)
+    page.click("#el-acct"); page.wait_for_timeout(150)
+    page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(500)
+    page.click("#el-tab-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)
+    on = page.inner_text("#el-online")
+    check("Angemeldet: Online-Bereich im Projekt mit „Online speichern“", "test@beispiel.ch" in on and "Online speichern" in on, on)
+    page.click('#el-hub [data-elact="onsave"]'); page.wait_for_timeout(600)
     rows = list(srv["rows"].values()); d1 = D()
     r0 = rows[0] if rows else {}
     check("Online gespeichert: eine Zeile mit Name und Status", len(rows) == 1 and r0["name"] == "PV Online" and r0["status"] == "Offerte", rows and {k: r0[k] for k in ("name", "status")})
     check("PDF im Storage unter Konto/SHA-256, Zeile ohne PDF-Inhalt", srv["files"].get(f"{UID}/{SHA}.pdf") == PDF and r0.get("data", {}).get("assets") == {"a1": {"name": "dach.pdf", "type": "application/pdf", "sha": SHA}} and B64 not in json.dumps(r0.get("data")), list(srv["files"]))
     check("Zeile ohne Online-Verknüpfung, Datei mit Verknüpfung", "online" not in r0.get("data", {}).get("project", {}) and d1["project"].get("online") == {"id": r0.get("id"), "at": r0.get("updated_at")}, d1["project"].get("online"))
     on = page.inner_text("#el-online")
-    check("Übersicht: angemeldet, gespeichert, Projekt in der Liste", "test@beispiel.ch" in on and "Online gespeichert am" in on and "PV Online" in on and "dieses Projekt" in on, on)
+    check("Übersicht: angemeldet, gespeichert, Link teilen und Online löschen", "test@beispiel.ch" in on and "Online gespeichert am" in on and "Link teilen" in on and "Online löschen" in on, on)
     check("Datei als geändert markiert (merkt sich den Online-Stand mit ⌘S)", page.evaluate("document.title").startswith("PV Online") and "⌘S" in toasts(), toasts())
     page.screenshot(path=str(OUT / "e14_online_gespeichert.png"))
     # zweites Speichern: gleiche Zeile, PDF nicht nochmals hochladen
@@ -337,8 +348,9 @@ with sync_playwright() as p:
     # Öffnen aus der Liste (erste Zeile) bei ungespeicherter Änderung
     key("0") if not hub() else None; page.wait_for_timeout(100)
     page.select_option('#el-hub [data-elp="status"]', "Abgegeben"); page.wait_for_timeout(120)
-    page.click('#el-hub [data-elact="onlist"]'); page.wait_for_timeout(400)
-    nrec = page.locator("#el-recent .el-rrow").count()
+    nrecent = lambda: page.evaluate("new Promise((res) => { const r = indexedDB.open('elplexacad', 1); r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('recent'); q.onsuccess = () => res((q.result || []).length); }; })")
+    page.click("#el-tab-projekte"); page.click('#el-hub [data-elact="onlist"]'); page.wait_for_timeout(400)
+    nrec = nrecent()
     page.click(f'#el-hub [data-elonline="{ids[0]}"]'); page.wait_for_timeout(200)
     asked = page.is_visible(".modal") and "Ungespeicherte Änderungen" in page.inner_text(".modal")
     page.click('.modal [data-r="1"]'); page.wait_for_timeout(600)
@@ -347,21 +359,29 @@ with sync_playwright() as p:
     check("Online öffnen: gleiche Blätter, PDF zurück, Status und Zeit wie online", d3["sheets"] == d0["sheets"] and d3["assets"] == d0["assets"] and d3["project"]["status"] == "Offerte" and d3["project"]["time"] == d0["project"]["time"], d3.get("project"))
     check("Online öffnen: Verknüpfung auf die Zeile, Projektname", d3["project"]["online"] == {"id": ids[0], "at": srv["rows"][ids[0]]["updated_at"]} and page.inner_text("#file-name") == "PV Online", [d3["project"].get("online"), page.inner_text("#file-name")])
     page.wait_for_timeout(300)
-    check("Online geöffnet: kein neuer Eintrag unter „zuletzt geöffnet“", nrec > 0 and page.locator("#el-recent .el-rrow").count() == nrec, [nrec, page.inner_text("#el-recent")])
+    check("Online geöffnet: kein neuer Eintrag unter „zuletzt geöffnet“", nrec > 0 and nrecent() == nrec, [nrec, nrecent()])
     PKEY = f"{UID}/{SHA}.pdf"
     check("Junge PDF bleibt beim Aufräumen nach dem Speichern", PKEY in srv["files"])
     srv["ftime"][PKEY] = "2026-10-01T00:00:00Z"  # PDF älter als eine Stunde
     # Online löschen: zweites Projekt (PDF noch vom ersten gebraucht), dann das offene erste
-    page.click(f'#el-hub [data-elodel="{ids[1]}"]'); page.wait_for_timeout(200)
+    # Online löschen (CJ 21.10.2026): anderes Projekt per Rechtsklick im Reiter Projekte, das offene im Projekt
+    def odel_ctx(pid): page.click(f'#el-hub [data-elonline="{pid}"]', button="right"); page.wait_for_timeout(150); page.click('#el-projctx [data-elprojact="odel"]'); page.wait_for_timeout(200)
+    page.click("#el-tab-projekte"); page.wait_for_timeout(200)
+    page.click(f'#el-hub [data-elonline="{ids[1]}"]', button="right"); page.wait_for_timeout(150)
+    menu = page.inner_text("#el-projctx")
+    check("Rechtsklick Online-Projekt: Link teilen und Online löschen, kein „Aus der Liste entfernen“", "Link teilen" in menu and "Online löschen" in menu and page.is_hidden('#el-projctx [data-elprojact="rm"]'), menu)
+    page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    odel_ctx(ids[1])
     asked = page.is_visible(".modal") and "Online-Projekt löschen?" in page.inner_text(".modal")
     page.click('.modal [data-r="0"]'); page.wait_for_timeout(200)
     check("Löschen fragt nach, Abbrechen lässt es online", asked and len(srv["rows"]) == 2)
-    page.click(f'#el-hub [data-elodel="{ids[1]}"]'); page.wait_for_timeout(200); page.click('.modal [data-r="1"]'); page.wait_for_timeout(500)
-    check("Online löschen: Zeile weg, PDF bleibt (anderes Projekt braucht sie)", list(srv["rows"]) == [ids[0]] and PKEY in srv["files"] and f'data-elodel="{ids[1]}"' not in page.inner_html("#el-online"), [list(srv["rows"]), list(srv["files"])])
-    page.click(f'#el-hub [data-elodel="{ids[0]}"]'); page.wait_for_timeout(200); page.click('.modal [data-r="1"]'); page.wait_for_timeout(500)
-    check("Letztes Projekt gelöscht: unbenutzte PDF aufgeräumt", not srv["rows"] and not srv["files"], [list(srv["rows"]), list(srv["files"])])
-    check("Offenes Projekt verliert die Online-Verknüpfung, Blätter bleiben", "online" not in D()["project"] and D()["sheets"] == d0["sheets"] and "Noch keine Online-Projekte" in page.inner_text("#el-online"), D()["project"])
+    odel_ctx(ids[1]); page.click('.modal [data-r="1"]'); page.wait_for_timeout(500)
+    check("Online löschen: Zeile weg, PDF bleibt (anderes Projekt braucht sie)", list(srv["rows"]) == [ids[0]] and PKEY in srv["files"] and f'data-elonline="{ids[1]}"' not in page.inner_html("#el-hub"), [list(srv["rows"]), list(srv["files"])])
     page.screenshot(path=str(OUT / "e15_online_liste.png"))
+    page.click("#el-pt-cur"); page.wait_for_timeout(150)
+    page.click(f'#el-online [data-elodel="{ids[0]}"]'); page.wait_for_timeout(200); page.click('.modal [data-r="1"]'); page.wait_for_timeout(500)
+    check("Letztes Projekt gelöscht: unbenutzte PDF aufgeräumt", not srv["rows"] and not srv["files"], [list(srv["rows"]), list(srv["files"])])
+    check("Offenes Projekt verliert die Online-Verknüpfung, Blätter bleiben", "online" not in D()["project"] and D()["sheets"] == d0["sheets"] and "Online gespeichert am" not in page.inner_text("#el-online"), D()["project"])
     # ---- Speichern-Knopf (CJ 18.10.2026): angemeldet, noch nicht online → Wahl; danach direkt online ----
     key("0") if not hub() else None; page.wait_for_timeout(150); clear_toasts()
     page.click("#btn-save"); page.wait_for_timeout(250)
@@ -415,16 +435,19 @@ with sync_playwright() as p:
     page.click('#el-hub [data-elact="onsave"]'); page.wait_for_timeout(400)
     check("Ohne Internet: Meldung, Projekt unverändert", "Keine Verbindung" in toasts() and D() == before and not page.is_visible(".modal"), toasts())
     clear_toasts(); srv["mode"] = "paused"
-    page.click('#el-hub [data-elact="onlist"]'); page.wait_for_timeout(400)
+    page.click("#el-tab-projekte"); page.click('#el-hub [data-elact="onlist"]'); page.wait_for_timeout(400)
     check("Pausiert (Gratis-Plan): Meldung mit „Resume project“", "pausiert" in toasts() and "Resume project" in toasts(), toasts())
+    page.click("#el-pt-cur"); page.wait_for_timeout(150)
     check("Nach Fehler: Knöpfe wieder bedienbar", page.is_enabled('#el-hub [data-elact="onsave"]'))
     srv["mode"] = "ok"
-    page.click('#el-hub [data-elact="logout"]'); page.wait_for_timeout(300)
-    check("Abmelden: Konto nicht mehr angezeigt", "test@beispiel.ch" not in page.inner_text("#el-online") and "Abgemeldet" in toasts())
+    page.click("#el-acct"); page.click("#el-pf-logout"); page.wait_for_timeout(300)
+    gone = "Abgemeldet" in toasts()
+    page.click("#el-tab-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)  # Projekt unter «Projekte» (Etappe 6)
+    check("Abmelden: Online-Bereich im Projekt weg", page.locator("#el-online").count() == 0 and gone)
     page.set_viewport_size({"width": 375, "height": 800}); page.wait_for_timeout(300)
     w = page.evaluate("[document.documentElement.scrollWidth, document.querySelector('#el-hub').scrollWidth, document.querySelector('#el-hub').clientWidth]")
-    check("375 px: Online-Bereich läuft nicht seitlich über", w[0] <= 375 and w[1] <= w[2], w)
-    page.evaluate("document.querySelector('#el-online').scrollIntoView()"); page.screenshot(path=str(OUT / "e16_online_schmal.png"))
+    check("375 px: Übersicht läuft nicht seitlich über", w[0] <= 375 and w[1] <= w[2], w)
+    page.screenshot(path=str(OUT / "e16_online_schmal.png"))
     b.close()
 
     # ---- Sperre ohne Anmeldung, wenn die App aus dem Netz läuft (CJ 17.10.); als Datei (file:) alles frei, siehe oben ----
@@ -441,8 +464,7 @@ with sync_playwright() as p:
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
     downloads = []; page.on("download", lambda d: downloads.append(d.suggested_filename))
     key("0"); page.wait_for_timeout(150)
-    on = page.inner_text("#el-online")
-    check("Im Netz ohne Anmeldung: Knopf „Anmelden“ und Hinweis „nur als DXF“", page.is_visible('#el-hub [data-elact="login"]') and "nur als DXF" in on, on)
+    check("Im Netz ohne Anmeldung: Konto-Kreis gesperrt, im Projekt kein Login-Feld", page.evaluate("document.querySelector('#el-acct').classList.contains('lock')") and page.locator("#el-online, #el-hub #el-pf-form").count() == 0)
     page.screenshot(path=str(OUT / "e17_gesperrt.png"))
     key("0"); page.evaluate("document.activeElement?.blur()"); page.keyboard.press("Meta+s"); page.wait_for_timeout(400)
     check("⌘S ohne Anmeldung: keine Datei, Anmeldung erscheint", not downloads and page.is_visible(".modal") and "Anmelden" in page.inner_text(".modal") and "nur als DXF" in page.inner_text("#toasts"), downloads)
@@ -462,8 +484,9 @@ with sync_playwright() as p:
     page.click(".modal [data-c]"); page.wait_for_timeout(200)
     check("Feedback abgebrochen: nichts gesendet", not [c for c in srv["calls"] if "feedback" in c], srv["calls"])
     key("0"); page.wait_for_timeout(150)
-    page.click('#el-hub [data-elact="login"]'); page.wait_for_timeout(150)
-    page.fill('.modal [data-f="e"]', "test@beispiel.ch"); page.fill('.modal [data-f="p"]', "attrappe"); page.click(".modal [data-ok]"); page.wait_for_timeout(400)
+    page.click("#el-acct"); page.wait_for_timeout(150)  # Konto-Kreis führt zum Reiter Profil (Etappe 6)
+    page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(500)
+    page.click("#el-tab-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)
     on = page.inner_text("#el-online")
     check("Anmelden in der Übersicht: Konto sichtbar, Hinweis weg", "test@beispiel.ch" in on and "nur als DXF" not in on, on)
     key("0"); page.evaluate("document.activeElement?.blur()"); page.keyboard.press("Meta+s"); page.wait_for_timeout(300)
@@ -498,7 +521,7 @@ with sync_playwright() as p:
     page.click("#el-tile-schema .el-more"); page.wait_for_timeout(150); page.click(f"#el-shpop [data-elsheet='{pop[-1]}']"); page.wait_for_timeout(150)
     check("+N: Klick auf das letzte Blatt öffnet genau dieses", not hub() and active() == pop[-1] and not page.is_visible("#el-shpop"), active())
     key("0"); page.wait_for_timeout(200)
-    check("Modulkarte: Anzahl Blätter und Knopf PDF statt Beschreibung", page.inner_text("#el-tile-schema .el-ts").split() == [str(t["n"]), "Blätter", "PDF"], page.inner_text("#el-tile-schema .el-ts"))
+    check("Modulkarte: Anzahl Blätter und Knopf PDF statt Beschreibung, dazu Modulstatus", page.inner_text("#el-tile-schema .el-ts").split() == [str(t["n"]), "Blätter", "Offen", "PDF"], page.inner_text("#el-tile-schema .el-ts"))
     # Eigenes PDF (CJ 18.10.2026): öffnet im neuen Tab statt Druckdialog. Seiten = „/Type /Page“ im PDF, Grössen aus /MediaBox (pt).
     page.evaluate("window.__open = []; window.open = (u) => { window.__open.push(u); return {}; }; window.print = () => { window.__printed = true; }; 0")
     def pdf_pages():
@@ -517,7 +540,7 @@ with sync_playwright() as p:
     check("PDF gemischtes Papier: ein PDF, Stringplan A3 quer und Stringübersicht A4 quer", pp == [(420, 297), (297, 210)] and not page.is_visible(".modal") and hub(), pp)
     check("PDF: Druckteile wieder leer", page.evaluate("document.querySelector('#printroot').innerHTML === ''"))
     key("1"); page.wait_for_timeout(150)
-    page.click("#btn-new"); page.wait_for_timeout(150)
+    page.click("#el-file"); page.click('#el-filemenu [data-elfile="new"]'); page.wait_for_timeout(150)
     check("Neu im Modul: Startauswahl wie bisher", page.is_visible("[data-start]") and not page.is_visible('.modal [data-f="2"]'))
     page.click(".modal [data-c]"); page.wait_for_timeout(100)
     b.close()

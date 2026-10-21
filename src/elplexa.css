@@ -149,6 +149,21 @@ body.el-hubopen #sheetbar, body.el-hubopen #zoombar, body.el-hubopen .pvbar, bod
 .el-pdf { padding: 1px 7px; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; color: var(--ink); border: 1px solid var(--panel-line); border-radius: 5px; transition: transform 100ms var(--ease-out); }
 .el-pdf:active { transform: scale(.96); }
 @media (hover: hover) and (pointer: fine) { .el-pdf:hover { border-color: var(--muted); } }
+/* Modulstatus (CJ 20.10.2026): Pille auf der Modulkachel, Auswahl im Menü */
+.el-mst { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; white-space: nowrap; box-sizing: border-box; color: #4a5560; background: #fff; border: 1px dashed #8a94a0; } /* Offen: leer, gestrichelt */
+.el-mst[data-ms="ia"] { color: #2f4a66; background: #e3ebf4; border: 0; }
+.el-mst[data-ms="ge"] { color: #1f6b3d; background: #dcf0e3; border: 0; }
+.el-mst[data-ms="ve"] { color: #6b3f9a; background: #ede3f6; border: 0; }
+.el-mst[data-ms="re"] { color: #8a4a06; background: #fbecd6; border: 0; }
+.el-mst[data-ms="ar"] { color: #4a515c; background: #e1e3e7; border: 0; } /* Kontrast alle ab 4,5:1 */
+span.el-mst[role="button"] { cursor: pointer; transition: transform 100ms var(--ease-out); }
+span.el-mst[role="button"]::after { content: "▾"; margin-left: 4px; font-size: 9px; }
+span.el-mst[role="button"]:active { transform: scale(.96); }
+#el-mstpop { width: 200px; }
+#el-mstpop .ctx-head { padding: 6px 10px 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#el-mstpop .mi[aria-checked="true"] { background: var(--panel); }
+.el-ts .el-mst { margin-left: auto; }
+.el-ts .el-pdf { margin-left: 0; }
 #el-shpop { width: 300px; }
 #el-savectx { width: 270px; } /* Menü am Knopf Speichern (18.10.2026) */
 #el-shpop .ctx-head { padding: 6px 10px 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -269,3 +284,127 @@ body.el-sharewait .filechip, body.el-sharewait #el-crumb .el-st { display: none;
 .hn-pick { max-height: 50vh; overflow: auto; display: flex; flex-direction: column; margin: 8px 0; } .hn-pick label { min-height: 44px; display: flex; align-items: center; gap: 10px; }
 @media (hover: hover) and (pointer: fine) { #hn .hn-btn:hover, #hn .hn-mi:hover { background: var(--hover); } #hn .hn-btn.primary:hover { background: #333b32; } }
 body:has(#hn) .modal-back { z-index: 70; } body:has(#hn) #toasts { z-index: 71; }
+/* Kopfleiste 2a (CJ 20.10.2026): Datei-Menü, Speicherstand, Konto-Kreis. Speichern bleibt als Symbol, Neu und Öffnen liegen im Datei-Menü */
+#btn-new, #btn-open { display: none; }
+#btn-save .lbl { display: none; }
+#btn-save { padding: 0 9px; }
+#el-filemenu { width: 280px; }
+.el-savestate { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.el-savestate[data-state="dirty"] { color: var(--ink); }
+.el-okdot { width: 8px; height: 8px; border-radius: 50%; background: #2f9e58; }
+.el-acctbtn { flex: none; width: 30px; height: 30px; margin-left: 4px; display: grid; place-items: center; padding: 0; font: 600 13px/1 var(--font); color: var(--ink); background: #fff; border: 1px solid var(--panel-line); border-radius: 50%; cursor: pointer; transition: transform 100ms var(--ease-out); }
+.el-acctbtn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.el-acctbtn.in { color: #fff; background: var(--el-dark); border-color: transparent; }
+.el-acctbtn.lock { border-color: var(--el-green); box-shadow: 0 0 0 2px rgba(47, 158, 88, .25); }
+.el-acctbtn:active { transform: scale(.94); }
+.el-acctbtn:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .el-acctbtn:hover { border-color: var(--muted); } }
+#topbar.tb-5 #el-savetxt { display: none; }
+/* Projekte, Zeit, Profil (CJ 21.10.2026): Projektname, Datei-Menü, Speicherstand und Knöpfe des Projekts nur im Projekt */
+body.el-hublist #el-file, body.el-hublist #topbar .filechip, body.el-hublist #el-crumb, body.el-hublist #el-savestate, body.el-hublist #btn-save, body.el-hublist #btn-undo, body.el-hublist #btn-redo, body.el-hublist #btn-search, body.el-hublist #topbar .sep, body.el-hublist #topbar .menuwrap { display: none !important; }
+body.el-shared #el-file, body.el-shared #el-savestate, body.el-shared #el-acct { display: none !important; }
+
+/* Zweite Stufe der Übersicht (Etappe 2b, CJ 20.10.2026): Pfad und Reiter oben, Tipp-Zeile unten; unter 860 px wie bisher ohne */
+.el-subbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 32px; background: var(--panel); border-bottom: 1px solid var(--panel-line); }
+.el-path { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.el-path b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-weight: 600; }
+.el-tabs { display: flex; gap: 2px; height: 100%; }
+.el-tab { font: inherit; font-size: 13.5px; font-weight: 600; padding: 0 12px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.el-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--el-dark); }
+.el-tab:focus-visible { outline: 2px solid var(--el-green); outline-offset: -3px; }
+@media (hover: hover) and (pointer: fine) { .el-tab:hover { color: var(--ink); } }
+.el-sp { flex: 1; }
+.el-helpbtn { min-width: 26px; padding: 0 8px; }
+.el-tip { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 4px 32px; font-size: 12.5px; color: var(--muted); background: var(--panel); border-top: 1px solid var(--panel-line); }
+.el-tiptxt { flex: 1; min-width: 0; }
+.el-tiptxt b { color: var(--ink); margin-right: 6px; }
+.el-tipx { width: 24px; height: 24px; padding: 0; }
+@media (max-width: 860px) { .el-subbar, .el-tip { display: none; } }
+
+/* Reiter Projekte (Etappe 3b, CJ 20.10.2026): flache Kacheln, 5 pro Reihe, oder Liste */
+.el-pview { grid-template-columns: minmax(0, 1fr); max-width: 1100px; }
+.el-pwrap { gap: 12px; }
+.el-pbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.el-pbar label { display: inline-flex; align-items: center; gap: 6px; }
+.el-pbar select { font: inherit; font-size: 13px; height: 28px; padding: 0 6px; color: var(--ink); background: #fff; border: 1px solid var(--panel-line); border-radius: 6px; }
+.el-vsw { display: inline-flex; gap: 4px; }
+.el-vsw .btn[aria-pressed="true"] { color: #fff; background: var(--el-dark); border-color: var(--el-dark); }
+.el-pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(188px, 1fr)); gap: 10px; }
+.el-ptile { display: grid; gap: 4px; align-content: start; min-width: 0; padding: 10px 12px; text-align: left; font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--panel-line); border-radius: 10px; cursor: pointer; transition: transform 100ms var(--ease-out); }
+.el-ptile:active { transform: scale(.98); }
+.el-ptile:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .el-ptile:hover { border-color: var(--faint); } }
+.el-ph { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.el-pn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.el-po { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted); }
+.el-pm { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.el-pd { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.el-pw { font-size: 11.5px; color: var(--muted); }
+.el-plist { display: grid; gap: 4px; }
+.el-plist .el-ptile { grid-template-columns: minmax(160px, 1.2fr) minmax(100px, 1fr) minmax(120px, 1.4fr) auto; align-items: center; gap: 12px; padding: 7px 12px; }
+.el-perr { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; font-size: 13px; color: #8a2a1e; background: #fbe9e5; border-radius: 8px; }
+.el-empty { padding: 18px 0; }
+@media (prefers-reduced-motion: reduce) { .el-ptile { transition: none; } .el-ptile:active { transform: none; } }
+
+/* Reiter Zeit (Etappe 4, CJ 20.10.2026): Woche, Zeile je Online-Projekt */
+.el-wk { font-size: 13px; color: var(--ink); }
+.el-wtab { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.el-wtab th, .el-wtab td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-line); white-space: nowrap; }
+.el-wtab thead th { font-size: 12px; font-weight: 600; color: var(--muted); }
+.el-wtab thead th span { display: block; font-weight: 400; }
+.el-wtab th[scope="row"], .el-wtab thead th:first-child { text-align: left; font-weight: 600; color: var(--ink); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.el-wtab .el-today { color: var(--ink); box-shadow: inset 0 -2px 0 var(--el-dark); }
+.el-wtab .el-rs2 { font-weight: 600; color: var(--ink); }
+.el-wtab tfoot th, .el-wtab tfoot td { border-top: 2px solid var(--panel-line); border-bottom: 0; font-weight: 600; }
+.el-wtab i { font-style: normal; color: var(--muted); }
+.el-chip { gap: 6px; }
+@media (max-width: 1000px) { .el-chipl { display: none; } }
+
+/* Bedienung (Etappe 5): Auswahl, Ziehen */
+.el-ptile.sel { border-color: var(--el-dark); box-shadow: inset 0 0 0 1px var(--el-dark); background: #f3f6f2; }
+.el-selbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 10px; font-size: 13px; background: #fff; border: 1px solid var(--el-dark); border-radius: 8px; }
+#el-projctx { width: 260px; }
+#el-projctx .ctx-head { padding: 6px 10px 4px; font-size: 12px; color: var(--muted); }
+.el-tile[draggable="true"] { cursor: grab; }
+.el-tile.el-drag { opacity: .5; }
+.el-tile.el-over { outline: 2px dashed var(--el-dark); outline-offset: 2px; }
+
+/* Etappe 6: Profil, Pfad-Link, Konto-Pille, Markierung «geöffnet» */
+.el-pathlink { font: inherit; font-size: 13px; color: var(--muted); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.el-pathlink:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .el-pathlink:hover { color: var(--ink); } }
+.el-acctbtn { width: auto; min-width: 30px; padding: 0 10px 0 3px; gap: 6px; display: inline-flex; align-items: center; border-radius: 15px; }
+.el-acctbtn .av { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; font-weight: 600; }
+.el-acctbtn.in .av { background: var(--el-dark); color: #fff; }
+.el-acctbtn.in { background: #fff; color: var(--ink); }
+.el-acctbtn .nm { font-size: 13px; font-weight: 600; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#topbar.tb-5 .el-acctbtn .nm, #topbar.tb-6 .el-acctbtn .nm { display: none; }
+#topbar.tb-5 .el-acctbtn, #topbar.tb-6 .el-acctbtn { padding: 0 3px; }
+.el-ptile.cur { border-color: var(--el-dark); background: #f3f6f2; }
+.el-open { color: var(--el-dark); font-weight: 600; }
+.el-profile { max-width: 520px; }
+.el-pform { display: grid; gap: 6px; }
+.el-prow { margin: 0; font-size: 14px; }
+.el-perr { margin: 0; }
+#el-hub:not([hidden]) { display: flex; flex-direction: column; } /* Tipp-Zeile bleibt unten, auch bei kurzem Inhalt */
+#el-hub .el-hubin { flex: 1 0 auto; width: 100%; box-sizing: border-box; }
+#el-hub .el-tip { margin-top: auto; }
+
+/* Zeit-Reiter: Barrierefreiheit, Stand, unbekannte Stunden (Review Etappe 4) */
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.el-wscroll { overflow-x: auto; }
+.el-wscroll:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+.el-stand { font-size: 12px; color: var(--muted); }
+.el-stand.alt { color: #8a4a06; font-weight: 600; }
+.el-incomplete { font-style: normal; font-size: 12px; font-weight: 600; color: #8a4a06; }
+.el-wtab.alt { opacity: .6; }
+.el-unk { font: inherit; font-size: 12px; font-weight: 600; width: 20px; height: 20px; padding: 0; color: #8a4a06; background: #fbecd6; border: 0; border-radius: 50%; cursor: pointer; }
+.el-unk:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+.el-unkcell { text-align: left !important; color: var(--muted); font-style: italic; }
+.el-loc { font-style: normal; font-size: 11.5px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+.el-wtab thead th span { display: inline; }
+.el-wtab .el-today { box-shadow: inset 0 -2px 0 var(--el-dark); }
+.el-autohint { color: #8a4a06; }
+.el-ptile.el-drag { opacity: .5; }
+.el-ptile.el-over { outline: 2px dashed var(--el-dark); outline-offset: 2px; }
+.el-ptile[draggable="true"] { cursor: pointer; }

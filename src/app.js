@@ -33,6 +33,8 @@ import * as L from "./legende.js";
 import { cloudMenu, cloudUser, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen } from "./cloud.js";
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
+import { openHand } from "./hand.js";
+import { makePdf } from "./pdfout.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
 import { fetchGwr, searchAdr, adrText } from "./gwr.js";
 
@@ -2159,7 +2161,7 @@ function elInit() {
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
     else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, csv: elCsv,
-      gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
+      hand: elHand, gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, login: elLogin, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("change", (e) => { const k = e.target.dataset?.elp; if (k) elSetProject(k, e.target.value); });
   hub.addEventListener("submit", (e) => { e.preventDefault(); elTimeAdd(); });
@@ -2485,6 +2487,21 @@ async function elSaveOnline() { // direkt online (Knopf Speichern bzw. sein Men�
   if (err && (await confirmDialog("Online speichern hat nicht geklappt", `${err.message || err} Es ist nichts verloren. Jetzt als Datei auf diesem Rechner speichern?`, "Lokal speichern"))) await saveJson(false);
 }
 // Feedback melden (CJ 18.10.2026): nur angemeldet (Gäste: Hinweis und Anmeldung), Screenshot der Zeichenfläche, Zeile in Supabase `feedback`
+// Handnotizen (Meilenstein 2, CJ 20.10.2026): eigenes Modul über der Übersicht, Daten in eigener Datenbank (hand.js). Blätter des Projekts
+// kommen über das eigene PDF (makePdf) als Hintergrund hinein, das Projekt bleibt unverändert.
+async function elHand() {
+  if (!openHand) return;
+  await openHand({
+    sheets: () => S.doc.sheets.map((sh, i) => ({ i, label: `${sheetLabel(sh, i)}${sh.meta?.TITEL ? ` · ${sh.meta.TITEL}` : ""}` })),
+    sheetsPdf: async (idx) => {
+      const list = idx.map((i) => S.doc.sheets[i]);
+      if (list.some((sh) => sh.kind === "pv" || sh.kind === "pvtab")) await PV.preparePrint();
+      buildPrint(list);
+      return makePdf([...$("#printroot").children], "Blätter");
+    },
+    toast, confirm: confirmDialog, onClose: () => {},
+  });
+}
 async function elFeedback() {
   if (!cloudUser()) { toast("Feedback nur mit Login. Bitte anmelden."); if (!(await elLogin())) return; }
   closeEditor(true);

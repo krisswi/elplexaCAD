@@ -109,6 +109,7 @@ export function hubHTML(doc, o) {
       <div id="el-recent" class="el-recent"></div>
       <div id="el-online" class="el-online"></div></section>`}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
+      ${ro || !ELPLEXA ? "" : `<button class="el-tile el-hand" id="el-hand" data-elact="hand" title="Handschrift mit dem Apple Pencil. Privat auf diesem Gerät, nicht im Projekt und nicht im Teilen-Link"><span class="el-th"><span class="el-tn">Handnotizen</span></span><span class="el-ts">Mit dem Stift schreiben · PDF und Bilder importieren und exportieren</span></button>`}
       ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button>`}</div>
       <p class="el-note">Tasten: 1 bis ${MODULES.filter((m) => !m.later).length} öffnet ein Modul, 0 die Übersicht, ? alle Tasten.</p></section>
     ${ro ? "" : timeHTML(doc, o.today)}</div></div>`;

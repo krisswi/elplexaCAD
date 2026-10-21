@@ -47,6 +47,9 @@ const pdfOut = { name: "pdf-out", setup(b) {
     bold: woffToTtf("node_modules/@fontsource/barlow-semi-condensed/files/barlow-semi-condensed-latin-600-normal.woff") }) }));
   if (!EL) b.onResolve({ filter: /\/pdfout\.js$/ }, () => ({ path: "pdfout", namespace: "pdfstub" }));
   b.onLoad({ filter: /.*/, namespace: "pdfstub" }, () => ({ contents: "export const makePdf = null, showPdf = null;" }));
+  // Handnotizen (src/hand.js) nur im elplexaCAD-Bau: sonst Platzhalter, jsPDF und pdf.js-Anteile für Notizen kommen nicht in v3
+  if (!EL) b.onResolve({ filter: /\/hand\.js$/ }, () => ({ path: "hand", namespace: "handstub" }));
+  b.onLoad({ filter: /.*/, namespace: "handstub" }, () => ({ contents: "export const openHand = null;" }));
 } };
 const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker, pdfOut], external: ["html2canvas", "dompurify", "canvg"], define: { ELPLEXA: String(EL), APP_BUILD: JSON.stringify(new Date().toISOString().slice(0, 16).replace("T", " ")) } });
 const css = fs.readFileSync("src/style.css", "utf8") + (EL ? "\n" + fs.readFileSync("src/elplexa.css", "utf8") : "");

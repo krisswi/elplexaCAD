@@ -60,10 +60,10 @@ with sync_playwright() as p:
     check("… mit Meldung und ohne neues Blatt", "noch nicht" in page.inner_text("body") and len(D()["sheets"]) == n0 and mods(D()) == ["pv"])
     page.screenshot(path=str(OUT / "e2_hub_pv.png"))
 
-    # + Modul: Plan und Prinzipschema ausgegraut, Schema anlegen
+    # + Modul: Plan ausgegraut (Prinzipschema seit 21.10.2026 wählbar), Schema anlegen
     page.click("#el-addmod"); page.wait_for_timeout(150)
     dis = page.evaluate("Object.fromEntries([...document.querySelectorAll('#el-addmenu [data-elnew]')].map((b) => [b.dataset.elnew, b.disabled]))")
-    check("+ Modul: Plan und Prinzipschema ausgegraut, weiteres PV möglich (Module mehrfach)", dis.get("plan") and dis.get("prinzip") and not dis.get("pv") and not dis.get("schema") and not dis.get("dispo"), dis)
+    check("+ Modul: Plan ausgegraut, Prinzipschema wählbar, weiteres PV möglich (Module mehrfach)", dis.get("plan") and not dis.get("prinzip") and not dis.get("pv") and not dis.get("schema") and not dis.get("dispo"), dis)
     page.screenshot(path=str(OUT / "e3_addmod.png"))
     page.click('#el-addmenu [data-elnew="schema"]'); page.wait_for_timeout(200)
     d = D()

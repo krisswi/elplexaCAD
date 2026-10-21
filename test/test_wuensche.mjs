@@ -54,7 +54,7 @@ doc.sheets[0].items.push({ id: 1, type: "text", x: 40, y: 100, h: 2.5, s: "Recht
   { id: 3, type: "text", x: 40, y: 120, h: 2.5, s: "Links" });
 doc.nextId = 10;
 const txt = serializeModel(doc), back = parseModel(txt);
-assert.strictEqual(JSON.parse(txt).version, 17); assert.strictEqual(VERSION, 18);
+assert.strictEqual(JSON.parse(txt).version, 17); assert.ok(VERSION >= 18); // 19 seit 21.10.2026 (Prinzipschema)
 assert.deepStrictEqual(JSON.parse(serializeModel(back)), JSON.parse(txt), "Rundlauf unverändert");
 assert.strictEqual(back.sheets[0].items[0].al, "r");
 assert.strictEqual(termCount(back.sheets[0].items[1]), 8);

@@ -4,7 +4,7 @@
 import { SYMBOL_BY_NAME, isDevice } from "./symbols.js";
 import { termCount } from "./terminals.js";
 
-const schemaSheets = (doc) => doc.sheets.filter((sh) => sh.kind !== "dispo");
+const schemaSheets = (doc) => doc.sheets.filter((sh) => sh.kind !== "dispo" && sh.kind !== "prinzip"); // Prinzipschema: Übersicht, keine Stückliste
 const sym = (it) => SYMBOL_BY_NAME[it.sym];
 const isRefSym = (s) => s.family === "VOUT" || s.family === "VIN";
 

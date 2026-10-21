@@ -37,6 +37,8 @@ import { openHand } from "./hand.js";
 import { makePdf } from "./pdfout.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
 import { fetchGwr, searchAdr, adrText } from "./gwr.js";
+import * as PZ from "./prinzip.js";
+import { PRINZIP_GROUPS, PRINZIP_FAMILIES } from "./prinzipsym.js";
 
 
 const $ = (s) => document.querySelector(s);
@@ -48,7 +50,7 @@ const AUTOSAVE_KEY = "schemacad.autosave.v1";
 const PX_PER_MM = 96 / 25.4;
 const TERMINALS = "TERMINALS"; // Platzhalter für „Klemmenleiste setzen“
 const CTRL = "CTRL"; // Platzhalter für „Steuerung (Kasten) setzen“ (steuerung.js)
-const familyOf = (name) => FAMILIES.find((f) => f.variants.includes(name));
+const familyOf = (name) => [...FAMILIES, ...PRINZIP_FAMILIES].find((f) => f.variants.includes(name)); // mit Prinzipschema (Anzahl Striche)
 
 const TOOLS = [
   { id: "select", label: "Auswählen", key: "V", icon: "select" },
@@ -75,7 +77,7 @@ const S = {
   undo: [], redo: [], pending: null, pendingPushed: false,
   fileHandle: null, fileName: "Unbenannt", dirty: false,
   editing: null, clip: null, legSel: null, // legSel: in der Legende gewähltes Gerät (ID)
-  gridSize: { schema: 2.5, dispo: 5, pv: 100, pvtab: 100, title: 2.5, toc: 2.5, legend: 2.5 }, // Rasterweite je Blatttyp (Stringplan: Annahme 100 mm)
+  gridSize: { schema: 2.5, dispo: 5, pv: 100, pvtab: 100, prinzip: 2.5, title: 2.5, toc: 2.5, legend: 2.5 }, // Rasterweite je Blatttyp (Stringplan: Annahme 100 mm)
   // Voreinstellungen für neue Bauteile einer Disposition (mm)
   guides: [], // Hilfslinien der Disposition (Fang an Kanten und Mitten anderer Bauteile)
   dp: { devH: D.DEV_H, plateW: 500, plateH: 400, railLen: 250, freeTE: 2, freeLabel: "Gerät", textH: 15 },
@@ -87,6 +89,7 @@ const fmt = (n) => n.toFixed(1).replace(".", ",");
 const isDispo = () => S.model.kind === "dispo";
 const isPv = () => S.model.kind === "pv" || S.model.kind === "pvtab"; // Stringplan und Stringübersicht, Bedienung in pvedit.js
 const isDeck = () => T.isDeck(S.model); // Titelseite oder Inhaltsverzeichnis (titel.js)
+const isPrinzip = () => S.model.kind === "prinzip"; // Prinzipschema (prinzip.js): Schema-Editor auf eigenem Papier, ohne Spalten, BMK und Hauptlinien
 const kindKey = () => S.model.kind || "schema";
 const textH = () => (isPv() ? PV_TEXT_H : isDispo() ? S.dp.textH : S.textH);
 const selectedItems = () => S.model.items.filter((it) => S.sel.has(it.id));
@@ -104,7 +107,7 @@ function pointerPos(e) { const r = svg.getBoundingClientRect(); return { sx: e.c
 // Fang an Feldmitten: stärker als das Raster, aber nur nahe an der Mitte, so bleibt feines Zeichnen möglich.
 // offX verschiebt die Zielmitte, damit bei mehrpoligen Symbolen die Symbolmitte auf der Feldmitte liegt.
 function magnet(c, offX = 0) {
-  if (!S.mag || S.alt || isDispo()) return c;
+  if (!S.mag || S.alt || isDispo() || isPrinzip()) return c;
   const r = Math.min(2.4, Math.max(0.8, 4 / S.view.z));
   const near = (list, v) => list.reduce((b, t) => (Math.abs(t - v) < Math.abs(b - v) ? t : b), list[0]);
   const gx = near(COL_CENTERS.map((v) => v - offX), c.x), gy = near(ROW_CENTERS, c.y);
@@ -203,6 +206,7 @@ function viewBounds() {
   if (isPv()) return PV.bounds();
   if (S.model.kind === "legend") return L.bounds(S.doc);
   if (isDeck()) return T.deckBounds(S.doc, S.model);
+  if (isPrinzip()) return PZ.bounds(S.model);
   if (!isDispo()) return { x0: 0, y0: 0, x1: W, y1: H };
   const b = D.contentBBox(S.model.items, D.planOpts(S.model));
   if (!b) return { x0: -50, y0: -50, x1: 750, y1: 550 };
@@ -227,7 +231,7 @@ function renderSheet() {
   const pat = $("#gridpat");
   pat.setAttribute("width", S.grid.size); pat.setAttribute("height", S.grid.size);
   pat.querySelector("circle").setAttribute("r", isDispo() || isPv() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
-  gSheet.innerHTML = S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
+  gSheet.innerHTML = S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : isPrinzip() ? PZ.sheetSVG(S.model, S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
 function renderItems() { $("#dims-on").checked = S.model.dims !== false; gItems.innerHTML = isDeck() ? "" : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
 const pickable = () => (isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
@@ -238,8 +242,8 @@ function railMap() {
   return rails;
 }
 const bundlePaths = (pts, n) => snapToVerticals(snapToRails(offsetPaths(pts, n), BUNDLE_PRESETS[n], railMap()), S.model.items);
-const bundleCount = () => (S.wireDraft && S.wireDraft.n) || S.bundleN;
-const poleSnap = () => !S.wireDraft || bundleCount() > 1; // Pole als Gruppe fangen: beim Start oder wenn ein Bündel im Bau ist
+const bundleCount = () => (isPrinzip() ? 1 : (S.wireDraft && S.wireDraft.n) || S.bundleN); // Prinzipschema: einpolig, nie Bündel
+const poleSnap = () => !isPrinzip() && (!S.wireDraft || bundleCount() > 1); // Pole als Gruppe fangen: beim Start oder wenn ein Bündel im Bau ist (Prinzipschema: nie)
 // Bündel von Geräte-Polen auf eine Schiene mit seitlichem Versatz: die Höhe des Versatzes so wählen,
 // dass alle waagrechten Stücke zwischen den Polen und der nächsten Schiene liegen. Geht das nicht, gerade hoch.
 function railJog(p0, c, rails) {
@@ -335,6 +339,7 @@ function hintText() {
   if (S.model.kind === "legend") return "Sicherungslegende: entsteht aus den Schutzgeräten aller Schemablätter. Klick auf eine Zeile wählt das Gerät.";
   if (isDeck()) return S.model.kind === "title" ? "Titelseite: Angaben rechts eintragen. Objekt, Auftrag, Schema, Gezeichnet und Datum gelten für alle Blätter." : "Inhaltsverzeichnis: wird automatisch erstellt. Klick auf eine Zeile springt zum Blatt.";
   if (isPv()) return PV.hint();
+  if (isPrinzip() && S.tool === "select") return "Prinzipschema: Symbole links setzen, Leitung (L) zwischen den Anschlüssen ziehen, Texte (T) und Bereichslinien (I) frei. Klick wählt, Ziehen verschiebt.";
   if (isDispo()) {
     if (S.tool === "place" && /^D:BAR:/.test(S.placeSym)) return S.dpDraft ? "Schiene: zweiter Klick setzt das Ende, waagrecht oder senkrecht nach dem grösseren Abstand. Esc bricht ab." : "Schiene N/PE/PEN: erster Klick setzt den Anfang auf der Mittellinie. Esc beendet.";
     if (S.tool === "place" && S.placeSym === "D:CABLE") return "Zuleitung: Klicks setzen Punkte. Enter, Esc oder ein Klick auf den letzten Punkt beendet. Text rechts ändern.";
@@ -396,6 +401,7 @@ function renderLeftBody() {
   if (isDispo()) { leftEl.innerHTML = dispoLeftHTML(); return; }
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
+  if (isPrinzip()) { leftEl.innerHTML = prinzipLeftHTML(h); return; }
   for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
   h += `</section>` + abgangHTML() + `<section class="section"><h2 class="section-title">Symbole</h2>`;
   for (const f of FAMILIES) { // Wunsch CJ 16.10.: jede Variante direkt wählbar, ein Klick setzt das Gerät
@@ -407,6 +413,19 @@ function renderLeftBody() {
   h += `<button class="sym" data-sym="${CTRL}" aria-pressed="${S.tool === "place" && S.placeSym === CTRL}" title="Steuerung KNX Energiemanagement Aktor"><span class="thumb"><svg viewBox="-2 -2 28 20" aria-hidden="true"><rect x="0" y="0" width="24" height="16" fill="none" stroke="currentColor" stroke-width="1.4"/>${[5, 10, 15].map((x) => `<path d="M${x} 0v2.5M${x} 16v-2.5" stroke="currentColor" stroke-width="1.4"/>`).join("")}</svg></span><span><span class="name">Steuerung (Kasten)</span><br><span class="sub">KNX, Energiemanagement, Klemmen frei</span></span></button>`;
   h += "</section>" + libraryHTML();
   leftEl.innerHTML = h;
+}
+
+// Prinzipschema (CJ 21.10.2026): Werkzeuge wie im Schema (Leitung ohne Menü Leiterzahl), Symbole einpolig in Gruppen, ohne Abgänge, Klemmen und Bibliothek
+function prinzipLeftHTML(h) {
+  for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] && t.id !== "wire" ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`;
+  for (const [title, fams] of PRINZIP_GROUPS) {
+    h += `</section><section class="section"><h2 class="section-title">${title}</h2>`;
+    for (const f of fams) {
+      if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${f.variants.map(varTile).join("")}</div></div>`; continue; }
+      h += `<button class="sym" data-sym="${f.def}" aria-pressed="${S.tool === "place" && S.placeSym === f.def}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
+    }
+  }
+  return h + "</section>";
 }
 
 // Abgänge als Schnellzugriff über den Symbolen (CJ 16.10.): feste Vorlagen und eigene (aus der Auswahl gespeichert) als
@@ -581,9 +600,9 @@ function cableNote(it) {
 let pvPop = null, popKind = null;
 const popEl = $("#pv-pop");
 const SHEET_POPS = new Set(["haupt", "ansicht"]);
-const popHTML = () => (SHEET_POPS.has(popKind) ? sheetPopHTML(popKind) : PV.popHTML(popKind, { head, fieldHTML, META_FIELDS }));
+const popHTML = () => (SHEET_POPS.has(popKind) ? sheetPopHTML(popKind) : isPrinzip() ? PZ.popHTML(S.model, { head, fieldHTML, META_FIELDS }) : PV.popHTML(popKind, { head, fieldHTML, META_FIELDS }));
 function renderPvBar() {
-  const on = isPv(), doc = !on && !isDeck(); // Schema: Hauptlinien, Disposition: Ansicht (Schriftfeld rechts, D1)
+  const on = isPv() || isPrinzip(), doc = !on && !isDeck(); // Schema: Hauptlinien, Disposition: Ansicht (Schriftfeld rechts, D1); Prinzipschema: Druck wie PV
   $("#pv-bar").hidden = !on; $("#doc-bar").hidden = !doc; $("#btn-haupt").hidden = isDispo(); $("#btn-ansicht").hidden = !isDispo();
   if (!pvPop) return;
   if (pvPop.open && (SHEET_POPS.has(popKind) ? !doc || (popKind === "haupt" && isDispo()) || (popKind === "ansicht" && !isDispo()) : !on)) { pvPop.hide(false); return; }
@@ -592,9 +611,9 @@ function renderPvBar() {
     if (pvPop.open && !(popEl.contains(ae) && ae.type === "text")) { const y = popEl.scrollTop, had = popEl.contains(ae); popEl.innerHTML = popHTML(); popEl.scrollTop = y; if (had) popEl.focus(); }
     return;
   }
-  const l = PV.printLabel(), b = $("#btn-pvdruck");
+  const l = isPrinzip() ? PZ.printLabel(S.model) : PV.printLabel(), b = $("#btn-pvdruck");
   $("#pv-druck-lbl").textContent = l.text; b.classList.toggle("warn", l.warn);
-  b.title = `Druck: ${l.text}${l.warn ? ", Inhalt passt nicht aufs Papier" : ""}. Papier, Massstab, Plankopf`;
+  b.title = `Druck: ${l.text}${l.warn ? ", Inhalt passt nicht aufs Papier" : ""}. Papier${isPrinzip() ? "" : ", Massstab"}, Plankopf`;
   if (pvPop.open) { const y = popEl.scrollTop, had = popEl.contains(document.activeElement); popEl.innerHTML = popHTML(); popEl.scrollTop = y; if (had) popEl.focus(); } // live, z. B. Passt-Hinweis
 }
 // Mobilansicht: ohne Auswahl zeigt die Leiste unten einen Hinweis (body.nosel, style.css)
@@ -661,11 +680,13 @@ function renderRightPanel() {
     if (sel.every((i) => i.type === "shape" || i.type === "text")) h += styleHTML(sel);
     h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
   } else {
-    if (S.tool === "wire") h += `<div class="prop-head"><h2>Neue Leitung</h2></div>` + bundleSelect() + (S.bundleN === 1 ? kindSelect("data-newkind", S.wireKind) : `<p class="note">Leiter von oben links nach unten rechts: ${BUNDLE_PRESETS[S.bundleN].join(", ")}.</p>`);
+    if (S.tool === "wire" && isPrinzip()) h += `<div class="prop-head"><h2>Neue Leitung</h2></div>` + kindSelect("data-newkind", S.wireKind);
+    else if (S.tool === "wire") h += `<div class="prop-head"><h2>Neue Leitung</h2></div>` + bundleSelect() + (S.bundleN === 1 ? kindSelect("data-newkind", S.wireKind) : `<p class="note">Leiter von oben links nach unten rechts: ${BUNDLE_PRESETS[S.bundleN].join(", ")}.</p>`);
     else if (S.tool === "place" && S.placeSym !== TERMINALS && familyOf(S.placeSym)?.variants.length > 1) h += `<div class="prop-head"><h2>Neues Symbol</h2></div>` + poleSelect("data-placepoles", familyOf(S.placeSym), S.placeSym);
     else if (S.tool === "text") h += `<div class="prop-head"><h2>Neuer Text</h2></div><div class="field"><label>Texthöhe in mm</label><input type="number" min="1" max="20" step="0.5" data-newth value="${S.textH}"></div>` + (isSchema() ? turnHTML(S.textR, S.textAl, "data-newt") : "") + styleHTML([{ type: "text", c: S.textC }]);
     else if (shapeTool(S.tool)) h += head(`Neue Form: ${shapeTool(S.tool).label}`) + styleHTML([{ type: "shape", k: shapeTool(S.tool).k, ...S.shapeStyle }]);
-    h += head(sheetLabel(S.model, S.active), "Schriftfeld") + blattHTML() + `<p class="note">Hauptlinien: ${R.esc(mainSummary())}.</p>`;
+    if (isPrinzip()) h += head(sheetLabel(S.model, S.active), "Einpolig, von Hand gezeichnet") + `<p class="note">Symbole links, Leitung (L) und Text (T) wie im Schema, Bereiche mit der Linie (I) trennen. Papier und Plankopf oben unter „Druck“.</p>`;
+    else h += head(sheetLabel(S.model, S.active), "Schriftfeld") + blattHTML() + `<p class="note">Hauptlinien: ${R.esc(mainSummary())}.</p>`;
     h += `<div class="row"><button class="btn outline small" data-act="dupsheet" title="Blatt kopieren, die Kopie ist unabhängig">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
   }
   rightEl.innerHTML = h;
@@ -673,7 +694,7 @@ function renderRightPanel() {
 
 // ---------- Blätter ----------
 const workCount = () => S.doc.sheets.filter((sh) => !T.isDeck(sh)).length;
-function sheetLabel(sh, i) { const v = sh.var > 1 ? ` · V${sh.var}` : ""; return sh.kind === "title" ? "Titelseite" : sh.kind === "toc" ? "Inhalt" : sh.kind === "legend" ? `Legende ${sh.meta.BLATT}` : sh.kind === "pvtab" ? `Stringübersicht${v}` : `${sh.kind === "dispo" ? "Dispo" : sh.kind === "pv" ? "Stringplan" : "Blatt"} ${sh.meta.BLATT || i + 1}${v}`; } // V2: Variante (18.10.2026)
+function sheetLabel(sh, i) { const v = sh.var > 1 ? ` · V${sh.var}` : ""; return sh.kind === "title" ? "Titelseite" : sh.kind === "toc" ? "Inhalt" : sh.kind === "legend" ? `Legende ${sh.meta.BLATT}` : sh.kind === "pvtab" ? `Stringübersicht${v}` : `${sh.kind === "dispo" ? "Dispo" : sh.kind === "pv" ? "Stringplan" : sh.kind === "prinzip" ? "Prinzipschema" : "Blatt"} ${sh.meta.BLATT || i + 1}${v}`; } // V2: Variante (18.10.2026)
 // Kompakte Leiste: ‹ Blatt 58 · 1 von 12 ▾ › +. Die Mitte öffnet die Liste aller Blätter, + hält eine Auswahl bereit
 function renderSheetBar() {
   if (ELPLEXA) { elSheetBar(); return; }
@@ -729,7 +750,7 @@ function syncKind() {
   S.grid.size = S.gridSize[kindKey()];
   const opts = isPv() ? PV_GRID : isDispo() ? [[1, "1 mm"], [5, "5 mm"], [10, "10 mm"], [25, "25 mm"], [50, "50 mm"]] : [[1, "1 mm"], [2.5, "2,5 mm"], [5, "5 mm"]];
   $("#grid-size").innerHTML = opts.map(([v, l]) => `<option value="${v}"${v === S.grid.size ? " selected" : ""}>${l}</option>`).join("");
-  $("#mag-on").closest("label").style.display = isDispo() || isPv() || isDeck() ? "none" : "";
+  $("#mag-on").closest("label").style.display = isDispo() || isPv() || isDeck() || isPrinzip() ? "none" : ""; // Feldmitte: nur Schema (Spalten im Rahmen)
   $("#grid-on").closest("label").style.display = $("#grid-size").style.display = isDeck() ? "none" : ""; // Titelseite, Inhalt: nichts zu zeichnen
   $("#btn-handover").hidden = !isDispo();
   renderPvBar();
@@ -778,6 +799,18 @@ function addPv(v) {
   });
   afterSheetChange(k0);
 }
+// Prinzipschema (CJ 21.10.2026): leeres Blatt im offenen Prinzipschema-Modul, Nummer fortlaufend je Art
+function addPrinzip(v) {
+  setTool("select");
+  const k0 = S.model.kind;
+  v = varIn("prinzip", v);
+  change(() => {
+    const sh = setVar(newSheet("prinzip"), v);
+    sh.meta.BLATT = String(maxNo("prinzip") + 1);
+    S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
+  });
+  afterSheetChange(k0);
+}
 // Stringübersicht: eine für alle Stringpläne der Datei (CJ 14.10.), seit 18.10.2026 eine je PV-Modul. Gibt es sie schon, wird sie angezeigt.
 function addPvTab() {
   const v = S.model.kind === "pv" || S.model.kind === "pvtab" ? varOf(S.model) : 1, i = S.doc.sheets.findIndex((sh) => sh.kind === "pvtab" && varOf(sh) === v);
@@ -788,8 +821,8 @@ function addPvTab() {
   afterSheetChange(k0);
 }
 // Plus-Knopf (CJ 16.10.): Blatt vom Typ des aktuellen Blatts. Stringplan und Stringübersicht → Stringplan, Titel, Inhalt, Legende → Schemablatt.
-const addKindLabel = () => ({ dispo: "Disposition", pv: "Stringplan", pvtab: "Stringplan" }[S.model.kind] || "Schemablatt");
-function addSameKind() { const k = S.model.kind; (k === "dispo" ? addDispo : k === "pv" || k === "pvtab" ? addPv : addSheet)(); }
+const addKindLabel = () => ({ dispo: "Disposition", pv: "Stringplan", pvtab: "Stringplan", prinzip: "Prinzipschema" }[S.model.kind] || "Schemablatt");
+function addSameKind() { const k = S.model.kind; (k === "dispo" ? addDispo : k === "pv" || k === "pvtab" ? addPv : k === "prinzip" ? addPrinzip : addSheet)(); }
 function addSheet(v) {
   setTool("select");
   const k0 = S.model.kind;
@@ -866,13 +899,13 @@ function duplicateSheet() {
       const base = String(sh.meta.TITEL || "").replace(VAR_RE, "").trim(), same = S.doc.sheets.filter((s) => (s.kind || "schema") === k && String(s.meta.TITEL || "").replace(VAR_RE, "").trim() === base);
       const n = Math.max(1, ...same.map((s) => Number(/Variante (\d+)$/.exec(s.meta.TITEL || "")?.[1]) || 1)) + 1;
       target = copySheet(sh); target.meta.TITEL = varTitle(sh.meta.TITEL, n);
-      target.meta.BLATT = k === "dispo" ? String(maxNo("dispo") + 1) : nextSheetNo();
+      target.meta.BLATT = k === "dispo" || k === "prinzip" ? String(maxNo(k) + 1) : nextSheetNo();
       S.doc.sheets.push(target);
     }
     S.active = S.doc.sheets.indexOf(target); S.sel.clear();
   });
   afterSheetChange(k, { fit: true });
-  toast(`Kopie angelegt: ${sheetLabel(S.model, S.active)} „${S.model.meta.TITEL}“. Umbenennen: Feld Titel im ${k === "pv" || k === "pvtab" ? "Plankopf (Fenster Druck)" : "Schriftfeld"}.`);
+  toast(`Kopie angelegt: ${sheetLabel(S.model, S.active)} „${S.model.meta.TITEL}“. Umbenennen: Feld Titel im ${k === "pv" || k === "pvtab" || k === "prinzip" ? "Plankopf (Fenster Druck)" : "Schriftfeld"}.`);
 }
 // ---------- Module (CJ 18.10.2026): Schema, Disposition und PV mehrfach, je Modul eigener Name (doc.mods, model.js) ----------
 const modSheets = (id) => S.doc.sheets.filter((sh) => modOf(sh) === id && !T.isDeck(sh));
@@ -1716,6 +1749,7 @@ onPanel("input", (e) => {
 onPanel("change", (e) => {
   const t = e.target, one = selectedItems()[0];
   if (t.dataset.pvopt !== undefined) { PV.option(t); return; } // Stringplan: Modul-Einstellungen
+  if (t.dataset.pzopt !== undefined && isPrinzip()) { const np = PZ.paperFrom(S.model, t.dataset.pzopt, t.value); if (np) { change(() => { S.model.paper = np; }); fitView(); } return; } // Prinzipschema: Papier (Fenster Druck)
   if (t.dataset.lcol !== undefined && S.model.kind === "legend") {
     const k = t.dataset.lcol, on = t.checked;
     if (!on && S.model.show.length === 1) { t.checked = true; toast("Mindestens eine Spalte bleibt angehakt."); return; }
@@ -1787,7 +1821,7 @@ for (const ev of ["pointerup", "pointerleave", "pointercancel"]) $("#sheetbar").
 $("#sheetbar").addEventListener("contextmenu", (e) => { const b = e.target.closest("#sheet-add"); if (b) { e.preventDefault(); clearTimeout(addTimer); addMenu.show(b); } });
 $("#sheetbar").addEventListener("keydown", (e) => { const b = e.target.closest("#sheet-add"); if (b && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); addMenu.show(b); } });
 const addMenu = makeMenu($("#add-menu"), { up: true, beforeShow: () => { closeEditor(true); $("#add-menu [data-new=deck]").hidden = !(S.doc.sheets.some((sh) => !sh.kind) && (S.doc.noTitle || S.doc.noToc)); if (ELPLEXA) elAddFilter(); } });
-$("#add-menu").addEventListener("click", (e) => { const b = e.target.closest("[data-new]"); if (b) ({ dispo: addDispo, pv: addPv, pvtab: addPvTab, deck: addDeck }[b.dataset.new] || addSheet)(); });
+$("#add-menu").addEventListener("click", (e) => { const b = e.target.closest("[data-new]"); if (b) ({ dispo: addDispo, pv: addPv, pvtab: addPvTab, prinzip: addPrinzip, deck: addDeck }[b.dataset.new] || addSheet)(); });
 sheetMenu = makeMenu($("#sheet-menu"), { up: true, beforeShow: () => closeEditor(true), onOpen: () => { $("#sheet-find").value = ""; renderSheetList(); $("#sheet-find").focus(); $("#sheet-menu .mi.on")?.scrollIntoView({ block: "nearest" }); } });
 $("#sheet-find").addEventListener("input", renderSheetList);
 // Blattmenü (CJ 18.10.2026): Rechtsklick oder gedrückt halten auf dem Blattnamen, einer Zeile der Blattliste oder (elplexaCAD) einer
@@ -2779,7 +2813,7 @@ function elOpen(id, { create = true, exact = false } = {}) { // create: false = 
 }
 // Neues Modul (auch ein weiteres derselben Art, CJ 18.10.2026): nächste freie Nummer, erstes Blatt
 function elNew(id) {
-  const add = { schema: addSheet, dispo: addDispo, pv: addPv }[id];
+  const add = { schema: addSheet, dispo: addDispo, pv: addPv, prinzip: addPrinzip }[id];
   if (!add) { toast(`${E.modById(id).label} kommt später.`); return; }
   const vs = S.doc.sheets.filter((sh) => modBase(sh) === id && !T.isDeck(sh)).map(varOf);
   elHub(false); add(vs.length ? Math.max(...vs) + 1 : 1);

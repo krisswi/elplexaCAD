@@ -2623,7 +2623,6 @@ async function elSaveOnline() { // direkt online (Knopf Speichern bzw. sein Men�
   finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) elOnlineDraw(); }
   if (err && (await confirmDialog("Online speichern hat nicht geklappt", `${err.message || err} Es ist nichts verloren. Jetzt als Datei auf diesem Rechner speichern?`, "Lokal speichern"))) await saveJson(false);
 }
-// Feedback melden (CJ 18.10.2026): nur angemeldet (Gäste: Hinweis und Anmeldung), Screenshot der Zeichenfläche, Zeile in Supabase `feedback`
 // Handnotizen (Meilenstein 2, CJ 20.10.2026): eigenes Modul über der Übersicht, Daten in eigener Datenbank (hand.js). Blätter des Projekts
 // kommen über das eigene PDF (makePdf) als Hintergrund hinein, das Projekt bleibt unverändert.
 async function elHand() {
@@ -2639,6 +2638,7 @@ async function elHand() {
     toast, confirm: confirmDialog, onClose: () => {},
   });
 }
+// Feedback melden (CJ 18.10.2026): nur angemeldet (Gäste: Hinweis und Anmeldung), Screenshot der Zeichenfläche, Zeile in Supabase `feedback`
 async function elFeedback() {
   if (!cloudUser()) { toast("Feedback nur mit Login. Bitte anmelden."); if (!(await elLogin())) return; }
   closeEditor(true);

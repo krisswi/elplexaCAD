@@ -135,6 +135,7 @@ export function hubHTML(doc, o) {
       <div class="el-acts"><button class="btn primary" data-elact="pdf"><span class="ic" data-ic="pdf"></span><span>Plansatz-PDF …</span></button></div>`}</section>
     ${ro ? sharedHTML(o.shared) : o.projs?.user ? `<section class="el-projs" aria-label="Online"><div id="el-online" class="el-online"></div></section>` : ""}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
+      ${ro || typeof ELPLEXA === "undefined" || !ELPLEXA ? "" : `<button class="el-tile el-hand" id="el-hand" data-elact="hand" title="Handschrift mit dem Apple Pencil. Privat auf diesem Gerät, nicht im Projekt und nicht im Teilen-Link"><span class="el-th"><span class="el-tn">Handnotizen</span></span><span class="el-ts">Mit dem Stift schreiben · PDF und Bilder importieren und exportieren</span></button>`}
       ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button>`}</div>
       ${ro || o.tip === false ? `<p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p>` : ""}</section>
     ${ro ? "" : timeHTML(doc, o.today)}</div></div>${tip}`;

@@ -12,7 +12,7 @@ import { cleanAssets, cleanBg, usedAssets, cleanLayers, cleanPvItem, cleanLayerI
 import { cleanAdr, cleanGwr } from "./gwr.js";
 
 export const FORMAT = "schemacad";
-export const VERSION = 17; // 17: Text ausgerichtet (al), Klemmentexte (lab, vert), Steuerkasten (ctrl), seit 19.10.2026. // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
+export const VERSION = 18; // 18: Modulstatus (doc.mods[Modul].st) und eigene Reihenfolge der Module (.o), seit 20.10.2026. // 17: Text ausgerichtet (al), Klemmentexte (lab, vert), Steuerkasten (ctrl), seit 19.10.2026. // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
 // 10: // 10: Wandlermessung in Teilen (ZW_WANDLER, ZW_ZAEHLER, Leitungen mit of/wm) oder Klemmenleiste ohne Klemmen (noterm), seit 16.10.2026. // 9: Disposition mit NH-Hersteller (maker), Textzeilen (lines) oder Textgrösse (tf) (seit 16.10.2026; Stände mit 8 lehnen ab, statt die Angaben still zu verlieren). 8: Disposition mit Schrank, Teilen oder neuen Geräteangaben (seit 16.10.2026, schrank.js; ältere Stände lehnen ab statt still zu verlieren). 7: 7: Hauptlinien neu (seit 16.10.2026, Blatt main, Gruppenverweise mit main; ältere Stände lehnen ab, sonst entstünden doppelte Verweise). 6: mit Stringplan (seit 15.10.2026, Umbau 5ab: gedrehte Module, ältere Stände lehnen ab). 5: mit Titelseite und Inhaltsverzeichnis (kind "title", "toc", titel.js). höchste lesbare Version. 2: mehrere Blätter (sheets), Version 1 (ein Blatt) wird beim Öffnen umgewandelt. 3: wie 2, mit Blättern vom Typ Disposition (nur dann wird 3 geschrieben). 4: mit Stringplan (kind "pv", PDF unter assets) oder Stringübersicht (kind "pvtab").
 
 export const WIRE_KINDS = {
@@ -104,7 +104,9 @@ export function parseModel(text) {
   doc.nextId = Math.max(maxId + 1, Number(o.nextId) || 1);
   doc.active = Math.max(0, Math.min(doc.sheets.length - 1, Number(o.active) || 0));
   splitWandlerDoc(doc); // alte Wandlermessung (ein Symbol) in Wandlerteil, Zähler und Leitungen zerlegen
-  const mods = cleanMods(o.mods); if (mods) doc.mods = mods; // Namen der Module, PV: Strings fortsetzen (18.10.2026)
+  const mods = cleanMods(o.mods);
+  if (mods) { for (const k of Object.keys(mods)) if (!doc.sheets.some((sh) => modOf(sh) === k)) delete mods[k]; } // Eintrag ohne Modul (z. B. gelöscht in älterem Stand) würde auf ein neues Modul gleicher Kennung übergehen
+  if (mods && Object.keys(mods).length) doc.mods = mods; // Namen der Module, PV: Strings fortsetzen (18.10.2026)
   if (o.noTitle === true) doc.noTitle = true; // Titelseite gelöscht (CJ 15.10.), kommt nicht von selbst wieder
   if (o.noToc === true) doc.noToc = true;
   if (typeof ELPLEXA !== "undefined" && ELPLEXA) { const pj = cleanProject(o.project); if (pj) doc.project = pj; } // elplexaCAD: Name, Status, Projektdaten, Zeit (SchemaCAD v3 liest das nicht)
@@ -126,6 +128,8 @@ export const modKey = (base, v) => (v > 1 ? `${base}:${v}` : base);
 export const modOf = (sh) => modKey(modBase(sh), ["title", "toc", "legend"].includes(sh.kind) ? 1 : sh.var || 1);
 export const modVar = (id) => Number(String(id).split(":")[1]) || 1;
 export const modName = (doc, id) => doc.mods?.[id]?.name || `${MOD_LABELS[String(id).split(":")[0]]}${modVar(id) > 1 ? ` ${modVar(id)}` : ""}`;
+// Modulstatus (CJ 20.10.2026), Reihenfolge wie hier; „Offen“ ist der Standard und steht nicht in der Datei
+export const MOD_STATUS = ["Offen", "In Arbeit", "Geprüft", "Versendet", "Revision", "Archiviert"];
 const MOD_ID = /^(schema|dispo|pv)(:([2-9]|[1-9]\d))?$/;
 export function cleanMods(o) {
   if (!o || typeof o !== "object") return null;
@@ -135,6 +139,8 @@ export function cleanMods(o) {
     const e = {};
     if (typeof v.name === "string" && v.name.trim()) e.name = v.name.trim().slice(0, 80);
     if (k.startsWith("pv") && Number.isInteger(v.cont) && v.cont >= 1 && v.cont <= 99 && v.cont !== modVar(k)) e.cont = v.cont;
+    if (MOD_STATUS.includes(v.st) && v.st !== MOD_STATUS[0]) e.st = v.st;
+    if (Number.isInteger(v.o) && v.o >= 1 && v.o <= 99) e.o = v.o; // Platz in der Übersicht; Module ohne Platz folgen in der Standardfolge
     if (Object.keys(e).length) out[k] = e;
   }
   return Object.keys(out).length ? out : null;
@@ -288,5 +294,6 @@ export function serializeModel(m, { noAssets = false } = {}) {
   const usesV15 = sheets.some((sh) => sh.items.some((i) => i.type === "shape" || (i.type === "text" && i.c))); // freies Zeichnen, Textfarbe (18.10.2026)
   const usesV16 = sheets.some((sh) => sh.var) || !!m.mods; // Module mehrfach (18.10.2026): ältere Stände würden Module vermischen
   const usesV17 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.al) || (i.type === "terminals" && (i.lab || i.vert)) || i.type === "ctrl")) || sheets.some((sh) => sh.ins); // Wünsche CJ 19.10.2026: Textausrichtung, Klemmentexte, Steuerkasten, Dispo im Schema (ins)
-  return JSON.stringify({ ...rest, version: usesV17 ? 17 : usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
+  const usesV18 = Object.values(m.mods || {}).some((e) => e.st || e.o); // Modulstatus, Reihenfolge (20.10.2026)
+  return JSON.stringify({ ...rest, version: usesV18 ? 18 : usesV17 ? 17 : usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
 }

@@ -48,7 +48,7 @@ with sync_playwright() as p:
     syms = [i["sym"] for i in items if i["type"] == "symbol"]
     check("Symbole gesetzt: FI/LS, Verbraucher, Leitungsangabe mit 3 Strichen", syms == ["PZ_FILS", "PZ_VERBR", "PZ_LEITER_3"], syms)
     fils = next(i for i in items if i.get("sym") == "PZ_FILS")
-    check("Symbol auf dem Raster, Text und leere BMK", fils["x"] == 50 and fils["y"] == 250 and fils["attrs"] == {"TEXT": "FI/LS B13A 30mA", "BMK": ""}, fils)
+    check("Symbol auf dem Raster, Text und leere BMK", fils["x"] == 50 and fils["y"] == 250 and fils["attrs"] == {"TEXT": "FI/LS B13A 30mA", "BMK": "", "POL": "LN"}, fils)
     key("l"); click(67.5, 250); click(120, 250); key("Escape"); key("Escape")
     w = [i for i in M()["items"] if i["type"] == "wire"]
     check("Leitung vom FI/LS zum Verbraucher, einpolig", len(w) == 1 and w[0]["pts"] == [[67.5, 250], [120, 250]] and "bundle" not in w[0], w)
@@ -60,7 +60,7 @@ with sync_playwright() as p:
     click(52.5, 250)
     page.fill('#right [data-attr="TEXT"]', "FI/LS C13A 30mA"); page.fill('#right [data-attr="BMK"]', "3F1"); page.keyboard.press("Tab"); page.wait_for_timeout(150)
     fils = next(i for i in M()["items"] if i.get("sym") == "PZ_FILS")
-    check("Eigenschaften rechts: Text und BMK von Hand, keine automatische BMK", fils["attrs"] == {"TEXT": "FI/LS C13A 30mA", "BMK": "3F1"}, fils["attrs"])
+    check("Eigenschaften rechts: Text und BMK von Hand, keine automatische BMK", fils["attrs"] == {"TEXT": "FI/LS C13A 30mA", "BMK": "3F1", "POL": "LN"}, fils["attrs"])
     key("Escape")
     # Leitungsangabe: Anzahl Striche rechts umstellen
     click(92.5, 260)
@@ -70,6 +70,25 @@ with sync_playwright() as p:
     check("Leitungsangabe auf 5 Striche", any(i.get("sym") == "PZ_LEITER_5" for i in M()["items"]))
     key("Escape"); key("Escape")
     page.screenshot(path=str(OUT / "p1_von_hand.png"))
+
+    # ---------- Knopf Verdrahten (CJ 21.10.2026) und Doppelklick setzt nicht doppelt ----------
+    key("l"); click(20, 200); click(20, 150); key("Escape"); key("Escape")
+    page.click('[data-sym="PZ_LS"]'); click(60, 175); click(60, 175); key("Escape"); key("v")
+    ls = [i for i in M()["items"] if i.get("sym") == "PZ_LS"]
+    check("Doppelklick beim Setzen: nur ein Symbol", len(ls) == 1, len(ls))
+    click(63, 175)
+    page.fill('#right [data-attr="POL"]', "3LN"); page.keyboard.press("Tab"); page.wait_for_timeout(150)
+    check("Knopf Verdrahten am LS", page.locator('#right [data-act="pzwire"]').count() == 1)
+    n0 = len(M()["items"]); page.click('#right [data-act="pzwire"]'); page.wait_for_timeout(150)
+    new = M()["items"][n0:]
+    wires = [i["pts"] for i in new if i["type"] == "wire"]; syms = {i["sym"]: (i["x"], i["y"]) for i in new if i["type"] == "symbol"}
+    check("Verdrahten: links bis zur Steigleitung, rechts Leitungsangabe 5 Striche und Verbraucher 30 mm weiter",
+          wires == [[[20, 175], [60, 175]], [[70, 175], [90, 175]], [[95, 175], [100, 175]]] and syms == {"PZ_LEITER_5": (90, 175), "PZ_VERBR": (100, 175)}, (wires, syms))
+    n1 = len(M()["items"]); page.click('#right [data-act="pzwire"]'); page.wait_for_timeout(150)
+    check("Verdrahten zweimal: nichts doppelt", len(M()["items"]) == n1)
+    key("Meta+z"); page.wait_for_timeout(150)
+    check("Verdrahten: ein Rückgängig-Schritt", len(M()["items"]) == n0)
+    key("Escape")
 
     # ---------- Druck: Papier und Plankopf wie PV ----------
     page.click("#btn-pvdruck"); page.wait_for_timeout(200)

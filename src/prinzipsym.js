@@ -13,11 +13,13 @@ const sym = (name, label, prims, pins, attrs) => ({ name, family: name.replace(/
 const H = (x) => [{ x: 0, y: 0 }, { x, y: 0 }]; // Anschlüsse waagrecht, links und rechts
 
 // Schaltstück offen: Leiter, Schwenkpunkt bei x0, Festkontakt mit Querstrich bei x1, Kreuz = Leitungsschutz
+// Beschriftung der Abgangsgeräte (CJ 21.10.2026): immer drei Zeilen oberhalb, zuoberst BMK, darunter Bezeichnung, unten Polzahl (LN, 3LN)
+const top3 = (def, y0 = 0) => [bmk(-1, y0 + 11), attr("TEXT", "Bezeichnung", def, -1, y0 + 7.5), attr("POL", "Polzahl (z. B. LN, 3LN)", "LN", -1, y0 + 4)];
 const blade = (x0, x1, cross) => [line(x0, 0, x1, 2.5), line(x1, -0.8, x1, 0.8), ...(cross ? [line(x1 + 0.6, 1.2, x1 + 1.8, 2.4), line(x1 + 1.8, 1.2, x1 + 0.6, 2.4)] : [])];
-const ls = sym("PZ_LS", "Leitungsschutzschalter (LS)", [line(0, 0, 2.5, 0), ...blade(2.5, 7.5, true), line(7.5, 0, 10, 0)], H(10), [attr("TEXT", "Bezeichnung", "LS C 13A", -1, 4.5), bmk(-1, -4.5)]);
-const fi = sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [line(0, 0, 1.5, 0), ...rect(1.5, -2.5, 8.5, 2.5), text(5, 0, 2.5, "FI"), line(8.5, 0, 10, 0)], H(10), [attr("TEXT", "Bezeichnung", "FI 40A 30mA", -1, 4.5), bmk(-1, -5)]);
+const ls = sym("PZ_LS", "Leitungsschutzschalter (LS)", [line(0, 0, 2.5, 0), ...blade(2.5, 7.5, true), line(7.5, 0, 10, 0)], H(10), top3("LS C 13A"));
+const fi = sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [line(0, 0, 1.5, 0), ...rect(1.5, -2.5, 8.5, 2.5), text(5, 0, 2.5, "FI"), line(8.5, 0, 10, 0)], H(10), top3("FI 40A 30mA", 1));
 const fils = sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [line(0, 0, 1.5, 0), ...rect(1.5, -2.5, 16, 2.5), line(7, -2.5, 7, 2.5), text(4.25, 0, 2.2, "FI"), line(7, 0, 8.5, 0), line(8.5, 0, 12.5, 2), line(12.5, -0.8, 12.5, 0.8), line(13.1, 0.6, 14.1, 1.6), line(14.1, 0.6, 13.1, 1.6), line(12.5, 0, 17.5, 0)], H(17.5),
-  [attr("TEXT", "Bezeichnung", "FI/LS B13A 30mA", -1, 4.5), bmk(-1, -5)]);
+  top3("FI/LS B13A 30mA", 1));
 // Sicherung (z. B. DII): senkrecht, Rechteck mit durchgehendem Leiter
 const sich = sym("PZ_SICH", "Sicherung (Schmelzsicherung)", [line(0, 0, 0, -12.5), ...rect(-1.5, -2.5, 1.5, -10)], [{ x: 0, y: 0 }, { x: 0, y: -12.5 }], [attr("TEXT", "Bezeichnung", "DII 25 A", 3, -7), bmk(3, -3.5)]);
 
@@ -54,7 +56,7 @@ export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...[1, 2, 3, 4, 5].map(leite
 export const PRINZIP_GROUPS = [
   ["Abgänge", [
     { id: "PZ_FILS", label: "FI/LS-Schalter", sub: "z. B. FI/LS B13A 30mA", def: "PZ_FILS", variants: ["PZ_FILS"] },
-    { id: "PZ_LS", label: "Leitungsschutzschalter", sub: "z. B. 1LN C 13A", def: "PZ_LS", variants: ["PZ_LS"] },
+    { id: "PZ_LS", label: "Leitungsschutzschalter", sub: "z. B. LS C 13A, LN", def: "PZ_LS", variants: ["PZ_LS"] },
     { id: "PZ_FI", label: "FI-Schutzschalter", sub: "z. B. FI 40A 30mA", def: "PZ_FI", variants: ["PZ_FI"] },
     { id: "PZ_LEITER", label: "Leitungsangabe", sub: "Striche = Anzahl Leiter, Text z. B. 3x1,5mm²", def: "PZ_LEITER_1", variants: [1, 2, 3, 4, 5].map((n) => `PZ_LEITER_${n}`) },
     { id: "PZ_VERBR", label: "Verbraucher", sub: "Anschlussstelle mit Text", def: "PZ_VERBR", variants: ["PZ_VERBR"] },
@@ -73,4 +75,5 @@ export const PRINZIP_GROUPS = [
   ]],
 ];
 export const PRINZIP_FAMILIES = PRINZIP_GROUPS.flatMap(([, f]) => f);
+export const PZ_ABGANG = ["PZ_LS", "PZ_FI", "PZ_FILS"]; // Geräte mit Knopf «Verdrahten»
 export const isPrinzipSym = (name) => String(name).startsWith("PZ_");

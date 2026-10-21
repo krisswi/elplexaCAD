@@ -38,7 +38,7 @@ import { makePdf } from "./pdfout.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
 import { fetchGwr, searchAdr, adrText } from "./gwr.js";
 import * as PZ from "./prinzip.js";
-import { PRINZIP_GROUPS, PRINZIP_FAMILIES } from "./prinzipsym.js";
+import { PRINZIP_GROUPS, PRINZIP_FAMILIES, PZ_ABGANG } from "./prinzipsym.js";
 
 
 const $ = (s) => document.querySelector(s);
@@ -644,6 +644,7 @@ function renderRightPanel() {
         h += `<p class="note">${cur ? "Verknüpft mit " + R.esc(refLabel(cur.item, cur.sheet)) + "." : "Noch nicht verknüpft."}</p>`;
         h += `<div class="row"><button class="btn outline small" data-act="relink">${cur ? "Verknüpfung ändern" : "Verknüpfen"}</button>${cur ? '<button class="btn outline small" data-act="unlink">Lösen</button>' : ""}</div>`;
       }
+      if (isPrinzip() && PZ_ABGANG.includes(it.sym)) h += `<div class="row"><button class="btn outline small" data-act="pzwire" title="Links bis zur Steigleitung, rechts Leitungsangabe und Verbraucher">Verdrahten</button></div>`;
       if (isDevice(sym)) h += `<div class="row"><button class="btn outline small" data-act="golegend">In Legende zeigen</button><button class="btn outline small" data-act="autowire" title="Leitungen von den Hauptlinien und zu den Klemmen (Alt+V)">Autoverkabelung</button></div>`;
       h += actions([["rotate", "rotate", "Drehen"], ["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else if (it.type === "terminals") {
@@ -1117,6 +1118,8 @@ function applyRailEnd(w, side, mode) {
 function addSymbol(name, x, y, rot) {
   const sym = SYMBOL_BY_NAME[name];
   let placed = null;
+  const same = S.model.items.find((i) => i.type === "symbol" && i.sym === name && i.x === x && i.y === y && (i.rot || 0) === (rot || 0));
+  if (same) { S.sel = new Set([same.id]); renderRight(); renderOverlay(); return; } // gleiches Symbol am gleichen Ort (z. B. Doppelklick): nicht doppelt setzen
   change(() => {
     const dev = { id: nextId(), type: "symbol", sym: name, x, y, rot, attrs: Object.fromEntries(sym.attrs.map((a) => [a.tag, a.def])) };
     S.model.items.push(dev);
@@ -1139,6 +1142,35 @@ function autoWire() {
   if (!n) { toast(skipped.includes("gedreht") ? "Autoverkabelung geht nur bei ungedrehten Geräten." : "Autoverkabelung: alle Pole sind schon verbunden oder es fehlen Hauptlinien bzw. Klemmen darunter."); return; }
   pushUndo(snap0); afterChange();
   toast(`Autoverkabelung: ${n} Leitung${n === 1 ? "" : "en"} gezogen.${skipped.length ? ` Nicht verbunden: ${[...new Set(skipped)].join(", ")}.` : ""}`);
+}
+// Prinzipschema, Knopf «Verdrahten» (CJ 21.10.2026): am gewählten LS, FI oder FI/LS links eine Leitung waagrecht bis zur nächsten
+// senkrechten Leitung (Steigleitung), rechts Leitung, Leitungsangabe (Striche aus der Polzahl) und Verbraucher 30 mm weiter.
+// Seiten mit schon angeschlossener Leitung bleiben, wie sie sind. Ein Rückgängig-Schritt.
+const pzStriche = (pol) => { const m = /^\s*(\d)?\s*L?\s*(N)?/i.exec(pol || "LN"); return Math.min(5, Math.max(1, Number(m[1] || 1) + (m[2] ? 1 : 0) + 1)); }; // + PE
+function pzWire(dev) {
+  if (dev.rot) { toast("Verdrahten geht nur bei ungedrehten Geräten (waagrechter Abgang)."); return; }
+  const sym = SYMBOL_BY_NAME[dev.sym], y = dev.y, xl = dev.x, xr = dev.x + sym.pins[1].x;
+  const wires = S.model.items.filter((i) => i.type === "wire");
+  const used = (x) => wires.some((w) => [w.pts[0], w.pts.at(-1)].some((p) => p[0] === x && p[1] === y));
+  let riser = null;
+  for (const w of wires) for (let i = 0; i + 1 < w.pts.length; i++) {
+    const [[x1, y1], [x2, y2]] = [w.pts[i], w.pts[i + 1]];
+    if (x1 === x2 && x1 < xl && y >= Math.min(y1, y2) && y <= Math.max(y1, y2) && (riser === null || x1 > riser)) riser = x1;
+  }
+  const add = [], notes = [];
+  if (used(xl)) notes.push("links schon verbunden"); else if (riser === null) notes.push("links keine Steigleitung gefunden");
+  else add.push({ type: "wire", kind: S.wireKind, pts: [[riser, y], [xl, y]] });
+  if (used(xr)) notes.push("rechts schon verbunden");
+  else {
+    const n = pzStriche(dev.attrs.POL);
+    add.push({ type: "wire", kind: S.wireKind, pts: [[xr, y], [xr + 20, y]] },
+      { type: "symbol", sym: `PZ_LEITER_${n}`, x: xr + 20, y, rot: 0, attrs: { KABEL: `${n}x1,5mm²` } },
+      { type: "wire", kind: S.wireKind, pts: [[xr + 25, y], [xr + 30, y]] },
+      { type: "symbol", sym: "PZ_VERBR", x: xr + 30, y, rot: 0, attrs: { TEXT: "Verbraucher" } });
+  }
+  if (!add.length) { toast(`Verdrahten: nichts zu tun (${notes.join(", ")}).`); return; }
+  change(() => S.model.items.push(...add.map((it) => ({ id: nextId(), ...it }))));
+  toast(`Verdrahtet.${notes.length ? ` ${notes.join(", ")}.` : ""}`);
 }
 // Abgang aus einer Vorlage in Spalte col: ein Rückgängig-Schritt, BMK und Klemmen nummerieren sich danach (renumberAll)
 function addAbgang(tpl, col) {
@@ -1800,7 +1832,7 @@ onPanel("click", (e) => {
   if (b.dataset.act.startsWith("dp")) { dispoAct(b.dataset.act, b); return; } // Zählerplatte bestücken, Masse aus-/einblenden
   if (b.dataset.act.startsWith("cab")) { dispoCabAct(b.dataset.act, b, selectedItems()[0]); return; } // Schrank: Feld anfügen, löschen, Montageplatten
   const one = selectedItems()[0];
-  ({ autowire: autoWire, rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, dupsheet: duplicateSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
+  ({ autowire: autoWire, pzwire: () => one && pzWire(one), rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, dupsheet: duplicateSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
 });
 
 let addHeld = false, addTimer = 0; // langes Drücken auf + öffnet die Auswahl statt ein Blatt anzulegen

@@ -21,6 +21,11 @@ for (const s of PRINZIP_SYMBOLS) {
 assert.ok(PRINZIP_FAMILIES.every((f) => f.variants.every((v) => SYMBOL_BY_NAME[v])), "Palette zeigt nur vorhandene Symbole");
 for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS", "PZ_SICH", "PZ_ZAEHLER", "PZ_RSE", "PZ_GERAET", "PZ_HAK"]) assert.ok(SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: leeres BMK-Feld für später`);
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITER_3.prims.length, 4, "Leitungsangabe: Leitung und drei Striche");
+// Abgangsgeräte: drei Zeilen oberhalb, BMK zuoberst, dann Bezeichnung, dann Polzahl (CJ 21.10.2026)
+for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS"]) {
+  const [b, t, p] = ["BMK", "TEXT", "POL"].map((g) => SYMBOL_BY_NAME[n].attrs.find((a) => a.tag === g));
+  assert.ok(p && p.y > 2.5 && t.y > p.y && b.y > t.y && b.x === t.x && t.x === p.x, `${n}: BMK, Bezeichnung, Polzahl übereinander oberhalb`);
+}
 console.log("ok Symbole");
 
 // ---------- Datenmodell: Blatt prinzip, Papier, Modul, Rundlauf, Version 19 ----------
@@ -93,12 +98,12 @@ export function beispielDoc() {
   const S = (name, x, y, rot = 0, set = {}) => sh.items.push({ id: n++, type: "symbol", sym: name, x, y, rot, attrs: { ...Object.fromEntries(SYMBOL_BY_NAME[name].attrs.map((a) => [a.tag, a.def])), ...set } });
   const L = (...pts) => sh.items.push({ id: n++, type: "wire", kind: "leitung", pts });
   const T = (x, y, s, h = 3) => sh.items.push({ id: n++, type: "text", x, y, h, s });
-  const rows = [["PZ_FILS", "FI/LS B13A 30mA", 3, "3x1,5mm²", "Handtuchradiator 1 kW"], ["PZ_FILS", "FI/LS C13A 30mA", 3, "3x1,5mm²", "Licht Wohnen, Balkon"],
-    ["PZ_LS", "1LN C 13A", 3, "3x1,5mm²", "Licht Essen, Küche"], ["PZ_LS", "3LN B 16A", 5, "5x2,5mm²", "Kochherd 9,2 kW"], ["PZ_LS", "3LN B 16A", 5, "5x2,5mm²", "Wäscheturm 6,8 kW"],
-    ["PZ_LS", "1LN B 13A", 3, "3x1,5mm²", "Geschirrspüler 2,5 kW"], ["PZ_LS", "3L B 13A", 4, "4x1,5mm²", "Boiler 300 l, 6 kW"]];
-  rows.forEach(([dev, txt, k, kab, verbr], i) => {
+  const rows = [["PZ_FILS", ["FI/LS B13A 30mA", "LN"], 3, "3x1,5mm²", "Handtuchradiator 1 kW"], ["PZ_FILS", ["FI/LS C13A 30mA", "LN"], 3, "3x1,5mm²", "Licht Wohnen, Balkon"],
+    ["PZ_LS", ["LS C 13A", "LN"], 3, "3x1,5mm²", "Licht Essen, Küche"], ["PZ_LS", ["LS B 16A", "3LN"], 5, "5x2,5mm²", "Kochherd 9,2 kW"], ["PZ_LS", ["LS B 16A", "3LN"], 5, "5x2,5mm²", "Wäscheturm 6,8 kW"],
+    ["PZ_LS", ["LS B 13A", "LN"], 3, "3x1,5mm²", "Geschirrspüler 2,5 kW"], ["PZ_LS", ["LS B 13A", "3L"], 4, "4x1,5mm²", "Boiler 300 l, 6 kW"]];
+  rows.forEach(([dev, [txt, pol], k, kab, verbr], i) => {
     const y = 270 - i * 15, end = 45 + SYMBOL_BY_NAME[dev].pins[1].x;
-    L([25, y], [45, y]); S(dev, 45, y, 0, { TEXT: txt }); L([end, y], [100, y]); S(`PZ_LEITER_${k}`, 100, y, 0, { KABEL: kab }); L([105, y], [150, y]); S("PZ_VERBR", 150, y, 0, { TEXT: verbr });
+    L([25, y], [45, y]); S(dev, 45, y, 0, { TEXT: txt, POL: pol }); L([end, y], [100, y]); S(`PZ_LEITER_${k}`, 100, y, 0, { KABEL: kab }); L([105, y], [150, y]); S("PZ_VERBR", 150, y, 0, { TEXT: verbr });
   });
   L([25, 270], [25, 130]); S("PZ_LEITER_5", 25, 147.5, 270, { KABEL: "5x6mm²" });
   sh.items.push({ id: n++, type: "shape", k: "line", pts: [[10, 150], [200, 150]] });

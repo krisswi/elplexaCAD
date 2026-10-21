@@ -28,13 +28,13 @@ with sync_playwright() as p:
         page.evaluate("document.activeElement?.blur()"); key("0")
 
     # Module ziehen
-    check("Ausgangsfolge Schema, Dispo, PV", tiles() == ["schema", "dispo", "pv"], tiles())
+    check("Ausgangsfolge Schema, Dispo, PV", tiles() == ["schema", "dispo", "pv", "legende"], tiles())
     check("Kacheln sind ziehbar", page.evaluate("[...document.querySelectorAll('.el-tile[data-modctx]')].every((t) => t.draggable)"))
     page.drag_and_drop("#el-tile-pv", "#el-tile-schema"); page.wait_for_timeout(300)
-    check("PV auf Schema ziehen: PV steht vorn", tiles() == ["pv", "schema", "dispo"], tiles())
-    check("Reihenfolge in der Datei gespeichert", page.evaluate("Object.fromEntries(Object.entries(window.__schemacad.doc.mods || {}).map(([k, v]) => [k, v.o]))") == {"pv": 1, "schema": 2, "dispo": 3})
+    check("PV auf Schema ziehen: PV steht vorn", tiles() == ["pv", "schema", "dispo", "legende"], tiles())
+    check("Reihenfolge in der Datei gespeichert", page.evaluate("Object.fromEntries(Object.entries(window.__schemacad.doc.mods || {}).map(([k, v]) => [k, v.o]))") == {"pv": 1, "schema": 2, "dispo": 3, "legende": 4})
     page.focus("#el-tile-pv"); key("ArrowRight", altKey=True)
-    check("Tastatur: ⌥ → bleibt gleichwertig", tiles() == ["schema", "pv", "dispo"], tiles())
+    check("Tastatur: ⌥ → bleibt gleichwertig", tiles() == ["schema", "pv", "dispo", "legende"], tiles())
     page.screenshot(path=str(OUT / "b5_module.png"))
 
     # Projektkacheln: drei lokale Einträge durch Speichern

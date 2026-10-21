@@ -2260,7 +2260,8 @@ function elInit() {
   EL_S.modCtx = makeMenu(mc, { left: true, beforeShow: () => {
     const id = EL_S.ctxMod, n = E.modIdx(S.doc, id).filter((i) => !T.isDeck(S.doc.sheets[i])).length;
     mc.querySelector(".ctx-head").textContent = `${modName(S.doc, id)} · ${n} ${n === 1 ? "Blatt" : "Blätter"}`;
-    mc.querySelector("[data-elmodact=del]").disabled = !S.doc.sheets.some((sh) => !T.isDeck(sh) && modOf(sh) !== id);
+    mc.querySelector("[data-elmodact=del]").disabled = !S.doc.sheets.some((sh) => !T.isDeck(sh) && modOf(sh) !== id) || !!E.modById(id)?.auto;
+    mc.querySelector("[data-elmodact=dup]").disabled = !!E.modById(id)?.auto; // Legende: gibt es nur einmal
   } });
   mc.addEventListener("click", (e) => { const b = e.target.closest("[data-elmodact]"); if (b) elModAct(b.dataset.elmodact); });
   // Menü am Knopf Speichern (CJ 18.10.2026, Klick-Regel): Rechtsklick oder gedrückt halten; Online nur mit Login
@@ -2840,7 +2841,7 @@ async function elProfileLogin() {
 function elHelp() { openModal("Tasten in elplexaCAD", E.keysHTML() + `<div class="actions"><button class="btn outline" data-tip>${elTipOn() ? "Tipp-Zeile ausblenden" : "Tipp-Zeile einblenden"}</button><button class="btn primary" data-c>Schliessen</button></div>`, (b, done) => { if (b.matches("[data-tip]")) { elTipSet(!elTipOn()); done(null); } else done(null); }, null, "[data-c]"); }
 // Tasten ohne ⌘: 1 bis 3 Module, 0 Übersicht, § Leisten, ? Hilfe. true = Taste gehört elplexaCAD
 function elKey(e) {
-  const mods = E.MODULES.filter((m) => !m.later);
+  const mods = E.MODULES.filter((m) => !m.later && !m.auto);
   if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden && !(EL_S.tab === "projekte" && EL_S.pview)) return false; // Projekte, Zeit, Profil haben keine Modulkacheln
   if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden) { const id = E.modIds(S.doc)[Number(e.key) - 1]; if (id) elOpen(id, { exact: true }); else toast(`Kein Modul an Stelle ${e.key}.`); return true; } // Übersicht: N-te Kachel (20.10.2026)
   if (/^[1-9]$/.test(e.key)) { const n = Number(e.key); if (n <= mods.length) elOpen(mods[n - 1].id, { create: false }); else if (E.MODULES[n - 1]) toast(`${E.MODULES[n - 1].label} kommt später.`); else return false; return true; }
@@ -2881,7 +2882,7 @@ async function elShareLoad() {
     else {
       EL_S.fromOnline = true;
       try { await loadText(JSON.stringify(r.doc), r.name || "Geteiltes Projekt", null); } finally { EL_S.fromOnline = false; }
-      EL_S.shareInfo = { at: r.at, ablauf: r.ablauf, mods: r.modules ? E.modIds(S.doc).map((id) => modName(S.doc, id)) : null };
+      EL_S.shareInfo = { at: r.at, ablauf: r.ablauf, mods: r.modules ? E.modIds(S.doc).filter((id) => !E.modById(id)?.auto).map((id) => modName(S.doc, id)) : null };
       setTool("hand"); document.body.classList.remove("el-sharewait");
     }
   } catch (err) { EL_S.shareFail = { msg: err.message || String(err) }; }
@@ -2897,7 +2898,7 @@ function elShareKey(e) { // true = Taste gesperrt oder erledigt; erlaubt sind An
 // Ist es das offene Projekt, wählen Häkchen die Module (CJ 18.10.2026); only = Vorwahl ein Modul (Exportieren › Modul teilen). Alle Häkchen = ganzes Projekt.
 async function elShareDialog(id, only = null) {
   const name = EL_S.onlist?.find((x) => x.id === id)?.name || elName(), mine = S.doc.project?.online?.id === id;
-  const ids = mine ? E.modIds(S.doc) : [], pick = mine ? { ids, on: new Set(only ? [only] : ids) } : null, nm = (m) => modName(mine ? S.doc : {}, m);
+  const ids = mine ? E.modIds(S.doc).filter((m) => !E.modById(m)?.auto) : [], pick = mine ? { ids, on: new Set(only ? [only] : ids) } : null, nm = (m) => modName(mine ? S.doc : {}, m);
   let links = null;
   const draw = () => { const m = $("#modal-root .modal"); if (m) m.querySelector(".el-shbody").innerHTML = E.shareDialogHTML(name, links, shareUrl, pick, nm); };
   const load = async (fn) => { try { const l = await fn(); if (l) links = l; } catch (err) { toast(err.message || String(err), "error"); } draw(); };

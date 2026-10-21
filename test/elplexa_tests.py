@@ -17,7 +17,7 @@ def no_auto(d):  # automatische Zeit (project.id, project.auto) läuft mit und h
         p.pop("auto", None); p.pop("id", None)
         if not p: d.pop("project")
     return d
-MOD = {"dispo": "dispo", "pv": "pv", "pvtab": "pv"}
+MOD = {"dispo": "dispo", "pv": "pv", "pvtab": "pv", "legend": "legende"}  # Legende eigenes Modul (21.10.2026)
 with sync_playwright() as p:
     b = p.chromium.launch()
     ctx = b.new_context(viewport={"width": 1440, "height": 900})
@@ -95,7 +95,7 @@ with sync_playwright() as p:
     key("0")
     check("0 schliesst die Übersicht, Schema bleibt", not hub() and active() == a)
     key("0")
-    check("0 öffnet die Übersicht", hub() and page.locator("#el-hub [data-elopen]").count() == 2)
+    check("0 öffnet die Übersicht (PV, Schema, Legende)", hub() and page.locator("#el-hub [data-elopen]").count() == 3)
     key("0")
 
     # Entf bei offener Übersicht löscht nichts
@@ -507,7 +507,7 @@ with sync_playwright() as p:
     page.evaluate("async () => { for (let k = 0; k < 12; k++) { document.querySelector('#add-menu [data-new=sheet]').click(); await new Promise((r) => setTimeout(r, 20)); } }")
     key("0"); page.wait_for_timeout(200)
     t = page.evaluate("""() => { const t = document.querySelector('#el-tile-schema'), r = t.getBoundingClientRect(), sh = [...t.querySelectorAll('[data-elsheet]')], more = t.querySelector('.el-more');
-      const n = window.__schemacad.doc.sheets.filter((s) => !['dispo', 'pv', 'pvtab'].includes(s.kind)).length;
+      const n = window.__schemacad.doc.sheets.filter((s) => !['dispo', 'pv', 'pvtab', 'legend'].includes(s.kind)).length;
       return { n, k: sh.length, more: more?.textContent, out: [...t.querySelectorAll('.el-thumbs i')].some((i) => { const b = i.getBoundingClientRect(); return b.width && b.top < t.querySelector('.el-shs').getBoundingClientRect().bottom && b.right > r.right - 1; }), i: Number(sh[3].dataset.elsheet) }; }""")
     check("Modulkarte: 5 Blatt-Kacheln, „+N“ mit Rest, nichts ragt hinaus", t["k"] == 5 and t["more"] == f"+{t['n'] - 5}" and not t["out"], t)
     page.click(f"#el-sh-{t['i']}"); page.wait_for_timeout(150)
@@ -532,6 +532,21 @@ with sync_playwright() as p:
     page.click("#el-tile-schema [data-elpdf]"); pp = pdf_pages()
     check("PDF: Schrift Barlow Semi Condensed eingebettet (normal und fett)", "/FontFile2" in pdf_pages.txt and "BarlowSC" in pdf_pages.txt)
     check("Knopf PDF: ein PDF im neuen Tab mit allen Blättern des Moduls, ohne Rückfrage und Druckdialog, Übersicht bleibt", len(pp) == t["n"] and not page.evaluate("!!window.__printed") and not page.is_visible(".modal") and hub(), pp)
+    # Legende als eigenes Modul (CJ 21.10.2026): eigene Kachel, nicht im Schema-PDF, nur im Gesamt-PDF aller Blätter
+    check("Einzel-PDF Schema ohne Legende (keine Seite A4 hoch)", (210, 297) not in pp and all(p == (297, 210) for p in pp), pp)
+    lt = page.evaluate("(() => { const t = document.querySelector('#el-tile-legende'); return t && { n: t.querySelector('.el-ts').innerText.split(/\\s+/)[0], sh: t.querySelectorAll('[data-elsheet]').length }; })()")
+    check("Legende: eigene Kachel mit einem Blatt, nicht unter den Blättern des Schemas", lt == {"n": "1", "sh": 1} and len(pop) == t["n"], lt)
+    page.click("#el-tile-legende", button="right"); page.wait_for_timeout(150)
+    check("Legende: Kachelmenü ohne Duplizieren und Löschen", page.is_visible("#el-modctx") and page.is_disabled("#el-modctx [data-elmodact=dup]") and page.is_disabled("#el-modctx [data-elmodact=del]"))
+    page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    page.click("#el-addmod"); page.wait_for_timeout(150)
+    check("+ Modul bietet keine Legende an", page.locator('[data-elnew="legende"]').count() == 0 and page.locator('[data-elnew="schema"]').count() == 1)
+    page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    page.evaluate("document.querySelector('#btn-pdf').click()"); page.wait_for_timeout(200)
+    ns = page.evaluate("window.__schemacad.doc.sheets.length")
+    check("Gesamt-PDF: Blattauswahl mit allen Blättern samt Legende", page.locator(".modal [data-psheet]").count() == ns and "Legende" in page.inner_text(".modal .print-list"))
+    page.click(".modal [data-ok]"); pg = pdf_pages()
+    check("Gesamt-PDF: alle Blätter, Legende als Seite A4 hoch nach dem Schema", len(pg) == ns and pg.count((210, 297)) == 1 and pg[t["n"]] == (210, 297), pg)
     # Knopf PDF mit gemischtem Papier (CJ 18.10.2026: A3 und A4 gab scheinbar nur 1 Seite): neues PV-Modul mit Stringplan (A3) und Stringübersicht (A4)
     page.click("#el-addmod"); page.wait_for_timeout(150); page.click('[data-elnew="pv"]'); page.wait_for_timeout(300)
     page.evaluate("document.querySelector('#add-menu [data-new=pvtab]').click()"); page.wait_for_timeout(300); key("0"); page.wait_for_timeout(200)

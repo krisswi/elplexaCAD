@@ -119,18 +119,19 @@ export function parseModel(text) {
   return doc;
 }
 
-// Module mehrfach (CJ 18.10.2026): ein Modul = Blätter einer Art (Schema mit Titelseite, Inhalt, Legende; Disposition; PV mit Stringübersicht)
+// Module mehrfach (CJ 18.10.2026): ein Modul = Blätter einer Art (Schema mit Titelseite, Inhalt; Disposition; PV mit Stringübersicht)
+// Legende als eigenes Modul (CJ 21.10.2026): Kennung „legende“, immer nur eines, entsteht mit dem Schema (titel.js ensureDeck).
 // und gleicher Nummer var (fehlt = 1). Kennung „schema“, „dispo“, „pv“ für Nr. 1, sonst „pv:2“. doc.mods[Kennung] = { name, cont }:
 // name = eigener Name (z. B. „Schema HV“), cont = PV: Strings fortsetzen nach dem PV-Modul mit dieser Nummer.
-export const MOD_LABELS = { schema: "Schema", dispo: "Disposition", pv: "PV-Stringplan" };
-export const modBase = (sh) => (sh.kind === "dispo" ? "dispo" : sh.kind === "pv" || sh.kind === "pvtab" ? "pv" : "schema");
+export const MOD_LABELS = { schema: "Schema", dispo: "Disposition", pv: "PV-Stringplan", legende: "Legende" };
+export const modBase = (sh) => (sh.kind === "dispo" ? "dispo" : sh.kind === "pv" || sh.kind === "pvtab" ? "pv" : sh.kind === "legend" ? "legende" : "schema");
 export const modKey = (base, v) => (v > 1 ? `${base}:${v}` : base);
 export const modOf = (sh) => modKey(modBase(sh), ["title", "toc", "legend"].includes(sh.kind) ? 1 : sh.var || 1);
 export const modVar = (id) => Number(String(id).split(":")[1]) || 1;
 export const modName = (doc, id) => doc.mods?.[id]?.name || `${MOD_LABELS[String(id).split(":")[0]]}${modVar(id) > 1 ? ` ${modVar(id)}` : ""}`;
 // Modulstatus (CJ 20.10.2026), Reihenfolge wie hier; „Offen“ ist der Standard und steht nicht in der Datei
 export const MOD_STATUS = ["Offen", "In Arbeit", "Geprüft", "Versendet", "Revision", "Archiviert"];
-const MOD_ID = /^(schema|dispo|pv)(:([2-9]|[1-9]\d))?$/;
+const MOD_ID = /^((schema|dispo|pv)(:([2-9]|[1-9]\d))?|legende)$/;
 export function cleanMods(o) {
   if (!o || typeof o !== "object") return null;
   const out = {};
@@ -163,7 +164,7 @@ export function cleanProject(o) {
   if (typeof o.id === "string" && /^[a-z0-9]{6,20}$/.test(o.id)) p.id = o.id;
   if (Array.isArray(o.auto)) {
     const a = o.auto.filter((e) => e && /^[a-z0-9]{4,16}$/.test(e.k) && /^\d{4}-\d{2}-\d{2}$/.test(e.d) && isNum(e.s) && e.s >= 0 && e.s <= 86400)
-      .map((e) => ({ k: e.k, d: e.d, s: Math.round(e.s), m: (Array.isArray(e.m) ? e.m : []).filter((x) => ["schema", "dispo", "pv"].includes(x)), ...(e.x === "ok" || e.x === "weg" ? { x: e.x } : {}) }));
+      .map((e) => ({ k: e.k, d: e.d, s: Math.round(e.s), m: (Array.isArray(e.m) ? e.m : []).filter((x) => ["schema", "dispo", "pv", "legende"].includes(x)), ...(e.x === "ok" || e.x === "weg" ? { x: e.x } : {}) }));
     if (a.length) p.auto = a;
   }
   // Adresse und GWR (CJ 19.10.2026, gwr.js)

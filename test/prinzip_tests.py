@@ -88,6 +88,13 @@ with sync_playwright() as p:
     check("Verdrahten zweimal: nichts doppelt", len(M()["items"]) == n1)
     key("Meta+z"); page.wait_for_timeout(150)
     check("Verdrahten: ein Rückgängig-Schritt", len(M()["items"]) == n0)
+    # Polzahl mit Tasten 1–3 und N (CJ 21.10.2026), Symbol bleibt
+    click(63, 175); key("2"); pol1 = next(i for i in M()["items"] if i.get("sym") == "PZ_LS")["attrs"]["POL"]; key("n")
+    ls = next(i for i in M()["items"] if i.get("sym") == "PZ_LS")
+    check("Taste 2 → 2LN, N → 2L, Symbol gleich", pol1 == "2LN" and ls["attrs"]["POL"] == "2L" and ls["sym"] == "PZ_LS", (pol1, ls))
+    key("Escape"); page.click('[data-sym="PZ_FILS"]'); key("3"); key("n"); click(60, 120); key("Escape"); key("v")
+    f2 = [i for i in M()["items"] if i.get("sym") == "PZ_FILS" and i["y"] == 120]
+    check("Beim Setzen: 3 und N → 3L", len(f2) == 1 and f2[0]["attrs"]["POL"] == "3L", f2)
     key("Escape")
 
     # ---------- Druck: Papier und Plankopf wie PV ----------

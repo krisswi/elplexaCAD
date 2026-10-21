@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { newDoc, newSheet, parseModel, serializeModel, modOf, modName, VERSION } from "../src/model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, bmkLetter } from "../src/symbols.js";
-import { PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
+import { polNext, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
 import { exportDxf } from "../src/dxf.js";
 import { renumberAll } from "../src/numbering.js";
 import { partsList, fuseLegend } from "../src/auswertung.js";
@@ -26,6 +26,8 @@ for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS"]) {
   const [b, t, p] = ["BMK", "TEXT", "POL"].map((g) => SYMBOL_BY_NAME[n].attrs.find((a) => a.tag === g));
   assert.ok(p && p.y > 2.5 && t.y > p.y && b.y > t.y && b.x === t.x && t.x === p.x, `${n}: BMK, Bezeichnung, Polzahl übereinander oberhalb`);
 }
+assert.deepStrictEqual(["1", "2", "3", "n"].map((k) => polNext("LN", k)), ["LN", "2LN", "3LN", "L"], "Polzahl: Tasten 1–3 und N");
+assert.strictEqual(polNext("3L", "n"), "3LN"); assert.strictEqual(polNext("", "2"), "2LN");
 console.log("ok Symbole");
 
 // ---------- Datenmodell: Blatt prinzip, Papier, Modul, Rundlauf, Version 19 ----------

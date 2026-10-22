@@ -98,7 +98,10 @@ assert.ok(NEU4A.every((n) => SYMBOL_BY_NAME[n] && FAMILIES.some((f) => f.variant
 assert.strictEqual(K("TR_1P", "3"), "TR_3P"); assert.deepStrictEqual(SYMBOL_BY_NAME.KW_1P.pins, [{ x: 0, y: 0 }, { x: -5, y: 0 }, { x: 0, y: -20 }]);
 const NEU4B = ["LAMPE_1P", "MESS_V_1P", "MESS_A_1P", "MESS_H_1P", "R_1P", "C_1P", "L_1P", "LED_1P", "BATT_1P", "STD_1P", "FU_1P", "SANFT_1P", "GEN_1P"]; // Schritt 4b
 assert.ok(NEU4B.every((n) => SYMBOL_BY_NAME[n] && FAMILIES.some((f) => f.variants.includes(n)) && !isDevice(SYMBOL_BY_NAME[n])));
-const NEW = [...NEU4A, ...NEU4B, "LS_1PN", "LS_1PT", "LS_3PN", "LS_3PT", "RCBO_1PN", "RCBO_3PN", "NH_1PT", "NH_3PT", "NTRENN_1P", "HAK_4P", "ZAEHLER_2P", "ZAEHLER_4P", "ZW_WANDLER", "ZW_ZAEHLER", "SPD_2P", "SPD_4P", "SPD_2P_1", "SPD_4P_1", "HAK_TNCS", "TNC_TNS", "SPULE_1P", "RELAIS_1P", "SCHUETZ_3P", "SCHUETZ_4P", "FI_4P", "RCBO_4P", "TNC_TNS", "ERDE_1P"];
+const NEU5 = ["ERDE_PA", "ERDE_ANS", "ERDE_KK", "ERDE_SE", "ERDBAND"]; // Schritt 5: Erdung
+assert.ok(NEU5.every((n) => SYMBOL_BY_NAME[n] && FAMILIES.some((f) => f.variants.includes(n))));
+assert.strictEqual(K("ERDE_PA", "1"), null); assert.strictEqual(K("TRK_S_1P", "1"), null); // Ziffern wechseln nicht zwischen Arten gleicher Polzahl
+const NEW = [...NEU4A, ...NEU4B, ...NEU5, "LS_1PN", "LS_1PT", "LS_3PN", "LS_3PT", "RCBO_1PN", "RCBO_3PN", "NH_1PT", "NH_3PT", "NTRENN_1P", "HAK_4P", "ZAEHLER_2P", "ZAEHLER_4P", "ZW_WANDLER", "ZW_ZAEHLER", "SPD_2P", "SPD_4P", "SPD_2P_1", "SPD_4P_1", "HAK_TNCS", "TNC_TNS", "SPULE_1P", "RELAIS_1P", "SCHUETZ_3P", "SCHUETZ_4P", "FI_4P", "RCBO_4P", "TNC_TNS", "ERDE_1P"];
 const d = newDoc(), m = d.sheets[0];
 NEW.forEach((n, i) => m.items.push({ id: i + 1, type: "symbol", sym: n, x: 30 + (i % 8) * 30, y: 170 - Math.floor(i / 8) * 50, rot: 0, attrs: Object.fromEntries(SYMBOL_BY_NAME[n].attrs.map((a) => [a.tag, a.def])) }));
 const back = parseModel(serializeModel(d));

@@ -60,8 +60,16 @@ const hak = sym("PZ_HAK", "Hausanschluss", [line(-5, 0, 5, 0), line(5, 0, 5, -12
 const earth = (x, y) => [line(x, y, x, y - 2.5), line(x - 2, y - 2.5, x + 2, y - 2.5), line(x - 1.3, y - 3.4, x + 1.3, y - 3.4), line(x - 0.6, y - 4.3, x + 0.6, y - 4.3)];
 const erder = sym("PZ_ERDER", "Erder (Fundamenterder)", earth(0, 0), [{ x: 0, y: 0 }], [attr("TEXT", "Text", "Fundamenterder", 3.5, -4)]);
 const pa = sym("PZ_PA", "Potentialausgleich", [circle(1.25, 0, 1.25), ...earth(1.25, -1.25)], H(2.5), [attr("TEXT", "Text", "", 4, -5)]);
+// Weitere Erdungszeichen nach der Symbolzusammenfassung 5.120 (CJ 22.10.2026, selbst gezeichnet): Anschluss oben, Text rechts
+const tx = (def = "") => [attr("TEXT", "Text", def, 3.5, -4)];
+const paD = sym("PZ_PA_D", "Potenzialausgleich (Dreieck)", [line(0, 0, 0, -2.5), line(-2, -2.5, 2, -2.5), line(2, -2.5, 0, -5.5), line(0, -5.5, -2, -2.5)], [{ x: 0, y: 0 }], tx());
+const erdAns = sym("PZ_ERDE_ANS", "Erdungs-Anschluss", [circle(0, -0.5, 0.5), ...earth(0, -0.5)], [{ x: 0, y: 0 }], tx());
+erdAns.prims[0].f = true; // gefüllter Punkt
+const erdKk = sym("PZ_ERDE_KK", "Erdungs-Klemmkasten", [...rect(-4, -3.5, 4, 0), line(0, 0, 0, -1), line(-1.75, -1, 1.75, -1), line(-1.25, -1.75, 1.25, -1.75), line(-0.5, -2.5, 0.5, -2.5)], [{ x: 0, y: 0 }], [attr("TEXT", "Text", "", 5, -4)]);
+const schutzerde = sym("PZ_SCHUTZERDE", "Schutzerde", [circle(0, -4, 3.5), line(0, 0, 0, -4.5), line(-1.75, -4.5, 1.75, -4.5), line(-1.25, -5.25, 1.25, -5.25), line(-0.5, -6, 0.5, -6)], [{ x: 0, y: 0 }], [attr("TEXT", "Text", "", 5, -4)]);
+const erdband = sym("PZ_ERDBAND", "Erdband", [{ ...line(0, 0, 10, 0), d: true }], H(10), [attr("TEXT", "Text", "Fe 30/3", 1.5, 1)]);
 
-export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, wr, gr, hak, erder, pa];
+export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
 
 // Palette des Prinzipschemas, gruppiert. Gleiche Form wie FAMILIES in symbols.js (Varianten: Anzahl Striche).
 export const PRINZIP_GROUPS = [
@@ -85,6 +93,11 @@ export const PRINZIP_GROUPS = [
   ["Erdung", [
     { id: "PZ_ERDER", label: "Erder", sub: "z. B. Fundamenterder", def: "PZ_ERDER", variants: ["PZ_ERDER"] },
     { id: "PZ_PA", label: "Potentialausgleich", sub: "Anschlusspunkt mit Erde", def: "PZ_PA", variants: ["PZ_PA"] },
+    { id: "PZ_PA_D", label: "Potenzialausgleich", sub: "Dreieck (IEC)", def: "PZ_PA_D", variants: ["PZ_PA_D"] },
+    { id: "PZ_ERDE_ANS", label: "Erdungs-Anschluss", sub: "Punkt mit Erde", def: "PZ_ERDE_ANS", variants: ["PZ_ERDE_ANS"] },
+    { id: "PZ_ERDE_KK", label: "Erdungs-Klemmkasten", sub: "Kasten mit Erde", def: "PZ_ERDE_KK", variants: ["PZ_ERDE_KK"] },
+    { id: "PZ_SCHUTZERDE", label: "Schutzerde", sub: "Kreis mit Erde", def: "PZ_SCHUTZERDE", variants: ["PZ_SCHUTZERDE"] },
+    { id: "PZ_ERDBAND", label: "Erdband", sub: "z. B. Fe 30/3, gestrichelt", def: "PZ_ERDBAND", variants: ["PZ_ERDBAND"] },
   ]],
 ];
 export const PRINZIP_FAMILIES = PRINZIP_GROUPS.flatMap(([, f]) => f);

@@ -512,9 +512,19 @@ const wmBox = {
 // die übrigen Symbole. Erde: Anschluss oben, Stich 2,5 mm, drei kürzer werdende Striche.
 const earth = (x, y) => [line(x, y, x, y - 2.5), line(x - 1.75, y - 2.5, x + 1.75, y - 2.5), line(x - 1.25, y - 3.25, x + 1.25, y - 3.25), line(x - 0.5, y - 4, x + 0.5, y - 4)];
 const erde = {
-  name: "ERDE_1P", family: "ERDE", poles: 1, label: "Erde", layer: "SCH_SYMBOLE", prims: earth(0, 0), pins: [{ x: 0, y: 0 }],
+  name: "ERDE_1P", family: "ERDE", poles: 1, vlabel: "Erdung", label: "Erde", layer: "SCH_SYMBOLE", prims: earth(0, 0), pins: [{ x: 0, y: 0 }],
   attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "", x: -14, y: -2, h: 2.5 }],
 };
+// Weitere Erdungszeichen nach der Symbolzusammenfassung 5.120 (CJ 22.10.2026, selbst gezeichnet), Anschluss oben bei (0, 0)
+const erdSym = (name, label, vlabel, prims, pins = [{ x: 0, y: 0 }], attrs = [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "", x: -14, y: -2, h: 2.5 }]) =>
+  ({ name, family: name === "ERDBAND" ? "ERDBAND" : "ERDE", poles: 1, vlabel, label, layer: "SCH_SYMBOLE", prims, pins, attrs });
+const erdArten = [
+  erdSym("ERDE_PA", "Potenzialausgleich", "Potenzialausgleich", [line(0, 0, 0, -2.5), line(-2, -2.5, 2, -2.5), line(2, -2.5, 0, -5.5), line(0, -5.5, -2, -2.5)]),
+  erdSym("ERDE_ANS", "Erdungs-Anschluss", "Erdungs-Anschluss", [dot(0, -0.5), ...earth(0, -0.5)]),
+  erdSym("ERDE_KK", "Erdungs-Klemmkasten", "Erdungs-Klemmkasten", [...rect(-4, 0, 4, -3.5), line(0, 0, 0, -1), line(-1.75, -1, 1.75, -1), line(-1.25, -1.75, 1.25, -1.75), line(-0.5, -2.5, 0.5, -2.5)]),
+  erdSym("ERDE_SE", "Schutzerde", "Schutzerde", [circle(0, -4, 3.5), line(0, 0, 0, -4.5), line(-1.75, -4.5, 1.75, -4.5), line(-1.25, -5.25, 1.25, -5.25), line(-0.5, -6, 0.5, -6)]),
+  erdSym("ERDBAND", "Erdband", "Erdband", [line(0, 0, 10, 0, true)], [{ x: 0, y: 0 }, { x: 10, y: 0 }], [{ tag: "TEXT", label: "Text", def: "Fe 30/3", x: 1.5, y: 1, h: 2.5 }]),
+];
 // TN-C > TN-S (CJ 16.10.: „auf dem Kopf“, jetzt Einspeisung von unten): unten L1, L2, L3, PEN; L1 bis L3 laufen durch,
 // PEN teilt sich bei y -12.5 (Punkt, geerdet) in N (gerade hoch) und PE (schräg nach rechts oben, 5 mm daneben). Oben L1, L2, L3, N, PE.
 const tncTns = {
@@ -613,7 +623,7 @@ export const SYMBOLS = [
   ...[2, 4].map(fiVariant),
   ...["1PN", "2P", "3PN", "4P"].map(rcboVariant),
   ...["1P", "1PT", "3P", "3PT", "4P"].map(nhVariant),
-  nTrenner, hak, hakTncs, hakFeed, hpas, ...ZAEHLER_N.map(zaehlerVariant), zaehlerWandler, wmTrafo, wmBox, ct, sich, pk, pk1, zaehler2, tncTns, erde, ...[1, 2, 3, 4].map((n) => spdVariant(n)), spdVariant(2, true), spdVariant(4, true),
+  nTrenner, hak, hakTncs, hakFeed, hpas, ...ZAEHLER_N.map(zaehlerVariant), zaehlerWandler, wmTrafo, wmBox, ct, sich, pk, pk1, zaehler2, tncTns, erde, ...erdArten, ...[1, 2, 3, 4].map((n) => spdVariant(n)), spdVariant(2, true), spdVariant(4, true),
   ...[1, 2, 3, 4].map((n) => refVariant("OUT", n)),
   ...[1, 2, 3, 4].map((n) => refVariant("IN", n)),
   ...[1, 2, 3, 4].map((n) => edgeRef("OUT", n)),
@@ -671,7 +681,8 @@ export const FAMILIES = [
   { id: "RCBO", label: "FI/LS-Schalter (RCBO)", sub: "1P+N, 2P, 3P+N, 4P", def: "RCBO_4P", variants: ["RCBO_1PN", "RCBO_2P", "RCBO_3PN", "RCBO_4P"] },
   { id: "NH", label: "NH-Sicherung", sub: "1 oder 3 polig, + N-Trenner", def: "NH_3PT", variants: ["NH_1P", "NH_1PT", "NH_3P", "NH_3PT", "NH_4P"], hide: ["NH_4P"] }, // NH_4P nur noch für alte Dateien (CJ 22.10.)
   { id: "NTRENN", label: "Neutralleitertrenner", sub: "einzeln", def: "NTRENN_1P", variants: ["NTRENN_1P"] },
-  { id: "ERDE", label: "Erde", sub: "Erdung", def: "ERDE_1P", variants: ["ERDE_1P"] },
+  { id: "ERDE", label: "Erde", sub: "Erdung, Potenzialausgleich, Schutzerde", def: "ERDE_1P", variants: ["ERDE_1P", "ERDE_PA", "ERDE_ANS", "ERDE_KK", "ERDE_SE"] },
+  { id: "ERDBAND", label: "Erdband", sub: "z. B. Fe 30/3", def: "ERDBAND", variants: ["ERDBAND"] },
   { id: "VOUT", label: "Verweis abgehend", sub: "weiter auf anderem Blatt", def: "VOUT_4P", variants: ["VOUT_1P", "VOUT_2P", "VOUT_3P", "VOUT_4P"] },
   { id: "VIN", label: "Verweis ankommend", sub: "von anderem Blatt", def: "VIN_4P", variants: ["VIN_1P", "VIN_2P", "VIN_3P", "VIN_4P"] },
   { id: "SPULE", label: "Spule Schütz", sub: "Betätigung A1/A2", def: "SPULE_1P", variants: ["SPULE_1P"] },
@@ -712,6 +723,7 @@ export function variantByKey(name, key) {
   const cur = info(name), all = fam.variants.filter((v) => v === name || !fam.hide?.includes(v)).map(info);
   let pick;
   if (/^[1-8]$/.test(key)) { // 5 bis 8 nur beim Zähler (CJ 22.10.)
+    if (all.every((o) => o.lp === all[0].lp)) return null; // Varianten gleicher Polzahl (z. B. Erdungsarten): Ziffer wechselt nichts
     const k = Number(key);
     pick = all.find((o) => o.lp === k && o.nm === cur.nm) ?? all.find((o) => o.lp === k && o.nm === "") ?? all.find((o) => o.poles === k) ?? all.find((o) => o.lp === k);
   } else if (key === "n" || key === "N") {

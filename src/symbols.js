@@ -184,11 +184,16 @@ function nhVariant(v) {
 }
 
 // Hausanschlusskasten: 3 NH-Sicherungen und Neutralleitertrenner im gestrichelten Rahmen, "HAK" rechts daneben.
-// Rahmen in der Form des HAK-Zeichens nach IEC (CJ 22.10.2026): oben gerade, unten Spitze zur Zuleitung (Fünfeck).
-const hakFrame = (x0, x1, top, side, tx, ty) => [line(x0, top, x1, top, true), line(x1, top, x1, side, true), line(x1, side, tx, ty, true), line(tx, ty, x0, side, true), line(x0, side, x0, top, true)];
+// Rahmen wie das HAK-Zeichen nach IEC (CJ 22.10.2026): durchgezogen, Kasten 1,3 × so hoch wie breit, Querstrich, darunter
+// Spitze zur Zuleitung (0,55 × Breite). Die Anschlüsse liegen im Rahmen (CJ: dürfen im HAK drin sein), damit alte Dateien verbunden bleiben.
+function hakFrame(x0, x1, top) {
+  const w = x1 - x0, side = r3(top - 1.3 * w), tx = r3((x0 + x1) / 2), ty = r3(side - 0.55 * w);
+  return [line(x0, top, x1, top), line(x1, top, x1, side), line(x0, side, x0, top), line(x0, side, x1, side), line(x1, side, tx, ty), line(tx, ty, x0, side)];
+}
+const lNames = (n = 3) => Array.from({ length: n }, (_, i) => text(i * POLE + 1.8, -2.5, 1.8, `L${i + 1}`)); // L1 bis L3 an den Leitern, wo N und PE stehen (CJ 22.10.)
 const hak = {
   name: "HAK_4P", family: "HAK", poles: 4, vlabel: "TN-S", label: "Hausanschlusskasten (3 NH + N-Trenner)", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...pole(3 * POLE, "t"), ...hakFrame(-3.5, 19, -4, -15, 7.75, -19), text(23.5, -10, 2.2, "HAK")],
+  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...pole(3 * POLE, "t"), ...lNames(), ...hakFrame(-3.5, 19, 4.5), text(23.5, -10, 2.2, "HAK")],
   pins: [0, 1, 2, 3].flatMap((i) => [{ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }]),
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
 };
@@ -197,8 +202,8 @@ const hak = {
 const hakTncs = {
   name: "HAK_TNCS", family: "HAK", poles: 5, vlabel: "TN-C > TN-S", label: "Hausanschlusskasten mit PEN-Aufteilung", layer: "SCH_SYMBOLE",
   prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), line(15, 0, 15, -POLE_LEN), line(13.8, -6, 16.2, -6), line(13.8, -14, 16.2, -14),
-    dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0), ...hakFrame(-3.5, 23, -4, -16, 9.75, -20.5),
-    text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(17.8, -19, 1.8, "PEN"), text(27.5, -10, 2.2, "HAK")],
+    dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0), ...hakFrame(-3.5, 25, 7), ...lNames(),
+    text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(17.8, -19, 1.8, "PEN"), text(29.5, -10, 2.2, "HAK")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), ...[0, 1, 2, 3].map((i) => ({ x: i * POLE, y: -POLE_LEN }))],
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
 };
@@ -210,8 +215,8 @@ const hakFeed = {
   name: "HAK_TNCS_1", family: "HAK", poles: 5, vlabel: "TN-C > TN-S, Zuleitung", label: "Hausanschlusskasten mit PEN-Aufteilung, Zuleitung einpolig", layer: "SCH_SYMBOLE",
   prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...[0, 1, 2, 3].map((i) => line(i * POLE, -POLE_LEN, 7.5, -25)), line(15, 0, 15, -POLE_LEN),
     line(13.8, -6, 16.2, -6), line(13.8, -14, 16.2, -14), dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0),
-    dot(7.5, -25), line(7.5, -25, 7.5, -30), ...hakFrame(-3.5, 23.5, -3, -20, 7.5, -28),
-    text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(18, -19, 1.8, "PEN"), text(28, -12.5, 2.2, "HAK")],
+    dot(7.5, -25), line(7.5, -25, 7.5, -30), ...hakFrame(-3.5, 25, 4), ...lNames(),
+    text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(18, -19, 1.8, "PEN"), text(29.5, -12.5, 2.2, "HAK")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), { x: 7.5, y: -30 }],
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
 };
@@ -428,7 +433,7 @@ const erde = {
 const tncTns = {
   name: "TNC_TNS", family: "TNC_TNS", poles: 4, label: "Netz TN-C > TN-S", layer: "SCH_SYMBOLE",
   prims: [...[0, 1, 2, 3].map((i) => line(i * POLE, 0, i * POLE, -POLE_LEN)), dot(15, -12.5), line(15, -12.5, 20, -7.5), line(20, -7.5, 20, 0),
-    line(15, -12.5, 23.5, -12.5), ...earth(23.5, -12.5), text(17.8, -17.5, 1.8, "PEN"), text(13.2, -2.5, 1.8, "N"), text(22.2, -2.5, 1.8, "PE")],
+    line(15, -12.5, 23.5, -12.5), ...earth(23.5, -12.5), text(17.8, -17.5, 1.8, "PEN"), text(13.2, -2.5, 1.8, "N"), text(22.2, -2.5, 1.8, "PE"), ...[0, 1, 2].map((i) => text(i * POLE - 1.8, -2.5, 1.8, `L${i + 1}`))],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), ...[0, 1, 2, 3].map((i) => ({ x: i * POLE, y: -POLE_LEN }))],
   attrs: [attrBMK("")],
 };

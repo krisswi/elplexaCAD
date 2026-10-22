@@ -452,3 +452,29 @@ body:is([data-elbar="zeit"], [data-elbar="liste"], [data-elbar="profil"]) :is(#b
 /* Geteilte Ansicht: nur Logo und Pfad, keine Projekte, Zeit, Tabs, Konto */
 body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el-projname) { display: none !important; }
 @media (max-width: 440px) { .el-tabsel { max-width: 88px; flex: 0 1 auto; min-width: 40px; } body.el-2rows #el-savestate { padding: 0 3px; } } /* 375 px: Zeile 2 im Modul ohne Überlauf */
+/* Notizen im Teilen-Link (Meilenstein 2, Schritt 2, 20.10.2026): Leiste oben in der Zeichenfläche, Ebene #el-notes über der Zeichnung */
+#el-notebar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 10px; padding: 3px; box-shadow: 0 4px 14px rgba(23,33,43,.12); z-index: 3; white-space: nowrap; }
+#el-notebar .btn.on { background: var(--el-dark); color: #fff; }
+.el-ncount { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--bench); font-size: 12px; text-align: center; }
+#el-notebar .btn.on .el-ncount { color: var(--ink); }
+#svg.el-noting { cursor: crosshair !important; }
+#el-notes .el-note-g { cursor: pointer; }
+#el-notes .el-npin circle, #el-notes .el-npin path { fill: #d9480f; stroke: #fff; stroke-width: 2; }
+#el-notes .el-npin text { fill: #fff; font: 600 12px var(--font); pointer-events: none; }
+#el-notes .el-npin.mine circle, #el-notes .el-npin.mine path { fill: #b8380a; }
+#el-notes .el-npin.done circle, #el-notes .el-npin.done path { fill: #7E8B7D; }
+#el-notes .el-nmark rect, #el-notes .el-nmark ellipse { fill: rgba(217,72,15,.06); stroke: #d9480f; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+#el-notes .el-nmark.done rect, #el-notes .el-nmark.done ellipse { stroke: #7E8B7D; }
+#el-notes .el-nmark.draft rect, #el-notes .el-nmark.draft ellipse { stroke-dasharray: 6 4; pointer-events: none; }
+.el-nmsg { color: #b42318; font-weight: 600; }
+.el-nmeta { color: var(--muted); font-size: 13px; }
+.el-ntext { white-space: pre-wrap; overflow-wrap: anywhere; }
+.modal.el-nlistmodal { width: min(620px, calc(100vw - 32px)); max-width: none; }
+.el-nlist { display: grid; gap: 6px; max-height: min(60vh, 520px); overflow: auto; }
+.el-nrow { display: flex; gap: 6px; align-items: flex-start; }
+.el-nitem { flex: 1; min-width: 0; display: flex; gap: 10px; text-align: left; background: none; border: 1px solid var(--panel-line); border-radius: 8px; padding: 8px 10px; font: inherit; color: inherit; cursor: pointer; }
+.el-nitem:disabled { cursor: default; opacity: .7; }
+.el-nnr { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #d9480f; color: #fff; font-weight: 600; font-size: 12px; display: grid; place-items: center; }
+.el-nt { min-width: 0; display: grid; gap: 2px; }
+.el-ntx { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (hover: hover) and (pointer: fine) { .el-nitem:hover:not(:disabled) { background: var(--hover); } }

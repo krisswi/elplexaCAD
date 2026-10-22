@@ -169,6 +169,54 @@ function coilVariant(relay) {
   };
 }
 
+// Neue Kontakte und Relais (CJ 22.10.2026, nach der Symbolzusammenfassung IEC 60617, selbst gezeichnet). Masse wie Schliesser:
+// Leiter oben bis y -6, Schaltstück von (0, -14) schräg nach oben, Betätigung links bei x -6, Wirklinie auf y -10.
+const kBmk = (def, y = -4) => [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def, x: -14, y, h: 2.5 }];
+const kSym = (name, family, label, prims, pins, def = "K?") => ({ name, family, poles: 1, label, layer: "SCH_SYMBOLE", prims, pins, attrs: kBmk(def) });
+const NO = [line(0, 0, 0, -6), line(0, -14, -2.5, -6), line(0, -14, 0, -POLE_LEN)]; // Schliesser
+const NC = [line(0, 0, 0, -6), line(0, -6, 2.2, -6), line(0, -14, 1.6, -5.5), line(0, -14, 0, -POLE_LEN)]; // Öffner wie KO
+const P1 = [{ x: 0, y: 0 }, { x: 0, y: -POLE_LEN }];
+const handAct = [line(-6, -8, -6, -12)]; // handbetätigt allgemein
+const rotAct = [line(-6.8, -12, -6, -12), line(-6, -12, -6, -8), line(-6, -8, -5.2, -8)]; // Drehbetätigung
+const thermAct = [line(-6, -8, -6, -12), line(-6, -9.2, -5.2, -9.2), line(-5.2, -9.2, -5.2, -10.8), line(-5.2, -10.8, -6, -10.8)]; // thermische Betätigung
+const link = (x1, nc = false) => line(x1, -10, nc ? 0.75 : -1.25, -10, true); // Wirklinie bis zum Schaltstück
+const nums = (top, bot) => [text(1.8, -2.5, 1.6, top), text(1.8, -17.5, 1.6, bot)];
+const kontakte = [
+  { ...kSym("TRK_O_1P", "TRK", "Kontakt Thermorelais, Öffner 95/96", [...NC, ...thermAct, link(-6, true), ...nums("95", "96")], P1, "F?"), vlabel: "Öffner 95/96" },
+  { ...kSym("TRK_S_1P", "TRK", "Kontakt Thermorelais, Schliesser 97/98", [...NO, ...thermAct, link(-6), ...nums("97", "98")], P1, "F?"), vlabel: "Schliesser 97/98" },
+  kSym("HSCH_1P", "HSCH", "Schalter handbetätigt", [...NO, ...handAct, link(-6)], P1, "S?"),
+  kSym("DSCH_1P", "DSCH", "Drehschalter mit Raste", [...NO, ...rotAct, line(-5.2, -10, -4.4, -10), line(-4.4, -10, -3.9, -10.9), line(-3.9, -10.9, -3.4, -10), line(-3.4, -10, -1.25, -10)], P1, "S?"),
+  kSym("DTAST_1P", "DTAST", "Schwenktaster (Drehknopf, Rückstellung)", [...NO, ...rotAct, link(-5.2)], P1, "S?"),
+  // Wechsler: gemeinsamer Anschluss unten 11, Öffner links oben 12, Schliesser rechts oben 14
+  kSym("KW_1P", "KW", "Wechsler (Umschaltkontakt)", [line(-5, 0, -5, -6), line(-5, -6, -2, -6), line(0, 0, 0, -6), line(0, -14, -2.4, -5.5), line(0, -14, 0, -POLE_LEN),
+    text(-3.2, -2.5, 1.6, "12"), text(1.8, -2.5, 1.6, "14"), text(1.8, -17.5, 1.6, "11")], [{ x: 0, y: 0 }, { x: -5, y: 0 }, { x: 0, y: -POLE_LEN }]),
+  // Zweiweg-Umschalter mit Aus-Stellung: zwei Festkontakte oben, Schaltstück in der Mitte, Drehpunkt als Kreis
+  kSym("UMS_1P", "UMS", "Umschalter mit Aus-Stellung", [line(-2.5, 0, -2.5, -6), line(2.5, 0, 2.5, -6), line(0, -13.5, 0, -8), circle(0, -14, 0.5), line(0, -14.5, 0, -POLE_LEN)],
+    [{ x: -2.5, y: 0 }, { x: 2.5, y: 0 }, { x: 0, y: -POLE_LEN }], "S?"),
+];
+// Thermorelais (Überlastrelais, Hauptstrom): je Pol ein Kasten mit Bimetall-Zeichen, 1- oder 3-polig
+function trVariant(n) {
+  const prims = [], pins = [];
+  for (let i = 0; i < n; i++) {
+    const x = i * POLE;
+    prims.push(line(x, 0, x, -6), ...rect(x - 1.8, -6, x + 1.8, -14), line(x, -6, x, -8.5), line(x, -8.5, x + 1, -8.5), line(x + 1, -8.5, x + 1, -11.5), line(x + 1, -11.5, x, -11.5), line(x, -11.5, x, -14), line(x, -14, x, -POLE_LEN));
+    pins.push({ x, y: 0 }, { x, y: -POLE_LEN });
+  }
+  return { name: `TR_${n}P`, family: "TR", poles: n, label: `Thermorelais ${n}-polig`, layer: "SCH_SYMBOLE", prims, pins, attrs: [...kBmk("F?"), attrStrom("")] };
+}
+// Spulen mit Kennzeichen (wie Spule Schütz, 8 × 4 mm): Stromstossrelais, abfall- und anzugsverzögert; Unterspannungsrelais als Kasten mit U<
+function coilMark(name, family, label, mark, vlabel) {
+  const p = coilVariant(true);
+  return { ...p, name, family, label, prims: [...p.prims, ...mark], ...(vlabel ? { vlabel } : {}) };
+}
+const relais = [
+  coilMark("STR_1P", "STR", "Stromstossrelais", [line(-2.5, -11.2, -2.5, -10.3), line(-2.5, -10.3, 2, -10.3), line(2, -10.3, 2, -9)]),
+  coilMark("ZR_AB_1P", "ZR", "Zeitrelais abfallverzögert", [line(-2.5, -8, -2.5, -12), ...[0, 1, 2, 3, 4, 5].map((k) => line(-3.75 + k * 0.25, -8, -3.75 + k * 0.25, -12))], "abfallverzögert"),
+  coilMark("ZR_AN_1P", "ZR", "Zeitrelais anzugsverzögert", [line(-2.5, -8, -2.5, -12), line(-4, -8, -2.5, -12), line(-4, -12, -2.5, -8)], "anzugsverzögert"),
+  { name: "USR_1P", family: "USR", poles: 1, label: "Unterspannungsrelais", layer: "SCH_SYMBOLE", prims: [line(0, 0, 0, -6), ...rect(-5, -6, 5, -14), text(0, -10, 3, "U<"), line(0, -14, 0, -POLE_LEN)],
+    pins: P1, attrs: kBmk("K?", -9) },
+];
+
 // NH-Sicherung: Rechteck mit Schmelzleiter in jedem Pol, auf Wunsch mit Neutralleitertrenner als letztem Pol
 function nhPole(x) {
   return [line(x, 0, x, -6), line(x, -14, x, -POLE_LEN), ...rect(x - 1.5, -6, x + 1.5, -14), line(x, -6, x, -14)];
@@ -537,6 +585,7 @@ export const SYMBOLS = [
   ...[1, 2, 3, 4].map((n) => contactVariant(true, n)),
   contactVariant(false, 1, true), contactVariant(true, 1, true),
   coilVariant(false), coilVariant(true),
+  ...kontakte, trVariant(1), trVariant(3), ...relais,
   ...[1, 2, 3, 4].map(schuetzVariant),
   {
     name: "MOTOR_3P", family: "MOTOR", poles: 3, label: "Motor", layer: "SCH_SYMBOLE", // Stromart beschriftbar, auch 1~ (CJ 22.10.2026)
@@ -594,6 +643,16 @@ export const FAMILIES = [
   { id: "KO", label: "Öffner", sub: "Kontakt, 1 bis 4 polig", def: "KO_4P", variants: ["KO_1P", "KO_2P", "KO_3P", "KO_4P"] },
   { id: "TASTER_S", label: "Taster Schliesser", sub: "Handbetätigt", def: "TASTER_S_1P", variants: ["TASTER_S_1P"] },
   { id: "TASTER_O", label: "Taster Öffner", sub: "Handbetätigt", def: "TASTER_O_1P", variants: ["TASTER_O_1P"] },
+  { id: "KW", label: "Wechsler", sub: "Umschaltkontakt 11/12/14", def: "KW_1P", variants: ["KW_1P"] },
+  { id: "TRK", label: "Kontakt Thermorelais", sub: "Öffner 95/96 oder Schliesser 97/98", def: "TRK_O_1P", variants: ["TRK_O_1P", "TRK_S_1P"] },
+  { id: "TR", label: "Thermorelais", sub: "Überlastrelais, 1 oder 3 polig", def: "TR_3P", variants: ["TR_1P", "TR_3P"] },
+  { id: "STR", label: "Stromstossrelais", sub: "Spule mit Schrittzeichen", def: "STR_1P", variants: ["STR_1P"] },
+  { id: "ZR", label: "Zeitrelais", sub: "abfall- oder anzugsverzögert", def: "ZR_AB_1P", variants: ["ZR_AB_1P", "ZR_AN_1P"] },
+  { id: "USR", label: "Unterspannungsrelais", sub: "U<", def: "USR_1P", variants: ["USR_1P"] },
+  { id: "HSCH", label: "Schalter", sub: "handbetätigt", def: "HSCH_1P", variants: ["HSCH_1P"] },
+  { id: "DSCH", label: "Drehschalter", sub: "mit Raste", def: "DSCH_1P", variants: ["DSCH_1P"] },
+  { id: "DTAST", label: "Schwenktaster", sub: "Drehknopf mit Rückstellung", def: "DTAST_1P", variants: ["DTAST_1P"] },
+  { id: "UMS", label: "Umschalter mit Aus", sub: "zwei Wege, Mittelstellung Aus", def: "UMS_1P", variants: ["UMS_1P"] },
   { id: "MOTOR", label: "Motor", sub: "Stromart beschriftbar, z. B. 3~ oder 1~", def: "MOTOR_3P", variants: ["MOTOR_3P"] },
 ];
 

@@ -27,8 +27,10 @@ function tripMark(x) {
   p.push(line(x - 6.7, -15.9, x - 1.17, -12.78), line(x - 6.7, -15.9, x - 4.76, -15.38), line(x - 6.7, -15.9, x - 5.28, -14.49), line(x - 5.28, -14.49, x - 4.76, -15.38), line(x - 6.7, -15.9, x - 5.02, -14.94)); // Freiauslösung, Pfeil
   return p;
 }
-function pole(x, kind, trip = false) {
-  if (kind === "t") return [line(x, 0, x, -POLE_LEN), line(x - 1.2, -6, x + 1.2, -6), line(x - 1.2, -14, x + 1.2, -14), text(x + 1.8, -2.5, 1.8, "N")]; // Querstriche so weit wie die Lücke des Schliessers (CJ 22.10.)
+// N-Trenner: Querstriche auf Höhe der Kontaktlücke daneben (CJ 22.10.2026): beim LS/RCBO wie dessen Schaltstück (y -8.5 bis -15.5), sonst wie Schliesser und NH (y -6 bis -14)
+const GAP_LS = [-8.5, -15.5], GAP_K = [-6, -14];
+function pole(x, kind, trip = false, gap = GAP_K) {
+  if (kind === "t") return [line(x, 0, x, -POLE_LEN), ...gap.map((y) => line(x - 1.2, y, x + 1.2, y)), text(x + 1.8, -2.5, 1.8, "N")];
   const p = [line(x, 0, x, -8.5), line(x - 3, -8.5, x, -15.5), line(x, -15.5, x, -POLE_LEN)];
   // Kreuz klein (CJ 16.10.), mit Abstand über dem Querstrich wie bei QElectroTech disjonct-m_3fn (CJ 16.10.)
   if (kind !== "c") p.push(line(x - 0.8, -8.5, x + 0.8, -8.5), line(x - 0.6, CROSS_Y - 0.6, x + 0.6, CROSS_Y + 0.6), line(x + 0.6, CROSS_Y - 0.6, x - 0.6, CROSS_Y + 0.6));
@@ -40,7 +42,7 @@ function pole(x, kind, trip = false) {
 // kinds: eine Polart je Pol, z. B. "sssn" = 3P+N. Auslöser am ersten Schutzpol, Kopplung über alle geschalteten Pole (ohne Trenner).
 function poles(kinds) {
   const prims = [], pins = [];
-  [...kinds].forEach((k, i) => { prims.push(...pole(i * POLE, k, k === "s" && i === kinds.indexOf("s"))); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); });
+  [...kinds].forEach((k, i) => { prims.push(...pole(i * POLE, k, k === "s" && i === kinds.indexOf("s"), GAP_LS)); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); });
   const sw = kinds.replace(/t+$/, "").length;
   if (sw > 1) prims.push(line(bladeX(0, COUPLE_Y), COUPLE_Y, bladeX((sw - 1) * POLE, COUPLE_Y), COUPLE_Y, true)); // mechanische Kopplung
   if (kinds === "ssss") prims.push(text(3 * POLE + 1.8, -2.5, 1.8, "N")); // 4-polig: 4. Pol ist der geschützte N (CJ 16.10.)

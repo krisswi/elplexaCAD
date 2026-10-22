@@ -96,7 +96,9 @@ assert.strictEqual(K("SCHUETZ_3P", "4"), "SCHUETZ_4P"); assert.strictEqual(K("HA
 const NEU4A = ["KW_1P", "TRK_O_1P", "TRK_S_1P", "TR_1P", "TR_3P", "STR_1P", "ZR_AB_1P", "ZR_AN_1P", "USR_1P", "HSCH_1P", "DSCH_1P", "DTAST_1P", "UMS_1P"];
 assert.ok(NEU4A.every((n) => SYMBOL_BY_NAME[n] && FAMILIES.some((f) => f.variants.includes(n)) && !isDevice(SYMBOL_BY_NAME[n])));
 assert.strictEqual(K("TR_1P", "3"), "TR_3P"); assert.deepStrictEqual(SYMBOL_BY_NAME.KW_1P.pins, [{ x: 0, y: 0 }, { x: -5, y: 0 }, { x: 0, y: -20 }]);
-const NEW = [...NEU4A, "LS_1PN", "LS_1PT", "LS_3PN", "LS_3PT", "RCBO_1PN", "RCBO_3PN", "NH_1PT", "NH_3PT", "NTRENN_1P", "HAK_4P", "ZAEHLER_2P", "ZAEHLER_4P", "ZW_WANDLER", "ZW_ZAEHLER", "SPD_2P", "SPD_4P", "SPD_2P_1", "SPD_4P_1", "HAK_TNCS", "TNC_TNS", "SPULE_1P", "RELAIS_1P", "SCHUETZ_3P", "SCHUETZ_4P", "FI_4P", "RCBO_4P", "TNC_TNS", "ERDE_1P"];
+const NEU4B = ["LAMPE_1P", "MESS_V_1P", "MESS_A_1P", "MESS_H_1P", "R_1P", "C_1P", "L_1P", "LED_1P", "BATT_1P", "STD_1P", "FU_1P", "SANFT_1P", "GEN_1P"]; // Schritt 4b
+assert.ok(NEU4B.every((n) => SYMBOL_BY_NAME[n] && FAMILIES.some((f) => f.variants.includes(n)) && !isDevice(SYMBOL_BY_NAME[n])));
+const NEW = [...NEU4A, ...NEU4B, "LS_1PN", "LS_1PT", "LS_3PN", "LS_3PT", "RCBO_1PN", "RCBO_3PN", "NH_1PT", "NH_3PT", "NTRENN_1P", "HAK_4P", "ZAEHLER_2P", "ZAEHLER_4P", "ZW_WANDLER", "ZW_ZAEHLER", "SPD_2P", "SPD_4P", "SPD_2P_1", "SPD_4P_1", "HAK_TNCS", "TNC_TNS", "SPULE_1P", "RELAIS_1P", "SCHUETZ_3P", "SCHUETZ_4P", "FI_4P", "RCBO_4P", "TNC_TNS", "ERDE_1P"];
 const d = newDoc(), m = d.sheets[0];
 NEW.forEach((n, i) => m.items.push({ id: i + 1, type: "symbol", sym: n, x: 30 + (i % 8) * 30, y: 170 - Math.floor(i / 8) * 50, rot: 0, attrs: Object.fromEntries(SYMBOL_BY_NAME[n].attrs.map((a) => [a.tag, a.def])) }));
 const back = parseModel(serializeModel(d));

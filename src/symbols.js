@@ -217,6 +217,43 @@ const relais = [
     pins: P1, attrs: kBmk("K?", -9) },
 ];
 
+// Schritt 4b (CJ 22.10.2026): Meldeleuchte, Messgeräte, Bauteile, Antriebe. Senkrecht wie die Kontakte: Anschluss oben y 0, unten y -20,
+// das Zeichen sitzt in der Mitte (y -10). Bögen und Sinus aus kurzen Linien, gefüllte Flächen aus dichten Strichen (wie DXF ohne Schraffur).
+const arcPts = (cx, cy, r, a0, a1, n = 10) => Array.from({ length: n }, (_, i) => {
+  const a = (k) => ((a0 + ((a1 - a0) * k) / n) * Math.PI) / 180;
+  return line(r3(cx + r * Math.cos(a(i))), r3(cy + r * Math.sin(a(i))), r3(cx + r * Math.cos(a(i + 1))), r3(cy + r * Math.sin(a(i + 1))));
+});
+const sineAt = (cx, cy, w = 3.5, h = 0.8) => Array.from({ length: 12 }, (_, i) => {
+  const x = (k) => r3(cx - w / 2 + (w * k) / 12), y = (k) => r3(cy + h * Math.sin((2 * Math.PI * k) / 12));
+  return line(x(i), y(i), x(i + 1), y(i + 1));
+});
+const fill = (x0, y0, x1, y1, n = 6) => Array.from({ length: n + 1 }, (_, k) => line(r3(x0 + ((x1 - x0) * k) / n), y0, r3(x0 + ((x1 - x0) * k) / n), y1));
+const arrowTo = (x0, y0, x1, y1, s = 1) => { const a = Math.atan2(y1 - y0, x1 - x0), d = (t) => [r3(x1 - s * Math.cos(a + t)), r3(y1 - s * Math.sin(a + t))];
+  return [line(x0, y0, x1, y1), line(x1, y1, ...d(0.45)), line(x1, y1, ...d(-0.45))]; };
+const leads = (top, bot) => [line(0, 0, 0, top), line(0, bot, 0, -POLE_LEN)];
+const v4b = (name, family, label, vlabel, prims, def, extra = []) => ({ ...kSym(name, family, label, prims, P1, def), vlabel, attrs: [...kBmk(def, -9), ...extra] });
+const txtAttr = (def) => [{ tag: "TEXT", label: "Text", def, x: -14, y: -12.5, h: 2.5 }];
+const box10 = [...rect(-5, -5, 5, -15)];
+const bauteile = [
+  v4b("LAMPE_1P", "LAMPE", "Meldeleuchte", "Meldeleuchte", [...leads(-7.5, -12.5), circle(0, -10, 2.5), line(-1.77, -8.23, 1.77, -11.77), line(-1.77, -11.77, 1.77, -8.23)], "P?", txtAttr("")),
+  v4b("MESS_V_1P", "MESS", "Voltmeter", "Voltmeter", [...leads(-6.5, -13.5), circle(0, -10, 3.5), text(0, -10, 3, "V")], "P?"),
+  v4b("MESS_A_1P", "MESS", "Amperemeter", "Amperemeter", [...leads(-6.5, -13.5), circle(0, -10, 3.5), text(0, -10, 3, "A")], "P?"),
+  v4b("MESS_H_1P", "MESS", "Stundenzähler", "Stundenzähler", [...leads(-5, -15), ...rect(-3.5, -5, 3.5, -15), line(-3.5, -7.5, 3.5, -7.5), text(0, -11.25, 3, "h")], "P?"),
+  v4b("R_1P", "BAUTEIL", "Widerstand", "Widerstand", [...leads(-6, -14), ...rect(-1.25, -6, 1.25, -14)], "R?"),
+  v4b("C_1P", "BAUTEIL", "Kondensator", "Kondensator", [...leads(-9.25, -10.75), line(-2.5, -9.25, 2.5, -9.25), line(-2.5, -10.75, 2.5, -10.75)], "C?"),
+  v4b("L_1P", "BAUTEIL", "Spule, Drossel", "Spule, Drossel", [...leads(-6, -14), ...[0, 1, 2, 3].flatMap((k) => arcPts(0, -7 - 2 * k, 1, 90, -90, 8))], "L?"),
+  v4b("LED_1P", "BAUTEIL", "Leuchtdiode (LED)", "LED", [...leads(-8.5, -11.5), line(-2, -8.5, 2, -8.5), line(2, -8.5, 0, -11.5), line(0, -11.5, -2, -8.5), line(-2, -11.5, 2, -11.5),
+    ...arrowTo(2, -9.5, 4, -7.5, 0.8), ...arrowTo(2.6, -10.7, 4.6, -8.7, 0.8)], "P?"),
+  v4b("BATT_1P", "BAUTEIL", "Batterie", "Batterie", [...leads(-8, -12.5), line(-2.5, -8, 2.5, -8), line(-1.25, -9, 1.25, -9), line(-2.5, -11.5, 2.5, -11.5), line(-1.25, -12.5, 1.25, -12.5), text(3.5, -6.5, 2, "+")], "G?"),
+  v4b("STD_1P", "STD", "Steckdose und Stecker", "Steckdose und Stecker", [line(0, 0, 0, -6.5), ...arcPts(0, -9, 2.5, 180, 0, 12), ...fill(-1, -9, 1, -13, 8), line(-1, -9, 1, -9), line(-1, -13, 1, -13), line(0, -13, 0, -POLE_LEN)], "X?"),
+  v4b("FU_1P", "FU", "Frequenzumformer", "Frequenzumformer", [...leads(-5, -15), ...box10, line(-5, -15, 5, -5), ...sineAt(-2.5, -7.5), ...sineAt(2.5, -12.5), ...arrowTo(1, -14, 4, -11, 0.8)], "T?", txtAttr("")),
+  v4b("SANFT_1P", "SANFT", "Sanftanlasser", "Sanftanlasser", [...leads(-5, -15), ...box10, line(-5, -5, 0, -8.5), line(0, -8.5, 5, -5), ...arrowTo(-3, -11, 6.5, -2.5, 1),
+    line(-4, -12, 4, -12), line(-1.5, -10.5, -1.5, -13.5), line(-1.5, -10.5, 1.5, -12), line(-1.5, -13.5, 1.5, -12), line(1.5, -10.5, 1.5, -13.5)], "T?"),
+  { name: "GEN_1P", family: "GEN", poles: 1, label: "Generator", layer: "SCH_SYMBOLE", prims: [circle(0, 0, 5), text(0, 1.2, 3.5, "G")], pins: [{ x: 0, y: 5 }],
+    attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "G?", x: 8, y: 2, h: 2.5 }, { tag: "LEISTUNG", label: "Leistung", def: "", x: 8, y: -1.5, h: 2.5 },
+      { tag: "STROMART", label: "Stromart (im Kreis)", def: "3~", x: -1.2, y: -3.4, h: 2.2 }] },
+];
+
 // NH-Sicherung: Rechteck mit Schmelzleiter in jedem Pol, auf Wunsch mit Neutralleitertrenner als letztem Pol
 function nhPole(x) {
   return [line(x, 0, x, -6), line(x, -14, x, -POLE_LEN), ...rect(x - 1.5, -6, x + 1.5, -14), line(x, -6, x, -14)];
@@ -586,6 +623,7 @@ export const SYMBOLS = [
   contactVariant(false, 1, true), contactVariant(true, 1, true),
   coilVariant(false), coilVariant(true),
   ...kontakte, trVariant(1), trVariant(3), ...relais,
+  ...bauteile,
   ...[1, 2, 3, 4].map(schuetzVariant),
   {
     name: "MOTOR_3P", family: "MOTOR", poles: 3, label: "Motor", layer: "SCH_SYMBOLE", // Stromart beschriftbar, auch 1~ (CJ 22.10.2026)
@@ -653,6 +691,13 @@ export const FAMILIES = [
   { id: "DSCH", label: "Drehschalter", sub: "mit Raste", def: "DSCH_1P", variants: ["DSCH_1P"] },
   { id: "DTAST", label: "Schwenktaster", sub: "Drehknopf mit Rückstellung", def: "DTAST_1P", variants: ["DTAST_1P"] },
   { id: "UMS", label: "Umschalter mit Aus", sub: "zwei Wege, Mittelstellung Aus", def: "UMS_1P", variants: ["UMS_1P"] },
+  { id: "LAMPE", label: "Meldeleuchte", sub: "Signallampe", def: "LAMPE_1P", variants: ["LAMPE_1P"] },
+  { id: "MESS", label: "Messgerät", sub: "Voltmeter, Amperemeter, Stundenzähler", def: "MESS_V_1P", variants: ["MESS_V_1P", "MESS_A_1P", "MESS_H_1P"] },
+  { id: "STD", label: "Steckdose und Stecker", sub: "Steckverbindung", def: "STD_1P", variants: ["STD_1P"] },
+  { id: "FU", label: "Frequenzumformer", sub: "z. B. Wärmepumpe, Lüftung", def: "FU_1P", variants: ["FU_1P"] },
+  { id: "SANFT", label: "Sanftanlasser", sub: "Motoranlauf", def: "SANFT_1P", variants: ["SANFT_1P"] },
+  { id: "GEN", label: "Generator", sub: "Stromart beschriftbar", def: "GEN_1P", variants: ["GEN_1P"] },
+  { id: "BAUTEIL", label: "Bauteil", sub: "Widerstand, Kondensator, Spule, LED, Batterie", def: "R_1P", variants: ["R_1P", "C_1P", "L_1P", "LED_1P", "BATT_1P"] },
   { id: "MOTOR", label: "Motor", sub: "Stromart beschriftbar, z. B. 3~ oder 1~", def: "MOTOR_3P", variants: ["MOTOR_3P"] },
 ];
 

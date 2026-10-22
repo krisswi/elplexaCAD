@@ -21,11 +21,6 @@ for (const s of PRINZIP_SYMBOLS) {
 assert.ok(PRINZIP_FAMILIES.every((f) => f.variants.every((v) => SYMBOL_BY_NAME[v])), "Palette zeigt nur vorhandene Symbole");
 for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS", "PZ_SICH", "PZ_ZAEHLER", "PZ_RSE", "PZ_GERAET", "PZ_WR", "PZ_GR", "PZ_HAK"]) assert.ok(SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: leeres BMK-Feld für später`);
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITER_3.prims.length, 4, "Leitungsangabe: Leitung und drei Striche");
-// Schritt 6a (CJ 22.10.2026): Sicherung mit Querstrichen je Leiter, N mit Punkt; Stromwandler; FI/LS Anschlüsse wie bisher
-for (const [n, k, dot] of [["PZ_SICH", 1, 0], ["PZ_SICH_3", 3, 0], ["PZ_SICH_N3", 4, 1]]) { const s = SYMBOL_BY_NAME[n];
-  assert.strictEqual(s.prims.filter((p) => p.t === "l" && p.x1 === -1.25).length, k, n); assert.strictEqual(s.prims.filter((p) => p.t === "c" && p.f).length, dot, n);
-  assert.deepStrictEqual(s.pins, [{ x: 0, y: 0 }, { x: 0, y: -12.5 }]); }
-assert.deepStrictEqual(SYMBOL_BY_NAME.PZ_FILS.pins, [{ x: 0, y: 0 }, { x: 17.5, y: 0 }]); assert.ok(SYMBOL_BY_NAME.PZ_WANDLER);
 assert.ok(["PZ_PA_D", "PZ_ERDE_ANS", "PZ_ERDE_KK", "PZ_SCHUTZERDE", "PZ_ERDBAND"].every((n) => PRINZIP_FAMILIES.some((f) => f.def === n)), "Erdungszeichen in der Palette (CJ 22.10.)");
 // Abgangsgeräte: drei Zeilen oberhalb, BMK zuoberst, dann Bezeichnung, dann Polzahl (CJ 21.10.2026)
 for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS"]) {

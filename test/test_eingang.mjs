@@ -64,10 +64,10 @@ console.log("Eingangsverdrahtung ok");
 
 // 2. Grössen: Zähler 20 % höher, Anschlüsse unverändert; Wandlermessung auf 2,5-mm-Raster
 for (const z of ["ZAEHLER_2P", "ZAEHLER_4P"]) {
-  const s = SYMBOL_BY_NAME[z], ys = s.prims.filter((p) => p.t === "l").flatMap((p) => [p.y1, p.y2]);
-  assert.ok(s.pins.every((p) => p.y === 0 || p.y === -20), "Anschlüsse bleiben");
+  const s = SYMBOL_BY_NAME[z];
+  assert.ok(s.pins.slice(0, s.poles * 2).every((p) => p.y === 0 || p.y === -20), "Anschlüsse bleiben");
   const xs = s.prims.filter((p) => p.t === "l" && p.x1 === -2.5 && p.x2 === -2.5);
-  assert.ok(xs.some((p) => Math.abs(p.y1 - p.y2) === 18), `${z}: Kasten 18 mm statt 15`);
+  assert.ok(xs.some((p) => Math.abs(p.y1 - p.y2) === 20), `${z}: Kasten 20 mm, ohne Anschlussstücke (CJ 22.10.)`);
 }
 const on = (v) => Math.abs(v / 2.5 - Math.round(v / 2.5)) < 1e-9;
 for (const n of ["ZW_WANDLER", "ZW_ZAEHLER", "ZAEHLER_4P_W"]) assert.ok(SYMBOL_BY_NAME[n].pins.every((p) => on(p.x) && on(p.y)), `${n} Anschlüsse auf dem Raster`);

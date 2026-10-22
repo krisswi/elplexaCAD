@@ -221,18 +221,21 @@ const hpas = {
   attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "HPAS", x: 12, y: -3, h: 2.5 }, { tag: "BEZ", label: "Bezeichnung", def: "Hauptpotentialausgleich", x: 12, y: -6.5, h: 2.5 }],
 };
 
-// Zähler (Energiezähler, CJ 16.10. nach Vorlage „CJ Zaehler Vorlage“): hoher Kasten über alle Leiter, "kWh" oben,
-// darunter eine waagrechte Linie mit gefüllten Punkten links und rechts am Kasten. Leiter oben und unten angeschlossen.
+// Zähler (Energiezähler, CJ 16.10. nach Vorlage „CJ Zaehler Vorlage“; CJ 22.10.2026): Kasten 20 mm hoch, Kopfband oben, "kWh" im grossen Feld.
+// 1 bis 8 Anschlüsse oben und unten (Tasten 1 bis 8), ohne Anschlussstücke und ohne N: die Leitung geht direkt an den Kasten.
+// Rechts oben immer 5 Seitenkontakte im Abstand 2,5 mm (nur Fangpunkte auf der Kante). Kasten mindestens 15 mm breit.
+const SIDE_PINS = 5;
 function zaehlerVariant(n) {
-  const r = (n - 1) * POLE + 2.5, vl = n === 2 ? "2-polig (1P+N)" : "4-polig (3P+N)", pins = []; // Kachel „2P“/„4P“ (CJ 16.10.: „Zähler braucht es auch 4-polig“)
-  // Kasten 18 mm hoch (CJ 16.10.: 20 % länger als 15 mm), Anschlüsse oben 0 und unten -20 wie bisher
-  const prims = [...rect(-2.5, -1, r, -19), text(r / 2 - 1.25, -12.25, 3, "kWh"), line(-2.5, -5.5, r, -5.5)]; // ohne Punkte (CJ 16.10.); kWh im grossen Feld, Kopfband leer (CJ 22.10.)
-  for (let i = 0; i < n; i++) { prims.push(line(i * POLE, 0, i * POLE, -1), line(i * POLE, -19, i * POLE, -POLE_LEN)); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); }
+  const r = Math.max((n - 1) * POLE + 2.5, 12.5), vl = `${n} Anschl${n > 1 ? "üsse" : "uss"}`, pins = [];
+  const prims = [...rect(-2.5, 0, r, -POLE_LEN), text(r / 2 - 1.25, -12.5, 3, "kWh"), line(-2.5, -5, r, -5)];
+  for (let i = 0; i < n; i++) pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); // Anschlüsse oben 0 und unten -20 wie bisher: alte Dateien bleiben verbunden
+  for (let k = 1; k <= SIDE_PINS; k++) pins.push({ x: r, y: -2.5 * k });
   return {
-    name: `ZAEHLER_${n}P`, family: "ZAEHLER", poles: n, lp: n - 1, nm: "n", vlabel: vl, label: `Zähler ${vl}`, layer: "SCH_SYMBOLE", prims, pins,
+    name: `ZAEHLER_${n}P`, family: "ZAEHLER", poles: n, lp: n, nm: "", vlabel: vl, label: `Zähler, ${vl}`, layer: "SCH_SYMBOLE", prims, pins,
     attrs: [attrBMK("P?"), { tag: "ZAEHLERNR", label: "Zählernummer", def: "", x: -14, y: -7.5, h: 2.5 }],
   };
 }
+export const ZAEHLER_N = [1, 2, 3, 4, 5, 6, 7, 8];
 
 // Wandlermessung (CJ 16.10., nach Anschlussschema Wandlermessung GEBNET, umgekehrt: bei uns laufen die Hauptlinien oben durch).
 // Ursprung = L1-Hauptlinie; L2, L3, N liegen 5, 10, 15 mm darunter. Je Aussenleiter ein Stromwandler (gestrichelter Kasten mit
@@ -516,7 +519,7 @@ export const SYMBOLS = [
   ...[2, 4].map(fiVariant),
   ...["1PN", "2P", "3PN", "4P"].map(rcboVariant),
   ...["1P", "1PT", "3P", "3PT", "4P"].map(nhVariant),
-  nTrenner, hak, hakTncs, hakFeed, hpas, zaehlerVariant(2), zaehlerVariant(4), zaehlerWandler, wmTrafo, wmBox, ct, sich, pk, pk1, zaehler2, tncTns, erde, ...[1, 2, 3, 4].map((n) => spdVariant(n)), spdVariant(2, true), spdVariant(4, true),
+  nTrenner, hak, hakTncs, hakFeed, hpas, ...ZAEHLER_N.map(zaehlerVariant), zaehlerWandler, wmTrafo, wmBox, ct, sich, pk, pk1, zaehler2, tncTns, erde, ...[1, 2, 3, 4].map((n) => spdVariant(n)), spdVariant(2, true), spdVariant(4, true),
   ...[1, 2, 3, 4].map((n) => refVariant("OUT", n)),
   ...[1, 2, 3, 4].map((n) => refVariant("IN", n)),
   ...[1, 2, 3, 4].map((n) => edgeRef("OUT", n)),
@@ -564,7 +567,7 @@ export function registerSymbol(sym) {
 export const FAMILIES = [
   { id: "HAK", label: "Hausanschlusskasten", sub: "3 NH + N-Trenner, auch mit PEN-Aufteilung", def: "HAK_4P", variants: ["HAK_4P", "HAK_TNCS", "HAK_TNCS_1"] },
   { id: "HPAS", label: "Potentialausgleichsschiene", sub: "HPAS, an PE und Erde", def: "HPAS_1P", variants: ["HPAS_1P"] },
-  { id: "ZAEHLER", label: "Zähler", sub: "2- oder 4-polig, Wandlermessung", def: "ZAEHLER_4P", variants: ["ZAEHLER_2P", "ZAEHLER_4P", "ZAEHLER_4P_W"] },
+  { id: "ZAEHLER", label: "Zähler", sub: "1 bis 8 Anschlüsse, 5 Seitenkontakte, Wandlermessung", def: "ZAEHLER_4P", variants: [...ZAEHLER_N.map((n) => `ZAEHLER_${n}P`), "ZAEHLER_4P_W"] },
   { id: "TNC_TNS", label: "Netz TN-C > TN-S", sub: "PEN teilt in N und PE", def: "TNC_TNS", variants: ["TNC_TNS"] },
   { id: "SPD", label: "Überspannungsschutz (SPD)", sub: "1 bis 4 polig, 1+1, 3+1", def: "SPD_4P", variants: ["SPD_1P", "SPD_2P", "SPD_2P_1", "SPD_3P", "SPD_4P", "SPD_4P_1"] },
   { id: "LS", label: "Leitungsschutzschalter", sub: "1 bis 4 polig, +N, + N-Trenner", def: "LS_4P", variants: ["LS_1P", "LS_1PN", "LS_1PT", "LS_2P", "LS_3P", "LS_3PN", "LS_3PT", "LS_4P"] },
@@ -595,7 +598,7 @@ export function variantByKey(name, key) {
   const info = (v) => { const s = SYMBOL_BY_NAME[v]; return { v, lp: s.lp ?? s.poles, nm: s.nm ?? "", poles: s.poles }; };
   const cur = info(name), all = fam.variants.filter((v) => v === name || !fam.hide?.includes(v)).map(info);
   let pick;
-  if (/^[1-4]$/.test(key)) {
+  if (/^[1-8]$/.test(key)) { // 5 bis 8 nur beim Zähler (CJ 22.10.)
     const k = Number(key);
     pick = all.find((o) => o.lp === k && o.nm === cur.nm) ?? all.find((o) => o.lp === k && o.nm === "") ?? all.find((o) => o.poles === k) ?? all.find((o) => o.lp === k);
   } else if (key === "n" || key === "N") {

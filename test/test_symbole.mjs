@@ -4,7 +4,7 @@ import fs from "fs";
 import assert from "node:assert";
 import { newDoc, parseModel, serializeModel } from "../src/model.js";
 import { exportDxf } from "../src/dxf.js";
-import { SYMBOL_BY_NAME, FAMILIES, isDevice, variantByKey, hasTrenner } from "../src/symbols.js";
+import { SYMBOL_BY_NAME, FAMILIES, isDevice, variantByKey, hasTrenner, localBBox } from "../src/symbols.js";
 
 // Jede Variante der Palette existiert, Anschlüsse liegen auf dem 2,5-mm-Raster, Varianten einer Familie haben eigene Texte
 for (const f of FAMILIES) {
@@ -45,7 +45,7 @@ const dots = (s) => s.prims.filter((p) => p.t === "c" && p.f);
 for (const n of ["FI_2P", "FI_4P", "RCBO_1PN", "RCBO_2P", "RCBO_3PN", "RCBO_4P"]) { const s = SYMBOL_BY_NAME[n], last = (s.poles - 1) * 5; assert.deepStrictEqual(dots(s).map((p) => [p.cx, p.cy]), [[last, -1], [last - 5, -17.5]], n); }
 assert.strictEqual(dots(SYMBOL_BY_NAME.LS_4P).length, 0);
 for (const n of ["ZAEHLER_2P", "ZAEHLER_4P"]) { const s = SYMBOL_BY_NAME[n]; assert.strictEqual(dots(s).length, 0); // ohne Punkte (CJ 16.10.)
- assert.ok(s.prims.some((p) => p.t === "t" && p.s === "kWh" && p.y < -7)); assert.strictEqual(s.pins.length, s.poles * 2); } // kWh im grossen Feld (CJ 22.10.)
+ assert.ok(s.prims.some((p) => p.t === "t" && p.s === "kWh" && p.y < -7)); assert.strictEqual(s.pins.length, s.poles * 2 + 5); } // kWh im grossen Feld, 5 Seitenkontakte (CJ 22.10.)
 assert.deepStrictEqual(SYMBOL_BY_NAME.ZAEHLER_4P.pins.slice(0, 2), [{ x: 0, y: 0 }, { x: 0, y: -20 }]); // Anschlüsse wie bisher: alte Dateien bleiben verbunden
 assert.deepStrictEqual(SYMBOL_BY_NAME.ERDE_1P.pins, [{ x: 0, y: 0 }]);
 // CJ 22.10.2026: Relais ohne Schrägstrich, Schütz mit Halbkreis (Relais nicht), Taster mit Druckknopf, Motor mit Stromart
@@ -70,7 +70,12 @@ assert.ok(hasTrenner("LS_2P") && hasTrenner("NH_4P") && !hasTrenner("FI_2P") && 
 { const w = SYMBOL_BY_NAME.ZAEHLER_4P_W; assert.deepStrictEqual(w.pins, [{ x: 0, y: 0 }, { x: 15, y: -5 }, { x: 30, y: -10 }, { x: 42.5, y: -15 }]); // BKW-Schema (17.10.): Aussenleiter 15 mm
   assert.strictEqual(w.prims.filter((p) => p.t === "l" && p.d).length, 16); const tx = w.prims.filter((p) => p.t === "t").map((p) => p.s); // 16 = 12 Wandlerkästen + 4 Stücke N gestrichelt (18.10.)
   assert.ok(tx.some((s) => s.startsWith("Prüfklemmen")) && tx.includes("braun (1)") && tx.includes("grau (6)") && !tx.includes("Steuerleiter hellgrau mit Nummern") && tx.includes("S1") && tx.includes("P2")); }
-assert.strictEqual(SYMBOL_BY_NAME.ZAEHLER_4P.vlabel, "4-polig (3P+N)"); assert.strictEqual(K("ZAEHLER_4P_W", "3"), null); assert.strictEqual(K("ZAEHLER_4P_W", "1"), "ZAEHLER_2P"); assert.strictEqual(K("ZAEHLER_4P", "n"), null);
+assert.strictEqual(SYMBOL_BY_NAME.ZAEHLER_4P.vlabel, "4 Anschlüsse"); assert.strictEqual(K("ZAEHLER_4P_W", "1"), "ZAEHLER_1P"); assert.strictEqual(K("ZAEHLER_4P", "n"), null);
+// Zähler (CJ 22.10.2026): Tasten 1 bis 8, ohne N und ohne Anschlussstücke, rechts oben 5 Seitenkontakte auf der Kante
+assert.strictEqual(K("ZAEHLER_4P", "8"), "ZAEHLER_8P"); assert.strictEqual(K("ZAEHLER_8P", "3"), "ZAEHLER_3P"); assert.strictEqual(K("LS_3P", "5"), null);
+for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) { const z = SYMBOL_BY_NAME[`ZAEHLER_${n}P`], b = localBBox(z), side = z.pins.slice(2 * n);
+  assert.ok(side.length === 5 && side.every((p, k) => p.x === b.x1 && p.y === -2.5 * (k + 1)), `ZAEHLER_${n}P Seitenkontakte`);
+  assert.ok(!z.prims.some((p) => p.t === "t" && p.s === "N") && b.y0 === -20 && b.y1 === 0, `ZAEHLER_${n}P Kasten`); }
 assert.strictEqual(SYMBOL_BY_NAME.RCBO_1PN.attrs.find((a) => a.tag === "CHAR").def, "C");
 assert.strictEqual(SYMBOL_BY_NAME.TNC_TNS.pins.filter((p) => p.y === 0).length, 5); assert.strictEqual(SYMBOL_BY_NAME.TNC_TNS.pins.filter((p) => p.y === -20).length, 4);
 assert.strictEqual(SYMBOL_BY_NAME.HAK_TNCS.pins.filter((p) => p.y === 0).length, 5); assert.ok(FAMILIES.find((f) => f.id === "HAK").variants.includes("HAK_TNCS"));

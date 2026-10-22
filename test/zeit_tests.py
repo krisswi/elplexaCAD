@@ -46,7 +46,7 @@ with sync_playwright() as p:
         with page.expect_file_chooser() as fc: page.keyboard.press("Meta+o")
         fc.value.set_files(str(path)); page.wait_for_timeout(300)
 
-    page.click("#el-tab-projekte"); page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(150)
+    page.click("#el-nav-projekte"); page.click('#el-hub [data-elact="newproj"]'); page.wait_for_timeout(150)
     page.fill('.modal [data-f="0"]', "Zeittest"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     check("Neues Projekt: Schema offen, noch keine Zeit", not hub() and secs() == 0)
 

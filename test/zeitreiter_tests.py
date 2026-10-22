@@ -21,7 +21,7 @@ T1 = [{"d": "2026-10-12", "h": 1.5, "n": "a"}, {"d": "2026-10-12", "h": 0.25, "n
 T2 = [{"d": "2026-10-14", "h": 3.5, "n": ""}, {"d": "2026-10-18", "h": 1, "n": ""}]
 AUTO = [{"k": "abcd", "d": "2026-10-13", "s": 1200, "m": ["schema"]}]  # vorläufige Zeit: zählt erst nach dem Übernehmen
 rows = [{"id": str(uuid.uuid4()), "name": n, "status": "In Arbeit", "updated_at": "2026-10-18T10:00:00+00:00", "data": {"project": {"meta": {"OBJEKT": "x"}, "time": t, **({"auto": AUTO} if n == "Projekt Zwei" else {})}}} for n, t in (("Projekt Eins", T1), ("Projekt Zwei", T2))]
-srv = {"mode": "ok", "gets": 0}
+srv = {"mode": "ok", "gets": 0, "patch": 0}
 def fake(route):
     req = route.request; u = urlparse(req.url); q = {k: v[0] for k, v in parse_qs(u.query).items()}; path = u.path
     J = lambda o, st=200: route.fulfill(status=st, content_type="application/json", body=json.dumps(o))
@@ -35,7 +35,14 @@ def fake(route):
             v = r["data"]
             for part in k.split("->")[1:]: v = v.get(part) if isinstance(v, dict) else None
             return v
-        J([{k.split(":")[0]: col(r, k.split(":")[-1]) for k in q["select"].split(",")} for r in rows]); return
+        sel = [r for r in rows if "id" not in q or q["id"] == "eq." + r["id"]]
+        J([{k.split(":")[0]: (UID if k == "owner" else col(r, k.split(":")[-1])) for k in q["select"].split(",")} for r in sel]); return
+    if path == "/rest/v1/projects" and req.method == "PATCH":  # Zeit direkt eintragen: nur schreiben, wenn updated_at noch stimmt
+        srv["patch"] += 1
+        r = next(r for r in rows if q["id"] == "eq." + r["id"])
+        if srv["mode"] == "conflict" or q.get("updated_at") != "eq." + r["updated_at"]: J([]); return
+        body = json.loads(req.post_data); r["data"] = body["data"]; r["updated_at"] = body["updated_at"]
+        J([{"updated_at": r["updated_at"]}]); return
     J({"message": "nicht gefunden"}, 404)
 def weeks_back(today, target):  # Schritte «‹» von der heutigen Woche bis zur Zielwoche (negativ = vor)
     mon = lambda d: d - datetime.timedelta(days=d.weekday())
@@ -51,10 +58,10 @@ with sync_playwright() as p:
     txt = lambda sel: [c.strip() for c in page.evaluate(f"[...document.querySelectorAll('{sel}')].map((e) => e.textContent)")]
     page.add_init_script("window.__off = 0; const __n = Date.now.bind(Date); Date.now = () => __n() + window.__off;")  # Uhr vorstellbar: Reiterwechsel lädt nur bei Stand über 60 s neu
     page.goto(URL); page.wait_for_timeout(300)
-    page.click("#el-tab-zeit"); page.wait_for_timeout(250)
+    page.click("#el-nav-zeit"); page.wait_for_timeout(250)
     check("Gast: Hinweis, keine Tabelle", "Nicht angemeldet" in page.inner_text(".el-pwrap") and not vis(".el-wtab"))
     page.click("#el-acct"); page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(600)
-    page.click("#el-tab-zeit"); page.wait_for_timeout(700)
+    page.click("#el-nav-zeit"); page.wait_for_timeout(700)
     check("Angemeldet: Tabelle mit einer Zeile je Online-Projekt", vis(".el-wtab") and page.locator(".el-wtab tbody tr").count() == 2, page.inner_text(".el-pwrap")[:200])
     # feste Woche ansteuern
     n = weeks_back(datetime.date.today(), datetime.date(2026, 10, 12))
@@ -81,11 +88,11 @@ with sync_playwright() as p:
     check("Hinweis: nur Online-Projekte", "Nur Online-Projekte" in page.inner_text(".el-pwrap"))
 
     # Reiterwechsel lädt nur bei Stand über 60 s neu; «Neu laden» immer
-    g0 = srv["gets"]; page.click("#el-tab-projekte"); page.wait_for_timeout(400); page.click("#el-tab-zeit"); page.wait_for_timeout(400)
+    g0 = srv["gets"]; page.click("#el-nav-projekte"); page.wait_for_timeout(400); page.click("#el-nav-zeit"); page.wait_for_timeout(400)
     check("Reiterwechsel innerhalb von 60 s: keine neue Abfrage (schont Supabase)", srv["gets"] == g0, [g0, srv["gets"]])
     page.click('.el-pbar [data-elact="onlist"]'); page.wait_for_timeout(500)
     check("«Neu laden» holt die Liste sofort", srv["gets"] == g0 + 1, [g0, srv["gets"]])
-    page.evaluate("window.__off = 61000"); g1 = srv["gets"]; page.click("#el-tab-projekte"); page.wait_for_timeout(600); page.click("#el-tab-zeit"); page.wait_for_timeout(500)
+    page.evaluate("window.__off = 61000"); g1 = srv["gets"]; page.click("#el-nav-projekte"); page.wait_for_timeout(600); page.click("#el-nav-zeit"); page.wait_for_timeout(500)
     check("Reiterwechsel nach über 60 s lädt neu", srv["gets"] == g1 + 1, [g1, srv["gets"]])
     # Fehler (540): die alte Tabelle bleibt, als «alt» markiert
     srv["mode"] = "paused"; page.click('.el-pbar [data-elact="onlist"]'); page.wait_for_timeout(700)
@@ -102,8 +109,31 @@ with sync_playwright() as p:
     srv["mode"] = "ok"; page.click('.el-unk >> nth=0'); page.wait_for_timeout(600)
     check("Klick auf «?» lädt neu: Stunden wieder da", page.locator(".el-unk").count() == 0 and vis(".el-wtab"))
 
+    # Zeit direkt im Reiter erfassen (Paket C, CJ 21.10.2026): nur Online-Projekte, gleich online gespeichert
+    today = datetime.date.today().isoformat()
+    check("Formular: Projekt aus der Liste, Datum heute", vis("#el-zform") and txt("#el-zp option") == ["Projekt wählen …", "Projekt Eins", "Projekt Zwei"] and page.input_value("#el-zd") == today, txt("#el-zp option"))
+    h0 = flat(".el-chip")
+    page.click(".el-chip"); page.wait_for_timeout(150)
+    check("Chip im Tab Zeit fokussiert das Stundenfeld des Reiters", page.evaluate("document.activeElement.id") == "el-zh")
+    page.fill("#el-zh", "2,5"); page.click('#el-zform [type="submit"]'); page.wait_for_timeout(250)
+    check("Ohne Projekt: Hinweis, nichts geschrieben", srv["patch"] == 0 and page.evaluate("document.activeElement.id") == "el-zp")
+    page.select_option("#el-zp", label="Projekt Zwei"); page.fill("#el-zh", "2,5"); page.fill("#el-zn", "Büro"); page.click('#el-zform [type="submit"]'); page.wait_for_timeout(500)
+    zwei = next(r for r in rows if r["name"] == "Projekt Zwei")
+    check("Eintrag online gespeichert, Zeile mit neuem Stand", srv["patch"] == 1 and zwei["data"]["project"]["time"][-1] == {"d": today, "h": 2.5, "n": "Büro"}, zwei["data"]["project"]["time"][-1:])
+    check("Stunden und Notiz leer, Projekt bleibt gewählt, Chip zählt mit", page.input_value("#el-zh") == "" and page.input_value("#el-zn") == "" and page.evaluate("document.querySelector('#el-zp').selectedOptions[0].textContent") == "Projekt Zwei" and flat(".el-chip") != h0 and "2,5 h" in flat(".el-chip"), [h0, flat(".el-chip")])
+    srv["mode"] = "conflict"; page.fill("#el-zh", "1"); page.click('#el-zform [type="submit"]'); page.wait_for_timeout(500)
+    check("Anderswo gespeichert: Fehlermeldung, Eingabe bleibt", "anderen Ort" in page.inner_text("#toasts") and page.input_value("#el-zh") == "1" and len(zwei["data"]["project"]["time"]) == 3)
+    srv["mode"] = "ok"
+    eins = next(r for r in rows if r["name"] == "Projekt Eins")
+    eins["data"] = {**page.evaluate("window.__schemacad.doc"), "project": eins["data"]["project"]}  # gültige Projektdatei, damit sie sich öffnen lässt
+    page.click('.el-zopen:text("Projekt Eins")'); page.wait_for_timeout(600)
+    if vis(".modal"): page.click(".modal .btn.primary"); page.wait_for_timeout(600)
+    check("Klick auf ein Projekt in der Tabelle öffnet es (Projektseite)", page.evaluate("window.__schemacad.doc.project?.online?.id") == eins["id"] and vis(".el-mods") and page.get_attribute("#el-tab-proj", "aria-selected") == "true", page.inner_text("#toasts")[-200:])
+    page.click("#el-tab-zeit"); page.wait_for_timeout(300)
+    check("Tab Zeit bleibt offen, Klick wechselt zurück", vis(".el-wtab") and page.get_attribute("#el-tab-zeit", "aria-selected") == "true")
+
     # Zeit-Chip im Projekt, offenes verknüpftes Projekt zählt lokal (Vermerk)
-    page.click("#el-tab-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)
+    page.click("#el-nav-projekte"); page.click("#el-pt-cur"); page.wait_for_timeout(200)
     check("Zeit-Chip «Heute 0 h»", "Heute 0 h" in flat(".el-chip"))
     page.set_viewport_size({"width": 960, "height": 900}); page.wait_for_timeout(250)
     check("Unter 1000 px: Chip bleibt sichtbar, kompakt ohne «Heute»", vis(".el-chip") and not vis(".el-chipl") and "0 h" in flat(".el-chip"), flat(".el-chip"))

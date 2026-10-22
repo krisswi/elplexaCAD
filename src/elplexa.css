@@ -288,7 +288,6 @@ body:has(#hn) .modal-back { z-index: 70; } body:has(#hn) #toasts { z-index: 71; 
 #btn-new, #btn-open { display: none; }
 #btn-save .lbl { display: none; }
 #btn-save { padding: 0 9px; }
-#el-filemenu { width: 280px; }
 .el-savestate { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 .el-savestate[data-state="dirty"] { color: var(--ink); }
 .el-okdot { width: 8px; height: 8px; border-radius: 50%; background: #2f9e58; }
@@ -300,26 +299,16 @@ body:has(#hn) .modal-back { z-index: 70; } body:has(#hn) #toasts { z-index: 71; 
 .el-acctbtn:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) { .el-acctbtn:hover { border-color: var(--muted); } }
 #topbar.tb-5 #el-savetxt { display: none; }
-/* Projekte, Zeit, Profil (CJ 21.10.2026): Projektname, Datei-Menü, Speicherstand und Knöpfe des Projekts nur im Projekt */
-body.el-hublist #el-file, body.el-hublist #topbar .filechip, body.el-hublist #el-crumb, body.el-hublist #el-savestate, body.el-hublist #btn-save, body.el-hublist #btn-undo, body.el-hublist #btn-redo, body.el-hublist #btn-search, body.el-hublist #topbar .sep, body.el-hublist #topbar .menuwrap { display: none !important; }
-body.el-shared #el-file, body.el-shared #el-savestate, body.el-shared #el-acct { display: none !important; }
+body.el-shared #el-savestate, body.el-shared #el-acct { display: none !important; }
 
-/* Zweite Stufe der Übersicht (Etappe 2b, CJ 20.10.2026): Pfad und Reiter oben, Tipp-Zeile unten; unter 860 px wie bisher ohne */
-.el-subbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 32px; background: var(--panel); border-bottom: 1px solid var(--panel-line); }
-.el-path { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--muted); white-space: nowrap; }
-.el-path b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-weight: 600; }
-.el-tabs { display: flex; gap: 2px; height: 100%; }
-.el-tab { font: inherit; font-size: 13.5px; font-weight: 600; padding: 0 12px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
-.el-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--el-dark); }
-.el-tab:focus-visible { outline: 2px solid var(--el-green); outline-offset: -3px; }
-@media (hover: hover) and (pointer: fine) { .el-tab:hover { color: var(--ink); } }
+/* Tipp-Zeile der Übersicht (Etappe 2b); Pfad und Reiter sind seit Paket C in der Kopfleiste */
 .el-sp { flex: 1; }
 .el-helpbtn { min-width: 26px; padding: 0 8px; }
 .el-tip { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 4px 32px; font-size: 12.5px; color: var(--muted); background: var(--panel); border-top: 1px solid var(--panel-line); }
 .el-tiptxt { flex: 1; min-width: 0; }
 .el-tiptxt b { color: var(--ink); margin-right: 6px; }
 .el-tipx { width: 24px; height: 24px; padding: 0; }
-@media (max-width: 860px) { .el-subbar, .el-tip { display: none; } }
+@media (max-width: 860px) { .el-tip { display: none; } }
 
 /* Reiter Projekte (Etappe 3b, CJ 20.10.2026): flache Kacheln, 5 pro Reihe, oder Liste */
 .el-pview { grid-template-columns: minmax(0, 1fr); max-width: 1100px; }
@@ -408,3 +397,58 @@ body.el-shared #el-file, body.el-shared #el-savestate, body.el-shared #el-acct {
 .el-ptile.el-drag { opacity: .5; }
 .el-ptile.el-over { outline: 2px dashed var(--el-dark); outline-offset: 2px; }
 .el-ptile[draggable="true"] { cursor: pointer; }
+
+/* Kopfleiste in zwei Zeilen (Paket C, Etappe 1, CJ 21.10.2026). Zeile 1 für die ganze App, Zeile 2 Arbeitsleiste mit Tabs oder Pfad und rechter Gruppe.
+   Welche Teile Zeile 2 zeigt, steht in body[data-elbar]: projekt, liste, zeit, profil, modul */
+body.el-2rows #app { grid-template-rows: 88px minmax(0, 1fr) 32px; }
+body.el-2rows #topbar { flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+.el-r1, .el-r2 { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 12px; }
+.el-r1 { height: 48px; }
+.el-r2 { height: 40px; border-top: 1px solid var(--panel-line); background: #fff; }
+.el-r1 .spacer, .el-r2 .spacer { flex: 1; min-width: 0; }
+.el-right { display: flex; align-items: center; gap: 6px; flex: none; }
+#topbar.tb-6 :is(.el-r1, .el-r2) { gap: 2px; padding: 0 8px; }
+.el-nav { display: flex; gap: 2px; margin-left: 10px; }
+.el-navbtn { font-weight: 600; color: var(--muted); }
+.el-navbtn.on { color: var(--ink); background: var(--hover); }
+.el-ptabs { display: flex; align-items: stretch; gap: 2px; height: 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.el-ptab { flex: 0 1 auto; max-width: 150px; min-width: 64px; display: flex; align-items: center; padding: 0 12px; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.el-ptab[aria-selected="true"] { flex: none; max-width: 240px; color: var(--ink); border-bottom-color: var(--el-dark); } /* aktiver Tab breiter */
+.el-ptab:focus-visible { outline: 2px solid var(--el-green); outline-offset: -3px; }
+.el-ptn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) { .el-ptab:hover { color: var(--ink); } }
+#el-projname { cursor: pointer; border-radius: 6px; padding: 2px 6px; }
+#el-projname:focus-visible { outline: 2px solid var(--el-green); }
+@media (hover: hover) and (pointer: fine) { #el-projname:hover { background: var(--hover); } }
+#el-tabmenu { width: 260px; }
+.el-tabsel { display: none; max-width: 180px; gap: 6px; font-weight: 600; }
+/* Was je Ansicht in Zeile 2 steht: Tabs nur in der Übersicht, Projektname und Pfad nur im Modul; Speichern, Stand, Export nur im Projekt und im Modul */
+body:not([data-elbar="modul"]) :is(#el-projname, #el-crumb) { display: none !important; }
+body[data-elbar="modul"] #el-ptabs { display: none !important; }
+body:is([data-elbar="zeit"], [data-elbar="liste"], [data-elbar="profil"]) :is(#btn-save, #el-savestate, #topbar .menuwrap) { display: none !important; }
+.el-zopen { font: inherit; font-weight: 600; color: var(--ink); background: transparent; border: 0; padding: 0; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: var(--panel-line); text-underline-offset: 3px; }
+.el-zopen:focus-visible { outline: 2px solid var(--el-green); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .el-zopen:hover { text-decoration-color: currentColor; } }
+.el-zform { grid-template-columns: minmax(160px, 1.4fr) 150px 80px minmax(0, 1fr) auto; }
+.el-zform select { font: inherit; height: 32px; padding: 0 6px; color: var(--ink); background: #fff; border: 1px solid var(--panel-line); border-radius: 6px; min-width: 0; }
+/* Handy und schmal: Tabs und Modulliste je als ein Knopf mit dem Namen, der eine Liste öffnet */
+@media (max-width: 860px) {
+  .el-ptabs { display: none; }
+  .el-tabsel { display: inline-flex; } /* im Modul mit dem Projektnamen, statt Name und Pfad */
+  .el-nav { margin-left: 4px; }
+  .el-zform { grid-template-columns: 1fr 80px; } .el-zform select, .el-zform input[type=date], .el-zform #el-zn, .el-zform .btn { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  body.el-2rows #app { grid-template-rows: 88px minmax(0, 1fr) 32px; }
+  .el-r1, .el-r2 { padding: 0 6px; gap: 2px; }
+  .el-helpbtn { display: none; }
+  body.el-2rows .el-crumb { flex: none; } /* nicht überlappen: Überlauf messen, Beschriftungen weichen (fitTopbar) */
+  body.el-2rows .el-crumb :is(.el-st, .el-sl), body.el-2rows #el-savetxt { display: none; }
+  .el-tabsel { max-width: 104px; padding: 0 6px; }
+  .el-right { gap: 2px; }
+  #el-projname { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.el-shared #app { grid-template-rows: 88px minmax(0, 1fr) 0; }
+}
+/* Geteilte Ansicht: nur Logo und Pfad, keine Projekte, Zeit, Tabs, Konto */
+body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el-projname) { display: none !important; }
+@media (max-width: 440px) { .el-tabsel { max-width: 88px; flex: 0 1 auto; min-width: 40px; } body.el-2rows #el-savestate { padding: 0 3px; } } /* 375 px: Zeile 2 im Modul ohne Überlauf */

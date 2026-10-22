@@ -117,9 +117,13 @@ with sync_playwright() as p:
     check("Plus: zweites Prinzipschema-Blatt im selben Modul", M()["meta"]["BLATT"] == "2" and page.evaluate("window.__schemacad.kind") == "prinzip" and "var" not in M())
     key("0"); page.wait_for_timeout(200)
     tile = page.locator("#el-tile-prinzip")
-    check("Übersicht: Kachel Prinzipschema mit 2 Blättern und Taste 4", tile.count() == 1 and "2 Blätter" in tile.inner_text() and "4" in tile.inner_text(), tile.inner_text() if tile.count() else "")
-    key("4"); page.wait_for_timeout(200)
-    check("Taste 4 öffnet das Prinzipschema", page.evaluate("window.__schemacad.kind") == "prinzip" and not page.is_visible("#el-hub"))
+    # Übersicht: Ziffer = Platz der Kachel (seit 20.10.2026), im Modul öffnet Taste 4 das Prinzipschema
+    pos = tile.inner_text().split("\n")[1] if tile.count() else ""
+    check("Übersicht: Kachel Prinzipschema mit 2 Blättern und Platznummer", tile.count() == 1 and "2 Blätter" in tile.inner_text() and pos.isdigit(), tile.inner_text() if tile.count() else "")
+    key(pos); page.wait_for_timeout(200)
+    check("Übersicht: Ziffer der Kachel öffnet das Prinzipschema", page.evaluate("window.__schemacad.kind") == "prinzip" and not page.is_visible("#el-hub"))
+    key("1"); page.wait_for_timeout(200); key("4"); page.wait_for_timeout(200)
+    check("Im Modul: Taste 4 öffnet das Prinzipschema", page.evaluate("window.__schemacad.kind") == "prinzip" and not page.is_visible("#el-hub"))
 
     # ---------- PDF wie PV (eigenes PDF, Papier je Seite) ----------
     key("0"); page.wait_for_timeout(200)

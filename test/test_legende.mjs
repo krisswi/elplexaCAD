@@ -1,6 +1,6 @@
 // Legende der Sicherungsgruppen (legende.js, Ausbau UI Schritt 4): Zeilen, Spalten, Seiten, Nummer, Datei. Aufruf aus web-src: node test/test_legende.mjs
 import assert from "node:assert";
-import { newDoc, newSheet, parseModel, serializeModel } from "../src/model.js";
+import { newDoc, newSheet, parseModel, serializeModel, modOf } from "../src/model.js";
 import { renumberAll } from "../src/numbering.js";
 import * as T from "../src/titel.js";
 import * as L from "../src/legende.js";
@@ -59,4 +59,12 @@ assert.deepStrictEqual(parseModel(JSON.stringify(o)).sheets.find((s) => s.kind =
 o.sheets.find((s) => s.kind === "legend").cols = ["IDN", "CHAR", "XX"];
 assert.deepStrictEqual(parseModel(JSON.stringify(o)).sheets.find((s) => s.kind === "legend").show, ["BMK", "STROM", "CHAR", "IDN", "ORT"], "altes cols: BMK, Nennstrom, Ort dazu");
 console.log("Datei ok");
+
+// Legende als eigenes Modul (CJ 21.10.2026): Kennung „legende“, nicht im Schema; Status und Platz bleiben in der Datei
+assert.strictEqual(modOf(leg), "legende");
+assert.deepStrictEqual([...new Set(d.sheets.filter((s) => s.kind !== "legend").map(modOf))].sort(), ["dispo", "schema"], "Titelseite und Inhalt im Schema, Legende nicht");
+assert.ok(!d.sheets.filter((s) => modOf(s) === "schema").some((s) => s.kind === "legend"), "Schema ohne Legende");
+d.mods = { legende: { st: "Geprüft", o: 2 }, "legende:2": { st: "Geprüft" } };
+assert.deepStrictEqual(parseModel(serializeModel(d)).mods, { legende: { st: "Geprüft", o: 2 } }, "legende gilt, legende:2 nicht");
+console.log("Modul ok");
 console.log("ok");

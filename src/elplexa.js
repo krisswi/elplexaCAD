@@ -11,12 +11,14 @@ export const MODULES = [
   { id: "pv", label: "PV-Stringplan", short: "PV", sub: "Strangplan auf dem Dachplan", color: "#d4a900" },
   { id: "plan", label: "Plan", sub: "Installationsplan auf dem Grundriss", color: "#b45309", later: true },
   { id: "prinzip", label: "Prinzipschema", sub: "Übersicht der Verteiler und Zuleitungen", color: "#7a4fb0", later: true },
+  // Legende (CJ 21.10.2026): eigenes Modul, entsteht mit dem Schema, nicht anlegen, kopieren oder löschen; im PDF nur beim Gesamt-PDF aller Blätter
+  { id: "legende", label: "Legende", sub: "Sicherungslegende aus den Schemablättern", color: "#5b6b7c", auto: true },
 ];
 // Module mehrfach (CJ 18.10.2026): Kennung „schema“, „pv:2“ … (model.js modOf), Art = Teil vor dem Doppelpunkt
 export const baseOf = (id) => String(id).split(":")[0];
 export const modById = (id) => MODULES.find((m) => m.id === baseOf(id)); // als Funktion: im SchemaCAD-Bau fällt alles weg
 
-// Titelseite, Inhalt und Legende gehören vorerst zum ersten Schema (sie gibt es nur mit Schemablatt)
+// Titelseite und Inhalt gehören zum ersten Schema (sie gibt es nur mit Schemablatt), die Legende ist ihr eigenes Modul
 export const moduleOf = modOf;
 // Module des Projekts: zuerst die mit eigenem Platz (doc.mods[id].o, ⌥ + ←/→ in der Übersicht), dann in fester Folge: Art wie MODULES, dann Nummer
 const ordNo = (doc, id) => doc.mods?.[id]?.o ?? Infinity;
@@ -33,7 +35,7 @@ export function modStatusMenuHTML(doc, id) {
 export const tileId = (id) => `el-tile-${String(id).replace(":", "-")}`;
 export const modIdx = (doc, id) => doc.sheets.map((sh, i) => (moduleOf(sh) === id ? i : -1)).filter((i) => i >= 0);
 // Neues Blatt im Modul: welche Einträge des Plus-Menüs (data-new) dazugehören
-export const ADD_KINDS = { schema: ["sheet", "deck"], dispo: ["dispo"], pv: ["pv", "pvtab"] };
+export const ADD_KINDS = { schema: ["sheet", "deck"], dispo: ["dispo"], pv: ["pv", "pvtab"], legende: ["sheet"] }; // Legende: Plus gibt ein Schemablatt
 
 const dot = (m) => `<span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>`;
 
@@ -70,7 +72,7 @@ export function timeCsv(doc) {
 // Offen = weder übernommen noch verworfen und mindestens 1 min. Vorschlag beim Übernehmen: auf 0,25 h gerundet, mindestens 0,25 h.
 export const autoOpen = (doc) => (doc.project?.auto || []).filter((e) => !e.x && e.s >= 60).sort((a, b) => a.d.localeCompare(b.d));
 export const autoHours = (s) => Math.max(0.25, Math.round(s / 900) / 4);
-const AUTO_LBL = () => ({ schema: "Schema", dispo: "Dispo", pv: "PV" });
+const AUTO_LBL = () => ({ schema: "Schema", dispo: "Dispo", pv: "PV", legende: "Legende" });
 export const autoNote = (e) => MODULES.filter((m) => e.m.includes(m.id)).map((m) => AUTO_LBL()[m.id]).join(", ");
 const fmtDur = (s) => { const m = Math.round(s / 60), h = Math.floor(m / 60); return h ? `${h} h ${String(m % 60).padStart(2, "0")} min` : `${m} min`; };
 // Zwei Stände zusammenführen (gleiche Kennung k): längere Zeit, alle Module. Übernommen/verworfen: beim Laden gilt, was eine Seite meldet;
@@ -303,17 +305,17 @@ export function sheetPopHTML(doc, id, label) {
 
 // Menü „+ Modul“: neues Modul anlegen, auch ein weiteres derselben Art (CJ 18.10.2026), spätere Module ausgegraut
 export function addModMenuHTML(doc) {
-  return MODULES.map((m) => {
+  return MODULES.filter((m) => !m.auto).map((m) => {
     const n = modIds(doc).filter((id) => baseOf(id) === m.id).length;
     return `<button class="mi" role="menuitem" data-elnew="${m.id}" tabindex="-1"${m.later ? " disabled" : ""}>${dot(m)}<span class="mt"><span class="mh">${m.label}${m.later ? " (später)" : n ? ` (${n + 1}.)` : ""}</span><span class="ms">${n && !m.later ? `Weiteres Modul, unabhängig vom bestehenden` : m.sub}</span></span></button>`;
   }).join("");
 }
 
 export function modMenuHTML(doc, cur) {
-  const ids = modIds(doc), act = MODULES.filter((m) => !m.later);
+  const ids = modIds(doc), act = MODULES.filter((m) => !m.later && !m.auto);
   // vorhandene Module in der Reihenfolge der Übersicht (eigene Reihenfolge), danach die noch nicht angelegten Arten
   const rows = ids.map((id) => ({ id, m: modById(id), has: true })).concat(act.filter((m) => !ids.some((id) => baseOf(id) === m.id)).map((m) => ({ id: m.id, m, has: false })));
-  return rows.map(({ id, m, has }) => `<button class="mi" role="menuitem" data-elopen="${id}"${has ? " data-exact" : ""} tabindex="-1"${id === cur ? ' aria-current="true"' : ""}>${dot(m)}<span class="mt"><span class="mh">${esc(has ? modName(doc, id) : m.label)}</span><span class="ms">${id === cur ? "Jetzt offen" : has ? `Taste ${act.indexOf(m) + 1}` : "Noch nicht im Projekt: wird angelegt"}</span></span></button>`).join("") + `<button class="mi" role="menuitem" data-elact="hub" tabindex="-1"><span class="el-dot" aria-hidden="true"></span><span class="mt"><span class="mh">Projektübersicht</span><span class="ms">Taste 0</span></span></button>`;
+  return rows.map(({ id, m, has }) => `<button class="mi" role="menuitem" data-elopen="${id}"${has ? " data-exact" : ""} tabindex="-1"${id === cur ? ' aria-current="true"' : ""}>${dot(m)}<span class="mt"><span class="mh">${esc(has ? modName(doc, id) : m.label)}</span><span class="ms">${id === cur ? "Jetzt offen" : has ? (m.auto ? m.sub : `Taste ${act.indexOf(m) + 1}`) : "Noch nicht im Projekt: wird angelegt"}</span></span></button>`).join("") + `<button class="mi" role="menuitem" data-elact="hub" tabindex="-1"><span class="el-dot" aria-hidden="true"></span><span class="mt"><span class="mh">Projektübersicht</span><span class="ms">Taste 0</span></span></button>`;
 }
 
 export function crumbHTML(cur, st, name) {

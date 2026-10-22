@@ -27,7 +27,7 @@ with sync_playwright() as p:
         key("0")
     page.goto(URL); page.wait_for_timeout(300)
     add("dispo"); add("pv")
-    check("Standardfolge Schema, Dispo, PV", tiles() == ["schema", "dispo", "pv"], tiles())
+    check("Standardfolge Schema, Dispo, PV, Legende", tiles() == ["schema", "dispo", "pv", "legende"], tiles())
     check("Status Standard Offen, nichts in der Datei", pill(0) == "Offen" and not any("st" in v for v in mods().values()))
     page.screenshot(path=str(OUT / "ms_vorher.png"))
 
@@ -56,17 +56,17 @@ with sync_playwright() as p:
 
     # Umordnen
     page.focus("#el-tile-dispo"); key("ArrowLeft", altKey=True)
-    check("⌥ ← schiebt Dispo nach vorn", tiles() == ["dispo", "schema", "pv"], tiles())
+    check("⌥ ← schiebt Dispo nach vorn", tiles() == ["dispo", "schema", "pv", "legende"], tiles())
     check("Fokus bleibt auf der Kachel", page.evaluate("document.activeElement.id") == "el-tile-dispo")
     key("ArrowLeft", altKey=True)
-    check("am Anfang bleibt es", tiles() == ["dispo", "schema", "pv"])
-    page.focus("#el-tile-pv"); key("ArrowRight", altKey=True)
-    check("am Ende bleibt es", tiles() == ["dispo", "schema", "pv"])
+    check("am Anfang bleibt es", tiles() == ["dispo", "schema", "pv", "legende"])
+    page.focus("#el-tile-legende"); key("ArrowRight", altKey=True)  # Legende eigenes Modul (21.10.2026), letzte Kachel
+    check("am Ende bleibt es", tiles() == ["dispo", "schema", "pv", "legende"])
     page.focus("#el-tile-schema"); key("ArrowRight", altKey=True)
-    check("⌥ → schiebt nach hinten", tiles() == ["dispo", "pv", "schema"], tiles())
+    check("⌥ → schiebt nach hinten", tiles() == ["dispo", "pv", "schema", "legende"], tiles())
 
     # Taste N = N-te Kachel
-    check("Kachel zeigt ihre Taste", page.evaluate("[...document.querySelectorAll('#el-hub .el-tile[data-elopen] kbd')].map((k) => k.textContent).join('')") == "123")
+    check("Kachel zeigt ihre Taste", page.evaluate("[...document.querySelectorAll('#el-hub .el-tile[data-elopen] kbd')].map((k) => k.textContent).join('')") == "1234")
     key("2")
     check("Taste 2 öffnet die zweite Kachel (PV)", not page.is_visible("#el-hub") and page.evaluate("window.__schemacad.kind") == "pv", page.evaluate("window.__schemacad.kind"))
     key("0"); key("9")
@@ -77,15 +77,15 @@ with sync_playwright() as p:
     page.click('[data-elmst="dispo"]'); page.click('#el-mstpop [data-elmstset="Versendet"]'); page.wait_for_timeout(200)
     page.click("#el-tile-dispo", button="right"); page.wait_for_timeout(150); page.click('[data-elmodact="dup"]'); page.wait_for_timeout(250)
     ids = tiles()
-    check("Kopie da, am Ende", len(ids) == 4 and ids[:3] == ["dispo", "pv", "schema"] and ids[3] == "dispo:2", ids)
-    check("Kopie startet Offen", pill(3) == "Offen" and "st" not in mods().get("dispo:2", {}))
+    check("Kopie da, am Ende", len(ids) == 5 and ids[:4] == ["dispo", "pv", "schema", "legende"] and ids[4] == "dispo:2", ids)
+    check("Kopie startet Offen", pill(4) == "Offen" and "st" not in mods().get("dispo:2", {}))
     page.click("#el-tile-dispo-2", button="right"); page.wait_for_timeout(150); page.click('[data-elmodact="del"]'); page.wait_for_timeout(200)
     page.click('.modal [data-r="1"]'); page.wait_for_timeout(300)
-    check("Löschen entfernt Kachel und Eintrag", tiles() == ["dispo", "pv", "schema"] and "dispo:2" not in mods(), mods())
+    check("Löschen entfernt Kachel und Eintrag", tiles() == ["dispo", "pv", "schema", "legende"] and "dispo:2" not in mods(), mods())
     check("Löschen lässt Status der anderen", mods()["dispo"]["st"] == "Versendet")
     page.click("#el-tile-pv", button="right"); page.wait_for_timeout(150); page.click('[data-elmodact="ren"]'); page.wait_for_timeout(200)
     page.fill(".modal input", "PV Ost"); page.click(".modal [data-ok]"); page.wait_for_timeout(250)
-    check("Umbenennen behält Platz", mods()["pv"]["name"] == "PV Ost" and mods()["pv"].get("o") == 2 and tiles() == ["dispo", "pv", "schema"])
+    check("Umbenennen behält Platz", mods()["pv"]["name"] == "PV Ost" and mods()["pv"].get("o") == 2 and tiles() == ["dispo", "pv", "schema", "legende"])
     # Rückgängig
     page.evaluate("document.activeElement?.blur()"); key("0")  # Rückgängig gilt im Editor, nicht in der Übersicht
     page.keyboard.press("Meta+z"); page.wait_for_timeout(250)
@@ -95,7 +95,7 @@ with sync_playwright() as p:
     if not page.is_visible("#el-hub"): key("0")
     page.click("#el-tile-dispo", button="right"); page.click('[data-elmodact="dup"]'); page.wait_for_timeout(250)
     page.click('[data-elmst="dispo:2"]'); page.click('#el-mstpop [data-elmstset="Revision"]'); page.wait_for_timeout(200)
-    key("4")  # Kachel 4 = dispo:2
+    key("5")  # Kachel 5 = dispo:2
     page.click("#sheet-cur", button="right"); page.wait_for_timeout(150); page.click('#sheet-ctx [data-ctxact="del"]'); page.wait_for_timeout(200)
     page.click('.modal [data-r="1"]'); page.wait_for_timeout(300)
     check("Letztes Blatt gelöscht: Modulkachel und Eintrag weg", "dispo:2" not in mods(), mods())

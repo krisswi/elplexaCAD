@@ -213,7 +213,7 @@ with sync_playwright() as p:
     ctx, page = open_page(f"https://elplexa.test/?teilen={TOKEN2}")
     hub = page.inner_text("#el-hub")
     tiles = page.evaluate("[...document.querySelectorAll('#el-hub [data-elopen]')].map((b) => b.dataset.elopen)")
-    check("Empfänger Modul-Link: nur das Modul Schema, Hinweis nennt es", tiles == ["schema"] and "das Modul „Schema“" in hub, [tiles, hub[:200]])
+    check("Empfänger Modul-Link: nur das Modul Schema, Hinweis nennt es", tiles == ["schema", "legende"] and "das Modul „Schema“" in hub, [tiles, hub[:200]])
     check("Empfänger Modul-Link: kein Dachplan geholt (gehört nicht zum Modul)", not [c for c in srv["calls"] if "teilen-pdf" in c or "/storage/" in c], srv["calls"])
     page.screenshot(path=str(OUT / "t7_empfaenger_modul.png")); ctx.close()
     srv["grund"] = "modul_fehlt"

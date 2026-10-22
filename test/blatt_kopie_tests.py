@@ -245,7 +245,7 @@ def run(b, html, elplexa):
             if not hub(): page.evaluate("document.activeElement?.blur()"); page.keyboard.press("0"); page.wait_for_timeout(300)
         to_hub()
         t0 = tiles()
-        check("elplexa: je Modul eine Kachel (PV 1 und PV 2 aus der Blatt-Kopie)", [x[0] for x in t0] == ["schema", "dispo", "pv", "pv:2"], t0)
+        check("elplexa: je Modul eine Kachel (PV 1 und PV 2 aus der Blatt-Kopie)", [x[0] for x in t0] == ["schema", "dispo", "pv", "pv:2", "legende"], t0)
         page.click("#el-tile-pv", button="right"); page.wait_for_timeout(150)
         check("elplexa: Rechtsklick auf Kachel: Kachelmenü", page.is_visible("#el-modctx") and all(x in page.inner_text("#el-modctx") for x in ("Öffnen", "Umbenennen", "Duplizieren", "Löschen")), page.inner_text("#el-modctx") if page.is_visible("#el-modctx") else "zu")
         page.keyboard.press("Escape")

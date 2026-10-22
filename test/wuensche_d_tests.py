@@ -35,8 +35,8 @@ with sync_playwright() as p:
             src = page.locator(f'#sheet-menu [data-sheet="{dpi()}"]').bounding_box(); dst = page.locator(f'#sheet-menu [data-sheet="{b4}"]').bounding_box()
             page.mouse.move(src["x"] + 30, src["y"] + src["height"] / 2); page.mouse.down()
             page.mouse.move(dst["x"] + 30, dst["y"] + dst["height"] / 2, steps=8); page.mouse.up(); page.wait_for_timeout(200)
-        else:  # Alt+↑: erst über die Legende hinter Blatt 40, dann weiter nach vorn bis zwischen 3 und 4
-            for _ in range(5):
+        else:  # Alt+↑: nach vorn bis zwischen 3 und 4 (die Legende ist seit 21.10.2026 ein eigenes Modul, nicht in der Liste)
+            for _ in range(4):
                 page.focus(f'#sheet-menu [data-sheet="{dpi()}"]'); page.keyboard.press("Alt+ArrowUp"); page.wait_for_timeout(120)
         check(f"{html}: Beispiel CJ, Dispo 4, alte 4 → 5, alte 5 → 6, 10 und 40 bleiben", lst() == SOLL, lst())
         check(f"{html}: Dispo im Schema (ins)", D()["sheets"][dpi()].get("ins") == 1)

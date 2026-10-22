@@ -41,6 +41,17 @@ const zaehler = sym("PZ_ZAEHLER", "Zähler (kWh)", [...BOX, text(0, -12.5, 3, "k
 const rse = sym("PZ_RSE", "Rundsteuerempfänger (RSE)", [...BOX, text(0, -12.5, 3, "RSE")], BOX_PINS, [attr("TEXT", "Kopfband", "", -6.5, -3.2, 1.8), bmk(9.5, -3)]);
 // Gerät mit eigenem Text (z. B. Schütz S, Smart Meter, Schaltuhr): Kasten 10 × 10 mm
 const geraet = sym("PZ_GERAET", "Gerät mit Text", rect(-5, -10, 5, 0), [{ x: 0, y: 0 }, { x: 0, y: -10 }, { x: -5, y: -5 }, { x: 5, y: -5 }], [attr("TEXT", "Text im Kasten", "S", -3.5, -6), bmk(7, -3)]);
+// Wechselrichter und Gleichrichter (CJ 22.10.2026): Kasten 10 × 10 mm mit Diagonale von unten links nach oben rechts,
+// Gleichstrom = Strich über gestricheltem Strich, Wechselstrom = Sinus aus kurzen Linien. Wechselrichter: = oben links, ~ unten rechts; Gleichrichter umgekehrt.
+const dcSign = (cx, cy) => [line(cx - 1.75, cy + 0.5, cx + 1.75, cy + 0.5), line(cx - 1.75, cy - 0.5, cx - 0.35, cy - 0.5), line(cx + 0.35, cy - 0.5, cx + 1.75, cy - 0.5)];
+const acSign = (cx, cy) => Array.from({ length: 12 }, (_, i) => {
+  const x = (k) => cx - 1.75 + (3.5 * k) / 12, y = (k) => cy + 0.8 * Math.sin((2 * Math.PI * k) / 12);
+  return line(x(i), y(i), x(i + 1), y(i + 1));
+});
+const umformer = (name, label, tl, br, def) => sym(name, label, [...rect(-5, -10, 5, 0), line(-5, -10, 5, 0), ...tl(-2.5, -2.5), ...br(2.5, -7.5)],
+  [{ x: 0, y: 0 }, { x: 0, y: -10 }, { x: -5, y: -5 }, { x: 5, y: -5 }], [attr("TEXT", "Text", def, 7, -6.5), bmk(7, -3)]);
+const wr = umformer("PZ_WR", "Wechselrichter", dcSign, acSign, "Wechselrichter");
+const gr = umformer("PZ_GR", "Gleichrichter", acSign, dcSign, "Gleichrichter");
 // Hausanschluss (Anschlussüberstromunterbrecher): Kasten mit Spitze nach unten zum Kabel
 const hak = sym("PZ_HAK", "Hausanschluss", [line(-5, 0, 5, 0), line(5, 0, 5, -12.5), line(5, -12.5, 0, -17.5), line(0, -17.5, -5, -12.5), line(-5, -12.5, -5, 0)],
   [{ x: 0, y: 0 }, { x: 0, y: -17.5 }, { x: 5, y: -5 }], [attr("TEXT", "Nennstrom", "80 A", -3.5, -7), bmk(7, -14)]);
@@ -50,7 +61,7 @@ const earth = (x, y) => [line(x, y, x, y - 2.5), line(x - 2, y - 2.5, x + 2, y -
 const erder = sym("PZ_ERDER", "Erder (Fundamenterder)", earth(0, 0), [{ x: 0, y: 0 }], [attr("TEXT", "Text", "Fundamenterder", 3.5, -4)]);
 const pa = sym("PZ_PA", "Potentialausgleich", [circle(1.25, 0, 1.25), ...earth(1.25, -1.25)], H(2.5), [attr("TEXT", "Text", "", 4, -5)]);
 
-export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, hak, erder, pa];
+export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, wr, gr, hak, erder, pa];
 
 // Palette des Prinzipschemas, gruppiert. Gleiche Form wie FAMILIES in symbols.js (Varianten: Anzahl Striche).
 export const PRINZIP_GROUPS = [
@@ -67,6 +78,8 @@ export const PRINZIP_GROUPS = [
     { id: "PZ_SICH", label: "Sicherung", sub: "z. B. DII 25 A", def: "PZ_SICH", variants: ["PZ_SICH"] },
     { id: "PZ_KLEMME", label: "Klemme plombierbar", sub: "Abzweig, vier Anschlüsse", def: "PZ_KLEMME", variants: ["PZ_KLEMME"] },
     { id: "PZ_GERAET", label: "Gerät mit Text", sub: "z. B. Schütz S, Smart Meter", def: "PZ_GERAET", variants: ["PZ_GERAET"] },
+    { id: "PZ_WR", label: "Wechselrichter", sub: "Gleichstrom zu Wechselstrom, z. B. PV", def: "PZ_WR", variants: ["PZ_WR"] },
+    { id: "PZ_GR", label: "Gleichrichter", sub: "Wechselstrom zu Gleichstrom", def: "PZ_GR", variants: ["PZ_GR"] },
     { id: "PZ_HAK", label: "Hausanschluss", sub: "Anschlussüberstromunterbrecher", def: "PZ_HAK", variants: ["PZ_HAK"] },
   ]],
   ["Erdung", [

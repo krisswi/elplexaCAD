@@ -194,15 +194,16 @@ const kontakte = [
   kSym("UMS_1P", "UMS", "Umschalter mit Aus-Stellung", [line(-2.5, 0, -2.5, -6), line(2.5, 0, 2.5, -6), line(0, -13.5, 0, -8), circle(0, -14, 0.5), line(0, -14.5, 0, -POLE_LEN)],
     [{ x: -2.5, y: 0 }, { x: 2.5, y: 0 }, { x: 0, y: -POLE_LEN }], "S?"),
 ];
-// Thermorelais (Überlastrelais, Hauptstrom): je Pol ein Kasten mit Bimetall-Zeichen, 1- oder 3-polig
+// Thermorelais (Überlastrelais, Hauptstrom) wie in der Quelle (CJ 22.10.2026): liegendes Rechteck 8 × 4 mm wie die Spule, bei 3 Polen
+// ein breites Rechteck über alle Pole; in jedem Pol das Bimetall-Zeichen (Leiter mit Ausbuchtung nach rechts) nebeneinander.
 function trVariant(n) {
-  const prims = [], pins = [];
+  const prims = [...rect(-4, -8, (n - 1) * POLE + 4, -12)], pins = [];
   for (let i = 0; i < n; i++) {
     const x = i * POLE;
-    prims.push(line(x, 0, x, -6), ...rect(x - 1.8, -6, x + 1.8, -14), line(x, -6, x, -8.5), line(x, -8.5, x + 1, -8.5), line(x + 1, -8.5, x + 1, -11.5), line(x + 1, -11.5, x, -11.5), line(x, -11.5, x, -14), line(x, -14, x, -POLE_LEN));
+    prims.push(line(x, 0, x, -9.2), line(x, -9.2, x + 1.2, -9.2), line(x + 1.2, -9.2, x + 1.2, -10.8), line(x + 1.2, -10.8, x, -10.8), line(x, -10.8, x, -POLE_LEN));
     pins.push({ x, y: 0 }, { x, y: -POLE_LEN });
   }
-  return { name: `TR_${n}P`, family: "TR", poles: n, label: `Thermorelais ${n}-polig`, layer: "SCH_SYMBOLE", prims, pins, attrs: [...kBmk("F?"), attrStrom("")] };
+  return { name: `TR_${n}P`, family: "TR", poles: n, label: `Thermorelais ${n}-polig`, layer: "SCH_SYMBOLE", prims, pins, attrs: [...kBmk("F?", -9), attrStrom("")] };
 }
 // Spulen mit Kennzeichen (wie Spule Schütz, 8 × 4 mm): Stromstossrelais, abfall- und anzugsverzögert; Unterspannungsrelais als Kasten mit U<
 function coilMark(name, family, label, mark, vlabel) {

@@ -126,8 +126,8 @@ with sync_playwright() as p:
     check("Gerät in Spalte 4 verschoben", s0["attrs"]["BMK"] == "10F4", s0)
     page.keyboard.press("Delete")
     check("Löschen entfernt Gerät", len(of("symbol")) == 2)
-    page.click('[data-sym="NH_4P"]'); click(250, 160); page.click('[data-sym="RCBO_4P"]'); click(200, 160); page.keyboard.press("Escape")
-    check("NH und RCBO gesetzt mit Nummer", sorted(i["sym"] for i in of("symbol"))[-2:] == ["NH_4P", "RCBO_4P"] and all(i["attrs"]["BMK"].startswith("10F") for i in of("symbol")))
+    page.click('[data-sym="NH_3P"]'); click(250, 160); page.click('[data-sym="RCBO_4P"]'); click(200, 160); page.keyboard.press("Escape")
+    check("NH und RCBO gesetzt mit Nummer", sorted(i["sym"] for i in of("symbol"))[-2:] == ["NH_3P", "RCBO_4P"] and all(i["attrs"]["BMK"].startswith("10F") for i in of("symbol")))
     page.click('[data-sym="LS_4P"]'); page.select_option('[data-placepoles]', "LS_3P"); click(150, 120); page.select_option('[data-placepoles]', "LS_4P"); click(150, 80); page.keyboard.press("Escape")
     p34 = {i["sym"]: i["x"] for i in of("symbol") if i["sym"] in ("LS_3P", "LS_4P") and i["x"] > 140}
     check("3-polig und 4-polig: L1, L2, L3 auf gleicher x-Position", len(p34) == 2 and p34["LS_3P"] == p34["LS_4P"], p34)

@@ -408,7 +408,7 @@ function renderLeftBody() {
   for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
   h += `</section>` + abgangHTML() + `<section class="section"><h2 class="section-title">Symbole</h2>`;
   for (const f of FAMILIES) { // Wunsch CJ 16.10.: jede Variante direkt wählbar, ein Klick setzt das Gerät
-    if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${f.variants.map(varTile).join("")}</div></div>`; continue; }
+    if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${shownVariants(f).map(varTile).join("")}</div></div>`; continue; }
     const on = S.tool === "place" && f.variants.includes(S.placeSym);
     h += `<button class="sym" data-sym="${f.def}" aria-pressed="${on}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
   }
@@ -424,7 +424,7 @@ function prinzipLeftHTML(h) {
   for (const [title, fams] of PRINZIP_GROUPS) {
     h += `</section><section class="section"><h2 class="section-title">${title}</h2>`;
     for (const f of fams) {
-      if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${f.variants.map(varTile).join("")}</div></div>`; continue; }
+      if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${shownVariants(f).map(varTile).join("")}</div></div>`; continue; }
       h += `<button class="sym" data-sym="${f.def}" aria-pressed="${S.tool === "place" && S.placeSym === f.def}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
     }
   }
@@ -584,7 +584,8 @@ function setMainEnd(t) {
   });
 }
 const kindSelect = (attr, value) => `<div class="field"><label>Art der Leitung</label><select ${attr}>${Object.entries(WIRE_KINDS).map(([k, v]) => `<option value="${k}"${k === value ? " selected" : ""}>${v.label}</option>`).join("")}</select></div>`;
-const poleSelect = (attr, family, value) => `<div class="field"><label>Polzahl</label><select ${attr}>${family.variants.map((v) => `<option value="${v}"${v === value ? " selected" : ""}>${SYMBOL_BY_NAME[v].vlabel ?? SYMBOL_BY_NAME[v].poles + "-polig"}</option>`).join("")}</select></div>`;
+const shownVariants = (f, keep) => f.variants.filter((v) => v === keep || !f.hide?.includes(v)); // hide: nur für alte Dateien
+const poleSelect = (attr, family, value) => `<div class="field"><label>Polzahl</label><select ${attr}>${shownVariants(family, value).map((v) => `<option value="${v}"${v === value ? " selected" : ""}>${SYMBOL_BY_NAME[v].vlabel ?? SYMBOL_BY_NAME[v].poles + "-polig"}</option>`).join("")}</select></div>`;
 const bundleSelect = () => `<div class="field"><label>Anzahl Leiter pro Zug</label><select data-newbundle>${Object.entries(BUNDLE_LABELS).map(([n, l]) => `<option value="${n}"${Number(n) === S.bundleN ? " selected" : ""}>${l}</option>`).join("")}</select></div>`;
 // Klemmentexte (CJ 18.10.2026): je Klemme ein Feld, leer = Nummer; 2 Zeilen à 5 Zeichen mit „|“; Haken senkrecht
 const termLabCells = (it) => { const n = termCount(it); return Array.from({ length: n }, (_, i) => `<input type="text" data-tlab="${i}" value="${R.esc(it.lab?.[i] ?? "")}" placeholder="${it.pe !== "none" && i === n - 1 ? "PE" : i + 1}" maxlength="11" aria-label="Klemme ${i + 1}" autocomplete="off" spellcheck="false">`).join(""); };

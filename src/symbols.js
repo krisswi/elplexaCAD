@@ -28,7 +28,7 @@ function tripMark(x) {
   return p;
 }
 function pole(x, kind, trip = false) {
-  if (kind === "t") return [line(x, 0, x, -POLE_LEN), line(x - 1.2, -8, x + 1.2, -8), line(x - 1.2, -12, x + 1.2, -12), text(x + 1.8, -2.5, 1.8, "N")];
+  if (kind === "t") return [line(x, 0, x, -POLE_LEN), line(x - 1.2, -6, x + 1.2, -6), line(x - 1.2, -14, x + 1.2, -14), text(x + 1.8, -2.5, 1.8, "N")]; // Querstriche so weit wie die Lücke des Schliessers (CJ 22.10.)
   const p = [line(x, 0, x, -8.5), line(x - 3, -8.5, x, -15.5), line(x, -15.5, x, -POLE_LEN)];
   // Kreuz klein (CJ 16.10.), mit Abstand über dem Querstrich wie bei QElectroTech disjonct-m_3fn (CJ 16.10.)
   if (kind !== "c") p.push(line(x - 0.8, -8.5, x + 0.8, -8.5), line(x - 0.6, CROSS_Y - 0.6, x + 0.6, CROSS_Y + 0.6), line(x + 0.6, CROSS_Y - 0.6, x - 0.6, CROSS_Y + 0.6));
@@ -114,17 +114,20 @@ const nTrenner = {
 };
 
 // Kontakte: Schliesser (KS), Öffner (KO), Taster; Spule für Schütz und Relais. Eigene Zeichnung nach der üblichen Darstellung (Entwurf, von CJ zu prüfen).
+// Öffner (CJ 22.10.2026): Querstrich am Festkontakt nach rechts, das Schaltstück läuft knapp vor dessen Ende darüber hinaus.
+const NC_END = { x: 1.6, y: -5.5 }, couplingX = (nc) => (nc ? (NC_END.x * 4) / 8.5 : -1.25); // Schaltstück auf Höhe y -10
 function contactPole(x, nc) {
   const p = [line(x, -14, x, -POLE_LEN)];
-  if (nc) p.push(line(x, 0, x, -6), line(x, -6, x - 2.5, -6), line(x, -14, x - 2.5, -6));
+  if (nc) p.push(line(x, 0, x, -6), line(x, -6, x + 2.2, -6), line(x, -14, x + NC_END.x, NC_END.y));
   else p.push(line(x, 0, x, -6), line(x, -14, x - 2.5, -6));
   return p;
 }
 function contactVariant(nc, n, push = false) {
   const prims = [], pins = [];
   for (let i = 0; i < n; i++) { prims.push(...contactPole(i * POLE, nc)); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); }
-  if (n > 1) prims.push(line(-1.2, -10, (n - 1) * POLE - 1.2, -10, true));
-  if (push) { prims.push(line(-1.2, -10, -6, -10, true), line(-6, -8, -6, -12)); }
+  const cx = couplingX(nc);
+  if (n > 1) prims.push(line(cx, -10, (n - 1) * POLE + cx, -10, true));
+  if (push) { prims.push(line(cx, -10, -6, -10, true), line(-6, -8, -6, -12)); }
   const fam = push ? (nc ? "TASTER_O" : "TASTER_S") : nc ? "KO" : "KS";
   const label = push ? (nc ? "Taster Öffner" : "Taster Schliesser") : nc ? "Öffner" : "Schliesser";
   return {
@@ -453,7 +456,7 @@ function refVariant(dir, n) {
     const x = i * POLE;
     // dünner Pfeil nach unten: abgehend = Spitze am unteren Ende, ankommend = Spitze am oberen Ende
     const tip = dir === "OUT" ? -5 : -1.8;
-    prims.push(line(x, 0, x, -5), line(x, tip, x - 0.9, tip + 1.8), line(x, tip, x + 0.9, tip + 1.8));
+    prims.push(line(x, dir === "OUT" ? 0 : tip, x, -5), line(x, tip, x - 0.9, tip + 1.8), line(x, tip, x + 0.9, tip + 1.8)); // ankommend: kein Strich zwischen den Flügeln (CJ 22.10.)
     pins.push(dir === "OUT" ? { x, y: 0 } : { x, y: -5 });
   }
   const out = dir === "OUT";
@@ -559,7 +562,7 @@ export const FAMILIES = [
   { id: "LS", label: "Leitungsschutzschalter", sub: "1 bis 4 polig, +N, + N-Trenner", def: "LS_4P", variants: ["LS_1P", "LS_1PN", "LS_1PT", "LS_2P", "LS_3P", "LS_3PN", "LS_3PT", "LS_4P"] },
   { id: "FI", label: "FI-Schutzschalter", sub: "2 oder 4 polig", def: "FI_4P", variants: ["FI_2P", "FI_4P"] },
   { id: "RCBO", label: "FI/LS-Schalter (RCBO)", sub: "1P+N, 2P, 3P+N, 4P", def: "RCBO_4P", variants: ["RCBO_1PN", "RCBO_2P", "RCBO_3PN", "RCBO_4P"] },
-  { id: "NH", label: "NH-Sicherung", sub: "1 oder 3 polig, + N-Trenner, 4 polig", def: "NH_4P", variants: ["NH_1P", "NH_1PT", "NH_3P", "NH_3PT", "NH_4P"] },
+  { id: "NH", label: "NH-Sicherung", sub: "1 oder 3 polig, + N-Trenner", def: "NH_3PT", variants: ["NH_1P", "NH_1PT", "NH_3P", "NH_3PT", "NH_4P"], hide: ["NH_4P"] }, // NH_4P nur noch für alte Dateien (CJ 22.10.)
   { id: "NTRENN", label: "Neutralleitertrenner", sub: "einzeln", def: "NTRENN_1P", variants: ["NTRENN_1P"] },
   { id: "ERDE", label: "Erde", sub: "Erdung", def: "ERDE_1P", variants: ["ERDE_1P"] },
   { id: "VOUT", label: "Verweis abgehend", sub: "weiter auf anderem Blatt", def: "VOUT_4P", variants: ["VOUT_1P", "VOUT_2P", "VOUT_3P", "VOUT_4P"] },
@@ -582,7 +585,7 @@ export function variantByKey(name, key) {
   const fam = FAMILIES.find((f) => f.variants.includes(name));
   if (!fam || fam.variants.length < 2) return null;
   const info = (v) => { const s = SYMBOL_BY_NAME[v]; return { v, lp: s.lp ?? s.poles, nm: s.nm ?? "", poles: s.poles }; };
-  const cur = info(name), all = fam.variants.map(info);
+  const cur = info(name), all = fam.variants.filter((v) => v === name || !fam.hide?.includes(v)).map(info);
   let pick;
   if (/^[1-4]$/.test(key)) {
     const k = Number(key);

@@ -53,6 +53,12 @@ assert.deepStrictEqual(SYMBOL_BY_NAME.RELAIS_1P.prims, SYMBOL_BY_NAME.SPULE_1P.p
 assert.strictEqual(SYMBOL_BY_NAME.SCHUETZ_3P.prims.length - SYMBOL_BY_NAME.KS_3P.prims.length, 3 * 8 + 6, "je Pol ein Halbkreis aus 8 Linien, Klemmennummern");
 for (const n of ["TASTER_S_1P", "TASTER_O_1P"]) assert.ok(SYMBOL_BY_NAME[n].prims.some((p) => p.t === "l" && p.x1 === -6 && p.y1 === -8 && p.x2 === -5.2), n);
 assert.ok(SYMBOL_BY_NAME.MOTOR_3P.attrs.some((a) => a.tag === "STROMART" && a.def === "3~"));
+// HAK (CJ 22.10.2026): Rahmen mit Spitze zwischen L2 und L3 (x 7,5), HAK_4P mit PE (Anschlüsse L1 bis N wie bisher)
+for (const n of ["HAK_4P", "HAK_TNCS", "HAK_TNCS_1"]) { const ls = SYMBOL_BY_NAME[n].prims.filter((p) => p.t === "l"), low = Math.min(...ls.map((p) => Math.min(p.y1, p.y2)));
+  assert.ok(ls.some((p) => (p.x1 === 7.5 && p.y1 === low) || (p.x2 === 7.5 && p.y2 === low)), `${n}: Spitze bei x 7,5`);
+  assert.ok(["L1", "L2", "L3", "N", "PE"].every((t) => SYMBOL_BY_NAME[n].prims.some((p) => p.t === "t" && p.s === t)), `${n}: L1 bis PE angeschrieben`); }
+assert.deepStrictEqual(SYMBOL_BY_NAME.HAK_4P.pins.slice(0, 8), [0, 1, 2, 3].flatMap((i) => [{ x: i * 5, y: 0 }, { x: i * 5, y: -20 }]));
+assert.deepStrictEqual(SYMBOL_BY_NAME.HAK_4P.pins.slice(8), [{ x: 20, y: 0 }, { x: 20, y: -20 }]);
 assert.deepStrictEqual(SYMBOL_BY_NAME.TNC_TNS.pins[4], { x: 20, y: 0 }); // umgedreht (CJ 16.10.): PE oben, PEN unten
 assert.ok(FAMILIES.some((f) => f.id === "TNC_TNS") && FAMILIES.some((f) => f.id === "ERDE") && !isDevice(SYMBOL_BY_NAME.TNC_TNS));
 

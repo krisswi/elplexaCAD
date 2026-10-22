@@ -186,15 +186,17 @@ function nhVariant(v) {
 // Hausanschlusskasten: 3 NH-Sicherungen und Neutralleitertrenner im gestrichelten Rahmen, "HAK" rechts daneben.
 // Rahmen wie das HAK-Zeichen nach IEC (CJ 22.10.2026): durchgezogen, Kasten 1,3 × so hoch wie breit, Querstrich, darunter
 // Spitze zur Zuleitung (0,55 × Breite). Die Anschlüsse liegen im Rahmen (CJ: dürfen im HAK drin sein), damit alte Dateien verbunden bleiben.
-function hakFrame(x0, x1, top) {
-  const w = x1 - x0, side = r3(top - 1.3 * w), tx = r3((x0 + x1) / 2), ty = r3(side - 0.55 * w);
+// Spitze immer zwischen L2 und L3 (x 7,5), wo die Zuleitung abgeht (CJ 22.10.), auch wenn der Rahmen dann nicht ganz gleichseitig ist.
+function hakFrame(x0, x1, top, tx = 7.5) {
+  const w = x1 - x0, side = r3(top - 1.3 * w), ty = r3(side - 0.55 * w);
   return [line(x0, top, x1, top), line(x1, top, x1, side), line(x0, side, x0, top), line(x0, side, x1, side), line(x1, side, tx, ty), line(tx, ty, x0, side)];
 }
 const lNames = (n = 3) => Array.from({ length: n }, (_, i) => text(i * POLE + 1.8, -2.5, 1.8, `L${i + 1}`)); // L1 bis L3 an den Leitern, wo N und PE stehen (CJ 22.10.)
 const hak = {
-  name: "HAK_4P", family: "HAK", poles: 4, vlabel: "TN-S", label: "Hausanschlusskasten (3 NH + N-Trenner)", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...pole(3 * POLE, "t"), ...lNames(), ...hakFrame(-3.5, 19, 4.5), text(23.5, -10, 2.2, "HAK")],
-  pins: [0, 1, 2, 3].flatMap((i) => [{ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }]),
+  // TN-S: PE läuft rechts durch (CJ 22.10.2026); Anschlüsse von L1 bis N wie bisher, PE hinten angehängt
+  name: "HAK_4P", family: "HAK", poles: 5, vlabel: "TN-S", label: "Hausanschlusskasten (3 NH + N-Trenner, PE)", layer: "SCH_SYMBOLE",
+  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...pole(3 * POLE, "t"), line(20, 0, 20, -POLE_LEN), text(21.8, -2.5, 1.8, "PE"), ...lNames(), ...hakFrame(-3.5, 25, 7), text(29.5, -10, 2.2, "HAK")],
+  pins: [0, 1, 2, 3, 4].flatMap((i) => [{ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }]),
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
 };
 // HAK mit Übergang TN-C > TN-S (CJ 16.10.: passiert in der Regel im HAK). Einspeisung von unten wie TNC_TNS: unten L1, L2, L3, PEN,
@@ -572,7 +574,7 @@ export function registerSymbol(sym) {
 
 // Palette: eine Zeile pro Familie, Polzahl wird beim Setzen oder in den Eigenschaften gewählt
 export const FAMILIES = [
-  { id: "HAK", label: "Hausanschlusskasten", sub: "3 NH + N-Trenner, auch mit PEN-Aufteilung", def: "HAK_4P", variants: ["HAK_4P", "HAK_TNCS", "HAK_TNCS_1"] },
+  { id: "HAK", label: "Hausanschlusskasten", sub: "TN-S oder TN-C > TN-S (PEN-Aufteilung)", def: "HAK_4P", variants: ["HAK_4P", "HAK_TNCS", "HAK_TNCS_1"] },
   { id: "HPAS", label: "Potentialausgleichsschiene", sub: "HPAS, an PE und Erde", def: "HPAS_1P", variants: ["HPAS_1P"] },
   { id: "ZAEHLER", label: "Zähler", sub: "1 bis 8 Anschlüsse, 5 Seitenkontakte, Wandlermessung", def: "ZAEHLER_4P", variants: [...ZAEHLER_N.map((n) => `ZAEHLER_${n}P`), "ZAEHLER_4P_W"] },
   { id: "TNC_TNS", label: "Netz TN-C > TN-S", sub: "PEN teilt in N und PE", def: "TNC_TNS", variants: ["TNC_TNS"] },

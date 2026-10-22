@@ -183,10 +183,12 @@ function nhVariant(v) {
   };
 }
 
-// Hausanschlusskasten: 3 NH-Sicherungen und Neutralleitertrenner in einem gestrichelten Kasten, "HAK" rechts daneben
+// Hausanschlusskasten: 3 NH-Sicherungen und Neutralleitertrenner im gestrichelten Rahmen, "HAK" rechts daneben.
+// Rahmen in der Form des HAK-Zeichens nach IEC (CJ 22.10.2026): oben gerade, unten Spitze zur Zuleitung (Fünfeck).
+const hakFrame = (x0, x1, top, side, tx, ty) => [line(x0, top, x1, top, true), line(x1, top, x1, side, true), line(x1, side, tx, ty, true), line(tx, ty, x0, side, true), line(x0, side, x0, top, true)];
 const hak = {
   name: "HAK_4P", family: "HAK", poles: 4, vlabel: "TN-S", label: "Hausanschlusskasten (3 NH + N-Trenner)", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...pole(3 * POLE, "t"), ...rect(-3.5, -4, 19, -16, true), text(23.5, -10, 2.2, "HAK")],
+  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...pole(3 * POLE, "t"), ...hakFrame(-3.5, 19, -4, -15, 7.75, -19), text(23.5, -10, 2.2, "HAK")],
   pins: [0, 1, 2, 3].flatMap((i) => [{ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }]),
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
 };
@@ -194,8 +196,8 @@ const hak = {
 // oben L1, L2, L3, N (mit N-Trenner), PE. PEN teilt sich im Kasten bei y -15.5.
 const hakTncs = {
   name: "HAK_TNCS", family: "HAK", poles: 5, vlabel: "TN-C > TN-S", label: "Hausanschlusskasten mit PEN-Aufteilung", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), line(15, 0, 15, -POLE_LEN), line(13.8, -7, 16.2, -7), line(13.8, -10, 16.2, -10),
-    dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0), ...rect(-3.5, -4, 23, -17.5, true),
+  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), line(15, 0, 15, -POLE_LEN), line(13.8, -6, 16.2, -6), line(13.8, -14, 16.2, -14),
+    dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0), ...hakFrame(-3.5, 23, -4, -16, 9.75, -20.5),
     text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(17.8, -19, 1.8, "PEN"), text(27.5, -10, 2.2, "HAK")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), ...[0, 1, 2, 3].map((i) => ({ x: i * POLE, y: -POLE_LEN }))],
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
@@ -203,12 +205,12 @@ const hakTncs = {
 
 // HAK der Eingangsverdrahtung (CJ 16.10., Bild „CJ Eingangsverdrahtung“): Zuleitung einpolig von unten (Anschluss x 7,5, y -30),
 // teilt sich im Kasten auf L1, L2, L3, PEN (Querstrich y -25); 3 NH, N mit Trenner, PEN-Aufteilung N/PE. Oben L1, L2, L3, N, PE.
-// Der gestrichelte Kasten schliesst die Aufteilung ein.
+// Der gestrichelte Rahmen (Fünfeck) schliesst die Aufteilung ein; L1, L2, L3 und PEN laufen schräg auf die Zuleitung zu (CJ 22.10.2026).
 const hakFeed = {
   name: "HAK_TNCS_1", family: "HAK", poles: 5, vlabel: "TN-C > TN-S, Zuleitung", label: "Hausanschlusskasten mit PEN-Aufteilung, Zuleitung einpolig", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...[0, 1, 2].map((i) => line(i * POLE, -POLE_LEN, i * POLE, -25)), line(15, 0, 15, -25),
-    line(13.8, -7, 16.2, -7), line(13.8, -10, 16.2, -10), dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0),
-    line(0, -25, 15, -25), dot(7.5, -25), line(7.5, -25, 7.5, -30), ...rect(-3.5, -3, 23.5, -27.5, true),
+  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...[0, 1, 2, 3].map((i) => line(i * POLE, -POLE_LEN, 7.5, -25)), line(15, 0, 15, -POLE_LEN),
+    line(13.8, -6, 16.2, -6), line(13.8, -14, 16.2, -14), dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0),
+    dot(7.5, -25), line(7.5, -25, 7.5, -30), ...hakFrame(-3.5, 23.5, -3, -20, 7.5, -28),
     text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(18, -19, 1.8, "PEN"), text(28, -12.5, 2.2, "HAK")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), { x: 7.5, y: -30 }],
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],

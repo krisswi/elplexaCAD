@@ -6,6 +6,7 @@ import * as R from "./render.js";
 import * as D from "./dispo.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
+import * as PZ from "./prinzip.js";
 import { zipFiles } from "./zip.js";
 import { openModal } from "./dialogs.js";
 import { showPdf } from "./pdfout.js";
@@ -75,6 +76,7 @@ export function makeFiles(c) {
     if (ELPLEXA && S.shared) { S.elUnlock(); return; } // geteilte Ansicht: kein Export
     closeEditor(true);
     if (S.model.kind === "pv" || S.model.kind === "pvtab") { toast("DXF für Stringpläne kommt später."); return; }
+    if (S.model.kind === "prinzip") { toast("DXF fürs Prinzipschema kommt später. PDF: Exportieren → PDF."); return; }
     if (T.isDeck(S.model)) { toast("DXF für Titelseite und Inhaltsverzeichnis kommt später. Sie sind im PDF enthalten."); return; }
     let text;
     try { text = exportDxf(S.model); } catch (err) { toast("Der DXF-Export ist fehlgeschlagen: " + (err.message || err) + ". Speichere das Blatt als JSON und melde den Fehler.", "error"); return; }
@@ -96,6 +98,7 @@ export function makeFiles(c) {
     const pages = S.doc.sheets.map((sh, i) => [sh, i]).filter(([sh]) => !pick || pick.has(sh)).flatMap(([sh, i]) => {
       if (sh.kind === "pv" || sh.kind === "pvtab") return pv.printPages(sh, i);
       if (sh.kind === "legend") return L.printPages(S.doc, sh); // A4 hoch
+      if (sh.kind === "prinzip") return PZ.printPages(sh); // eigenes Papier, Plankopf wie Stringplan (prinzip.js)
       if (T.isDeck(sh)) return T.deckPrintPages(S.doc, sh);
       if (sh.kind === "dispo") { // freie Fläche: Inhalt mit Rand auf eine Seite einpassen, Linienstärke in Papier-mm
         const o = D.planOpts(sh), b = D.contentBBox(sh.items, o) || { x0: 0, y0: 0, x1: W, y1: H }, pad = Math.max(20, (b.x1 - b.x0) * 0.03);
@@ -109,7 +112,7 @@ export function makeFiles(c) {
   }
   // Papier eines Blatts im Druck: Stringplan und Stringübersicht ihr eigenes, Legende A4 hoch, alles andere A4 quer
   function sheetPaper(sh) {
-    const p = sh.kind === "pv" || sh.kind === "pvtab" ? pv.paperOf(sh) : { size: "A4", quer: sh.kind !== "legend" };
+    const p = sh.kind === "pv" || sh.kind === "pvtab" ? pv.paperOf(sh) : sh.kind === "prinzip" ? PZ.paperOf(sh) : { size: "A4", quer: sh.kind !== "legend" };
     return { key: p.size + (p.quer ? "q" : "h"), label: `${p.size} ${p.quer ? "quer" : "hoch"}` };
   }
   // Ein Druck für alle Blätter, jede Seite in ihrem Papier (benannte @page in style.css und pvprint.js). Nachweis 18.10.2026 im echten
@@ -155,7 +158,7 @@ export function makeFiles(c) {
     closeEditor(true);
     const files = [];
     try {
-      S.doc.sheets.forEach((sh, i) => sh.kind !== "pv" && sh.kind !== "pvtab" && !T.isDeck(sh) && files.push([`${baseName()}_${sh.kind === "dispo" ? "Dispo" : "Blatt"}-${safeName(String(sh.meta.BLATT || i + 1))}.dxf`, exportDxf(sh)]));
+      S.doc.sheets.forEach((sh, i) => sh.kind !== "pv" && sh.kind !== "pvtab" && sh.kind !== "prinzip" && !T.isDeck(sh) && files.push([`${baseName()}_${sh.kind === "dispo" ? "Dispo" : "Blatt"}-${safeName(String(sh.meta.BLATT || i + 1))}.dxf`, exportDxf(sh)]));
     } catch (err) { toast("Der DXF-Export ist fehlgeschlagen: " + (err.message || err), "error"); return; }
     // Ordner wählen. Chrome sperrt in der Ordnerwahl Systemordner (z. B. ~/Library und damit iCloud Drive) und meldet
     // „Dieser Ordner kann nicht geöffnet werden“; die App erfährt nur „abgebrochen“. Darum danach immer die ZIP anbieten.

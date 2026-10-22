@@ -8,7 +8,7 @@ import { tablePages, WIDTH } from "./pvtab.js";
 
 const INK = "#17212b";
 // Inhalt einer Seite in Papier-mm (y nach oben, Ursprung unten links): inner, Rahmen, Infozeile, Plankopf. p: Papier wie P.paperOf.
-function pageInner(p, meta, info, inner, head = true) {
+export function pageInner(p, meta, info, inner, head = true) { // auch Prinzipschema am Bildschirm (prinzip.js)
   const a = P.printArea(p), { w, h, k } = a, m = P.PRINT_M;
   const frame = `<rect x="${m}" y="${m}" width="${w - 2 * m}" height="${h - 2 * m}" fill="none" stroke="${INK}" stroke-width="1"/>`
     + `<line x1="${m}" y1="${R.f(a.y0)}" x2="${w - m}" y2="${R.f(a.y0)}" stroke="${INK}" stroke-width="1"/>`

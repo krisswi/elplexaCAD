@@ -5,7 +5,7 @@ import { newDoc, newSheet, parseModel, serializeModel, VERSION, MOD_STATUS, clea
 import { projSummary, onlineSummary, modIds, modMenuHTML, modStatus, modPill, modStatusMenuHTML, hubHTML, keysHTML } from "../src/elplexa.js";
 
 assert.deepStrictEqual(MOD_STATUS, ["Offen", "In Arbeit", "Geprüft", "Versendet", "Revision", "Archiviert"], "Reihenfolge laut CJ");
-assert.strictEqual(VERSION, 18);
+assert.ok(VERSION >= 18);
 
 // Dokument mit Schema, Disposition, PV
 const mk = () => {

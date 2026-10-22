@@ -19,7 +19,7 @@ export const INFO_FIELDS = [ // nur Titelseite. Firma merkt sich die App (CJ 14.
   { key: "FIRMA_ADR", label: "Adresse Firma", multi: true, firm: true },
 ];
 export const MAX_LOGO = 300 * 1024; // Bytes der Bilddatei (Annahme Claude)
-const KIND_LABEL = { title: "Titelseite", toc: "Inhaltsverzeichnis", legend: "Sicherungslegende", dispo: "Disposition", pv: "Stringplan", pvtab: "Stringübersicht" };
+const KIND_LABEL = { title: "Titelseite", toc: "Inhaltsverzeichnis", legend: "Sicherungslegende", dispo: "Disposition", pv: "Stringplan", pvtab: "Stringübersicht", prinzip: "Prinzipschema" };
 export const kindLabel = (sh) => KIND_LABEL[sh.kind] || "Schema";
 
 // ---------- Modell ----------
@@ -71,11 +71,11 @@ const label = (k) => ({ OBJEKT: "Objekt", AUFTRAG: "Auftrag", SCHEMA: "Schema", 
 // Innerhalb eines Typs bleibt die Reihenfolge. Neue Blätter werden hinten angehängt und hier einsortiert, der Aufrufer rechnet den
 // aktiven Index nach. Legende: Nummer = letztes Schemablatt + 1.
 // Ohne Titelseite (gelöscht) setzt die App die Projektangaben direkt auf allen Blättern (app.js).
-export const SHEET_ORDER = ["title", "toc", "schema", "legend", "dispo", "pv", "pvtab"];
+export const SHEET_ORDER = ["title", "toc", "schema", "legend", "dispo", "pv", "pvtab", "prinzip"];
 // Rang eines Blatts in der festen Reihenfolge. Blätter mit gleichem Rang (gleiche Art, gleiches Modul) behalten ihre Reihenfolge
 // in der Datei; diese lässt sich in der Blattliste per Ziehen ändern (CJ 18.10.2026, app.js moveSheet).
 // Übergebene Dispo mit ins (D3, CJ 19.10.2026): Rang des Schema-Moduls ins, steht dann zwischen dessen Schemablättern.
-export const sheetRank = (s) => { const k = s.kind || "schema", v = s.var || 1; return k === "title" ? 0 : k === "toc" ? 1 : k === "schema" ? 100 + v : k === "dispo" && s.ins ? 100 + s.ins : k === "legend" ? 199 : k === "dispo" ? 200 + v : 300 + v * 2 + (k === "pvtab" ? 1 : 0); };
+export const sheetRank = (s) => { const k = s.kind || "schema", v = s.var || 1; return k === "title" ? 0 : k === "toc" ? 1 : k === "schema" ? 100 + v : k === "dispo" && s.ins ? 100 + s.ins : k === "legend" ? 199 : k === "dispo" ? 200 + v : k === "prinzip" ? 500 + v : 300 + v * 2 + (k === "pvtab" ? 1 : 0); };
 // Wunsch D3 (CJ 19.10.2026): Blattnummer bleibt frei wählbar. Ein verschobenes Blatt (list[k], list = Blätter gleichen Rangs in neuer Folge,
 // from = sein alter Platz) nimmt die Nummer seines neuen Platzes: Vorgänger + 1, ganz vorne die Nummer des Nachfolgers. Die folgenden Blätter
 // zählen um 1 hoch, bis zur nächsten Lücke (Nummer grösser als die vorherige) oder einer Nummer, die keine Zahl ist. Nach hinten verschoben
@@ -194,7 +194,7 @@ function revTableSVG(revs, x0, yTop, x1) {
 // Inhaltsverzeichnis: eine Zeile pro Blatt (Blatt, Art, Titel, Index). Mehr als ROWS Blätter: weitere Seiten.
 const TOC_COLS = [["Blatt", 34], ["Art", 40], ["Titel", 160], ["Index", 18]];
 const TOC_X = M_IN + 12, TOC_TOP = H - M_IN - 26, TOC_RH = 5.5, TOC_ROWS = 26;
-export const sheetNo = (sh, i) => (sh.kind === "pvtab" ? "–" : `${sh.kind === "dispo" ? "Dispo " : sh.kind === "pv" ? "Stringplan " : ""}${sh.meta.BLATT || i + 1}`);
+export const sheetNo = (sh, i) => (sh.kind === "pvtab" ? "–" : `${sh.kind === "dispo" ? "Dispo " : sh.kind === "pv" ? "Stringplan " : sh.kind === "prinzip" ? "Prinzipschema " : ""}${sh.meta.BLATT || i + 1}`);
 // Wunsch D2 (CJ 19.10.2026): nur Blätter des Schemas (Titelseite, Inhalt, Schemablätter, Legende). Eine Disposition nur, wenn sie an ein
 // Schemablatt übergeben ist (Ansicht „dispoview“ mit ihrer sid), Stringplan, Stringübersicht und andere Pläne nie.
 export const handedOver = (doc) => new Set(doc.sheets.flatMap((sh) => (sh.kind ? [] : sh.items.filter((it) => it.type === "dispoview").map((it) => it.src))));

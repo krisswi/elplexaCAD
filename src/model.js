@@ -12,7 +12,7 @@ import { cleanAssets, cleanBg, usedAssets, cleanLayers, cleanPvItem, cleanLayerI
 import { cleanAdr, cleanGwr } from "./gwr.js";
 
 export const FORMAT = "schemacad";
-export const VERSION = 18; // 18: Modulstatus (doc.mods[Modul].st) und eigene Reihenfolge der Module (.o), seit 20.10.2026. // 17: Text ausgerichtet (al), Klemmentexte (lab, vert), Steuerkasten (ctrl), seit 19.10.2026. // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
+export const VERSION = 19; // 19: Prinzipschema (kind "prinzip", Symbole PZ_*), seit 21.10.2026. // 18: Modulstatus (doc.mods[Modul].st) und eigene Reihenfolge der Module (.o), seit 20.10.2026. // 17: Text ausgerichtet (al), Klemmentexte (lab, vert), Steuerkasten (ctrl), seit 19.10.2026. // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
 // 10: // 10: Wandlermessung in Teilen (ZW_WANDLER, ZW_ZAEHLER, Leitungen mit of/wm) oder Klemmenleiste ohne Klemmen (noterm), seit 16.10.2026. // 9: Disposition mit NH-Hersteller (maker), Textzeilen (lines) oder Textgrösse (tf) (seit 16.10.2026; Stände mit 8 lehnen ab, statt die Angaben still zu verlieren). 8: Disposition mit Schrank, Teilen oder neuen Geräteangaben (seit 16.10.2026, schrank.js; ältere Stände lehnen ab statt still zu verlieren). 7: 7: Hauptlinien neu (seit 16.10.2026, Blatt main, Gruppenverweise mit main; ältere Stände lehnen ab, sonst entstünden doppelte Verweise). 6: mit Stringplan (seit 15.10.2026, Umbau 5ab: gedrehte Module, ältere Stände lehnen ab). 5: mit Titelseite und Inhaltsverzeichnis (kind "title", "toc", titel.js). höchste lesbare Version. 2: mehrere Blätter (sheets), Version 1 (ein Blatt) wird beim Öffnen umgewandelt. 3: wie 2, mit Blättern vom Typ Disposition (nur dann wird 3 geschrieben). 4: mit Stringplan (kind "pv", PDF unter assets) oder Stringübersicht (kind "pvtab").
 
 export const WIRE_KINDS = {
@@ -49,9 +49,10 @@ export function newMeta() {
   return m;
 }
 
-// Ein Blatt: Schriftfeldangaben und Objekte. kind "dispo" = Disposition (Verteileraufbau, freie Fläche in mm), "pv" = Stringplan (pv.js), "pvtab" = Stringübersicht (pvtab.js, ohne eigene Objekte), sonst Schema.
+// Ein Blatt: Schriftfeldangaben und Objekte. kind "dispo" = Disposition (Verteileraufbau, freie Fläche in mm), "pv" = Stringplan (pv.js), "pvtab" = Stringübersicht (pvtab.js, ohne eigene Objekte),
+// "prinzip" = Prinzipschema (prinzip.js, einpolig, Papier-mm), sonst Schema.
 // Eine Disposition trägt eine sid, damit eine Ansicht auf dem Schemablatt ihre Quelle wiederfindet.
-export const KINDS = ["dispo", "pv", "pvtab", "title", "toc", "legend"];
+export const KINDS = ["dispo", "pv", "pvtab", "prinzip", "title", "toc", "legend"];
 export const newSheet = (kind = "schema") => ({ meta: newMeta(), items: [], ...(KINDS.includes(kind) ? { kind } : {}) });
 // Ein Dokument: mehrere Blätter, Objekt-IDs gelten im ganzen Dokument (wichtig für Verweise von Blatt zu Blatt)
 export const newDoc = () => ({ format: FORMAT, version: 2, active: 0, nextId: 1, sheets: [newSheet()] });
@@ -82,6 +83,7 @@ export function parseModel(text) {
     if (m.kind === "pv") { const hi = cleanHide(rs.hide); if (hi) m.hide = hi; } // Druckteile (5l)
     if (m.kind === "pv") { const pm = cleanPmid(rs.pmid), no = cleanNorth(rs.north); if (pm) m.pmid = pm; if (no !== undefined) m.north = no; const sk = cleanStrk(rs.strk); if (sk) m.strk = sk; } // Druckmitte (5ao), Nordrichtung (5aq), Grösse Stringbeschriftung (5bb)
     if (m.kind === "pvtab") { const pa = cleanPaper(rs.paper); if (pa) m.paper = { size: pa.size, quer: pa.quer }; } // Papier der Stringübersicht (5ap), Massstab immer 1:1
+    if (m.kind === "prinzip") { const pa = cleanPaper(rs.paper); if (pa) m.paper = { size: pa.size, quer: rs.paper.quer === true }; } // Papier des Prinzipschemas, fehlt = A4 hoch (prinzip.js)
     if (!["title", "toc", "legend"].includes(m.kind) && Number.isInteger(rs.var) && rs.var >= 2 && rs.var <= 99) m.var = rs.var; // Modul Nr. (CJ 18.10.2026), fehlt = 1
     if (rs.pin === true) m.pin = true;
     if (!m.kind) { if (isNum(rs.sid)) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); } if (rs.main) m.main = cleanMain(rs.main); } // Hauptlinien (hauptlinien.js): Ziel über sid
@@ -94,6 +96,7 @@ export function parseModel(text) {
     if (m.kind === "pv" && m.items.some((i) => i.type !== "text" && !PV_ITEMS.has(i.type))) throw new Error("Ein Stringplan enthält ein Objekt, das diese Version nicht kennt.");
     if (m.items.some((i) => i.type === "pvmodule" && !mts.has(i.mt))) throw new Error("Ein Modul verweist auf einen Modultyp, der im Katalog fehlt.");
     if (m.kind === "pv") checkStrings(m); // Strings: Bezeichnung, Module (Schritt 5)
+    if (m.kind === "prinzip" && m.items.some((i) => !PRINZIP_ITEMS.has(i.type))) throw new Error("Ein Prinzipschema enthält nur Symbole, Leitungen, Texte und Formen.");
     if (m.kind === "pvtab" && m.items.length) throw new Error("Eine Stringübersicht enthält keine eigenen Objekte.");
     if ((m.kind === "title" || m.kind === "toc" || m.kind === "legend") && m.items.length) throw new Error("Titelseite, Inhaltsverzeichnis und Legende enthalten keine eigenen Objekte.");
   }
@@ -123,15 +126,15 @@ export function parseModel(text) {
 // Legende als eigenes Modul (CJ 21.10.2026): Kennung „legende“, immer nur eines, entsteht mit dem Schema (titel.js ensureDeck).
 // und gleicher Nummer var (fehlt = 1). Kennung „schema“, „dispo“, „pv“ für Nr. 1, sonst „pv:2“. doc.mods[Kennung] = { name, cont }:
 // name = eigener Name (z. B. „Schema HV“), cont = PV: Strings fortsetzen nach dem PV-Modul mit dieser Nummer.
-export const MOD_LABELS = { schema: "Schema", dispo: "Disposition", pv: "PV-Stringplan", legende: "Legende" };
-export const modBase = (sh) => (sh.kind === "dispo" ? "dispo" : sh.kind === "pv" || sh.kind === "pvtab" ? "pv" : sh.kind === "legend" ? "legende" : "schema");
+export const MOD_LABELS = { schema: "Schema", dispo: "Disposition", pv: "PV-Stringplan", prinzip: "Prinzipschema", legende: "Legende" };
+export const modBase = (sh) => (sh.kind === "dispo" ? "dispo" : sh.kind === "pv" || sh.kind === "pvtab" ? "pv" : sh.kind === "prinzip" ? "prinzip" : sh.kind === "legend" ? "legende" : "schema");
 export const modKey = (base, v) => (v > 1 ? `${base}:${v}` : base);
 export const modOf = (sh) => modKey(modBase(sh), ["title", "toc", "legend"].includes(sh.kind) ? 1 : sh.var || 1);
 export const modVar = (id) => Number(String(id).split(":")[1]) || 1;
 export const modName = (doc, id) => doc.mods?.[id]?.name || `${MOD_LABELS[String(id).split(":")[0]]}${modVar(id) > 1 ? ` ${modVar(id)}` : ""}`;
 // Modulstatus (CJ 20.10.2026), Reihenfolge wie hier; „Offen“ ist der Standard und steht nicht in der Datei
 export const MOD_STATUS = ["Offen", "In Arbeit", "Geprüft", "Versendet", "Revision", "Archiviert"];
-const MOD_ID = /^((schema|dispo|pv)(:([2-9]|[1-9]\d))?|legende)$/;
+const MOD_ID = /^((schema|dispo|pv|prinzip)(:([2-9]|[1-9]\d))?|legende)$/;
 export function cleanMods(o) {
   if (!o || typeof o !== "object") return null;
   const out = {};
@@ -164,7 +167,7 @@ export function cleanProject(o) {
   if (typeof o.id === "string" && /^[a-z0-9]{6,20}$/.test(o.id)) p.id = o.id;
   if (Array.isArray(o.auto)) {
     const a = o.auto.filter((e) => e && /^[a-z0-9]{4,16}$/.test(e.k) && /^\d{4}-\d{2}-\d{2}$/.test(e.d) && isNum(e.s) && e.s >= 0 && e.s <= 86400)
-      .map((e) => ({ k: e.k, d: e.d, s: Math.round(e.s), m: (Array.isArray(e.m) ? e.m : []).filter((x) => ["schema", "dispo", "pv", "legende"].includes(x)), ...(e.x === "ok" || e.x === "weg" ? { x: e.x } : {}) }));
+      .map((e) => ({ k: e.k, d: e.d, s: Math.round(e.s), m: (Array.isArray(e.m) ? e.m : []).filter((x) => ["schema", "dispo", "pv", "prinzip", "legende"].includes(x)), ...(e.x === "ok" || e.x === "weg" ? { x: e.x } : {}) }));
     if (a.length) p.auto = a;
   }
   // Adresse und GWR (CJ 19.10.2026, gwr.js)
@@ -197,6 +200,7 @@ export const cleanShow = (show, cols) => {
   return [...LEGEND_DEFAULT];
 };
 
+const PRINZIP_ITEMS = new Set(["symbol", "wire", "text", "shape"]);
 const isDispoItem = (i) => PLAN_TYPES.has(i.type) || i.type === "text";
 
 function parseItems(list, m, maxId) {
@@ -296,5 +300,6 @@ export function serializeModel(m, { noAssets = false } = {}) {
   const usesV16 = sheets.some((sh) => sh.var) || !!m.mods; // Module mehrfach (18.10.2026): ältere Stände würden Module vermischen
   const usesV17 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.al) || (i.type === "terminals" && (i.lab || i.vert)) || i.type === "ctrl")) || sheets.some((sh) => sh.ins); // Wünsche CJ 19.10.2026: Textausrichtung, Klemmentexte, Steuerkasten, Dispo im Schema (ins)
   const usesV18 = Object.values(m.mods || {}).some((e) => e.st || e.o); // Modulstatus, Reihenfolge (20.10.2026)
-  return JSON.stringify({ ...rest, version: usesV18 ? 18 : usesV17 ? 17 : usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
+  const usesV19 = sheets.some((sh) => sh.kind === "prinzip"); // Prinzipschema (21.10.2026): ältere Stände machten daraus still ein Schemablatt
+  return JSON.stringify({ ...rest, version: usesV19 ? 19 : usesV18 ? 18 : usesV17 ? 17 : usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
 }

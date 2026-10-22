@@ -10,7 +10,7 @@ export const MODULES = [
   { id: "dispo", label: "Disposition", sub: "Verteileraufbau, massstäblich", color: "#2f9e58" },
   { id: "pv", label: "PV-Stringplan", short: "PV", sub: "Strangplan auf dem Dachplan", color: "#d4a900" },
   { id: "plan", label: "Plan", sub: "Installationsplan auf dem Grundriss", color: "#b45309", later: true },
-  { id: "prinzip", label: "Prinzipschema", sub: "Übersicht der Verteiler und Zuleitungen", color: "#7a4fb0", later: true },
+  { id: "prinzip", label: "Prinzipschema", sub: "Einpolig: Verteilungen, Abgänge, Erdung", color: "#7a4fb0" }, // seit 21.10.2026 (prinzip.js)
   // Legende (CJ 21.10.2026): eigenes Modul, entsteht mit dem Schema, nicht anlegen, kopieren oder löschen; im PDF nur beim Gesamt-PDF aller Blätter
   { id: "legende", label: "Legende", sub: "Sicherungslegende aus den Schemablättern", color: "#5b6b7c", auto: true },
 ];
@@ -35,7 +35,7 @@ export function modStatusMenuHTML(doc, id) {
 export const tileId = (id) => `el-tile-${String(id).replace(":", "-")}`;
 export const modIdx = (doc, id) => doc.sheets.map((sh, i) => (moduleOf(sh) === id ? i : -1)).filter((i) => i >= 0);
 // Neues Blatt im Modul: welche Einträge des Plus-Menüs (data-new) dazugehören
-export const ADD_KINDS = { schema: ["sheet", "deck"], dispo: ["dispo"], pv: ["pv", "pvtab"], legende: ["sheet"] }; // Legende: Plus gibt ein Schemablatt
+export const ADD_KINDS = { schema: ["sheet", "deck"], dispo: ["dispo"], pv: ["pv", "pvtab"], prinzip: ["prinzip"], legende: ["sheet"] }; // Legende: Plus gibt ein Schemablatt
 
 const dot = (m) => `<span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>`;
 
@@ -72,7 +72,7 @@ export function timeCsv(doc) {
 // Offen = weder übernommen noch verworfen und mindestens 1 min. Vorschlag beim Übernehmen: auf 0,25 h gerundet, mindestens 0,25 h.
 export const autoOpen = (doc) => (doc.project?.auto || []).filter((e) => !e.x && e.s >= 60).sort((a, b) => a.d.localeCompare(b.d));
 export const autoHours = (s) => Math.max(0.25, Math.round(s / 900) / 4);
-const AUTO_LBL = () => ({ schema: "Schema", dispo: "Dispo", pv: "PV", legende: "Legende" });
+const AUTO_LBL = () => ({ schema: "Schema", dispo: "Dispo", pv: "PV", prinzip: "Prinzip", legende: "Legende" });
 export const autoNote = (e) => MODULES.filter((m) => e.m.includes(m.id)).map((m) => AUTO_LBL()[m.id]).join(", ");
 const fmtDur = (s) => { const m = Math.round(s / 60), h = Math.floor(m / 60); return h ? `${h} h ${String(m % 60).padStart(2, "0")} min` : `${m} min`; };
 // Zwei Stände zusammenführen (gleiche Kennung k): längere Zeit, alle Module. Übernommen/verworfen: beim Laden gilt, was eine Seite meldet;
@@ -133,7 +133,7 @@ export function hubHTML(doc, o) {
     ${ro ? sharedHTML(o.shared) : o.projs?.user ? `<section class="el-projs" aria-label="Online"><div id="el-online" class="el-online"></div></section>` : ""}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
       ${ro || typeof ELPLEXA === "undefined" || !ELPLEXA ? "" : `<button class="el-tile el-hand" id="el-hand" data-elact="hand" title="Handschrift mit dem Apple Pencil. Privat auf diesem Gerät, nicht im Projekt und nicht im Teilen-Link"><span class="el-th"><span class="el-tn">Handnotizen</span></span><span class="el-ts">Mit dem Stift schreiben · PDF und Bilder importieren und exportieren</span></button>`}
-      ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV · Plan und Prinzipschema später</span></button>`}</div>
+      ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV, Prinzipschema · Plan später</span></button>`}</div>
       ${ro || o.tip === false ? `<p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p>` : ""}</section>
     ${ro ? "" : timeHTML(doc, o.today)}</div></div>${tip}`;
 }
@@ -321,11 +321,11 @@ export function modMenuHTML(doc, cur) {
 export function crumbHTML(cur, st, name) {
   const m = modById(cur);
   return `<button class="btn el-back" data-elact="hub" title="Projektübersicht (0)">‹ Übersicht</button><span class="el-sl" aria-hidden="true">/</span>`
-    + `<button class="btn el-cur" id="el-mod" data-elact="modmenu" aria-haspopup="menu" aria-expanded="false" title="Anderes Modul öffnen (1 bis 3)">${dot(m)}<span class="el-lbl">${esc(name || m.label)}</span><span class="caret" aria-hidden="true">▾</span></button>${statusPill(st)}`;
+    + `<button class="btn el-cur" id="el-mod" data-elact="modmenu" aria-haspopup="menu" aria-expanded="false" title="Anderes Modul öffnen (1 bis 4)">${dot(m)}<span class="el-lbl">${esc(name || m.label)}</span><span class="caret" aria-hidden="true">▾</span></button>${statusPill(st)}`;
 }
 
 export const keysHTML = () => `<div class="el-keys">${[
-  ["1 2 3", "Schema, Disposition, PV öffnen (in der Übersicht: die Kachel an dieser Stelle)"], ["0", "Projektübersicht"], ["S", "Übersicht, Kachel gewählt: Modulstatus ändern"], ["⌥ ← →", "Übersicht, Kachel gewählt: Modul nach vorn oder hinten"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
+  ["1 2 3 4", "Schema, Disposition, PV, Prinzipschema öffnen (in der Übersicht: die Kachel an dieser Stelle)"], ["0", "Projektübersicht"], ["S", "Übersicht, Kachel gewählt: Modulstatus ändern"], ["⌥ ← →", "Übersicht, Kachel gewählt: Modul nach vorn oder hinten"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
   ["Bild ↑ ↓", "Blatt zurück und vor, innerhalb des Moduls"], ["G", "Liste der Blätter des Moduls (Zeile ziehen oder Alt ↑ ↓ sortiert)"], ["M", "Blatt mit ★ markieren"], ["⇧ Bild ↑ ↓", "zum vorherigen und nächsten ★-Blatt, auch über Module"],
   ["/", "Symbolsuche unten links"], ["⌘ Klick", "zur Auswahl dazu oder wieder ab"], ["⌘ O", "Öffnen"], ["⌘ S", "Speichern"], ["⇧ ⌘ S", "Speichern unter"], ["⌘ F", "Suchen und Ersetzen"], ["Esc", "schliesst Menü oder Fenster, in der Übersicht zurück ins Modul"], ["?", "diese Hilfe"],
 ].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im Schema gelten 1 bis 4 beim Setzen eines Geräts oder bei einem gewählten Gerät weiter für die Polzahl.</p>`;

@@ -1,6 +1,7 @@
 // Symboldefinitionen (eigene, generische Symbole). Einheit mm, y nach oben (wie DXF).
 // Ursprung = oberer Anschluss von Pol 1. Alles liegt auf einem 2,5-mm-Raster.
 // Dieselben Daten zeichnen das Symbol im Editor und schreiben den DXF-Block.
+import { PRINZIP_SYMBOLS } from "./prinzipsym.js"; // Prinzipschema, einpolig (CJ 21.10.2026)
 
 const line = (x1, y1, x2, y2, dashed = false) => ({ t: "l", x1, y1, x2, y2, d: dashed });
 const circle = (cx, cy, r) => ({ t: "c", cx, cy, r });
@@ -527,6 +528,7 @@ export const SYMBOLS = [
   },
   terminalCell("KLEMME_R", "Klemme", false),
   terminalCell("KLEMME_PE", "PE-Klemme", true),
+  ...PRINZIP_SYMBOLS, // nicht in FAMILIES, eigene Palette (prinzipsym.js)
 ];
 
 // Schutzgeräte: bekommen automatisch Nummer (F) und Klemmen unten

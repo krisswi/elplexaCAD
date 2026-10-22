@@ -1,6 +1,7 @@
 // DXF-Export mit der Bibliothek @tarikjabiri/dxf (MIT). Einheit mm, Blöcke mit Attributen, Layer SCH_*.
 import { DxfWriter, Units, point3d, TextHorizontalAlignment, TextVerticalAlignment } from "@tarikjabiri/dxf";
 import { SYMBOLS, SYMBOL_BY_NAME, rotatePoint, DOT_R } from "./symbols.js";
+import { isPrinzipSym } from "./prinzipsym.js";
 import { frameGeometry, titleBlockGeometry, META_FIELDS, META_H, TB_ORIGIN, metaText } from "./frame.js";
 import { LAYERS, WIRE_KINDS } from "./model.js";
 import { junctions } from "./render.js";
@@ -104,6 +105,7 @@ export function exportDxf(model) {
   const usedLib = new Set(model.items.filter((i) => i.type === "symbol" && SYMBOL_BY_NAME[i.sym]?.custom).map((i) => i.sym));
   for (const sym of SYMBOLS) {
     if (sym.custom && !usedLib.has(sym.name)) continue;
+    if (isPrinzipSym(sym.name)) continue; // Prinzipschema: noch ohne DXF (prinzip.js)
     const b = d.addBlock(sym.name);
     addPrims(b, sym.prims, sym.layer);
     for (const a of sym.attrs) b.addAttdef(P(a.x, a.y), a.h, a.tag, a.def, { layerName: "SCH_TEXT" });

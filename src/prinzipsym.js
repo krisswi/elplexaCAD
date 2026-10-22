@@ -18,10 +18,23 @@ const top3 = (def) => [bmk(-1, 9.5), attr("TEXT", "Bezeichnung", def, -1, 6.5), 
 const blade = (x0, x1, cross) => [line(x0, 0, x1, 2.5), line(x1, -0.8, x1, 0.8), ...(cross ? [line(x1 + 0.6, 1.2, x1 + 1.8, 2.4), line(x1 + 1.8, 1.2, x1 + 0.6, 2.4)] : [])];
 const ls = sym("PZ_LS", "Leitungsschutzschalter (LS)", [line(0, 0, 2.5, 0), ...blade(2.5, 7.5, true), line(7.5, 0, 10, 0)], H(10), top3("LS C 13A"));
 const fi = sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [line(0, 0, 1.5, 0), ...rect(1.5, -2.5, 8.5, 2.5), text(5, 0, 2.5, "FI"), line(8.5, 0, 10, 0)], H(10), top3("FI 40A 30mA"));
-const fils = sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [line(0, 0, 1.5, 0), ...rect(1.5, -2.5, 16, 2.5), line(7, -2.5, 7, 2.5), text(4.25, 0, 2.2, "FI"), line(7, 0, 8.5, 0), line(8.5, 0, 12.5, 2), line(12.5, -0.8, 12.5, 0.8), line(13.1, 0.6, 14.1, 1.6), line(14.1, 0.6, 13.1, 1.6), line(12.5, 0, 17.5, 0)], H(17.5),
-  top3("FI/LS B13A 30mA"));
-// Sicherung (z. B. DII): senkrecht, Rechteck mit durchgehendem Leiter
-const sich = sym("PZ_SICH", "Sicherung (Schmelzsicherung)", [line(0, 0, 0, -12.5), ...rect(-1.5, -2.5, 1.5, -10)], [{ x: 0, y: 0 }, { x: 0, y: -12.5 }], [attr("TEXT", "Bezeichnung", "DII 25 A", 3, -7), bmk(3, -3.5)]);
+// FI/LS nach der Symbolzusammenfassung (CJ 22.10.2026): Schaltstück wie LS, darunter thermischer (Bimetall) und magnetischer Auslöser
+// (Pfeil zum Schaltstück) und daneben der Fehlerstromauslöser (Wirklinie mit Querstrich). Anschlüsse wie bisher (0 und 17,5).
+const fils = sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [line(0, 0, 5, 0), ...blade(5, 10, true), line(10, 0, 17.5, 0),
+  line(6.5, -4.5, 6.5, 0.6), line(6.5, 0.6, 6, -0.3), line(6.5, 0.6, 7, -0.3), line(6.5, -2, 5.5, -2), line(5.5, -2, 5.5, -3), line(5.5, -3, 6.5, -3),
+  line(8.75, -4.5, 8.75, 1.7), line(8.25, -3.5, 9.25, -3.5)], H(17.5), top3("FI/LS B13A 30mA"));
+// Sicherung (z. B. DII): senkrecht, Rechteck mit durchgehendem Leiter. Darüber Querstriche (CJ 22.10.2026): je Aussenleiter einer,
+// N als Strich mit Punkt. PZ_SICH = 1 Strich (L), Varianten 2L, 3L und mit N. Anschlüsse wie bisher.
+function sichVariant(k, n) {
+  const marks = [], cnt = k + (n ? 1 : 0);
+  for (let i = 0; i < cnt; i++) { const y = -2.25 + (i - (cnt - 1) / 2) * 1; marks.push(line(-1.25, y - 0.6, 1.25, y + 0.6)); if (n && i === cnt - 1) marks.push({ ...circle(-1.25, y - 0.6, 0.35), f: true }); }
+  const name = n ? `PZ_SICH_N${k}` : k === 1 ? "PZ_SICH" : `PZ_SICH_${k}`, vl = `${k > 1 ? k : ""}L${n ? "N" : ""}`;
+  return { ...sym(name, `Sicherung ${vl} (Schmelzsicherung)`, [line(0, 0, 0, -12.5), ...rect(-1.5, -4.5, 1.5, -10.5), ...marks], [{ x: 0, y: 0 }, { x: 0, y: -12.5 }], [attr("TEXT", "Bezeichnung", "DII 25 A", 3, -8), bmk(3, -4.5)]), family: "PZ_SICH", vlabel: vl };
+}
+const SICH = [[1, false], [2, false], [3, false], [1, true], [2, true], [3, true]].map(([k, n]) => sichVariant(k, n));
+// Stromwandler der Wandlermessung (CJ 22.10.2026, nach der Symbolzusammenfassung): Kreis um den Leiter, Sekundärleitung rechts mit zwei Strichen
+const wandler = sym("PZ_WANDLER", "Stromwandler (Wandlermessung)", [line(0, 0, 0, -10), circle(0, -5, 2), line(2, -5, 7.5, -5), line(4, -6.2, 5, -3.8), line(5, -6.2, 6, -3.8)],
+  [{ x: 0, y: 0 }, { x: 0, y: -10 }, { x: 7.5, y: -5 }], [attr("TEXT", "Wandler", "150/5A", 3, -10), bmk(3, -1.5)]);
 
 // Leitungsangabe: Stück Leitung mit Strichen (Anzahl Leiter), darüber Kabel und Querschnitt. Auf eine Leitung legen oder einfügen.
 const STRICH = ["", "1 Strich", "2 Striche", "3 Striche", "4 Striche", "5 Striche"];
@@ -69,7 +82,7 @@ const erdKk = sym("PZ_ERDE_KK", "Erdungs-Klemmkasten", [...rect(-4, -3.5, 4, 0),
 const schutzerde = sym("PZ_SCHUTZERDE", "Schutzerde", [circle(0, -4, 3.5), line(0, 0, 0, -4.5), line(-1.75, -4.5, 1.75, -4.5), line(-1.25, -5.25, 1.25, -5.25), line(-0.5, -6, 0.5, -6)], [{ x: 0, y: 0 }], [attr("TEXT", "Text", "", 5, -4)]);
 const erdband = sym("PZ_ERDBAND", "Erdband", [{ ...line(0, 0, 10, 0), d: true }], H(10), [attr("TEXT", "Text", "Fe 30/3", 1.5, 1)]);
 
-export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
+export const PRINZIP_SYMBOLS = [ls, fi, fils, ...SICH, wandler, ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
 
 // Palette des Prinzipschemas, gruppiert. Gleiche Form wie FAMILIES in symbols.js (Varianten: Anzahl Striche).
 export const PRINZIP_GROUPS = [
@@ -83,7 +96,8 @@ export const PRINZIP_GROUPS = [
   ["Verteilung", [
     { id: "PZ_ZAEHLER", label: "Zähler (kWh)", sub: "mit Kopfband, z. B. 3x400/230", def: "PZ_ZAEHLER", variants: ["PZ_ZAEHLER"] },
     { id: "PZ_RSE", label: "Rundsteuerempfänger", sub: "RSE", def: "PZ_RSE", variants: ["PZ_RSE"] },
-    { id: "PZ_SICH", label: "Sicherung", sub: "z. B. DII 25 A", def: "PZ_SICH", variants: ["PZ_SICH"] },
+    { id: "PZ_SICH", label: "Sicherung", sub: "z. B. DII 25 A, Striche = Leiter", def: "PZ_SICH", variants: SICH.map((s) => s.name) },
+    { id: "PZ_WANDLER", label: "Stromwandler", sub: "Wandlermessung, z. B. 150/5A", def: "PZ_WANDLER", variants: ["PZ_WANDLER"] },
     { id: "PZ_KLEMME", label: "Klemme plombierbar", sub: "Abzweig, vier Anschlüsse", def: "PZ_KLEMME", variants: ["PZ_KLEMME"] },
     { id: "PZ_GERAET", label: "Gerät mit Text", sub: "z. B. Schütz S, Smart Meter", def: "PZ_GERAET", variants: ["PZ_GERAET"] },
     { id: "PZ_WR", label: "Wechselrichter", sub: "Gleichstrom zu Wechselstrom, z. B. PV", def: "PZ_WR", variants: ["PZ_WR"] },

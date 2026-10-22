@@ -45,9 +45,14 @@ const dots = (s) => s.prims.filter((p) => p.t === "c" && p.f);
 for (const n of ["FI_2P", "FI_4P", "RCBO_1PN", "RCBO_2P", "RCBO_3PN", "RCBO_4P"]) { const s = SYMBOL_BY_NAME[n], last = (s.poles - 1) * 5; assert.deepStrictEqual(dots(s).map((p) => [p.cx, p.cy]), [[last, -1], [last - 5, -17.5]], n); }
 assert.strictEqual(dots(SYMBOL_BY_NAME.LS_4P).length, 0);
 for (const n of ["ZAEHLER_2P", "ZAEHLER_4P"]) { const s = SYMBOL_BY_NAME[n]; assert.strictEqual(dots(s).length, 0); // ohne Punkte (CJ 16.10.)
- assert.ok(s.prims.some((p) => p.t === "t" && p.s === "kWh" && p.y > -7)); assert.strictEqual(s.pins.length, s.poles * 2); }
+ assert.ok(s.prims.some((p) => p.t === "t" && p.s === "kWh" && p.y < -7)); assert.strictEqual(s.pins.length, s.poles * 2); } // kWh im grossen Feld (CJ 22.10.)
 assert.deepStrictEqual(SYMBOL_BY_NAME.ZAEHLER_4P.pins.slice(0, 2), [{ x: 0, y: 0 }, { x: 0, y: -20 }]); // Anschlüsse wie bisher: alte Dateien bleiben verbunden
 assert.deepStrictEqual(SYMBOL_BY_NAME.ERDE_1P.pins, [{ x: 0, y: 0 }]);
+// CJ 22.10.2026: Relais ohne Schrägstrich, Schütz mit Halbkreis (Relais nicht), Taster mit Druckknopf, Motor mit Stromart
+assert.deepStrictEqual(SYMBOL_BY_NAME.RELAIS_1P.prims, SYMBOL_BY_NAME.SPULE_1P.prims);
+assert.strictEqual(SYMBOL_BY_NAME.SCHUETZ_3P.prims.length - SYMBOL_BY_NAME.KS_3P.prims.length, 3 * 8 + 6, "je Pol ein Halbkreis aus 8 Linien, Klemmennummern");
+for (const n of ["TASTER_S_1P", "TASTER_O_1P"]) assert.ok(SYMBOL_BY_NAME[n].prims.some((p) => p.t === "l" && p.x1 === -6 && p.y1 === -8 && p.x2 === -5.2), n);
+assert.ok(SYMBOL_BY_NAME.MOTOR_3P.attrs.some((a) => a.tag === "STROMART" && a.def === "3~"));
 assert.deepStrictEqual(SYMBOL_BY_NAME.TNC_TNS.pins[4], { x: 20, y: 0 }); // umgedreht (CJ 16.10.): PE oben, PEN unten
 assert.ok(FAMILIES.some((f) => f.id === "TNC_TNS") && FAMILIES.some((f) => f.id === "ERDE") && !isDevice(SYMBOL_BY_NAME.TNC_TNS));
 

@@ -127,7 +127,7 @@ function contactVariant(nc, n, push = false) {
   for (let i = 0; i < n; i++) { prims.push(...contactPole(i * POLE, nc)); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); }
   const cx = couplingX(nc);
   if (n > 1) prims.push(line(cx, -10, (n - 1) * POLE + cx, -10, true));
-  if (push) { prims.push(line(cx, -10, -6, -10, true), line(-6, -8, -6, -12)); }
+  if (push) { prims.push(line(cx, -10, -6, -10, true), line(-6, -8, -6, -12), line(-6, -8, -5.2, -8), line(-6, -12, -5.2, -12)); } // Druckknopf (CJ 22.10.)
   const fam = push ? (nc ? "TASTER_O" : "TASTER_S") : nc ? "KO" : "KS";
   const label = push ? (nc ? "Taster Öffner" : "Taster Schliesser") : nc ? "Öffner" : "Schliesser";
   return {
@@ -136,12 +136,17 @@ function contactVariant(nc, n, push = false) {
   };
 }
 
+// Schütz-Funktion (CJ 22.10.2026, nach IEC 60617): Halbkreis links am Ende des Festkontakts, aus kurzen Linien
+const contactorArc = (x, r = 0.8, n = 8) => Array.from({ length: n }, (_, i) => {
+  const a = (k) => Math.PI / 2 + (Math.PI * k) / n, px = (k) => r3(x + r * Math.cos(a(k))), py = (k) => r3(-6 + r + r * Math.sin(a(k)));
+  return line(px(i), py(i), px(i + 1), py(i + 1));
+});
 // Schütz-Hauptkontakte (CJ 16.10., nach Musterschema): Schliesser mit Klemmennummern 1/2, 3/4, 5/6, 7/8 rechts an den Polen
 function schuetzVariant(n) {
   const prims = [], pins = [];
   for (let i = 0; i < n; i++) {
     const x = i * POLE;
-    prims.push(...contactPole(x, false), text(x + 1.6, -2.5, 1.6, String(2 * i + 1)), text(x + 1.6, -17.5, 1.6, String(2 * i + 2)));
+    prims.push(...contactPole(x, false), ...contactorArc(x), text(x + 1.6, -2.5, 1.6, String(2 * i + 1)), text(x + 1.6, -17.5, 1.6, String(2 * i + 2)));
     pins.push({ x, y: 0 }, { x, y: -POLE_LEN });
   }
   if (n > 1) prims.push(line(-1.2, -10, (n - 1) * POLE - 1.2, -10, true));
@@ -151,10 +156,10 @@ function schuetzVariant(n) {
   };
 }
 
-// Spule (CJ 16.10., nach Musterschema): liegendes Rechteck 8 x 4 mm, A1 oben, A2 unten, BMK links. Relais mit Schrägstrich.
+// Spule (CJ 16.10., nach Musterschema): liegendes Rechteck 8 x 4 mm, A1 oben, A2 unten, BMK links.
+// Relais wie in IEC 60617 ein leeres Rechteck (CJ 22.10.2026: Schrägstrich hiess Remanenzrelais), gleich wie die Schützspule.
 function coilVariant(relay) {
   const prims = [line(0, 0, 0, -8), ...rect(-4, -8, 4, -12), line(0, -12, 0, -20), text(2.2, -6.5, 1.8, "A1"), text(2.2, -13.5, 1.8, "A2")];
-  if (relay) prims.push(line(-1.5, -12, 1.5, -8));
   return {
     name: relay ? "RELAIS_1P" : "SPULE_1P", family: relay ? "RELAIS" : "SPULE", poles: 1, label: relay ? "Spule Relais" : "Spule Schütz", layer: "SCH_SYMBOLE", prims,
     pins: [{ x: 0, y: 0 }, { x: 0, y: -20 }],
@@ -219,7 +224,7 @@ const hpas = {
 function zaehlerVariant(n) {
   const r = (n - 1) * POLE + 2.5, vl = n === 2 ? "2-polig (1P+N)" : "4-polig (3P+N)", pins = []; // Kachel „2P“/„4P“ (CJ 16.10.: „Zähler braucht es auch 4-polig“)
   // Kasten 18 mm hoch (CJ 16.10.: 20 % länger als 15 mm), Anschlüsse oben 0 und unten -20 wie bisher
-  const prims = [...rect(-2.5, -1, r, -19), text(r / 2 - 1.25, -3.25, 2.2, "kWh"), line(-2.5, -5.5, r, -5.5)]; // ohne Punkte (CJ 16.10.)
+  const prims = [...rect(-2.5, -1, r, -19), text(r / 2 - 1.25, -12.25, 3, "kWh"), line(-2.5, -5.5, r, -5.5)]; // ohne Punkte (CJ 16.10.); kWh im grossen Feld, Kopfband leer (CJ 22.10.)
   for (let i = 0; i < n; i++) { prims.push(line(i * POLE, 0, i * POLE, -1), line(i * POLE, -19, i * POLE, -POLE_LEN)); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); }
   return {
     name: `ZAEHLER_${n}P`, family: "ZAEHLER", poles: n, lp: n - 1, nm: "n", vlabel: vl, label: `Zähler ${vl}`, layer: "SCH_SYMBOLE", prims, pins,
@@ -520,13 +525,14 @@ export const SYMBOLS = [
   coilVariant(false), coilVariant(true),
   ...[1, 2, 3, 4].map(schuetzVariant),
   {
-    name: "MOTOR_3P", family: "MOTOR", poles: 3, label: "Motor 3-phasig", layer: "SCH_SYMBOLE",
-    prims: [circle(0, 0, 5), text(0, 0, 3.5, "M")],
+    name: "MOTOR_3P", family: "MOTOR", poles: 3, label: "Motor", layer: "SCH_SYMBOLE", // Stromart beschriftbar, auch 1~ (CJ 22.10.2026)
+    prims: [circle(0, 0, 5), text(0, 1.2, 3.5, "M")],
     pins: [{ x: 0, y: 5 }],
     attrs: [
       { tag: "BMK", label: "Betriebsmittelkennzeichen", def: "M?", x: 8, y: 2, h: 2.5 },
       { tag: "LEISTUNG", label: "Leistung", def: "0.55kW", x: 8, y: -1.5, h: 2.5 },
       { tag: "SPANNUNG", label: "Spannung", def: "400V", x: 8, y: -5, h: 2.5 },
+      { tag: "STROMART", label: "Stromart (im Kreis)", def: "3~", x: -1.2, y: -3.4, h: 2.2 },
     ],
   },
   terminalCell("KLEMME_R", "Klemme", false),
@@ -574,7 +580,7 @@ export const FAMILIES = [
   { id: "KO", label: "Öffner", sub: "Kontakt, 1 bis 4 polig", def: "KO_4P", variants: ["KO_1P", "KO_2P", "KO_3P", "KO_4P"] },
   { id: "TASTER_S", label: "Taster Schliesser", sub: "Handbetätigt", def: "TASTER_S_1P", variants: ["TASTER_S_1P"] },
   { id: "TASTER_O", label: "Taster Öffner", sub: "Handbetätigt", def: "TASTER_O_1P", variants: ["TASTER_O_1P"] },
-  { id: "MOTOR", label: "Motor 3-phasig", sub: "mit Leistung und Spannung", def: "MOTOR_3P", variants: ["MOTOR_3P"] },
+  { id: "MOTOR", label: "Motor", sub: "Stromart beschriftbar, z. B. 3~ oder 1~", def: "MOTOR_3P", variants: ["MOTOR_3P"] },
 ];
 
 // Polzahl per Taste (CJ 16.10.): 1 bis 4 wählt die Anzahl Pole (N-Art bleibt, wenn es die Variante gibt), N schaltet den

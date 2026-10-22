@@ -309,7 +309,7 @@ const hakFeed = {
 };
 // Hauptpotentialausgleichsschiene (CJ 16.10., Darstellung Annahme): Schiene 20 x 2,5 mm mit 5 Anschlusspunkten, Anschluss oben und unten
 const hpas = {
-  name: "HPAS_1P", family: "HPAS", poles: 1, label: "Hauptpotentialausgleichsschiene (HPAS)", layer: "SCH_SYMBOLE",
+  name: "HPAS_1P", family: "HPAS", poles: 1, vlabel: "HPAS", label: "Hauptpotentialausgleichsschiene (HPAS)", layer: "SCH_SYMBOLE",
   prims: [line(0, 0, 0, -2.5), ...rect(-10, -2.5, 10, -5), ...[-8, -4, 0, 4, 8].map((x) => dot(x, -3.75)), line(0, -5, 0, -7.5)],
   pins: [{ x: 0, y: 0 }, { x: 0, y: -7.5 }],
   attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "HPAS", x: 12, y: -3, h: 2.5 }, { tag: "BEZ", label: "Bezeichnung", def: "Hauptpotentialausgleich", x: 12, y: -6.5, h: 2.5 }],
@@ -672,7 +672,6 @@ export function registerSymbol(sym) {
 // Palette: eine Zeile pro Familie, Polzahl wird beim Setzen oder in den Eigenschaften gewählt
 export const FAMILIES = [
   { id: "HAK", label: "Hausanschlusskasten", sub: "TN-S oder TN-C > TN-S (PEN-Aufteilung)", def: "HAK_4P", variants: ["HAK_4P", "HAK_TNCS", "HAK_TNCS_1"] },
-  { id: "HPAS", label: "Potentialausgleichsschiene", sub: "HPAS, an PE und Erde", def: "HPAS_1P", variants: ["HPAS_1P"] },
   { id: "ZAEHLER", label: "Zähler", sub: "1 bis 8 Anschlüsse, 5 Seitenkontakte, Wandlermessung", def: "ZAEHLER_4P", variants: [...ZAEHLER_N.map((n) => `ZAEHLER_${n}P`), "ZAEHLER_4P_W"] },
   { id: "TNC_TNS", label: "Netz TN-C > TN-S", sub: "PEN teilt in N und PE", def: "TNC_TNS", variants: ["TNC_TNS"] },
   { id: "SPD", label: "Überspannungsschutz (SPD)", sub: "1 bis 4 polig, 1+1, 3+1", def: "SPD_4P", variants: ["SPD_1P", "SPD_2P", "SPD_2P_1", "SPD_3P", "SPD_4P", "SPD_4P_1"] },
@@ -681,7 +680,7 @@ export const FAMILIES = [
   { id: "RCBO", label: "FI/LS-Schalter (RCBO)", sub: "1P+N, 2P, 3P+N, 4P", def: "RCBO_4P", variants: ["RCBO_1PN", "RCBO_2P", "RCBO_3PN", "RCBO_4P"] },
   { id: "NH", label: "NH-Sicherung", sub: "1 oder 3 polig, + N-Trenner", def: "NH_3PT", variants: ["NH_1P", "NH_1PT", "NH_3P", "NH_3PT", "NH_4P"], hide: ["NH_4P"] }, // NH_4P nur noch für alte Dateien (CJ 22.10.)
   { id: "NTRENN", label: "Neutralleitertrenner", sub: "einzeln", def: "NTRENN_1P", variants: ["NTRENN_1P"] },
-  { id: "ERDE", label: "Erde", sub: "Erdung, Potenzialausgleich, Schutzerde", def: "ERDE_1P", variants: ["ERDE_1P", "ERDE_PA", "ERDE_ANS", "ERDE_KK", "ERDE_SE"] },
+  { id: "ERDE", label: "Erdung", sub: "Erde, Potenzialausgleich, HPAS, Schutzerde", def: "ERDE_1P", variants: ["ERDE_1P", "ERDE_PA", "HPAS_1P", "ERDE_ANS", "ERDE_KK", "ERDE_SE"] }, // HPAS zur Erdung (CJ 22.10.)
   { id: "ERDBAND", label: "Erdband", sub: "z. B. Fe 30/3", def: "ERDBAND", variants: ["ERDBAND"] },
   { id: "VOUT", label: "Verweis abgehend", sub: "weiter auf anderem Blatt", def: "VOUT_4P", variants: ["VOUT_1P", "VOUT_2P", "VOUT_3P", "VOUT_4P"] },
   { id: "VIN", label: "Verweis ankommend", sub: "von anderem Blatt", def: "VIN_4P", variants: ["VIN_1P", "VIN_2P", "VIN_3P", "VIN_4P"] },

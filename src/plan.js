@@ -2,7 +2,7 @@
 // Welt in mm, y nach oben. Ursprung (0|0) = gemeinsamer Nullpunkt aller Plan-Module (später Stockwerke), kein Versatz je Blatt.
 // Blatt: { kind: "plan", sid, var?, meta, paper: { size, quer, den }, pmid?: [x, y] (Druckmitte, fehlt = Mitte des Inhalts), layers: [{ id, name, show, lock }], alay, items }.
 // Objekte: Wand { id, type: "wall", layer, a: [x, y], b: [x, y], d, mat } (Mittellinie a → b, Dicke d),
-// Öffnung { id, type: "opening", wall, t, w, kind, hinge?, side?, br? } (hängt an der Wand, Ebene der Wand),
+// Öffnung { id, type: "opening", wall, t, w, kind, hinge?, side?, br?, h? } (hängt an der Wand, Ebene der Wand; h = Höhe in mm, nur Angabe),
 // Mass { id, type: "dim", layer, a, b, off, ref?, ctrl?, soll? } (ref = Wand-id: Mass der Mittellinie, a/b folgen der Wand).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
 
@@ -76,6 +76,7 @@ export function moveLayer(sh, id, dir) {
 export const WALL_D = 150; // Vorgabe Wanddicke in mm
 export const MATS = [["beton", "Beton"], ["mauer", "Mauerwerk"], ["leicht", "Leichtbau/Gips"]]; // beton = Kreuzschraffur, mauer = Schraffur /, leicht = nur Umriss
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
+export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
 export const PLAN_ITEMS = new Set(["wall", "opening", "dim"]);
 
 // Ein Objekt prüfen (ohne Bezüge auf andere Objekte, die prüft cleanPlanSheet). Gibt das saubere Objekt oder null.
@@ -90,6 +91,7 @@ export function cleanPlanObj(it, id) {
     if (it.kind === "tuer") o.hinge = it.hinge === "r" ? "r" : "l"; // Anschlag: l = Band bei t, r = Band bei t + w
     if (it.kind === "tuer" || it.kind === "schiebe") o.side = it.side === -1 ? -1 : 1; // Aufgehrichtung: 1 = links der Wand (von a nach b gesehen), −1 = rechts
     if (it.kind === "fenster" && isNum(it.br) && it.br >= 0) o.br = it.br; // Brüstungshöhe in mm (nur Angabe)
+    if (OPEN_H.has(it.kind) && isNum(it.h) && it.h > 0) o.h = it.h; // Höhe in mm (nur Angabe, gespeichert nur wenn gesetzt)
     return o;
   }
   if (it.type === "dim") {
@@ -150,6 +152,15 @@ export function clampOpening(w, o) {
   const L = wallLen(w);
   if (o.w > L) o.w = L;
   o.t = Math.max(0, Math.min(L - o.w, o.t));
+}
+// Kante einer Öffnung ziehen (Griff): edge "t0" = Kante bei t, "t1" = Kante bei t + w; s = Lage auf der Wand ab a. Die andere Kante bleibt,
+// die Breite wird auf step mm gerundet (Raster 10 mm, Alt: 1), mindestens MIN_OPEN, und bleibt in der Wand.
+export const MIN_OPEN = 100; // mm (CJ 23.10.2026)
+export function setOpeningEdge(w, o, edge, s, step = 10) {
+  const L = wallLen(w), g = step > 0 ? step : 1, s1 = o.t + o.w;
+  const fit = (x, max) => Math.max(Math.min(MIN_OPEN, max), Math.min(max, Math.round(x / g) * g));
+  if (edge === "t0") { const nw = fit(s1 - s, s1); o.t = r3(s1 - nw); o.w = nw; }
+  else { const nw = fit(s - o.t, L - o.t); o.w = nw; }
 }
 
 // Ende e ("a" | "b") einer Wand: Linker und rechter Eckpunkt (links/rechts von a → b gesehen), ob die Stirnseite gezeichnet wird,

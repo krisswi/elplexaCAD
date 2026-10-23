@@ -13,7 +13,7 @@ const kueche = () => [
   { id: 2, type: "wall", layer: "bg", a: [4000, 0], b: [4000, 3000], d: 150, mat: "mauer" },
   { id: 3, type: "wall", layer: "bg", a: [4000, 3000], b: [0, 3000], d: 150, mat: "mauer" },
   { id: 4, type: "wall", layer: "bg", a: [0, 3000], b: [0, 0], d: 100, mat: "leicht" },
-  { id: 5, type: "opening", wall: 1, t: 500, w: 900, kind: "tuer", hinge: "r", side: -1 },
+  { id: 5, type: "opening", wall: 1, t: 500, w: 900, kind: "tuer", hinge: "r", side: -1, h: 2000 },
   { id: 6, type: "opening", wall: 3, t: 1000, w: 1200, kind: "fenster", br: 900 },
   { id: 7, type: "opening", wall: 2, t: 800, w: 1000, kind: "durchgang" },
   { id: 8, type: "opening", wall: 4, t: 200, w: 800, kind: "schiebe", side: 1 },
@@ -169,5 +169,21 @@ assert.deepStrictEqual(ends.map((x) => `${x.it.id}${x.e}`).sort(), ["10a", "1a",
 P.setEnds(e, ends, [-100, -100]);
 assert.deepStrictEqual([E(1).a, E(4).b, E(9).a, E(10).a], [[-100, -100], [-100, -100], [-100, -100], [-100, -100]], "Ecke setzen: Wandmass und Diagonale folgen");
 assert.ok(P.contentBox(e).x0 < -100 && P.contentBox({ items: [] }) === null);
+
+// Griffe an Öffnungen: Kante ziehen ändert die Breite, die andere Kante bleibt, Raster 10 mm, bleibt in der Wand
+{
+  const w = { a: [0, 0], b: [4000, 0] }, o = { t: 500, w: 900 };
+  P.setOpeningEdge(w, o, "t1", 1633); assert.deepStrictEqual(o, { t: 500, w: 1130 }, "rechte Kante: Breite auf 10 mm, t bleibt");
+  P.setOpeningEdge(w, o, "t0", 287); assert.deepStrictEqual(o, { t: 290, w: 1340 }, "linke Kante: rechte Kante bleibt bei 1630");
+  P.setOpeningEdge(w, o, "t0", 287, 1); assert.deepStrictEqual(o, { t: 287, w: 1343 }, "Alt: ohne Raster");
+  P.setOpeningEdge(w, o, "t0", -800); assert.deepStrictEqual(o, { t: 0, w: 1630 }, "linke Kante nicht vor die Wand");
+  P.setOpeningEdge(w, o, "t1", 9000); assert.deepStrictEqual(o, { t: 0, w: 4000 }, "rechte Kante nicht über die Wand");
+  P.setOpeningEdge(w, o, "t1", 20); assert.deepStrictEqual(o, { t: 0, w: P.MIN_OPEN }, "Mindestbreite");
+  P.setOpeningEdge(w, o, "t0", 500); assert.deepStrictEqual(o, { t: 0, w: P.MIN_OPEN }, "linke Kante nicht über die rechte");
+}
+// Höhe: nur Tür, Fenster, Schiebetür; gespeichert nur wenn gesetzt
+assert.strictEqual(P.cleanPlanObj({ type: "opening", wall: 1, t: 0, w: 900, kind: "fenster", h: 1200 }, 1).h, 1200);
+assert.ok(!("h" in P.cleanPlanObj({ type: "opening", wall: 1, t: 0, w: 900, kind: "durchgang", h: 2000 }, 1)), "Durchgang ohne Höhe");
+assert.ok(!("h" in P.cleanPlanObj({ type: "opening", wall: 1, t: 0, w: 900, kind: "tuer" }, 1)), "Höhe fehlt = nicht gespeichert");
 
 console.log("test_plan: alles ok");

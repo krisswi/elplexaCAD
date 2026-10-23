@@ -8,6 +8,7 @@ import * as R from "./render.js";
 
 const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3";
 const OPEN_W = { tuer: 900, fenster: 1200, durchgang: 900, schiebe: 900 }; // Vorgabe Breiten in mm (Annahme)
+const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe neuer Öffnungen in mm (CJ 23.10.2026)
 const ICON = {
   wall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v6H3z"/><path d="M6 15l6-6M11 15l6-6M16 15l5-5"/></svg>',
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h5M17 18h5"/><path d="M7 18V8"/><path d="M7 8a10 10 0 0110 10"/></svg>',
@@ -137,7 +138,7 @@ export function makePlan(c) {
     const label = (p, t) => `<text transform="translate(${f(p[0] + 12 / z)},${f(p[1] + 12 / z)}) scale(1,-1)" font-size="${px(13)}" fill="${DRAFT}" stroke="#fff" stroke-width="${px(3)}" paint-order="stroke" class="pl-scale">${R.esc(t)}</text>`;
     for (const it of sel()) {
       if (it.type === "wall") { const x = P.wallShapes([it])[0]; s += `<path d="M${x.poly.map(pt).join("L")}Z" fill="none" stroke="${SEL}" stroke-width="2"/>` + grip(it.a) + grip(it.b); }
-      else if (it.type === "opening") { const w = sh().items.find((i) => i.id === it.wall); if (w) s += `<g class="pl-scale">${openingSVG(w, it, k, SEL)}</g>`; }
+      else if (it.type === "opening") { const w = sh().items.find((i) => i.id === it.wall); if (w) s += `<g class="pl-scale">${openingSVG(w, it, k, SEL)}</g>` + edgeGrips(w, it).map((g) => grip(g.p)).join(""); }
       else if (it.type === "dim") { s += `<g class="pl-scale">${dimSVG(it, k, SEL)}</g>`; if (it.ref === undefined) s += grip(it.a) + grip(it.b); }
     }
     if (draft && mouse) {
@@ -159,11 +160,13 @@ export function makePlan(c) {
     if (mouse && S.tool !== "select" && S.tool !== "hand") s += `<circle cx="${f(mouse.x)}" cy="${f(mouse.y)}" r="${px(mouse.snap && mouse.snap !== "grid" ? 5 : 3)}" fill="${mouse.snap === "end" ? "#f4c400" : "#fff"}" stroke="${DRAFT}" stroke-width="1.5"/>`;
     return s;
   }
+  // Griffe an beiden Kanten einer Öffnung (auf der Mittellinie der Wand): Ziehen ändert die Breite, die andere Kante bleibt
+  const edgeGrips = (w, o) => { const u = P.wallDir(w), at = (s) => [w.a[0] + u[0] * s, w.a[1] + u[1] * s]; return [{ edge: "t0", p: at(o.t) }, { edge: "t1", p: at(o.t + o.w) }]; };
   const offAt = (a, b, p) => { const v = [b[0] - a[0], b[1] - a[1]], l = Math.hypot(v[0], v[1]) || 1; return Math.round(((p[0] - a[0]) * -v[1] + (p[1] - a[1]) * v[0]) / l); };
   function openPreview() {
     const w = P.hitPlan(sh(), pickable().filter((i) => i.type === "wall"), [raw.x, raw.y], tol());
     if (!w) return null;
-    const ww = Math.min(opt.ow[opt.okind], P.wallLen(w)), o = { kind: opt.okind, w: ww, t: Math.max(0, Math.min(P.wallLen(w) - ww, Math.round(P.along(w, [raw.x, raw.y]) - ww / 2))), hinge: "l", side: 1 };
+    const ww = Math.min(opt.ow[opt.okind], P.wallLen(w)), o = { kind: opt.okind, w: ww, t: Math.max(0, Math.min(P.wallLen(w) - ww, Math.round(P.along(w, [raw.x, raw.y]) - ww / 2))), hinge: "l", side: 1, h: OPEN_HV[opt.okind] };
     return { w, o };
   }
 
@@ -203,6 +206,10 @@ export function makePlan(c) {
         return;
       }
     }
+    if (one?.type === "opening") {
+      const wl = sh().items.find((i) => i.id === one.wall), g = wl && edgeGrips(wl, one).find((x) => near(x.p));
+      if (g) { drag = { type: "edge", it: one, wall: wl, edge: g.edge, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; }
+    }
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t);
     S.sel = hit ? new Set([hit.id]) : new Set();
     if (hit) drag = { type: "move", it: hit, sx: w.x, sy: w.y, started: false, snap: snapshot(), ...(hit.type === "wall" ? { ea: P.nodeEnds(sh(), hit.a), eb: P.nodeEnds(sh(), hit.b), a0: [...hit.a], b0: [...hit.b] } : hit.type === "opening" ? { t0: hit.t } : { off0: hit.off }) };
@@ -216,6 +223,7 @@ export function makePlan(c) {
       if (!d.started && Math.hypot(w.x - d.sx, w.y - d.sy) * S.view.z > 3) d.started = true;
       if (d.started) {
         if (d.type === "node") { const skip = new Set(d.ends.map((x) => x.it.id)), p = P.snapPlan(sh(), visible().filter((i) => !skip.has(i.id)), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? otherEnd(d) : undefined }); mouse = p; P.setEnds(sh(), d.ends, [p.x, p.y]); }
+        else if (d.type === "edge") { P.setOpeningEdge(d.wall, d.it, d.edge, P.along(d.wall, [w.x, w.y]), S.alt ? 1 : 10); renderRight(); }
         else if (d.it.type === "wall") { const g = S.grid.on && !S.alt ? S.grid.size : 1, dx = Math.round((w.x - d.sx) / g) * g, dy = Math.round((w.y - d.sy) / g) * g; P.setEnds(sh(), d.ea, [d.a0[0] + dx, d.a0[1] + dy]); P.setEnds(sh(), d.eb, [d.b0[0] + dx, d.b0[1] + dy]); }
         else if (d.it.type === "opening") { const wl = sh().items.find((i) => i.id === d.it.wall), g = S.grid.on && !S.alt ? 10 : 1; d.it.t = d.t0 + Math.round((P.along(wl, [w.x, w.y]) - P.along(wl, [d.sx, d.sy])) / g) * g; P.clampOpening(wl, d.it); }
         else if (d.it.type === "dim") d.it.off = offAt(d.it.a, d.it.b, [w.x, w.y]);
@@ -336,8 +344,9 @@ export function makePlan(c) {
       return head(P.OPENINGS.find(([k]) => k === it.kind)[1], "Öffnung in der Wand") + sel1("kind", P.OPENINGS, it.kind, "Art") + inp("w", "Breite in mm", P.fmtLen(it.w)) + inp("t", "Abstand ab Wandecke in mm", P.fmtLen(it.t))
         + (it.kind === "tuer" ? sel1("hinge", [["l", "Band an der Ecke (links)"], ["r", "Band gegenüber (rechts)"]], it.hinge, "Anschlag") : "")
         + (it.kind === "tuer" || it.kind === "schiebe" ? sel1("side", [["1", "nach links (von Ecke a gesehen)"], ["-1", "nach rechts"]], it.side, it.kind === "tuer" ? "Aufgehrichtung" : "Seite") : "")
+        + (P.OPEN_H.has(it.kind) ? inp("h", "Höhe in mm (Angabe)", it.h === undefined ? "" : P.fmtLen(it.h)) : "")
         + (it.kind === "fenster" ? inp("br", "Brüstungshöhe in mm (Angabe)", it.br === undefined ? "" : P.fmtLen(it.br)) : "")
-        + note(`Wand ${P.fmtLen(P.wallLen(w))} mm. Ziehen verschiebt die Öffnung entlang der Wand.`) + del1();
+        + note(`Wand ${P.fmtLen(P.wallLen(w))} mm. Ziehen verschiebt die Öffnung entlang der Wand, die Griffe an den Kanten ändern die Breite (Raster 10 mm, Alt frei).`) + del1();
     }
     if (it?.type === "dim") {
       const ci = P.ctrlInfo(it);
@@ -378,10 +387,10 @@ export function makePlan(c) {
     if (k === "soll") { const s = v.trim() ? L : undefined; if (v.trim() && !(L > 0)) return bad(), true; change(() => { if (s) it.soll = s; else delete it.soll; }); return true; }
     if (k === "off") { const o = Number(v.trim().replace(",", ".").replace("−", "-")); if (!Number.isFinite(o)) return bad(), true; change(() => { it.off = o; }); return true; }
     if (k === "d") { if (!(L > 0)) return bad(), true; change(() => { it.d = L; opt.d = L; }); return true; }
-    if (k === "w" || k === "t" || k === "br") {
-      const x = k === "br" && !v.trim() ? undefined : k === "t" && /^\s*0\s*$/.test(v) ? 0 : L;
+    if (k === "w" || k === "t" || k === "br" || k === "h") {
+      const x = (k === "br" || k === "h") && !v.trim() ? undefined : k === "t" && /^\s*0\s*$/.test(v) ? 0 : L;
       if (x !== undefined && !(x >= 0)) return bad(), true;
-      change(() => { if (x === undefined) delete it.br; else it[k] = x; if (k !== "br") P.clampOpening(S0.items.find((i) => i.id === it.wall), it); }); return true;
+      change(() => { if (x === undefined) delete it[k]; else it[k] = x; if (k === "w" || k === "t") P.clampOpening(S0.items.find((i) => i.id === it.wall), it); }); return true;
     }
     if (k === "kind") { change(() => { const o = P.cleanPlanObj({ ...it, kind: v }, it.id); S0.items[S0.items.indexOf(it)] = o; }); return true; }
     if (k === "side") { change(() => { it.side = Number(v); }); return true; }
@@ -408,7 +417,7 @@ export function makePlan(c) {
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
     if (S.tool === "pl-pmid") return "Druckmitte: in den Plan klicken, dort liegt die Mitte des Planfelds (Rahmen zeigt den Druckbereich). Esc bricht ab.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
-    return "Plan: Klick wählt ein Objekt, Ziehen verschiebt, Griffe an den Enden ziehen Ecken (Nachbarwände folgen). Entf löscht, Pfeiltasten schieben. W Wand, O Tür/Fenster, B Mass.";
+    return "Plan: Klick wählt ein Objekt, Ziehen verschiebt, Griffe an den Enden ziehen Ecken (Nachbarwände folgen), an Tür/Fenster die Breite. Entf löscht, Pfeiltasten schieben. W Wand, O Tür/Fenster, B Mass.";
   }
 
   // Bedienung der Leisten (eigene Datenattribute, app.js kennt sie nicht)

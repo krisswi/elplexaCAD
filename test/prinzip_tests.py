@@ -43,10 +43,10 @@ with sync_playwright() as p:
     # ---------- Von Hand zeichnen ----------
     page.click('[data-sym="PZ_FILS"]'); click(50, 250); key("Escape")
     page.click('[data-sym="PZ_VERBR"]'); click(120, 250); key("Escape")
-    page.click('[data-sym="PZ_LEITER_3"]'); click(90, 260); key("Escape")  # Leitungsangabe neben die Leitung
+    page.click('[data-sym="PZ_LEITUNG"]'); click(90, 260); key("Escape")  # Leitungsangabe neben die Leitung
     items = M()["items"]
     syms = [i["sym"] for i in items if i["type"] == "symbol"]
-    check("Symbole gesetzt: FI/LS, Verbraucher, Leitungsangabe mit 3 Strichen", syms == ["PZ_FILS", "PZ_VERBR", "PZ_LEITER_3"], syms)
+    check("Symbole gesetzt: FI/LS, Verbraucher, Leitungsangabe", syms == ["PZ_FILS", "PZ_VERBR", "PZ_LEITUNG"], syms)
     fils = next(i for i in items if i.get("sym") == "PZ_FILS")
     check("Symbol auf dem Raster, Text und leere BMK", fils["x"] == 50 and fils["y"] == 250 and fils["attrs"] == {"TEXT": "FI/LS B13A 30mA", "BMK": "", "POL": "LN"}, fils)
     key("l"); click(67.5, 250); click(120, 250); key("Escape"); key("Escape")
@@ -62,12 +62,20 @@ with sync_playwright() as p:
     fils = next(i for i in M()["items"] if i.get("sym") == "PZ_FILS")
     check("Eigenschaften rechts: Text und BMK von Hand, keine automatische BMK", fils["attrs"] == {"TEXT": "FI/LS C13A 30mA", "BMK": "3F1", "POL": "LN"}, fils["attrs"])
     key("Escape")
-    # Leitungsangabe: Anzahl Striche rechts umstellen
-    click(92.5, 260)
-    sel = page.locator('#right [data-sympoles]')
-    check("Leitungsangabe: Auswahl der Striche rechts", sel.count() == 1 and "5 Striche" in sel.inner_text())
-    if sel.count(): sel.select_option("PZ_LEITER_5"); page.wait_for_timeout(150)
-    check("Leitungsangabe auf 5 Striche", any(i.get("sym") == "PZ_LEITER_5" for i in M()["items"]))
+    # Leitungsangabe (CJ 23.10.2026): ein Strich, Taste 5 setzt die Anzahl Leiter vorne im Text, Querschnitt bleibt
+    click(92.5, 260); key("5")
+    lt = next(i for i in M()["items"] if i.get("sym") == "PZ_LEITUNG")
+    check("Leitungsangabe: Taste 5 → 5x1,5mm²", lt["attrs"]["KABEL"] == "5x1,5mm²", lt)
+    key("Escape"); key("Escape")
+    page.click('[data-sym="PZ_LEITUNG"]'); key("4"); click(90, 230); key("Escape"); key("v")
+    l2 = [i for i in M()["items"] if i.get("sym") == "PZ_LEITUNG"]
+    check("Leitungsangabe beim Setzen: Taste 4 → 4x1,5mm²", l2[-1]["attrs"]["KABEL"] == "4x1,5mm²", l2)
+    # Gruppenänderung: beide markieren, Querschnitt im Feld gemeinsam, Taste 3 gemeinsam
+    click(92.5, 260); page.keyboard.down("Shift"); click(92.5, 230); page.keyboard.up("Shift")
+    check("Mehrfachauswahl gleicher Symbole: Feld Leitung rechts", page.locator('#right [data-attr="KABEL"]').count() == 1)
+    if page.locator('#right [data-attr="KABEL"]').count(): page.fill('#right [data-attr="KABEL"]', "5x2,5mm²"); page.keyboard.press("Tab"); page.wait_for_timeout(150)
+    key("3"); l2 = [i["attrs"]["KABEL"] for i in M()["items"] if i.get("sym") == "PZ_LEITUNG"]
+    check("Gruppenänderung: Querschnitt und Taste 3 auf beide", l2 == ["3x2,5mm²", "3x2,5mm²"], l2)
     key("Escape"); key("Escape")
     page.screenshot(path=str(OUT / "p1_von_hand.png"))
 
@@ -82,8 +90,8 @@ with sync_playwright() as p:
     n0 = len(M()["items"]); page.click('#right [data-act="pzwire"]'); page.wait_for_timeout(150)
     new = M()["items"][n0:]
     wires = [i["pts"] for i in new if i["type"] == "wire"]; syms = {i["sym"]: (i["x"], i["y"]) for i in new if i["type"] == "symbol"}
-    check("Verdrahten: links bis zur Steigleitung, rechts Leitungsangabe 5 Striche und Verbraucher 30 mm weiter",
-          wires == [[[20, 175], [60, 175]], [[70, 175], [90, 175]], [[95, 175], [100, 175]]] and syms == {"PZ_LEITER_5": (90, 175), "PZ_VERBR": (100, 175)}, (wires, syms))
+    check("Verdrahten: links bis zur Steigleitung, rechts Leitungsangabe und Verbraucher 30 mm weiter",
+          wires == [[[20, 175], [60, 175]], [[70, 175], [90, 175]], [[95, 175], [100, 175]]] and syms == {"PZ_LEITUNG": (90, 175), "PZ_VERBR": (100, 175)}, (wires, syms))
     n1 = len(M()["items"]); page.click('#right [data-act="pzwire"]'); page.wait_for_timeout(150)
     check("Verdrahten zweimal: nichts doppelt", len(M()["items"]) == n1)
     key("Meta+z"); page.wait_for_timeout(150)

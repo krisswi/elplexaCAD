@@ -80,6 +80,10 @@ function leiter(n) {
   for (let i = 0; i < n; i++) { const x = 2.5 + (i - (n - 1) / 2); p.push(line(x - 0.75, -1.5, x + 0.75, 1.5)); }
   return { ...sym(`PZ_LEITER_${n}`, `Leitungsangabe, ${STRICH[n]}`, p, H(5), [attr("KABEL", "Leitung", "3x1,5mm²", -2, 2.5)]), vlabel: STRICH[n] };
 }
+// Leitungsangabe neu (CJ 23.10.2026): ein Strich, die Anzahl Leiter steht im Text (z. B. 3x1,5mm²). Tasten 1–5 setzen die Zahl vorne,
+// der Querschnitt bleibt und wird von Hand eingetragen. PZ_LEITER_1…5 (Striche = Leiter) bleiben für alte Pläne.
+const leitung = sym("PZ_LEITUNG", "Leitungsangabe", [line(0, 0, 5, 0), line(1.75, -1.5, 3.25, 1.5)], H(5), [attr("KABEL", "Leitung (Tasten 1–5 = Anzahl Leiter)", "3x1,5mm²", -2, 2.5)]);
+export const kabelN = (kabel, n) => (/^\s*\d+\s*x/i.test(kabel || "") ? kabel.replace(/^\s*\d+\s*x\s*/i, `${n}x`) : `${n}x${kabel || ""}`);
 // Verbraucher bzw. Anschlussstelle am Ende des Abgangs: Kreis, rechts der Text
 const verbr = sym("PZ_VERBR", "Verbraucher (Anschlussstelle)", [circle(1.25, 0, 1.25)], [{ x: 0, y: 0 }], [attr("TEXT", "Verbraucher", "Verbraucher", 5, -1)]);
 // Klemme bzw. Abzweig plombierbar: Quadrat mit Diagonale, Anschlüsse auf allen vier Seiten
@@ -161,7 +165,7 @@ export function fromSchema(src, name, lage, lead = 2.5, mirror = false, flip = f
   return { name, family: name, poles: 1, label: src.label, layer: src.layer, prims, pins, attrs };
 }
 
-export const PRINZIP_SYMBOLS = [ls, fi, fils, mss, mssM, ltr, lts, trs, trenn, lsch, sichM, sich, ...SICH_POL.map(sichPol), ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, wandler, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
+export const PRINZIP_SYMBOLS = [ls, fi, fils, mss, mssM, ltr, lts, trs, trenn, lsch, sichM, sich, ...SICH_POL.map(sichPol), ...[1, 2, 3, 4, 5].map(leiter), leitung, verbr, klemme, zaehler, rse, wandler, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
 
 // Palette des Prinzipschemas, gruppiert. Gleiche Form wie FAMILIES in symbols.js (Varianten: Anzahl Striche).
 export const PRINZIP_GROUPS = [
@@ -171,7 +175,7 @@ export const PRINZIP_GROUPS = [
     { id: "PZ_FI", label: "FI-Schutzschalter", sub: "z. B. FI 40A 30mA", def: "PZ_FI", variants: ["PZ_FI"] },
     { id: "PZ_MSS", label: "Motorschutzschalter thermisch", sub: "z. B. MSS 4–6,3 A, 3L", def: "PZ_MSS", variants: ["PZ_MSS"] },
     { id: "PZ_MSS_M", label: "Motorschutzschalter therm./magn.", sub: "z. B. MSS 4–6,3 A, 3L", def: "PZ_MSS_M", variants: ["PZ_MSS_M"] },
-    { id: "PZ_LEITER", label: "Leitungsangabe", sub: "Striche = Anzahl Leiter, Text z. B. 3x1,5mm²", def: "PZ_LEITER_1", variants: [1, 2, 3, 4, 5].map((n) => `PZ_LEITER_${n}`) },
+    { id: "PZ_LEITUNG", label: "Leitungsangabe", sub: "z. B. 3x1,5mm², Tasten 1–5 = Anzahl Leiter", def: "PZ_LEITUNG", variants: ["PZ_LEITUNG"] },
     { id: "PZ_VERBR", label: "Verbraucher", sub: "Anschlussstelle mit Text", def: "PZ_VERBR", variants: ["PZ_VERBR"] },
   ]],
   ["Verteilung", [

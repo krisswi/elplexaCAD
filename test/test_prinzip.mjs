@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { newDoc, newSheet, parseModel, serializeModel, modOf, modName, VERSION } from "../src/model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, bmkLetter } from "../src/symbols.js";
-import { polNext, sichName, PZ_ABGANG, PZ_POL, PZ_AUS_SCHEMA, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
+import { polNext, sichName, kabelN, PZ_ABGANG, PZ_POL, PZ_AUS_SCHEMA, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
 import { exportDxf } from "../src/dxf.js";
 import { renumberAll } from "../src/numbering.js";
 import { partsList, fuseLegend } from "../src/auswertung.js";
@@ -33,6 +33,10 @@ for (const [src, n, lage] of PZ_AUS_SCHEMA) {
 }
 assert.strictEqual(SYMBOL_BY_NAME.BATT_1P.prims.filter((p) => p.t === "l" && p.y1 === p.y2).length, 6, "Batterie: drei Zellen (CJ 23.10.)");
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITER_3.prims.length, 4, "Leitungsangabe: Leitung und drei Striche");
+// Leitungsangabe neu (CJ 23.10.2026): ein Strich, Anzahl im Text; Tasten setzen die Zahl vorne, der Querschnitt bleibt
+assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITUNG.prims.length, 2, "Leitungsangabe: Leitung und ein Strich");
+assert.deepStrictEqual([["3x1,5mm²", 5], ["16mm²", 1], ["", 3], ["4 x 10mm²", 2]].map(([k, n]) => kabelN(k, n)), ["5x1,5mm²", "1x16mm²", "3x", "2x10mm²"]);
+assert.ok(PRINZIP_FAMILIES.some((f) => f.def === "PZ_LEITUNG") && !PRINZIP_FAMILIES.some((f) => f.variants.includes("PZ_LEITER_3")), "Palette: nur noch die neue Leitungsangabe");
 assert.ok(["PZ_PA_D", "PZ_ERDE_ANS", "PZ_ERDE_KK", "PZ_SCHUTZERDE", "PZ_ERDBAND"].every((n) => PRINZIP_FAMILIES.some((f) => f.def === n)), "Erdungszeichen in der Palette (CJ 22.10.)");
 // Abgangsgeräte: drei Zeilen oberhalb, BMK zuoberst, dann Bezeichnung, dann Polzahl (CJ 21.10.2026)
 for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS"]) {

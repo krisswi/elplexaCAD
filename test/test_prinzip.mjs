@@ -35,6 +35,8 @@ assert.strictEqual(SYMBOL_BY_NAME.BATT_1P.prims.filter((p) => p.t === "l" && p.y
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITER_3.prims.length, 4, "Leitungsangabe: Leitung und drei Striche");
 // Leitungsangabe neu (CJ 23.10.2026): ein Strich, Anzahl im Text; Tasten setzen die Zahl vorne, der Querschnitt bleibt
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITUNG.prims.length, 2, "Leitungsangabe: Leitung und ein Strich");
+// Hauptverteilung (CJ 23.10.2026): Rechteck mit Diagonale als Form, Grösse frei; Werkzeug aus der Palette, nicht in der Werkzeugleiste
+assert.ok(PRINZIP_FAMILIES.some((f) => f.tool === "shape-vert") && !PRINZIP_FAMILIES.some((f) => f.def === "PZ_KLEMME"), "Palette: Hauptverteilung als Form");
 assert.deepStrictEqual([["3x1,5mm²", 5], ["16mm²", 1], ["", 3], ["4 x 10mm²", 2]].map(([k, n]) => kabelN(k, n)), ["5x1,5mm²", "1x16mm²", "3x", "2x10mm²"]);
 assert.ok(PRINZIP_FAMILIES.some((f) => f.def === "PZ_LEITUNG") && !PRINZIP_FAMILIES.some((f) => f.variants.includes("PZ_LEITER_3")), "Palette: nur noch die neue Leitungsangabe");
 assert.ok(["PZ_PA_D", "PZ_ERDE_ANS", "PZ_ERDE_KK", "PZ_SCHUTZERDE", "PZ_ERDBAND"].every((n) => PRINZIP_FAMILIES.some((f) => f.def === n)), "Erdungszeichen in der Palette (CJ 22.10.)");

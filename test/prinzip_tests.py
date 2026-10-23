@@ -62,6 +62,14 @@ with sync_playwright() as p:
     fils = next(i for i in M()["items"] if i.get("sym") == "PZ_FILS")
     check("Eigenschaften rechts: Text und BMK von Hand, keine automatische BMK", fils["attrs"] == {"TEXT": "FI/LS C13A 30mA", "BMK": "3F1", "POL": "LN"}, fils["attrs"])
     key("Escape")
+    # Hauptverteilung (CJ 23.10.2026): Rechteck mit Diagonale aus der Palette, Grösse frei an der Ecke
+    page.click('#left [data-tool="shape-vert"]'); click(150, 120); click(170, 135); key("Escape"); key("v")
+    hv = [i for i in M()["items"] if i["type"] == "shape" and i.get("diag")]
+    check("Hauptverteilung: Rechteck mit Diagonale gezeichnet", len(hv) == 1 and hv[0]["w"] == 20 and hv[0]["h"] == 15, hv)
+    click(160, 135); page.mouse.move(*at(170, 135)); page.mouse.down(); page.mouse.move(*at(190, 140), steps=4); page.mouse.up()
+    hv = [i for i in M()["items"] if i["type"] == "shape" and i.get("diag")]
+    check("Hauptverteilung: Ecke ziehen ändert die Grösse", hv[0]["w"] == 40 and hv[0]["h"] == 20, hv)
+    key("Delete"); key("Escape")
     # Leitungsangabe (CJ 23.10.2026): ein Strich, Taste 5 setzt die Anzahl Leiter vorne im Text, Querschnitt bleibt
     click(92.5, 260); key("5")
     lt = next(i for i in M()["items"] if i.get("sym") == "PZ_LEITUNG")

@@ -1,6 +1,7 @@
 // Freies Zeichnen im Schema (Wunsch CJ 18.10.2026): Linie, Rechteck, Kreis und Farbe freier Texte.
 // Objekt { type: "shape", k: "line" | "rect" | "circle" }: Linie pts [[x, y], [x, y]], Rechteck x, y (Ecke unten links), w, h, Kreis x, y (Mitte), r.
 // Darstellung: c = Farbe (fehlt = schwarz), d = gestrichelt, fill = Füllfarbe (nur Rechteck und Kreis, fehlt = keine). Text: c = Farbe.
+// Rechteck mit diag = Diagonale von unten links nach oben rechts: Hauptverteilung im Prinzipschema (CJ 23.10.2026), Grösse frei.
 import { HatchBoundaryPaths, HatchPolylineBoundary, HatchPredefinedPatterns, pattern, point3d } from "@tarikjabiri/dxf";
 
 // Feste Palette: Schlüssel in der Datei, Farbe am Bildschirm, AutoCAD-Farbindex im DXF
@@ -22,6 +23,7 @@ export const SHAPE_TOOLS = [
   { id: "shape-line", k: "line", label: "Linie", key: "I", icon: "sline" },
   { id: "shape-rect", k: "rect", label: "Rechteck", key: "Q", icon: "srect" },
   { id: "shape-circle", k: "circle", label: "Kreis", key: "O", icon: "scircle" },
+  { id: "shape-vert", k: "rect", diag: true, label: "Hauptverteilung", key: "", icon: "srect", hidden: true }, // aus der Palette des Prinzipschemas
 ];
 export const shapeTool = (id) => SHAPE_TOOLS.find((t) => t.id === id);
 
@@ -33,6 +35,7 @@ function style(o, src) {
   if (isColor(src.c)) o.c = src.c;
   if (src.d === true) o.d = true;
   if (o.k !== "line" && BY_KEY[src.fill]) o.fill = src.fill;
+  if (o.k === "rect" && src.diag === true) o.diag = true;
   return o;
 }
 // Beim Laden prüfen. null = defekt.
@@ -84,7 +87,7 @@ const dash = (s) => (s.d ? ' stroke-dasharray="7 4"' : "");
 export function shapeSVG(s) {
   const col = colorCss(s.c), base = `stroke="${col}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="${s.fill ? colorCss(s.fill) : "none"}"${dash(s)}`;
   if (s.k === "line") return `<line x1="${s.pts[0][0]}" y1="${s.pts[0][1]}" x2="${s.pts[1][0]}" y2="${s.pts[1][1]}" ${base}/>`;
-  if (s.k === "rect") return `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" ${base}/>`;
+  if (s.k === "rect") return `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" ${base}/>${s.diag ? `<line x1="${s.x}" y1="${s.y}" x2="${r3(s.x + s.w)}" y2="${r3(s.y + s.h)}" ${base}/>` : ""}`;
   return `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" ${base}/>`;
 }
 
@@ -114,4 +117,5 @@ export function shapeDxf(d, s) {
   if (s.k === "line") d.addLine(point3d(...s.pts[0]), point3d(...s.pts[1]), o);
   else if (s.k === "rect") d.addLWPolyline([[s.x, s.y], [s.x + s.w, s.y], [s.x + s.w, s.y + s.h], [s.x, s.y + s.h]].map(([x, y]) => ({ point: { x: r3(x), y: r3(y) } })), { ...o, flags: 1 });
   else d.addCircle(point3d(s.x, s.y), s.r, o);
+  if (s.k === "rect" && s.diag) d.addLine(point3d(s.x, s.y), point3d(r3(s.x + s.w), r3(s.y + s.h)), o);
 }

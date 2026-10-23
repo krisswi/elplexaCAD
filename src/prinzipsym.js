@@ -86,8 +86,9 @@ const leitung = sym("PZ_LEITUNG", "Leitungsangabe", [line(0, 0, 5, 0), line(1.75
 export const kabelN = (kabel, n) => (/^\s*\d+\s*x/i.test(kabel || "") ? kabel.replace(/^\s*\d+\s*x\s*/i, `${n}x`) : `${n}x${kabel || ""}`);
 // Verbraucher bzw. Anschlussstelle am Ende des Abgangs: Kreis, rechts der Text
 const verbr = sym("PZ_VERBR", "Verbraucher (Anschlussstelle)", [circle(1.25, 0, 1.25)], [{ x: 0, y: 0 }], [attr("TEXT", "Verbraucher", "Verbraucher", 5, -1)]);
-// Klemme bzw. Abzweig plombierbar: Quadrat mit Diagonale, Anschlüsse auf allen vier Seiten
-const klemme = sym("PZ_KLEMME", "Klemme, plombierbar", [...rect(-2.5, -5, 2.5, 0), line(-2.5, -5, 2.5, 0)], [{ x: 0, y: 0 }, { x: 0, y: -5 }, { x: -2.5, y: -2.5 }, { x: 2.5, y: -2.5 }], [attr("TEXT", "Text", "", 4, -3.5)]);
+// Verteilung in fester Grösse: Quadrat mit Diagonale, Anschlüsse auf allen vier Seiten. Nur noch für alte Pläne, neu ist die
+// Hauptverteilung eine Form mit freier Grösse (formen.js, CJ 23.10.2026).
+const klemme = sym("PZ_KLEMME", "Verteilung, feste Grösse", [...rect(-2.5, -5, 2.5, 0), line(-2.5, -5, 2.5, 0)], [{ x: 0, y: 0 }, { x: 0, y: -5 }, { x: -2.5, y: -2.5 }, { x: 2.5, y: -2.5 }], [attr("TEXT", "Text", "", 4, -3.5)]);
 
 // Hauptverteilung, senkrecht. Kasten 15 × 20 mm mit Kopfband (Text klein, z. B. Spannung), Anschluss oben, unten und rechts.
 const BOX = [...rect(-7.5, -20, 7.5, 0), line(-7.5, -5, 7.5, -5)], BOX_PINS = [{ x: 0, y: 0 }, { x: 0, y: -20 }, { x: 7.5, y: -15 }];
@@ -189,7 +190,7 @@ export const PRINZIP_GROUPS = [
     { id: "PZ_TRS", label: "Trennsicherung", sub: "z. B. D02 35 A", def: "PZ_TRS", variants: ["PZ_TRS"] },
     { id: "PZ_TRENN", label: "Trenner", sub: "Trennschalter, z. B. 63 A", def: "PZ_TRENN", variants: ["PZ_TRENN"] },
     { id: "PZ_LSCH", label: "Leistungsschalter", sub: "z. B. 250 A", def: "PZ_LSCH", variants: ["PZ_LSCH"] },
-    { id: "PZ_KLEMME", label: "Klemme plombierbar", sub: "Abzweig, vier Anschlüsse", def: "PZ_KLEMME", variants: ["PZ_KLEMME"] },
+    { id: "PZ_VERT", label: "Hauptverteilung", sub: "Rechteck mit Diagonale, Grösse frei", tool: "shape-vert", variants: [] }, // Form (formen.js), CJ 23.10.2026
     { id: "PZ_GERAET", label: "Gerät mit Text", sub: "z. B. Schütz S, Smart Meter", def: "PZ_GERAET", variants: ["PZ_GERAET"] },
     { id: "PZ_WR", label: "Wechselrichter", sub: "Gleichstrom zu Wechselstrom, z. B. PV", def: "PZ_WR", variants: ["PZ_WR"] },
     { id: "PZ_GR", label: "Gleichrichter", sub: "Wechselstrom zu Gleichstrom", def: "PZ_GR", variants: ["PZ_GR"] },

@@ -5,7 +5,7 @@ import assert from "node:assert";
 import { newDoc, parseModel, serializeModel, VERSION } from "../src/model.js";
 import { exportDxf } from "../src/dxf.js";
 import { renumberAll } from "../src/numbering.js";
-import { shapeFrom, shapeHandles, dragShapeHandle, hitShape, colorAci } from "../src/formen.js";
+import { shapeFrom, shapeHandles, dragShapeHandle, hitShape, colorAci, cleanShape, shapeSVG } from "../src/formen.js";
 import { itemsSVG, itemBBox } from "../src/render.js";
 
 // Formen aus zwei Punkten, Shift = gerade bzw. Quadrat
@@ -16,6 +16,9 @@ assert.strictEqual(shapeFrom("circle", { x: 0, y: 0 }, { x: 3, y: 4 }).r, 5);
 const st = shapeFrom("rect", { x: 0, y: 0 }, { x: 10, y: 10 }, false, { c: "rot", d: true, fill: "gruen" });
 assert.deepStrictEqual([st.c, st.d, st.fill], ["rot", true, "gruen"]);
 assert.strictEqual(shapeFrom("line", { x: 0, y: 0 }, { x: 1, y: 1 }, false, { c: "schwarz", fill: "rot" }).fill, undefined, "Linie ohne Füllung, schwarz nicht gespeichert");
+// Hauptverteilung (CJ 23.10.2026): Rechteck mit Diagonale, bleibt beim Laden und Ziehen erhalten, nur beim Rechteck
+const hv = shapeFrom("rect", { x: 0, y: 0 }, { x: 20, y: 10 }, false, { diag: true });
+assert.ok(hv.diag && cleanShape(hv, 1).diag && shapeSVG(hv).includes("<line") && !shapeFrom("circle", { x: 0, y: 0 }, { x: 1, y: 0 }, false, { diag: true }).diag, "Hauptverteilung: Diagonale");
 // Griffe: Rechteck-Ecke ziehen, Gegenecke bleibt; Kreis: Radius
 const r = { type: "shape", k: "rect", x: 10, y: 10, w: 20, h: 10 }, o = { ...r };
 dragShapeHandle(r, o, 2, { x: 5, y: 5 });

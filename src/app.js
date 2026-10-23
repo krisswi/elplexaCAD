@@ -293,7 +293,7 @@ function renderOverlay() {
   // Griffe an den Punkten gewählter Leitungen (ziehen = Punkt verschieben)
   if (S.tool === "select") for (const w of selectedItems()) if (w.type === "wire") for (const p of w.pts) s += `<rect class="wire-handle" x="${p[0] - 0.9}" y="${p[1] - 0.9}" width="1.8" height="1.8"/>`;
   if (S.tool === "select") for (const it of selectedItems()) if (it.type === "shape") for (const p of shapeHandles(it)) s += `<rect class="wire-handle" x="${p.x - 0.9}" y="${p.y - 0.9}" width="1.8" height="1.8"/>`; // Griffe der Formen
-  if (S.shapeDraft && S.mouse) s += `<g opacity="0.8" pointer-events="none">${shapeSVG(shapeFrom(shapeTool(S.tool).k, S.shapeDraft.a, S.mouse, S.shift, S.shapeStyle))}</g>`;
+  if (S.shapeDraft && S.mouse) s += `<g opacity="0.8" pointer-events="none">${shapeSVG(shapeFrom(shapeTool(S.tool).k, S.shapeDraft.a, S.mouse, S.shift, { ...S.shapeStyle, diag: shapeTool(S.tool).diag }))}</g>`;
   if (shapeTool(S.tool) && S.mouse) s += `<circle cx="${S.mouse.x}" cy="${S.mouse.y}" r="0.6" fill="#17212b" stroke="none" pointer-events="none"/>`;
   // Griffe und Live-Mass in der Disposition
   const hi = handleItem();
@@ -411,7 +411,7 @@ function renderLeftBody() {
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
   if (isPrinzip()) { leftEl.innerHTML = prinzipLeftHTML(h); return; }
-  for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
+  for (const t of [...TOOLS, ...SHAPE_TOOLS.filter((t) => !t.hidden)]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
   h += `</section>` + abgangHTML() + `<section class="section"><h2 class="section-title">Symbole</h2>`;
   for (const f of FAMILIES) { // Wunsch CJ 16.10.: jede Variante direkt wählbar, ein Klick setzt das Gerät
     if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${shownVariants(f).map(varTile).join("")}</div></div>`; continue; }
@@ -426,10 +426,11 @@ function renderLeftBody() {
 
 // Prinzipschema (CJ 21.10.2026): Werkzeuge wie im Schema (Leitung ohne Menü Leiterzahl), Symbole einpolig in Gruppen, ohne Abgänge, Klemmen und Bibliothek
 function prinzipLeftHTML(h) {
-  for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] && t.id !== "wire" ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`;
+  for (const t of [...TOOLS, ...SHAPE_TOOLS.filter((t) => !t.hidden)]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] && t.id !== "wire" ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`;
   for (const [title, fams] of PRINZIP_GROUPS) {
     h += `</section><section class="section"><h2 class="section-title">${title}</h2>`;
     for (const f of fams) {
+      if (f.tool) { h += `<button class="sym" data-tool="${f.tool}" aria-pressed="${S.tool === f.tool}"><span class="thumb">${R.icons.srect}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`; continue; } // Form statt Symbol
       if (f.variants.length > 1 && !f.keys) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${shownVariants(f).map(varTile).join("")}</div></div>`; continue; }
       h += `<button class="sym" data-sym="${f.def}" aria-pressed="${S.tool === "place" && (f.keys ? f.variants.includes(S.placeSym) : S.placeSym === f.def)}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
     }
@@ -682,7 +683,7 @@ function renderRightPanel() {
       if (isRail(it)) h += `<p class="note">Hauptlinie ${R.esc(railName(it))}${isGroupWire(S.model.items, it) ? ", Grundverkabelung L1 bis N gemeinsam" : ""}</p>` + (isGroupWire(S.model.items, it) ? mainPanelHTML() : railEndSelect("l", it) + railEndSelect("r", it));
       h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else if (it.type === "shape") {
-      h += head(SHAPE_KINDS[it.k], "Freie Form") + styleHTML(sel) + actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
+      h += head(it.diag ? "Hauptverteilung" : SHAPE_KINDS[it.k], it.diag ? "Rechteck mit Diagonale, Grösse an den Ecken ziehen" : "Freie Form") + styleHTML(sel) + actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else {
       h += textPanelHTML(it, false, isSchema()).replace('<div class="row">', styleHTML(sel) + '<div class="row">');
     }
@@ -1074,7 +1075,7 @@ function finishShape(c, shift) {
   const f = S.shapeDraft, t = shapeTool(S.tool);
   S.shapeDraft = null;
   if (!f || !t) return;
-  const sh = shapeFrom(t.k, f.a, c, shift, S.shapeStyle);
+  const sh = shapeFrom(t.k, f.a, c, shift, { ...S.shapeStyle, diag: t.diag }); // Hauptverteilung: mit Diagonale
   if (!shapeEmpty(sh)) change(() => { S.model.items.push({ id: nextId(), ...sh }); S.sel.clear(); });
   renderOverlay(); updateHint();
 }

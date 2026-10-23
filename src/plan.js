@@ -3,8 +3,11 @@
 // Blatt: { kind: "plan", sid, var?, meta, paper: { size, quer, den }, pmid?: [x, y] (Druckmitte, fehlt = Mitte des Inhalts), layers: [{ id, name, show, lock }], alay, items }.
 // Objekte: Wand { id, type: "wall", layer, a: [x, y], b: [x, y], d, mat } (Mittellinie a → b, Dicke d),
 // Öffnung { id, type: "opening", wall, t, w, kind, hinge?, side?, br?, h? } (hängt an der Wand, Ebene der Wand; h = Höhe in mm, nur Angabe),
-// Mass { id, type: "dim", layer, a, b, off, ref?, ctrl?, soll? } (ref = Wand-id: Mass der Mittellinie, a/b folgen der Wand).
+// Mass { id, type: "dim", layer, a, b, off, ref?, ctrl?, soll? } (ref = Wand-id: Mass der Mittellinie, a/b folgen der Wand),
+// Symbol { id, type: "sym", layer, key, at: [x, y], r, h?, txt?, ap?, fu?, nr? } (Schritt 2, plansym.js; r Drehung in Grad, h Höhe in cm,
+// txt Beschriftung, ap Aufputz, fu/nr Sicherung und Nummer am Hinweispfeil). Symbole hängen nicht an der Wand (wandern nicht mit).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
+import { SYM_BY_KEY } from "./plansym.js";
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const r3 = (n) => Math.round(n * 1000) / 1000 + 0;
@@ -77,7 +80,7 @@ export const WALL_D = 150; // Vorgabe Wanddicke in mm
 export const MATS = [["beton", "Beton"], ["mauer", "Mauerwerk"], ["leicht", "Leichtbau/Gips"]]; // beton = Kreuzschraffur, mauer = Schraffur /, leicht = nur Umriss
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
-export const PLAN_ITEMS = new Set(["wall", "opening", "dim"]);
+export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym"]);
 
 // Ein Objekt prüfen (ohne Bezüge auf andere Objekte, die prüft cleanPlanSheet). Gibt das saubere Objekt oder null.
 export function cleanPlanObj(it, id) {
@@ -99,6 +102,17 @@ export function cleanPlanObj(it, id) {
     const o = { id, type: "dim", layer: String(it.layer ?? ""), a: [it.a[0], it.a[1]], b: [it.b[0], it.b[1]], off: isNum(it.off) ? it.off : 0 };
     if (isNum(it.ref)) o.ref = it.ref;
     if (it.ctrl === true) { o.ctrl = true; if (isNum(it.soll) && it.soll > 0) o.soll = it.soll; } // Kontrollmass (Diagonale): Ist, optional Soll
+    return o;
+  }
+  if (it.type === "sym") {
+    const def = SYM_BY_KEY.get(it.key);
+    if (!def || !isPt(it.at)) return null;
+    const o = { id, type: "sym", layer: String(it.layer ?? ""), key: it.key, at: [it.at[0], it.at[1]], r: isNum(it.r) ? ((Math.round(it.r) % 360) + 360) % 360 : 0 };
+    if (isNum(it.h) && it.h >= 0) o.h = it.h;
+    const str = (v, n) => String(v ?? "").trim().slice(0, n);
+    if (str(it.txt, 60)) o.txt = str(it.txt, 60);
+    if (def.ap && it.ap === true) o.ap = true;
+    if (def.ref) { if (str(it.fu, 12)) o.fu = str(it.fu, 12); if (str(it.nr, 12)) o.nr = str(it.nr, 12); }
     return o;
   }
   return null;
@@ -270,6 +284,7 @@ export function moveNode(sh, from, to, skip) {
 }
 // Wand oder Mass als Ganzes verschieben (Ecken bleiben mit den Nachbarn verbunden: deren Enden folgen)
 export function moveItem(sh, it, dx, dy) {
+  if (it.type === "sym") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall), u = wallDir(w); it.t += dx * u[0] + dy * u[1]; clampOpening(w, it); return; }
   const a = it.a, b = it.b, na = [a[0] + dx, a[1] + dy], nb = [b[0] + dx, b[1] + dy];
   if (it.type === "wall") { moveNode(sh, a, na, it.id); moveNode(sh, b, nb, it.id); }
@@ -345,7 +360,8 @@ export function dimLine(d) { // Masslinie: a, b um off nach links (von a nach b)
   return [add(d.a, n, d.off), add(d.b, n, d.off), n];
 }
 export function hitPlan(sh, items, p, tol) {
-  const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w]));
+  const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w])), k = paperOf(sh).den;
+  for (const it of [...items].reverse()) if (it.type === "sym") { const def = SYM_BY_KEY.get(it.key); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
   for (const o of items) {
     if (o.type !== "opening") continue;
     const w = walls.get(o.wall), u = wallDir(w), s = dot(sub(p, w.a), u), q = Math.abs(dot(sub(p, w.a), normal(u)));
@@ -369,11 +385,29 @@ export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, 
     || (!ortho && best(walls.map((w) => { const u = wallDir(w), t = Math.max(0, Math.min(wallLen(w), dot(sub(m, w.a), u))); return add(w.a, u, t); }), "edge"))
     || (grid > 0 ? (([x, y]) => ({ x, y, snap: "grid" }))(on([Math.round(p[0] / grid) * grid, Math.round(p[1] / grid) * grid])) : { x: m[0], y: m[1] });
 }
+// Symbol: Mitte in der Welt (Papier-mm × Massstab k, gedreht um r)
+export function symCenter(it, k) {
+  const c = SYM_BY_KEY.get(it.key).c, a = (it.r * Math.PI) / 180;
+  return [it.at[0] + k * (c[0] * Math.cos(a) - c[1] * Math.sin(a)), it.at[1] + k * (c[0] * Math.sin(a) + c[1] * Math.cos(a))];
+}
+// Wandsymbol einrasten: nächste Wandfläche innerhalb reach (mm ab Fläche). Gibt { at, r, wall } (r: Symbol steht senkrecht zur Fläche, in den
+// Raum auf der Seite von p) oder null.
+export function wallSnap(walls, p, reach) {
+  let best = null, bd = Infinity;
+  for (const w of walls) {
+    const u = wallDir(w), n = normal(u), L = wallLen(w), s = dot(sub(p, w.a), u), q = dot(sub(p, w.a), n), d = Math.abs(q) - w.d / 2;
+    if (s < 0 || s > L || d > reach || d < -w.d / 2 - 1e-9 || d >= bd) continue;
+    const k = q >= 0 ? 1 : -1, nn = [n[0] * k, n[1] * k];
+    bd = d; best = { at: add(add(w.a, u, s), nn, w.d / 2).map(r3), r: ((Math.round((Math.atan2(nn[1], nn[0]) * 180) / Math.PI - 90) % 360) + 360) % 360, wall: w.id };
+  }
+  return best;
+}
 // Lage auf einer Wand: Abstand ab a entlang der Mittellinie
 export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
-  const pts = sh.items.flatMap((i) => (i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : []));
+  const k = paperOf(sh).den;
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(SYM_BY_KEY.get(i.key), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }

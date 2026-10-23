@@ -1,5 +1,6 @@
 # UI-Test Modul «Plan» (CJ 23.10.2026, nur elplexaCAD): Küche zeichnen, Tür, Fenster, Griffe, Masse, Diagonale, Ebenen, Ecke ziehen,
-# Massstab, Druckmitte, zweites Plan-Modul, Speichern/Laden, v3 lehnt die Datei ab. Vorher: node build.mjs && node build.mjs elplexa
+# Elektrosymbole (Schritt 2: Wandfang, Drehen, Beschriftung, Höhe, Aufputz, Verweis), Massstab, Druckmitte, zweites Plan-Modul, Speichern/Laden,
+# v3 lehnt die Datei ab. Vorher: node build.mjs && node build.mjs elplexa
 # Aufruf: python3 test/plan_tests.py [Ausgabeordner]. Tasten im Plan als keydown-Ereignis (page.type schickt keinen keydown an window).
 import sys, tempfile, json, math
 from pathlib import Path
@@ -143,6 +144,39 @@ with sync_playwright() as p:
     check("Aktive Ebene wieder Hintergrund", M()["alay"] == "bg")
     blur(); key("v")
 
+    # ---------- Schritt 2: Elektrosymbole ----------
+    check("Palette: ca. 30 Symbole in Gruppen", page.locator("[data-plsym]").count() >= 30 and all(g in page.inner_text("#left-body") for g in ["Schalter", "Steckdosen", "Leuchten", "Geräte"]), page.locator("[data-plsym]").count())
+    page.click('[data-plsym="STD"]'); page.wait_for_timeout(80)
+    check("Symbol gewählt: Werkzeug Symbol, Hinweis", "Steckdose T13" in page.inner_text("#hint") and page.get_attribute('[data-plsym="STD"]', "aria-pressed") == "true")
+    click(3750, 600)  # nahe an der rechten Wand: rastet an der Innenfläche ein, zeigt in den Raum
+    y = of("sym")[-1]; STD = y["id"]
+    check("Steckdose an der Wand: auf der Innenfläche (x 3925), Drehung 90, Höhe 110", near(y["at"], [3925, y["at"][1]]) and abs(y["at"][1] - 600) <= 10 and y["r"] == 90 and y.get("h") == 110 and y["layer"] == "bg", y)
+    page.click('[data-plsym="LEUCHTE"]'); key("r"); click(2000, 2000)
+    y = of("sym")[-1]; LE = y["id"]
+    check("Deckenleuchte frei, R dreht beim Setzen um 90°, ohne Höhe", y["key"] == "LEUCHTE" and y["r"] == 90 and "h" not in y and abs(y["at"][0] - 2000) <= 10, y)
+    page.click('[data-plsym="VERWEIS"]'); click(1200, 1800)
+    VW = of("sym")[-1]["id"]
+    page.click('[data-plsym="SCH0"]'); click(3000, 300)
+    SW = of("sym")[-1]["id"]
+    check("Schalter an der unteren Wand (y 75, r 0)", near(item(SW)["at"], [item(SW)["at"][0], 75]) and item(SW)["r"] == 0, item(SW))
+    blur(); key("v"); c0 = page.evaluate(f"(() => {{ const i = window.__schemacad.model.items.find((x) => x.id === {STD}); return i.at; }})()")
+    click(c0[0] - 100, c0[1])
+    check("Steckdose wählbar, rechts Beschriftung und Höhe", sel() == [STD] and "Beschriftung" in page.inner_text("#right") and page.input_value('[data-plf="sh"]') == "110", sel())
+    field('[data-plf="txt"]', "Kühlschrank"); field('[data-plf="sh"]', "40")
+    check("Beschriftung und Höhe gesetzt, im Plan sichtbar", item(STD).get("txt") == "Kühlschrank" and item(STD).get("h") == 40 and "Kühlschrank" in page.inner_html("#items"), item(STD))
+    blur(); drag(c0[0] - 100, c0[1], 3700, 1500)
+    check("Wandsymbol ziehen: bleibt an der Wand", near(item(STD)["at"], [3925, item(STD)["at"][1]]) and abs(item(STD)["at"][1] - 1500) <= 10 and item(STD)["r"] == 90, item(STD))
+    key("r"); check("R dreht das gewählte Symbol", item(STD)["r"] == 180)
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(100); check("Rückgängig: Drehung zurück", item(STD)["r"] == 90)
+    click(item(SW)["at"][0], 75 + 110); check("Schalter gewählt: Feld Aufputz", sel() == [SW] and page.locator('[data-plf="ap"]').count() == 1, sel())
+    page.check('[data-plf="ap"]'); page.wait_for_timeout(100); check("Aufputz gesetzt", item(SW).get("ap") is True)
+    blur(); click(1200 - 200, 1800); check("Hinweispfeil gewählt: Sicherung und Nummer", sel() == [VW] and page.locator('[data-plf="fu"]').count() == 1, sel())
+    field('[data-plf="fu"]', "F3"); field('[data-plf="nr"]', "2")
+    check("Verweis F3 / 2 im Plan", item(VW).get("fu") == "F3" and item(VW).get("nr") == "2" and "F3 / 2" in page.inner_html("#items"))
+    blur(); click(2000, 2000)
+    check("Leuchte wählbar", sel() == [LE], sel())
+    blur(); key("v"); page.mouse.click(*at(-2000, -2000)); page.wait_for_timeout(80)
+
     # ---------- Massstab und Druckmitte ----------
     page.click("#btn-pvdruck"); page.wait_for_timeout(200)
     page.select_option('[data-plp="den"]', "100"); page.wait_for_timeout(150)
@@ -175,24 +209,24 @@ with sync_playwright() as p:
 
     # ---------- Speichern / Laden ohne Datenverlust ----------
     d1 = D()
-    check("Datei: Version 20 (mit Plan)", d1["version"] == 20, d1["version"])
+    check("Datei: Version 21 (Plan mit Symbolen)", d1["version"] == 21, d1["version"])
     blur()
     with page.expect_download() as dl: page.keyboard.press("Shift+Meta+s")
     out = OUT / "plan_rundlauf.elplexa.json"; dl.value.save_as(str(out)); page.wait_for_timeout(300)
     raw = json.loads(out.read_text())
-    check("Gespeichert: Version 20, zwei Pläne", raw["version"] == 20 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
+    check("Gespeichert: Version 21, zwei Pläne", raw["version"] == 21 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
     blur()
     with page.expect_file_chooser() as fc:
         page.keyboard.press("Meta+o"); page.wait_for_timeout(300)
         if page.is_visible(".modal"): page.click('.modal :text("Trotzdem öffnen")')
     fc.value.set_files(str(out)); page.wait_for_timeout(600)
     d2 = D()
-    check("Laden ohne Datenverlust (Wände, Öffnungen mit Höhe, Masse, Ebenen, Papier, Druckmitte)", d1["sheets"] == d2["sheets"] and d1.get("mods") == d2.get("mods"))
+    check("Laden ohne Datenverlust (Wände, Öffnungen mit Höhe, Masse, Symbole, Ebenen, Papier, Druckmitte)", d1["sheets"] == d2["sheets"] and d1.get("mods") == d2.get("mods"))
     pl = next(s for s in d2["sheets"] if s.get("kind") == "plan" and "var" not in s)
     check("Nach dem Laden: Ebene gesperrt, Druckmitte, Tür 1000 mm", pl["layers"][1]["lock"] is True and pl["pmid"] == pm and next(i for i in pl["items"] if i["id"] == T)["w"] == 1000)
     page.close()
 
-    # ---------- SchemaCAD v3: Datei mit Plan (Version 20) wird abgelehnt ----------
+    # ---------- SchemaCAD v3: Datei mit Plan (Version 21) wird abgelehnt ----------
     page = b.new_page(viewport={"width": 1400, "height": 900}); page.on("pageerror", lambda e: errors.append(str(e)))
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")
     page.goto((ROOT / "dist" / "schemacad.html").as_uri()); page.wait_for_timeout(300); page.keyboard.press("Escape"); page.wait_for_timeout(100)

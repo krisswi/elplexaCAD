@@ -16,7 +16,7 @@ const H = (x) => [{ x: 0, y: 0 }, { x, y: 0 }]; // Anschlüsse waagrecht, links 
 // Schaltstück vom Schwenkpunkt (1,5|0) schräg nach (8,5|3,5), Gegenkontakt ohne Querstrich ab x 8. Auslöser senkrecht zum Schaltstück:
 // u = Anteil entlang, v = Anteil quer (nach oben links), beides in Längen des Schaltstücks. Anschlüsse wie bisher (FI/LS bis 17,5).
 // Beschriftung: BMK, Bezeichnung, Polzahl übereinander rechts über dem Schaltstück, damit der Auslöser frei bleibt.
-const top3 = (def) => [bmk(9, 10.5), attr("TEXT", "Bezeichnung", def, 9, 7.5), attr("POL", "Polzahl (Tasten 1–3 und N)", "LN", 9, 4.5)];
+const top3 = (def, pol = "LN") => [bmk(9, 10.5), attr("TEXT", "Bezeichnung", def, 9, 7.5), attr("POL", "Polzahl (Tasten 1–3 und N)", pol, 9, 4.5)];
 const bp = (u, v) => [Math.round((1.5 + 7 * u - 3.5 * v) * 1000) / 1000, Math.round((3.5 * u + 7 * v) * 1000) / 1000];
 const bl = (a, b) => line(...bp(...a), ...bp(...b));
 const pole = (x2) => [line(0, 0, 1.5, 0), line(1.5, 0, 8.5, 3.5), line(8, 0, x2, 0)];
@@ -27,6 +27,35 @@ const pfeil = (u, rcd) => [bl([u, 0], [u, 0.81]), bl([u, 0.81], [u - 0.09, 0.59]
 const ls = sym("PZ_LS", "Leitungsschutzschalter (LS)", [...pole(10), ...bimetall(), ...pfeil(0.25, false)], H(10), top3("LS C 13A"));
 const fi = sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [...pole(10), ...pfeil(0.65, true)], H(10), top3("FI 40A 30mA"));
 const fils = sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [...pole(17.5), ...bimetall(), ...pfeil(0.25, true)], H(17.5), top3("FI/LS B13A 30mA"));
+// Motorschutzschalter nach S. 31 rechts (CJ 23.10.2026): Bimetall weiter oben am Schaltstück, schräger Pfeil = einstellbar;
+// thermisch und magnetisch zusätzlich der Pfeil wie beim LS. Polzahl nicht als Zahl am Symbol, sondern in der Zeile POL.
+const bimetallMss = () => [[0.69, 0], [0.69, 0.33], [0.98, 0.33], [0.98, 0.6], [0.68, 0.6], [0.68, 0.93]].slice(1).map((p, i, a) => bl(i ? a[i - 1] : [0.69, 0], p));
+const einstell = (() => { // schräg durch das Bimetall, kleine Spitze erst hinter dem Bimetall (CJ 23.10.: verdeckt es nicht)
+  const [a, e] = [[0.53, 0.865], [1.12, 0.08]], du = e[0] - a[0], dv = e[1] - a[1], k = 0.1 / Math.hypot(du, dv), h = [e[0] - du * k, e[1] - dv * k], w = 0.3; // durch die Mitte des Bimetalls
+  const l = [h[0] - dv * k * w, h[1] + du * k * w], r = [h[0] + dv * k * w, h[1] - du * k * w];
+  return [bl(a, h), bl(e, l), bl(e, r), bl(l, r)];
+})();
+const mss = sym("PZ_MSS", "Motorschutzschalter, thermisch", [...pole(10), ...bimetallMss(), ...einstell], H(10), top3("MSS 4–6,3 A", "3L").map((t) => ({ ...t, x: 10.5 })));
+const mssM = sym("PZ_MSS_M", "Motorschutzschalter, thermisch und magnetisch", [...pole(10), ...bimetallMss(), ...einstell, ...pfeil(0.3, false)], H(10), top3("MSS 4–6,3 A", "3L").map((t) => ({ ...t, x: 10.5 }))); // Beschriftung weiter rechts, Pfeilspitze frei
+
+// Schaltgeräte der Verteilung nach S. 28 und 31 (CJ 23.10.2026): senkrecht wie die Sicherung, Schwenkpunkt unten (0|-8), Schaltstück
+// schräg nach (-3,5|-3,5) (grössere Lücke, CJ 23.10.), Gegenkontakt von oben bis -4 mit dem Zeichen der Funktion. Beschriftung rechts: BMK, Bezeichnung, Polzahl.
+const V_PINS = [{ x: 0, y: 0 }, { x: 0, y: -12.5 }];
+const vAttrs = (def) => [bmk(3, -4), attr("TEXT", "Bezeichnung", def, 3, -7), attr("POL", "Polzahl (Tasten 1–3 und N)", "3L", 3, -10)];
+const vPole = [line(0, -12.5, 0, -8), line(0, -8, -3.5, -3.5), line(0, 0, 0, -4)];
+// Gegenkontakt (CJ 23.10.2026): Querstrich = Trenner, Querstrich mit Kreis = Lasttrenner, nur Kreuz = Leistungsschalter
+const strich = [line(-0.8, -4, 0.8, -4)], kreis = [...strich, circle(0, -4.55, 0.55)], kreuz = [line(-0.55, -3.45, 0.55, -4.55), line(0.55, -3.45, -0.55, -4.55)];
+const vb = (t, w) => [-3.5 * t + 0.789 * w, -8 + 4.5 * t + 0.614 * w].map((n) => Math.round(n * 1000) / 1000); // Punkt am Schaltstück, w quer
+const sichImSchaltstueck = [line(...vb(0.4, -0.6), ...vb(1, -0.6)), line(...vb(1, -0.6), ...vb(1, 0.6)), line(...vb(1, 0.6), ...vb(0.4, 0.6)), line(...vb(0.4, 0.6), ...vb(0.4, -0.6))];
+const ltr = sym("PZ_LTR", "Lasttrenner", [...vPole, ...kreis], V_PINS, vAttrs("63 A"));
+const lts = sym("PZ_LTS", "Lasttrennsicherung", [...vPole, ...sichImSchaltstueck, ...kreis], V_PINS, vAttrs("NH00 63 A"));
+const trs = sym("PZ_TRS", "Trennsicherung", [...vPole, ...sichImSchaltstueck, ...strich], V_PINS, vAttrs("D02 35 A"));
+const trenn = sym("PZ_TRENN", "Trenner", [...vPole, ...strich], V_PINS, vAttrs("63 A"));
+const lsch = sym("PZ_LSCH", "Leistungsschalter", [...vPole, ...kreuz], V_PINS, vAttrs("250 A"));
+// Sicherung mit getrenntem Meldekontakt (S. 31 links): Sicherung wie PZ_SICH, gestrichelte Wirklinie zum Schliesser rechts
+const sichM = sym("PZ_SICH_M", "Sicherung mit Meldekontakt", [line(0, 0, 0, -12.5), ...rect(-1.5, -2.5, 1.5, -10), ...[1.8, 3.2, 4.6].map((x) => line(x, -6.25, x + 0.8, -6.25)), // Wirklinie gestrichelt
+  line(7.5, -12.5, 7.5, -8.5), line(7.5, -8.5, 4, -4), line(7.5, 0, 7.5, -4.5)], [...V_PINS, { x: 7.5, y: 0 }, { x: 7.5, y: -12.5 }], [bmk(10, -4), attr("TEXT", "Bezeichnung", "DII 25 A", 10, -7)]);
+
 // Sicherung (z. B. DII): senkrecht, Rechteck mit durchgehendem Leiter
 // Polzahl als waagrechte Striche im Rechteck wie in der Symbolzusammenfassung (CJ 23.10.2026): 1–3 Striche = Aussenleiter, N = Strich mit Punkt.
 // Eine Variante je Polzahl, Tasten 1–3 und N wechseln sie (sichName). PZ_SICH ohne Striche bleibt für alte Pläne.
@@ -94,7 +123,7 @@ const erdKk = sym("PZ_ERDE_KK", "Erdungs-Klemmkasten", [...rect(-4, -3.5, 4, 0),
 const schutzerde = sym("PZ_SCHUTZERDE", "Schutzerde", [circle(0, -4, 3.5), line(0, 0, 0, -4.5), line(-1.75, -4.5, 1.75, -4.5), line(-1.25, -5.25, 1.25, -5.25), line(-0.5, -6, 0.5, -6)], [{ x: 0, y: 0 }], [attr("TEXT", "Text", "", 5, -4)]);
 const erdband = sym("PZ_ERDBAND", "Erdband", [{ ...line(0, 0, 10, 0), d: true }], H(10), [attr("TEXT", "Text", "Fe 30/3", 1.5, 1)]);
 
-export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...SICH_POL.map(sichPol), ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, wandler, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
+export const PRINZIP_SYMBOLS = [ls, fi, fils, mss, mssM, ltr, lts, trs, trenn, lsch, sichM, sich, ...SICH_POL.map(sichPol), ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, wandler, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
 
 // Palette des Prinzipschemas, gruppiert. Gleiche Form wie FAMILIES in symbols.js (Varianten: Anzahl Striche).
 export const PRINZIP_GROUPS = [
@@ -102,6 +131,8 @@ export const PRINZIP_GROUPS = [
     { id: "PZ_FILS", label: "FI/LS-Schalter", sub: "z. B. FI/LS B13A 30mA", def: "PZ_FILS", variants: ["PZ_FILS"] },
     { id: "PZ_LS", label: "Leitungsschutzschalter", sub: "z. B. LS C 13A, LN", def: "PZ_LS", variants: ["PZ_LS"] },
     { id: "PZ_FI", label: "FI-Schutzschalter", sub: "z. B. FI 40A 30mA", def: "PZ_FI", variants: ["PZ_FI"] },
+    { id: "PZ_MSS", label: "Motorschutzschalter thermisch", sub: "z. B. MSS 4–6,3 A, 3L", def: "PZ_MSS", variants: ["PZ_MSS"] },
+    { id: "PZ_MSS_M", label: "Motorschutzschalter therm./magn.", sub: "z. B. MSS 4–6,3 A, 3L", def: "PZ_MSS_M", variants: ["PZ_MSS_M"] },
     { id: "PZ_LEITER", label: "Leitungsangabe", sub: "Striche = Anzahl Leiter, Text z. B. 3x1,5mm²", def: "PZ_LEITER_1", variants: [1, 2, 3, 4, 5].map((n) => `PZ_LEITER_${n}`) },
     { id: "PZ_VERBR", label: "Verbraucher", sub: "Anschlussstelle mit Text", def: "PZ_VERBR", variants: ["PZ_VERBR"] },
   ]],
@@ -110,6 +141,12 @@ export const PRINZIP_GROUPS = [
     { id: "PZ_WANDLER", label: "Stromwandler", sub: "Wandlermessung, z. B. 150/5A", def: "PZ_WANDLER", variants: ["PZ_WANDLER"] },
     { id: "PZ_RSE", label: "Rundsteuerempfänger", sub: "RSE", def: "PZ_RSE", variants: ["PZ_RSE"] },
     { id: "PZ_SICH", label: "Sicherung", sub: "z. B. DII 25 A, Tasten 1–3 und N", def: "PZ_SICH_3", variants: ["PZ_SICH", ...SICH_POL.map(sichName)], keys: true }, // ein Feld, Polzahl über Tasten
+    { id: "PZ_SICH_M", label: "Sicherung mit Meldekontakt", sub: "gestrichelt zum Kontakt", def: "PZ_SICH_M", variants: ["PZ_SICH_M"] },
+    { id: "PZ_LTR", label: "Lasttrenner", sub: "z. B. 63 A, 3L", def: "PZ_LTR", variants: ["PZ_LTR"] },
+    { id: "PZ_LTS", label: "Lasttrennsicherung", sub: "z. B. NH00 63 A", def: "PZ_LTS", variants: ["PZ_LTS"] },
+    { id: "PZ_TRS", label: "Trennsicherung", sub: "z. B. D02 35 A", def: "PZ_TRS", variants: ["PZ_TRS"] },
+    { id: "PZ_TRENN", label: "Trenner", sub: "Trennschalter, z. B. 63 A", def: "PZ_TRENN", variants: ["PZ_TRENN"] },
+    { id: "PZ_LSCH", label: "Leistungsschalter", sub: "z. B. 250 A", def: "PZ_LSCH", variants: ["PZ_LSCH"] },
     { id: "PZ_KLEMME", label: "Klemme plombierbar", sub: "Abzweig, vier Anschlüsse", def: "PZ_KLEMME", variants: ["PZ_KLEMME"] },
     { id: "PZ_GERAET", label: "Gerät mit Text", sub: "z. B. Schütz S, Smart Meter", def: "PZ_GERAET", variants: ["PZ_GERAET"] },
     { id: "PZ_WR", label: "Wechselrichter", sub: "Gleichstrom zu Wechselstrom, z. B. PV", def: "PZ_WR", variants: ["PZ_WR"] },
@@ -127,7 +164,8 @@ export const PRINZIP_GROUPS = [
   ]],
 ];
 export const PRINZIP_FAMILIES = PRINZIP_GROUPS.flatMap(([, f]) => f);
-export const PZ_ABGANG = ["PZ_LS", "PZ_FI", "PZ_FILS"]; // Geräte mit Knopf «Verdrahten»
+export const PZ_ABGANG = ["PZ_LS", "PZ_FI", "PZ_FILS", "PZ_MSS", "PZ_MSS_M"]; // Geräte mit Knopf «Verdrahten»
+export const PZ_POL = [...PZ_ABGANG, "PZ_LTR", "PZ_LTS", "PZ_TRS", "PZ_TRENN", "PZ_LSCH"]; // Zeile Polzahl, Tasten 1–3 und N
 // Polzahl mit Tasten (CJ 21.10.2026): 1, 2, 3 = L, 2L, 3L; N schaltet den Neutralleiter. Das Symbol bleibt gleich.
 export function polNext(pol, key) {
   const m = /^\s*(\d)?\s*L?\s*(N)?/i.exec(pol || "LN");

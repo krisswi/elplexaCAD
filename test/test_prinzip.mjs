@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { newDoc, newSheet, parseModel, serializeModel, modOf, modName, VERSION } from "../src/model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, bmkLetter } from "../src/symbols.js";
-import { polNext, sichName, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
+import { polNext, sichName, PZ_ABGANG, PZ_POL, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
 import { exportDxf } from "../src/dxf.js";
 import { renumberAll } from "../src/numbering.js";
 import { partsList, fuseLegend } from "../src/auswertung.js";
@@ -21,6 +21,9 @@ for (const s of PRINZIP_SYMBOLS) {
 assert.ok(PRINZIP_FAMILIES.every((f) => f.variants.every((v) => SYMBOL_BY_NAME[v])), "Palette zeigt nur vorhandene Symbole");
 for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS", "PZ_SICH", "PZ_ZAEHLER", "PZ_RSE", "PZ_WANDLER", "PZ_GERAET", "PZ_WR", "PZ_GR", "PZ_HAK"]) assert.ok(SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: leeres BMK-Feld für später`);
 assert.ok(PRINZIP_FAMILIES.some((f) => f.def === "PZ_WANDLER") && SYMBOL_BY_NAME.PZ_WANDLER.pins.length === 3, "Stromwandler in der Palette, drei Anschlüsse (CJ 23.10.)");
+// Schritt 6.5 (CJ 23.10.2026): Geräte nur im Prinzipschema, mit BMK und in der Palette; Motorschutz als Abgang, Verteilgeräte mit Polzahl
+for (const n of ["PZ_MSS", "PZ_MSS_M", "PZ_LTR", "PZ_LTS", "PZ_TRS", "PZ_TRENN", "PZ_LSCH", "PZ_SICH_M"]) assert.ok(PRINZIP_FAMILIES.some((f) => f.def === n) && SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: in der Palette mit BMK`);
+assert.ok(["PZ_MSS", "PZ_MSS_M"].every((n) => PZ_ABGANG.includes(n)) && ["PZ_LTR", "PZ_LTS", "PZ_TRS", "PZ_TRENN", "PZ_LSCH"].every((n) => PZ_POL.includes(n) && SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "POL")), "Polzahl-Tasten für Motorschutz und Verteilgeräte");
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITER_3.prims.length, 4, "Leitungsangabe: Leitung und drei Striche");
 assert.ok(["PZ_PA_D", "PZ_ERDE_ANS", "PZ_ERDE_KK", "PZ_SCHUTZERDE", "PZ_ERDBAND"].every((n) => PRINZIP_FAMILIES.some((f) => f.def === n)), "Erdungszeichen in der Palette (CJ 22.10.)");
 // Abgangsgeräte: drei Zeilen oberhalb, BMK zuoberst, dann Bezeichnung, dann Polzahl (CJ 21.10.2026)

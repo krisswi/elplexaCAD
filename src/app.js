@@ -39,7 +39,7 @@ import { makePdf } from "./pdfout.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
 import { fetchGwr, searchAdr, adrText } from "./gwr.js";
 import * as PZ from "./prinzip.js";
-import { PRINZIP_GROUPS, PRINZIP_FAMILIES, PZ_ABGANG, polNext, sichName } from "./prinzipsym.js";
+import { PRINZIP_GROUPS, PRINZIP_FAMILIES, PZ_ABGANG, PZ_POL, polNext, sichName } from "./prinzipsym.js";
 
 
 const $ = (s) => document.querySelector(s);
@@ -53,6 +53,8 @@ const TERMINALS = "TERMINALS"; // Platzhalter für „Klemmenleiste setzen“
 const CTRL = "CTRL"; // Platzhalter für „Steuerung (Kasten) setzen“ (steuerung.js)
 const familyOf = (name) => [...FAMILIES, ...PRINZIP_FAMILIES].find((f) => f.variants.includes(name)); // mit Prinzipschema (Anzahl Striche)
 const isSich = (name) => SYMBOL_BY_NAME[name]?.family === "PZ_SICH"; // Prinzipschema-Sicherung, Polzahl über Varianten
+// Polzahl beim Setzen: zuletzt mit den Tasten gewählte je Symbol, sonst die Vorgabe des Symbols (LS LN, Motorschutz und Verteilung 3L)
+const pzPolOf = (name) => S.pzPol?.[name] ?? SYMBOL_BY_NAME[name].attrs.find((a) => a.tag === "POL").def;
 
 const TOOLS = [
   { id: "select", label: "Auswählen", key: "V", icon: "select" },
@@ -357,7 +359,7 @@ function hintText() {
   if (S.tool === "place" && templateOf(S.placeSym)) return `Abgang ${templateOf(S.placeSym).label}: Klicken in eine freie Spalte setzt Geräte, Leitungen zu den Hauptlinien und Klemmen mit Kabel. Esc beendet.`;
   if (S.tool === "place" && S.placeSym === CTRL) return "Steuerung: Klicken setzt die linke obere Ecke. Klemmen oben und unten rechts frei eintragen, Leitungen rasten an den Klemmen ein. Esc beendet.";
   if (S.tool === "place" && isPrinzip() && isSich(S.placeSym)) return `Sicherung: Klicken setzt das Symbol, R dreht, 1 bis 3 = Striche für L, 2L, 3L, N Strich mit Punkt (jetzt ${SYMBOL_BY_NAME[S.placeSym].attrs.find((a) => a.tag === "POL").def || "ohne"}), Esc beendet.`;
-  if (S.tool === "place" && isPrinzip() && PZ_ABGANG.includes(S.placeSym)) return `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht, 1 bis 3 = L, 2L, 3L, N mit/ohne Neutralleiter (jetzt ${S.pzPol || "LN"}), Esc beendet.`;
+  if (S.tool === "place" && isPrinzip() && PZ_POL.includes(S.placeSym)) return `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht, 1 bis 3 = L, 2L, 3L, N mit/ohne Neutralleiter (jetzt ${pzPolOf(S.placeSym)}), Esc beendet.`;
   if (S.tool === "place") return S.placeSym === TERMINALS ? "Klemmenleiste: Klicken setzt die obere Kante auf die gewählte Stelle, die Klemmen hängen darunter. Esc beendet." : `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht${familyOf(S.placeSym)?.variants.length > 1 ? (familyOf(S.placeSym).id === "ZAEHLER" ? ", 1 bis 8 Anschlüsse" : `, 1 bis 4 Polzahl, N Neutralleiter${hasTrenner(S.placeSym) ? ", T N-Trenner" : ""}`) : ""}, Esc beendet. Der Fang rastet auf Feldmitten ein, Alt schaltet ihn aus.${isDevice(SYMBOL_BY_NAME[S.placeSym]) ? " Alt+V verdrahtet das zuletzt gesetzte Gerät." : ""}`;
   if (S.tool === "wire") return S.wireDraft ? "Klicken setzt einen Punkt. Nochmals auf den letzten Punkt klicken oder Eingabetaste beendet. Shift wechselt die Knickrichtung." : S.bundleN > 1 ? `Klicken startet ${S.bundleN} parallele Leiter. Der erste liegt auf dem Klickpunkt, die weiteren rechts oder darunter.` : "Klicken startet eine Leitung. Anschlusspunkte der Symbole rasten ein.";
   if (S.tool === "text") return `Klicken setzt einen Text, die Eingabetaste bestätigt. R dreht (jetzt ${S.textR || 0}°), Ausrichtung rechts.`;
@@ -1128,7 +1130,7 @@ function addSymbol(name, x, y, rot) {
   if (same) { S.sel = new Set([same.id]); renderRight(); renderOverlay(); return; } // gleiches Symbol am gleichen Ort (z. B. Doppelklick): nicht doppelt setzen
   change(() => {
     const dev = { id: nextId(), type: "symbol", sym: name, x, y, rot, attrs: Object.fromEntries(sym.attrs.map((a) => [a.tag, a.def])) };
-    if (isPrinzip() && S.pzPol && PZ_ABGANG.includes(name)) dev.attrs.POL = S.pzPol; // zuletzt mit 1–3/N gewählte Polzahl (Sicherung: Variante)
+    if (isPrinzip() && PZ_POL.includes(name)) dev.attrs.POL = pzPolOf(name); // zuletzt mit 1–3/N gewählte Polzahl je Symbol (Sicherung: Variante)
     S.model.items.push(dev);
     if (isDevice(sym) && !columnHasTerminals(S.model.items, dev)) S.model.items.push(deviceTerminals(dev, S.model.items, nextId));
     placed = dev;
@@ -1583,13 +1585,13 @@ function pzPolKey(key) {
   if (S.tool === "select") {
     const fs = selectedItems().filter((i) => i.type === "symbol" && isSich(i.sym));
     if (fs.length) change(() => { for (const it of fs) { it.attrs.POL = polNext(it.attrs.POL, key); it.sym = sichName(it.attrs.POL); } });
-    if (fs.length && !selectedItems().some((i) => i.type === "symbol" && PZ_ABGANG.includes(i.sym))) return true;
+    if (fs.length && !selectedItems().some((i) => i.type === "symbol" && PZ_POL.includes(i.sym))) return true;
   }
   if (S.tool === "place") {
-    if (!PZ_ABGANG.includes(S.placeSym)) return false;
-    S.pzPol = polNext(S.pzPol, key); renderRight(); updateHint(); return true;
+    if (!PZ_POL.includes(S.placeSym)) return false;
+    (S.pzPol ||= {})[S.placeSym] = polNext(pzPolOf(S.placeSym), key); renderRight(); updateHint(); return true;
   }
-  const sel = selectedItems().filter((i) => i.type === "symbol" && PZ_ABGANG.includes(i.sym));
+  const sel = selectedItems().filter((i) => i.type === "symbol" && PZ_POL.includes(i.sym));
   if (S.tool !== "select" || !sel.length) return false;
   change(() => { for (const it of sel) it.attrs.POL = polNext(it.attrs.POL, key); });
   return true;

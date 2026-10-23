@@ -28,7 +28,21 @@ const ls = sym("PZ_LS", "Leitungsschutzschalter (LS)", [...pole(10), ...bimetall
 const fi = sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [...pole(10), ...pfeil(0.65, true)], H(10), top3("FI 40A 30mA"));
 const fils = sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [...pole(17.5), ...bimetall(), ...pfeil(0.25, true)], H(17.5), top3("FI/LS B13A 30mA"));
 // Sicherung (z. B. DII): senkrecht, Rechteck mit durchgehendem Leiter
-const sich = sym("PZ_SICH", "Sicherung (Schmelzsicherung)", [line(0, 0, 0, -12.5), ...rect(-1.5, -2.5, 1.5, -10)], [{ x: 0, y: 0 }, { x: 0, y: -12.5 }], [attr("TEXT", "Bezeichnung", "DII 25 A", 3, -7), bmk(3, -3.5)]);
+// Polzahl als waagrechte Striche im Rechteck wie in der Symbolzusammenfassung (CJ 23.10.2026): 1–3 Striche = Aussenleiter, N = Strich mit Punkt.
+// Eine Variante je Polzahl, Tasten 1–3 und N wechseln sie (sichName). PZ_SICH ohne Striche bleibt für alte Pläne.
+// Beschriftung rechts daneben: BMK, Bezeichnung, Polzahl untereinander.
+const SICH_PINS = [{ x: 0, y: 0 }, { x: 0, y: -12.5 }];
+const sichAttrs = (pol) => [bmk(3, -4), attr("TEXT", "Bezeichnung", "DII 25 A", 3, -7), attr("POL", "Polzahl (Tasten 1–3 und N)", pol, 3, -10)];
+const sich = { ...sym("PZ_SICH", "Sicherung (Schmelzsicherung)", [line(0, 0, 0, -12.5), ...rect(-1.5, -2.5, 1.5, -10)], SICH_PINS, sichAttrs("")), family: "PZ_SICH" };
+const SICH_POL = ["L", "LN", "2L", "2LN", "3L", "3LN"];
+export const sichName = (pol) => `PZ_SICH_${pol.replace("L", "") || "1"}`.replace(/_N$/, "_1N");
+function sichPol(pol) {
+  // feste Plätze 1 mm auseinander (CJ 23.10.2026): L1, L2, L3 von oben, N immer zuunterst, auch wenn L2/L3 fehlen
+  const k = Number(pol[0]) || 1, n = pol.endsWith("N"), y = [-4.75, -5.75, -6.75], yN = -7.75;
+  const st = y.slice(0, k).map((v) => line(-1.5, v, 1.5, v));
+  if (n) st.push(line(-1.5, yN, 1.5, yN), { t: "c", cx: 0, cy: yN, r: 0.4, f: true });
+  return { ...sym(sichName(pol), `Sicherung ${pol}`, [line(0, 0, 0, -12.5), ...rect(-1.5, -2.5, 1.5, -10), ...st], SICH_PINS, sichAttrs(pol)), family: "PZ_SICH" };
+}
 
 // Leitungsangabe: Stück Leitung mit Strichen (Anzahl Leiter), darüber Kabel und Querschnitt. Auf eine Leitung legen oder einfügen.
 const STRICH = ["", "1 Strich", "2 Striche", "3 Striche", "4 Striche", "5 Striche"];
@@ -76,7 +90,7 @@ const erdKk = sym("PZ_ERDE_KK", "Erdungs-Klemmkasten", [...rect(-4, -3.5, 4, 0),
 const schutzerde = sym("PZ_SCHUTZERDE", "Schutzerde", [circle(0, -4, 3.5), line(0, 0, 0, -4.5), line(-1.75, -4.5, 1.75, -4.5), line(-1.25, -5.25, 1.25, -5.25), line(-0.5, -6, 0.5, -6)], [{ x: 0, y: 0 }], [attr("TEXT", "Text", "", 5, -4)]);
 const erdband = sym("PZ_ERDBAND", "Erdband", [{ ...line(0, 0, 10, 0), d: true }], H(10), [attr("TEXT", "Text", "Fe 30/3", 1.5, 1)]);
 
-export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
+export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...SICH_POL.map(sichPol), ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
 
 // Palette des Prinzipschemas, gruppiert. Gleiche Form wie FAMILIES in symbols.js (Varianten: Anzahl Striche).
 export const PRINZIP_GROUPS = [
@@ -90,7 +104,7 @@ export const PRINZIP_GROUPS = [
   ["Verteilung", [
     { id: "PZ_ZAEHLER", label: "Zähler (kWh)", sub: "mit Kopfband, z. B. 3x400/230", def: "PZ_ZAEHLER", variants: ["PZ_ZAEHLER"] },
     { id: "PZ_RSE", label: "Rundsteuerempfänger", sub: "RSE", def: "PZ_RSE", variants: ["PZ_RSE"] },
-    { id: "PZ_SICH", label: "Sicherung", sub: "z. B. DII 25 A", def: "PZ_SICH", variants: ["PZ_SICH"] },
+    { id: "PZ_SICH", label: "Sicherung", sub: "z. B. DII 25 A, Tasten 1–3 und N", def: "PZ_SICH_3", variants: ["PZ_SICH", ...SICH_POL.map(sichName)], keys: true }, // ein Feld, Polzahl über Tasten
     { id: "PZ_KLEMME", label: "Klemme plombierbar", sub: "Abzweig, vier Anschlüsse", def: "PZ_KLEMME", variants: ["PZ_KLEMME"] },
     { id: "PZ_GERAET", label: "Gerät mit Text", sub: "z. B. Schütz S, Smart Meter", def: "PZ_GERAET", variants: ["PZ_GERAET"] },
     { id: "PZ_WR", label: "Wechselrichter", sub: "Gleichstrom zu Wechselstrom, z. B. PV", def: "PZ_WR", variants: ["PZ_WR"] },

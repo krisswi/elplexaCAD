@@ -96,6 +96,13 @@ with sync_playwright() as p:
     f2 = [i for i in M()["items"] if i.get("sym") == "PZ_FILS" and i["y"] == 120]
     check("Beim Setzen: 3 und N → 3L", len(f2) == 1 and f2[0]["attrs"]["POL"] == "3L", f2)
     key("Escape")
+    # Sicherung: Tasten wechseln die Variante (Striche), Polzahl geht mit (CJ 23.10.2026)
+    page.click('[data-sym="PZ_SICH_3"]'); key("2"); key("n"); click(150, 175); key("Escape"); key("v")
+    sh = [i for i in M()["items"] if i.get("sym", "").startswith("PZ_SICH")]
+    check("Sicherung setzen: 2 und N → PZ_SICH_2N, Polzahl 2LN", len(sh) == 1 and sh[0]["sym"] == "PZ_SICH_2N" and sh[0]["attrs"]["POL"] == "2LN", sh)
+    click(150, 168); key("1"); sh = [i for i in M()["items"] if i.get("sym", "").startswith("PZ_SICH")]
+    check("Sicherung gewählt: Taste 1 → PZ_SICH_1N, Polzahl LN", sh[0]["sym"] == "PZ_SICH_1N" and sh[0]["attrs"]["POL"] == "LN", sh)
+    key("Escape")
 
     # ---------- Druck: Papier und Plankopf wie PV ----------
     page.click("#btn-pvdruck"); page.wait_for_timeout(200)

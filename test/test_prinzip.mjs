@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { newDoc, newSheet, parseModel, serializeModel, modOf, modName, VERSION } from "../src/model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, bmkLetter } from "../src/symbols.js";
-import { polNext, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
+import { polNext, sichName, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
 import { exportDxf } from "../src/dxf.js";
 import { renumberAll } from "../src/numbering.js";
 import { partsList, fuseLegend } from "../src/auswertung.js";
@@ -29,6 +29,15 @@ for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS"]) {
 }
 assert.deepStrictEqual(["1", "2", "3", "n"].map((k) => polNext("LN", k)), ["LN", "2LN", "3LN", "L"], "Polzahl: Tasten 1–3 und N");
 assert.strictEqual(polNext("3L", "n"), "3LN"); assert.strictEqual(polNext("", "2"), "2LN");
+// Sicherung (CJ 23.10.2026): Striche im Rechteck je Polzahl, N = Strich mit Punkt, Anschlüsse wie PZ_SICH
+assert.deepStrictEqual(["L", "LN", "2L", "2LN", "3L", "3LN"].map(sichName), ["PZ_SICH_1", "PZ_SICH_1N", "PZ_SICH_2", "PZ_SICH_2N", "PZ_SICH_3", "PZ_SICH_3N"]);
+for (const [n, m, dot] of [["PZ_SICH_1", 1, 0], ["PZ_SICH_3", 3, 0], ["PZ_SICH_3N", 4, 1], ["PZ_SICH_1N", 2, 1]]) {
+  const s = SYMBOL_BY_NAME[n], st = s.prims.filter((p) => p.t === "l" && p.y1 === p.y2 && p.x1 === -1.5 && p.y1 < -2.5 && p.y1 > -10);
+  assert.ok(st.length === m && s.prims.filter((p) => p.t === "c" && p.f).length === dot, `${n}: ${m} Striche, ${dot} Punkt`);
+  assert.deepStrictEqual(s.pins, SYMBOL_BY_NAME.PZ_SICH.pins, `${n}: Anschlüsse wie PZ_SICH`);
+}
+const nY = (n) => SYMBOL_BY_NAME[n].prims.find((p) => p.t === "c" && p.f).cy, lY = (n) => SYMBOL_BY_NAME[n].prims.filter((p) => p.t === "l" && p.y1 === p.y2 && p.x1 === -1.5 && p.y1 < -2.5 && p.y1 > -10).map((p) => p.y1);
+assert.ok(nY("PZ_SICH_1N") === nY("PZ_SICH_3N") && lY("PZ_SICH_1N")[0] === lY("PZ_SICH_3")[0], "Sicherung: L1 und N immer am gleichen Platz (CJ 23.10.)");
 console.log("ok Symbole");
 
 // ---------- Datenmodell: Blatt prinzip, Papier, Modul, Rundlauf, Version 19 ----------

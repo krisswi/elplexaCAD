@@ -12,14 +12,21 @@ const bmk = (x, y) => attr("BMK", "Betriebsmittelkennzeichen", "", x, y);
 const sym = (name, label, prims, pins, attrs) => ({ name, family: name.replace(/_\d$/, ""), poles: 1, label, layer: "SCH_SYMBOLE", prims, pins, attrs });
 const H = (x) => [{ x: 0, y: 0 }, { x, y: 0 }]; // Anschlüsse waagrecht, links und rechts
 
-// Schaltstück offen: Leiter, Schwenkpunkt bei x0, Festkontakt mit Querstrich bei x1, Kreuz = Leitungsschutz
-// Beschriftung der Abgangsgeräte (CJ 21.10.2026): immer drei Zeilen oberhalb, zuoberst BMK, darunter Bezeichnung, unten Polzahl (LN, 3LN)
-const top3 = (def) => [bmk(-1, 9.5), attr("TEXT", "Bezeichnung", def, -1, 6.5), attr("POL", "Polzahl (Tasten 1–3 und N)", "LN", -1, 3.5)]; // eng am Gerät (CJ 21.10.)
-const blade = (x0, x1, cross) => [line(x0, 0, x1, 2.5), line(x1, -0.8, x1, 0.8), ...(cross ? [line(x1 + 0.6, 1.2, x1 + 1.8, 2.4), line(x1 + 1.8, 1.2, x1 + 0.6, 2.4)] : [])];
-const ls = sym("PZ_LS", "Leitungsschutzschalter (LS)", [line(0, 0, 2.5, 0), ...blade(2.5, 7.5, true), line(7.5, 0, 10, 0)], H(10), top3("LS C 13A"));
-const fi = sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [line(0, 0, 1.5, 0), ...rect(1.5, -2.5, 8.5, 2.5), text(5, 0, 2.5, "FI"), line(8.5, 0, 10, 0)], H(10), top3("FI 40A 30mA"));
-const fils = sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [line(0, 0, 1.5, 0), ...rect(1.5, -2.5, 16, 2.5), line(7, -2.5, 7, 2.5), text(4.25, 0, 2.2, "FI"), line(7, 0, 8.5, 0), line(8.5, 0, 12.5, 2), line(12.5, -0.8, 12.5, 0.8), line(13.1, 0.6, 14.1, 1.6), line(14.1, 0.6, 13.1, 1.6), line(12.5, 0, 17.5, 0)], H(17.5),
-  top3("FI/LS B13A 30mA"));
+// LS, FI, FI/LS nach der Symbolzusammenfassung S. 31 (CJ 23.10.2026): einpolig, um 90° gedreht (Einspeisung links), Auslöser oben.
+// Schaltstück vom Schwenkpunkt (1,5|0) schräg nach (8,5|3,5), Gegenkontakt ohne Querstrich ab x 8. Auslöser senkrecht zum Schaltstück:
+// u = Anteil entlang, v = Anteil quer (nach oben links), beides in Längen des Schaltstücks. Anschlüsse wie bisher (FI/LS bis 17,5).
+// Beschriftung: BMK, Bezeichnung, Polzahl übereinander rechts über dem Schaltstück, damit der Auslöser frei bleibt.
+const top3 = (def) => [bmk(9, 10.5), attr("TEXT", "Bezeichnung", def, 9, 7.5), attr("POL", "Polzahl (Tasten 1–3 und N)", "LN", 9, 4.5)];
+const bp = (u, v) => [Math.round((1.5 + 7 * u - 3.5 * v) * 1000) / 1000, Math.round((3.5 * u + 7 * v) * 1000) / 1000];
+const bl = (a, b) => line(...bp(...a), ...bp(...b));
+const pole = (x2) => [line(0, 0, 1.5, 0), line(1.5, 0, 8.5, 3.5), line(8, 0, x2, 0)];
+const bimetall = () => [[0.57, 0], [0.57, 0.3], [0.86, 0.3], [0.86, 0.55], [0.56, 0.55], [0.56, 0.85]].slice(1).map((p, i, a) => bl(i ? a[i - 1] : [0.57, 0], p));
+// Pfeil vom Schaltstück weg, Spitze gefüllt; mit Fehlerstromauslöser dahinter Querstrich und Leitung
+const pfeil = (u, rcd) => [bl([u, 0], [u, 0.81]), bl([u, 0.81], [u - 0.09, 0.59]), bl([u, 0.81], [u + 0.09, 0.59]), bl([u - 0.09, 0.59], [u + 0.09, 0.59]),
+  bl([u - 0.045, 0.59], [u, 0.81]), bl([u + 0.045, 0.59], [u, 0.81]), ...(rcd ? [bl([u - 0.14, 0.94], [u + 0.14, 0.94]), bl([u, 0.94], [u, 1.2])] : [])];
+const ls = sym("PZ_LS", "Leitungsschutzschalter (LS)", [...pole(10), ...bimetall(), ...pfeil(0.25, false)], H(10), top3("LS C 13A"));
+const fi = sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [...pole(10), ...pfeil(0.65, true)], H(10), top3("FI 40A 30mA"));
+const fils = sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [...pole(17.5), ...bimetall(), ...pfeil(0.25, true)], H(17.5), top3("FI/LS B13A 30mA"));
 // Sicherung (z. B. DII): senkrecht, Rechteck mit durchgehendem Leiter
 const sich = sym("PZ_SICH", "Sicherung (Schmelzsicherung)", [line(0, 0, 0, -12.5), ...rect(-1.5, -2.5, 1.5, -10)], [{ x: 0, y: 0 }, { x: 0, y: -12.5 }], [attr("TEXT", "Bezeichnung", "DII 25 A", 3, -7), bmk(3, -3.5)]);
 

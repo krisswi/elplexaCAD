@@ -61,6 +61,10 @@ const BOX = [...rect(-7.5, -20, 7.5, 0), line(-7.5, -5, 7.5, -5)], BOX_PINS = [{
 const zaehler = sym("PZ_ZAEHLER", "Zähler (kWh)", [...BOX, text(0, -12.5, 3, "kWh")], BOX_PINS, [attr("TEXT", "Kopfband", "3x400/230", -6.5, -3.2, 1.8), bmk(9.5, -3)]);
 const rse = sym("PZ_RSE", "Rundsteuerempfänger (RSE)", [...BOX, text(0, -12.5, 3, "RSE")], BOX_PINS, [attr("TEXT", "Kopfband", "", -6.5, -3.2, 1.8), bmk(9.5, -3)]);
 // Gerät mit eigenem Text (z. B. Schütz S, Smart Meter, Schaltuhr): Kasten 10 × 10 mm
+// Stromwandler für die Wandlermessung nach der Symbolzusammenfassung S. 15 (CJ 23.10.2026): Leiter senkrecht durch den Kreis,
+// Messleitung rechts ohne Leiterstriche. Anschlüsse oben, unten und am Ende der Messleitung.
+const wandler = sym("PZ_WANDLER", "Stromwandler", [line(0, 0, 0, -15), circle(0, -7.5, 2.5), line(2.5, -7.5, 10, -7.5)], [{ x: 0, y: 0 }, { x: 0, y: -15 }, { x: 10, y: -7.5 }],
+  [bmk(3.5, -3.5), attr("TEXT", "Bezeichnung", "150/5A", 3.5, -6.5)]);
 const geraet = sym("PZ_GERAET", "Gerät mit Text", rect(-5, -10, 5, 0), [{ x: 0, y: 0 }, { x: 0, y: -10 }, { x: -5, y: -5 }, { x: 5, y: -5 }], [attr("TEXT", "Text im Kasten", "S", -3.5, -6), bmk(7, -3)]);
 // Wechselrichter und Gleichrichter (CJ 22.10.2026): Kasten 10 × 10 mm mit Diagonale von unten links nach oben rechts,
 // Gleichstrom = Strich über gestricheltem Strich, Wechselstrom = Sinus aus kurzen Linien. Wechselrichter: = oben links, ~ unten rechts; Gleichrichter umgekehrt.
@@ -90,7 +94,7 @@ const erdKk = sym("PZ_ERDE_KK", "Erdungs-Klemmkasten", [...rect(-4, -3.5, 4, 0),
 const schutzerde = sym("PZ_SCHUTZERDE", "Schutzerde", [circle(0, -4, 3.5), line(0, 0, 0, -4.5), line(-1.75, -4.5, 1.75, -4.5), line(-1.25, -5.25, 1.25, -5.25), line(-0.5, -6, 0.5, -6)], [{ x: 0, y: 0 }], [attr("TEXT", "Text", "", 5, -4)]);
 const erdband = sym("PZ_ERDBAND", "Erdband", [{ ...line(0, 0, 10, 0), d: true }], H(10), [attr("TEXT", "Text", "Fe 30/3", 1.5, 1)]);
 
-export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...SICH_POL.map(sichPol), ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
+export const PRINZIP_SYMBOLS = [ls, fi, fils, sich, ...SICH_POL.map(sichPol), ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, wandler, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
 
 // Palette des Prinzipschemas, gruppiert. Gleiche Form wie FAMILIES in symbols.js (Varianten: Anzahl Striche).
 export const PRINZIP_GROUPS = [
@@ -103,6 +107,7 @@ export const PRINZIP_GROUPS = [
   ]],
   ["Verteilung", [
     { id: "PZ_ZAEHLER", label: "Zähler (kWh)", sub: "mit Kopfband, z. B. 3x400/230", def: "PZ_ZAEHLER", variants: ["PZ_ZAEHLER"] },
+    { id: "PZ_WANDLER", label: "Stromwandler", sub: "Wandlermessung, z. B. 150/5A", def: "PZ_WANDLER", variants: ["PZ_WANDLER"] },
     { id: "PZ_RSE", label: "Rundsteuerempfänger", sub: "RSE", def: "PZ_RSE", variants: ["PZ_RSE"] },
     { id: "PZ_SICH", label: "Sicherung", sub: "z. B. DII 25 A, Tasten 1–3 und N", def: "PZ_SICH_3", variants: ["PZ_SICH", ...SICH_POL.map(sichName)], keys: true }, // ein Feld, Polzahl über Tasten
     { id: "PZ_KLEMME", label: "Klemme plombierbar", sub: "Abzweig, vier Anschlüsse", def: "PZ_KLEMME", variants: ["PZ_KLEMME"] },

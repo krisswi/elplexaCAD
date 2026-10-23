@@ -19,7 +19,8 @@ for (const s of PRINZIP_SYMBOLS) {
   assert.ok(!FAMILIES.some((f) => f.variants.includes(s.name)), `${s.name}: nicht in der Schema-Palette`);
 }
 assert.ok(PRINZIP_FAMILIES.every((f) => f.variants.every((v) => SYMBOL_BY_NAME[v])), "Palette zeigt nur vorhandene Symbole");
-for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS", "PZ_SICH", "PZ_ZAEHLER", "PZ_RSE", "PZ_GERAET", "PZ_WR", "PZ_GR", "PZ_HAK"]) assert.ok(SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: leeres BMK-Feld für später`);
+for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS", "PZ_SICH", "PZ_ZAEHLER", "PZ_RSE", "PZ_WANDLER", "PZ_GERAET", "PZ_WR", "PZ_GR", "PZ_HAK"]) assert.ok(SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: leeres BMK-Feld für später`);
+assert.ok(PRINZIP_FAMILIES.some((f) => f.def === "PZ_WANDLER") && SYMBOL_BY_NAME.PZ_WANDLER.pins.length === 3, "Stromwandler in der Palette, drei Anschlüsse (CJ 23.10.)");
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITER_3.prims.length, 4, "Leitungsangabe: Leitung und drei Striche");
 assert.ok(["PZ_PA_D", "PZ_ERDE_ANS", "PZ_ERDE_KK", "PZ_SCHUTZERDE", "PZ_ERDBAND"].every((n) => PRINZIP_FAMILIES.some((f) => f.def === n)), "Erdungszeichen in der Palette (CJ 22.10.)");
 // Abgangsgeräte: drei Zeilen oberhalb, BMK zuoberst, dann Bezeichnung, dann Polzahl (CJ 21.10.2026)

@@ -14,6 +14,13 @@ export const MODULES = [
   // Legende (CJ 21.10.2026): eigenes Modul, entsteht mit dem Schema, nicht anlegen, kopieren oder löschen; im PDF nur beim Gesamt-PDF aller Blätter
   { id: "legende", label: "Legende", sub: "Sicherungslegende aus den Schemablättern", color: "#5b6b7c", auto: true },
 ];
+// Plan (CJ 23.10.2026): im elplexa-Bau fertig, hinter dem Prinzipschema (Taste 4 bleibt Prinzipschema, Plan = 5). Die Liste oben bleibt für das
+// Startfenster von SchemaCAD v3 unverändert.
+if (typeof ELPLEXA !== "undefined" && ELPLEXA) {
+  const pl = MODULES.splice(MODULES.findIndex((m) => m.id === "plan"), 1)[0];
+  delete pl.later; pl.sub = "Elektroplan auf dem Grundriss";
+  MODULES.splice(MODULES.findIndex((m) => m.id === "prinzip") + 1, 0, pl);
+}
 // Module mehrfach (CJ 18.10.2026): Kennung „schema“, „pv:2“ … (model.js modOf), Art = Teil vor dem Doppelpunkt
 export const baseOf = (id) => String(id).split(":")[0];
 export const modById = (id) => MODULES.find((m) => m.id === baseOf(id)); // als Funktion: im SchemaCAD-Bau fällt alles weg
@@ -133,7 +140,7 @@ export function hubHTML(doc, o) {
     ${ro ? sharedHTML(o.shared) : o.projs?.user ? `<section class="el-projs" aria-label="Online"><div id="el-online" class="el-online"></div></section>` : ""}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
       ${ro || typeof ELPLEXA === "undefined" || !ELPLEXA ? "" : `<button class="el-tile el-hand" id="el-hand" data-elact="hand" title="Handschrift mit dem Apple Pencil. Privat auf diesem Gerät, nicht im Projekt und nicht im Teilen-Link"><span class="el-th"><span class="el-tn">Handnotizen</span></span><span class="el-ts">Mit dem Stift schreiben · PDF und Bilder importieren und exportieren</span></button>`}
-      ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">Schema, Disposition, PV, Prinzipschema · Plan später</span></button>`}</div>
+      ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">${typeof ELPLEXA !== "undefined" && ELPLEXA ? "Schema, Disposition, PV, Prinzipschema, Plan" : "Schema, Disposition, PV, Prinzipschema · Plan später"}</span></button>`}</div>
       ${ro || o.tip === false ? `<p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p>` : ""}</section>
     ${ro ? "" : timeHTML(doc, o.today)}</div></div>${tip}`;
 }

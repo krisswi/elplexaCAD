@@ -60,10 +60,11 @@ with sync_playwright() as p:
     check("… mit Meldung und ohne neues Blatt", "noch nicht" in page.inner_text("body") and len(D()["sheets"]) == n0 and mods(D()) == ["pv"])
     page.screenshot(path=str(OUT / "e2_hub_pv.png"))
 
-    # + Modul: Plan ausgegraut (Prinzipschema seit 21.10.2026 wählbar), Schema anlegen
+    # + Modul: alle wählbar (Prinzipschema seit 21.10.2026, Plan seit 23.10.2026), Plan nach dem Prinzipschema, Schema anlegen
     page.click("#el-addmod"); page.wait_for_timeout(150)
     dis = page.evaluate("Object.fromEntries([...document.querySelectorAll('#el-addmenu [data-elnew]')].map((b) => [b.dataset.elnew, b.disabled]))")
-    check("+ Modul: Plan ausgegraut, Prinzipschema wählbar, weiteres PV möglich (Module mehrfach)", dis.get("plan") and not dis.get("prinzip") and not dis.get("pv") and not dis.get("schema") and not dis.get("dispo"), dis)
+    order = page.evaluate("[...document.querySelectorAll('#el-addmenu [data-elnew]')].map((b) => b.dataset.elnew)")
+    check("+ Modul: Plan und Prinzipschema wählbar, weiteres PV möglich (Module mehrfach)", not any(dis.get(k) for k in ["plan", "prinzip", "pv", "schema", "dispo"]) and order.index("plan") == order.index("prinzip") + 1, [dis, order])
     page.screenshot(path=str(OUT / "e3_addmod.png"))
     page.click('#el-addmenu [data-elnew="schema"]'); page.wait_for_timeout(200)
     d = D()

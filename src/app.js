@@ -23,6 +23,8 @@ import { makeFiles } from "./files.js";
 import { openSearch } from "./suchen.js";
 import { listsCsv } from "./auswertung.js";
 import { makePv } from "./pvedit.js";
+import { makePlan } from "./planedit.js";
+import { newPlanSheet } from "./plan.js";
 import { makeDispo } from "./dispoedit.js";
 import { toast, openModal, confirmDialog, formDialog, chooseDialog, makeMenu } from "./dialogs.js";
 import { fieldHTML, actions, head, dupDel, textPanelHTML, turnHTML } from "./panel.js";
@@ -105,6 +107,10 @@ const PV = makePv({ S, $, TOOLS, toast, change, openModal, chooseDialog, formDia
 const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp: dispoApplyDp, setTfAll, cabAct: dispoCabAct, cornerKey: dispoCornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
   makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, snapBase, change, moveItem, setTool, afterSheetChange, sheetLabel, nextSheetNo, makeSheet, blattHTML });
 
+const isPlan = () => S.model.kind === "plan"; // Plan (planedit.js, nur elplexaCAD, CJ 23.10.2026): immer als ELPLEXA && isPlan(), fällt im v3-Bau weg
+// Plan (nur elplexaCAD): eigene Bedienung, app.js leitet Zeiger, Tasten und Leisten weiter
+const PL = ELPLEXA ? makePlan({ S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, renderSheet, updateHint, fitView, pushUndo, snapshot, markDirty, nextId, formDialog, confirmDialog, sheetLabel, workCount: () => workCount(),
+  leftEl, rightEl, popEl: $("#pv-pop"), hidePop: () => pvPop?.hide(false), viewBox: () => { const r = stage.getBoundingClientRect(), a = toWorld(0, r.height), b = toWorld(r.width, 0); return { x0: a.x, y0: a.y, x1: b.x, y1: b.y }; } }) : null;
 function toWorld(sx, sy) { return { x: (sx - S.view.x) / S.view.z, y: H - (sy - S.view.y) / S.view.z }; }
 function toScreen(x, y) { return { x: S.view.x + x * S.view.z, y: S.view.y + (H - y) * S.view.z }; }
 function pointerPos(e) { const r = svg.getBoundingClientRect(); return { sx: e.clientX - r.left, sy: e.clientY - r.top }; }
@@ -209,6 +215,7 @@ function applyView() {
 }
 // Sichtbarer Bereich: beim Schema das Blatt, bei der Disposition der Inhalt mit Rand
 function viewBounds() {
+  if (ELPLEXA && isPlan()) return PL.bounds();
   if (isPv()) return PV.bounds();
   if (S.model.kind === "legend") return L.bounds(S.doc);
   if (isDeck()) return T.deckBounds(S.doc, S.model);
@@ -221,13 +228,13 @@ function viewBounds() {
 }
 function fitView() {
   const r = stage.getBoundingClientRect(), b = viewBounds(), bw = b.x1 - b.x0, bh = b.y1 - b.y0;
-  const z = Math.max(isPv() ? 0.002 : isDispo() ? 0.02 : 0.5, Math.min((r.width - 60) / bw, (r.height - 60) / bh));
+  const z = Math.max(isPv() || ELPLEXA && isPlan() ? 0.002 : isDispo() ? 0.02 : 0.5, Math.min((r.width - 60) / bw, (r.height - 60) / bh));
   S.view = { z, x: (r.width - bw * z) / 2 - b.x0 * z, y: (r.height - bh * z) / 2 - (H - b.y1) * z };
   applyView(); renderSheet();
 }
 function zoomAt(sx, sy, factor) {
   const w = toWorld(sx, sy);
-  const z = Math.max(isPv() ? 0.002 : isDispo() ? 0.02 : 0.6, Math.min(60, S.view.z * factor));
+  const z = Math.max(isPv() || ELPLEXA && isPlan() ? 0.002 : isDispo() ? 0.02 : 0.6, Math.min(60, S.view.z * factor));
   S.view = { z, x: sx - w.x * z, y: sy - (H - w.y) * z };
   applyView(); renderSheet(); renderOverlay();
 }
@@ -236,11 +243,11 @@ function zoomAt(sx, sy, factor) {
 function renderSheet() {
   const pat = $("#gridpat");
   pat.setAttribute("width", S.grid.size); pat.setAttribute("height", S.grid.size);
-  pat.querySelector("circle").setAttribute("r", isDispo() || isPv() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
-  gSheet.innerHTML = S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : isPrinzip() ? PZ.sheetSVG(S.model, S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
+  pat.querySelector("circle").setAttribute("r", isDispo() || isPv() || ELPLEXA && isPlan() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
+  gSheet.innerHTML = ELPLEXA && isPlan() ? PL.sheetSVG() : S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : isPrinzip() ? PZ.sheetSVG(S.model, S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
-function renderItems() { $("#dims-on").checked = S.model.dims !== false; gItems.innerHTML = isDeck() ? "" : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
-const pickable = () => (isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
+function renderItems() { $("#dims-on").checked = S.model.dims !== false; gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
+const pickable = () => (ELPLEXA && isPlan() ? PL.pickable() : isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
 
 function railMap() {
   const rails = {};
@@ -288,6 +295,7 @@ function draftPath(c) {
 }
 
 function renderOverlay() {
+  if (ELPLEXA && isPlan()) { gOverlay.innerHTML = PL.overlaySVG(); return; } // Plan: Auswahl, Griffe, Entwürfe (planedit.js)
   let s = "";
   s += R.selectionSVG(selectedItems());
   // Griffe an den Punkten gewählter Leitungen (ziehen = Punkt verschieben)
@@ -345,6 +353,7 @@ function hintText() {
   if (S.model.kind === "legend") return "Sicherungslegende: entsteht aus den Schutzgeräten aller Schemablätter. Klick auf eine Zeile wählt das Gerät.";
   if (isDeck()) return S.model.kind === "title" ? "Titelseite: Angaben rechts eintragen. Objekt, Auftrag, Schema, Gezeichnet und Datum gelten für alle Blätter." : "Inhaltsverzeichnis: wird automatisch erstellt. Klick auf eine Zeile springt zum Blatt.";
   if (isPv()) return PV.hint();
+  if (ELPLEXA && isPlan()) return PL.hint();
   if (isPrinzip() && S.tool === "select") return "Prinzipschema: Symbole links setzen, Leitung (L) zwischen den Anschlüssen ziehen, Texte (T) und Bereichslinien (I) frei. Klick wählt, Ziehen verschiebt.";
   if (isDispo()) {
     if (S.tool === "place" && /^D:BAR:/.test(S.placeSym)) return S.dpDraft ? "Schiene: zweiter Klick setzt das Ende, waagrecht oder senkrecht nach dem grösseren Abstand. Esc bricht ab." : "Schiene N/PE/PEN: erster Klick setzt den Anfang auf der Mittellinie. Esc beendet.";
@@ -403,12 +412,14 @@ $("#sym-find").addEventListener("keydown", (e) => {
 function renderLeft() {
   renderLeftBody();
   symFind.hidden = isDeck() || isPv();
+  if (ELPLEXA && isPlan()) symFind.hidden = true;
   if (!symFind.hidden) applySymFind();
 }
 function renderLeftBody() {
   if (isDeck()) { const k = S.model.kind; leftEl.innerHTML = `<section class="section"><h2 class="section-title">${T.kindLabel(S.model)}</h2><p class="note">${k === "title" ? "Blatt 1. Hier wird nicht gezeichnet, die Angaben stehen rechts." : k === "toc" ? "Blatt 2. Entsteht automatisch aus allen Blättern der Datei." : "Letztes Blatt, A4 hoch. Entsteht automatisch aus den Schutzgeräten aller Schemablätter."}</p></section>`; return; }
   if (isDispo()) { leftEl.innerHTML = dispoLeftHTML(); return; }
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
+  if (ELPLEXA && isPlan()) { leftEl.innerHTML = PL.leftHTML(); return; }
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
   if (isPrinzip()) { leftEl.innerHTML = prinzipLeftHTML(h); return; }
   for (const t of [...TOOLS, ...SHAPE_TOOLS.filter((t) => !t.hidden)]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
@@ -611,8 +622,9 @@ function cableNote(it) {
 let pvPop = null, popKind = null;
 const popEl = $("#pv-pop");
 const SHEET_POPS = new Set(["haupt", "ansicht"]);
-const popHTML = () => (SHEET_POPS.has(popKind) ? sheetPopHTML(popKind) : isPrinzip() ? PZ.popHTML(S.model, { head, fieldHTML, META_FIELDS }) : PV.popHTML(popKind, { head, fieldHTML, META_FIELDS }));
+const popHTML = () => (SHEET_POPS.has(popKind) ? sheetPopHTML(popKind) : ELPLEXA && isPlan() ? PL.popHTML({ head, fieldHTML, META_FIELDS }) : isPrinzip() ? PZ.popHTML(S.model, { head, fieldHTML, META_FIELDS }) : PV.popHTML(popKind, { head, fieldHTML, META_FIELDS }));
 function renderPvBar() {
+  if (ELPLEXA && isPlan()) { planPvBar(); return; }
   const on = isPv() || isPrinzip(), doc = !on && !isDeck(); // Schema: Hauptlinien, Disposition: Ansicht (Schriftfeld rechts, D1); Prinzipschema: Druck wie PV
   $("#pv-bar").hidden = !on; $("#doc-bar").hidden = !doc; $("#btn-haupt").hidden = isDispo(); $("#btn-ansicht").hidden = !isDispo();
   if (!pvPop) return;
@@ -627,6 +639,14 @@ function renderPvBar() {
   b.title = `Druck: ${l.text}${l.warn ? ", Inhalt passt nicht aufs Papier" : ""}. Papier${isPrinzip() ? "" : ", Massstab"}, Plankopf`;
   if (pvPop.open) { const y = popEl.scrollTop, had = popEl.contains(document.activeElement); popEl.innerHTML = popHTML(); popEl.scrollTop = y; if (had) popEl.focus(); } // live, z. B. Passt-Hinweis
 }
+// Plan (nur elplexaCAD): Knopf Druck oben wie im Stringplan
+function planPvBar() {
+  $("#pv-bar").hidden = false; $("#doc-bar").hidden = true;
+  if (pvPop?.open && SHEET_POPS.has(popKind)) { pvPop.hide(false); return; }
+  const l = PL.printLabel(), b = $("#btn-pvdruck");
+  $("#pv-druck-lbl").textContent = l.text; b.classList.remove("warn"); b.title = `Druck: ${l.text}. Papier, Massstab, Plankopf`;
+  if (pvPop?.open) { const y = popEl.scrollTop, had = popEl.contains(document.activeElement); popEl.innerHTML = popHTML(); popEl.scrollTop = y; if (had) popEl.focus(); }
+}
 // Mobilansicht: ohne Auswahl zeigt die Leiste unten einen Hinweis (body.nosel, style.css)
 function renderRight() {
   renderRightPanel(); document.body.classList.toggle("nosel", !S.sel.size && !(S.model.kind === "legend" && S.legSel != null));
@@ -636,6 +656,7 @@ function renderRightPanel() {
   renderPvBar();
   const sel = selectedItems();
   if (isDeck()) { rightEl.innerHTML = S.model.kind === "legend" ? L.panelHTML(S.doc, S.model, S.legSel, { head, fieldHTML }) : T.deckPanelHTML(S.doc, S.model, { head, fieldHTML }); return; }
+  if (ELPLEXA && isPlan()) { rightEl.innerHTML = PL.panelHTML(sel, { head }); return; }
   const special = dispoPanel(sel);
   if (special !== null) { rightEl.innerHTML = special; return; }
   const pvh = isPv() ? PV.panelHTML(sel, { head, fieldHTML, META_FIELDS, dupDel }) : null;
@@ -708,7 +729,7 @@ function renderRightPanel() {
 
 // ---------- Blätter ----------
 const workCount = () => S.doc.sheets.filter((sh) => !T.isDeck(sh)).length;
-function sheetLabel(sh, i) { const v = sh.var > 1 ? ` · V${sh.var}` : ""; return sh.kind === "title" ? "Titelseite" : sh.kind === "toc" ? "Inhalt" : sh.kind === "legend" ? `Legende ${sh.meta.BLATT}` : sh.kind === "pvtab" ? `Stringübersicht${v}` : `${sh.kind === "dispo" ? "Dispo" : sh.kind === "pv" ? "Stringplan" : sh.kind === "prinzip" ? "Prinzipschema" : "Blatt"} ${sh.meta.BLATT || i + 1}${v}`; } // V2: Variante (18.10.2026)
+function sheetLabel(sh, i) { const v = sh.var > 1 ? ` · V${sh.var}` : ""; return sh.kind === "title" ? "Titelseite" : sh.kind === "toc" ? "Inhalt" : sh.kind === "legend" ? `Legende ${sh.meta.BLATT}` : sh.kind === "pvtab" ? `Stringübersicht${v}` : `${sh.kind === "dispo" ? "Dispo" : sh.kind === "pv" ? "Stringplan" : sh.kind === "prinzip" ? "Prinzipschema" : ELPLEXA && sh.kind === "plan" ? "Plan" : "Blatt"} ${sh.meta.BLATT || i + 1}${v}`; } // V2: Variante (18.10.2026)
 // Kompakte Leiste: ‹ Blatt 58 · 1 von 12 ▾ › +. Die Mitte öffnet die Liste aller Blätter, + hält eine Auswahl bereit
 function renderSheetBar() {
   if (ELPLEXA) { elSheetBar(); return; }
@@ -762,9 +783,10 @@ function toggleDims() {
 // Rasterweite, Schalter und Knöpfe an den Typ des angezeigten Blatts anpassen
 function syncKind() {
   S.grid.size = S.gridSize[kindKey()];
-  const opts = isPv() ? PV_GRID : isDispo() ? [[1, "1 mm"], [5, "5 mm"], [10, "10 mm"], [25, "25 mm"], [50, "50 mm"]] : [[1, "1 mm"], [2.5, "2,5 mm"], [5, "5 mm"]];
+  if (ELPLEXA && isPlan()) S.grid.size = PL.grid(); // Raster wie im Stringplan, Vorgabe 100 mm
+  const opts = isPv() || ELPLEXA && isPlan() ? PV_GRID : isDispo() ? [[1, "1 mm"], [5, "5 mm"], [10, "10 mm"], [25, "25 mm"], [50, "50 mm"]] : [[1, "1 mm"], [2.5, "2,5 mm"], [5, "5 mm"]];
   $("#grid-size").innerHTML = opts.map(([v, l]) => `<option value="${v}"${v === S.grid.size ? " selected" : ""}>${l}</option>`).join("");
-  $("#mag-on").closest("label").style.display = isDispo() || isPv() || isDeck() || isPrinzip() ? "none" : ""; // Feldmitte: nur Schema (Spalten im Rahmen)
+  $("#mag-on").closest("label").style.display = isDispo() || isPv() || isDeck() || isPrinzip() || ELPLEXA && isPlan() ? "none" : ""; // Feldmitte: nur Schema (Spalten im Rahmen)
   $("#grid-on").closest("label").style.display = $("#grid-size").style.display = isDeck() ? "none" : ""; // Titelseite, Inhalt: nichts zu zeichnen
   $("#btn-handover").hidden = !isDispo();
   renderPvBar();
@@ -825,6 +847,18 @@ function addPrinzip(v) {
   });
   afterSheetChange(k0);
 }
+// Plan (nur elplexaCAD, CJ 23.10.2026): leeres Blatt im offenen Plan-Modul, Ebene «Hintergrund», A3 quer 1:50, eigene sid (Notizen im Teilen-Link)
+function addPlan(v) {
+  setTool("select");
+  const k0 = S.model.kind;
+  v = varIn("plan", v);
+  change(() => {
+    const sh = setVar(newPlanSheet(newSheet("plan")), v);
+    sh.sid = nextId(); sh.meta.BLATT = String(maxNo("plan") + 1);
+    S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
+  });
+  afterSheetChange(k0);
+}
 // Stringübersicht: eine für alle Stringpläne der Datei (CJ 14.10.), seit 18.10.2026 eine je PV-Modul. Gibt es sie schon, wird sie angezeigt.
 function addPvTab() {
   const v = S.model.kind === "pv" || S.model.kind === "pvtab" ? varOf(S.model) : 1, i = S.doc.sheets.findIndex((sh) => sh.kind === "pvtab" && varOf(sh) === v);
@@ -835,8 +869,8 @@ function addPvTab() {
   afterSheetChange(k0);
 }
 // Plus-Knopf (CJ 16.10.): Blatt vom Typ des aktuellen Blatts. Stringplan und Stringübersicht → Stringplan, Titel, Inhalt, Legende → Schemablatt.
-const addKindLabel = () => ({ dispo: "Disposition", pv: "Stringplan", pvtab: "Stringplan", prinzip: "Prinzipschema" }[S.model.kind] || "Schemablatt");
-function addSameKind() { const k = S.model.kind; (k === "dispo" ? addDispo : k === "pv" || k === "pvtab" ? addPv : k === "prinzip" ? addPrinzip : addSheet)(); }
+const addKindLabel = () => (ELPLEXA && isPlan() ? "Plan" : { dispo: "Disposition", pv: "Stringplan", pvtab: "Stringplan", prinzip: "Prinzipschema" }[S.model.kind] || "Schemablatt");
+function addSameKind() { const k = S.model.kind; (k === "dispo" ? addDispo : k === "pv" || k === "pvtab" ? addPv : k === "prinzip" ? addPrinzip : ELPLEXA && k === "plan" ? addPlan : addSheet)(); }
 function addSheet(v) {
   setTool("select");
   const k0 = S.model.kind;
@@ -885,6 +919,8 @@ function copySheets(list) {
       for (const k of ["of", "rail"]) if (it[k] !== undefined && ids.has(it[k])) it[k] = ids.get(it[k]); // Wandlermessung, alte Gruppenverweise
       if (it.bundle !== undefined) { if (!bundles.has(it.bundle)) bundles.set(it.bundle, nextId()); it.bundle = bundles.get(it.bundle); }
       if (it.type === "pvstring") it.mods = it.mods.map((id) => ids.get(id) ?? id);
+      if (ELPLEXA && it.type === "opening") it.wall = ids.get(it.wall) ?? it.wall; // Plan: Öffnung an der kopierten Wand
+      if (ELPLEXA && it.type === "dim" && it.ref !== undefined) { if (ids.has(it.ref)) it.ref = ids.get(it.ref); else delete it.ref; }
     }
     if (c.main?.r === "sheet" && sids.has(c.main.to)) c.main = { ...c.main, to: sids.get(c.main.to) };
     else if (c.main?.r === "sheet") { c.main = { ...c.main, r: "next" }; delete c.main.to; } // Hauptlinien: Ziel ausserhalb gehört dem Original
@@ -913,7 +949,7 @@ function duplicateSheet() {
       const base = String(sh.meta.TITEL || "").replace(VAR_RE, "").trim(), same = S.doc.sheets.filter((s) => (s.kind || "schema") === k && String(s.meta.TITEL || "").replace(VAR_RE, "").trim() === base);
       const n = Math.max(1, ...same.map((s) => Number(/Variante (\d+)$/.exec(s.meta.TITEL || "")?.[1]) || 1)) + 1;
       target = copySheet(sh); target.meta.TITEL = varTitle(sh.meta.TITEL, n);
-      target.meta.BLATT = k === "dispo" || k === "prinzip" ? String(maxNo(k) + 1) : nextSheetNo();
+      target.meta.BLATT = k === "dispo" || k === "prinzip" || ELPLEXA && k === "plan" ? String(maxNo(k) + 1) : nextSheetNo();
       S.doc.sheets.push(target);
     }
     S.active = S.doc.sheets.indexOf(target); S.sel.clear();
@@ -1036,7 +1072,7 @@ async function changeLink(it) {
 // ---------- Werkzeuge und Aktionen ----------
 function cancelDraft() { S.wireDraft = null; }
 function setTool(id) {
-  finishWire(); PV.cancel();
+  finishWire(); PV.cancel(); if (ELPLEXA) PL.cancel();
   closeEditor(false);
   S.tool = id; if (id !== "place") S.placeSym = null; if (id !== "select") S.sel.clear();
   S.dimDraft = null; S.dimSel = null; draftCancel(); S.shapeDraft = null;
@@ -1197,6 +1233,7 @@ function addTerminals(x, y) { change(() => S.model.items.push({ id: nextId(), ..
 // Stringplan „Module einschränken“ (5bc): die Auswahl sind Module für die Autoverkabelung, nicht zum Bearbeiten
 const pickMode = () => isPv() && PV.picking();
 function deleteSelected() {
+  if (ELPLEXA && isPlan()) { PL.del(); return; }
   if (pickMode()) return;
   if (!S.sel.size) { hideDimSel(); return; } // gewähltes automatisches Mass der Disposition ausblenden
   change(() => {
@@ -1211,6 +1248,7 @@ function deleteSelected() {
 const followers = (items) => { const ids = new Set(items.map((i) => i.id)); return [...linkedTerminals(S.model.items, ids), ...wmParts(S.model.items, ids)].filter((t) => !ids.has(t.id)); };
 const followDy = (t, dy) => (t.type === "terminals" ? 0 : dy);
 function rotateSelected() {
+  if (ELPLEXA && isPlan()) return;
   if (S.tool === "place") { S.placeRot = (S.placeRot + 90) % 360; renderOverlay(); return; }
   if (S.tool === "text" && isSchema()) { S.textR = ((S.textR || 0) + 90) % 360; renderRight(); updateHint(); return; } // nächster Text gedreht (CJ 19.10.2026)
   const syms = selectedItems().filter((i) => i.type === "symbol"), texts = isSchema() ? selectedItems().filter((i) => i.type === "text") : [];
@@ -1234,6 +1272,7 @@ function cloneItems(src, selIds, dx, dy) {
   return ids;
 }
 function duplicateSelected() {
+  if (ELPLEXA && isPlan()) return;
   if (pickMode()) return;
   const sel = selectedItems();
   if (!sel.length) return;
@@ -1382,6 +1421,7 @@ const touch = makeTouch({ S, stage, pointerPos, zoomAt, applyView, renderOverlay
   if (!editor.hidden) closeEditor(true);
   if (isDeck()) { deckTap(e.target); return; }
   const { sx, sy } = pointerPos(e), w = toWorld(sx, sy);
+  if (ELPLEXA && isPlan()) { PL.tap(w); return; }
   const hit = isPv() ? hitTest(w.x, w.y, PV.layerPick(), 14) : hitTest(w.x, w.y, pickable(), 14);
   S.sel = hit ? new Set(groupIds(hit, false)) : new Set();
   renderRight(); renderOverlay();
@@ -1393,6 +1433,7 @@ stage.addEventListener("pointerdown", (e) => {
   svg.focus({ preventScroll: true });
   const { sx, sy } = pointerPos(e);
   if (e.button === 1 || S.tool === "hand" || S.space || ELPLEXA && S.shared) { S.drag = { type: "pan", sx, sy, vx: S.view.x, vy: S.view.y }; stage.setPointerCapture(e.pointerId); svg.classList.add("cursor-grabbing"); return; }
+  if (ELPLEXA && isPlan()) { if (e.button === 0) { stage.setPointerCapture(e.pointerId); PL.down(toWorld(sx, sy), e); } return; }
   if (e.button === 2) { if (S.wireDraft) finishWire(); else if (S.tool === "place") setTool("select"); return; }
   if (e.button !== 0) return;
   if (isDeck()) { deckTap(e.target); return; }
@@ -1475,6 +1516,7 @@ stage.addEventListener("pointermove", (e) => {
   const w = toWorld(sx, sy);
   const d = S.drag;
   if (d && d.type === "pan") { S.view.x = d.vx + (sx - d.sx); S.view.y = d.vy + (sy - d.sy); applyView(); return; }
+  if (ELPLEXA && isPlan()) { PL.move(w, e); $("#coords").textContent = `x ${Math.round(w.x)}  y ${Math.round(w.y)} mm`; return; }
   S.alt = e.altKey;
   S.mouse = isPv() ? PV.snap(w) : isDispo() ? dispoSnap(w.x, w.y) : shapeTool(S.tool) ? shapeSnap(w) : snap(w.x, w.y, { pins: S.tool === "wire", mag: S.tool !== "select" && S.tool !== "hand" && !(S.tool === "place" && S.placeSym === CTRL), offX: S.tool === "place" ? placeOffX() : 0 });
   if (S.tool === "wire" && S.mouse.pin && !e.altKey && poleSnap()) { const g = R.poleGroup(S.model.items, S.mouse.x, S.mouse.y); if (g) S.mouse = { ...S.mouse, x: g.x, y: g.y }; }
@@ -1553,6 +1595,7 @@ function endDrag(e) {
 stage.addEventListener("pointerup", (e) => {
   if (touch.up(e)) return;
   const f = S.shapeDraft;
+  if (ELPLEXA && isPlan()) PL.up();
   if (f?.down) { const { sx, sy } = pointerPos(e); f.down = false; if (Math.hypot(sx - f.px, sy - f.py) > 3 && S.mouse) finishShape(S.mouse, e.shiftKey); } // gezogen: Loslassen setzt die Form
   endDrag(e);
 });
@@ -1660,6 +1703,7 @@ window.addEventListener("keydown", (e) => {
   const t = e.target;
   const typing = t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA");
   const mod = e.metaKey || e.ctrlKey;
+  if (ELPLEXA && isPlan() && !typing && PL.key(e, mod)) { e.preventDefault(); return; } // Plan: Werkzeuge, Länge tippen, Pfeiltasten (planedit.js)
   if (mod && !typing) {
     const k = e.key.toLowerCase();
     if (k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
@@ -2888,7 +2932,7 @@ function elOpen(id, { create = true, exact = false } = {}) { // create: false = 
 }
 // Neues Modul (auch ein weiteres derselben Art, CJ 18.10.2026): nächste freie Nummer, erstes Blatt
 function elNew(id) {
-  const add = { schema: addSheet, dispo: addDispo, pv: addPv, prinzip: addPrinzip }[id];
+  const add = { schema: addSheet, dispo: addDispo, pv: addPv, prinzip: addPrinzip, plan: addPlan }[id];
   if (!add) { toast(`${E.modById(id).label} kommt später.`); return; }
   const vs = S.doc.sheets.filter((sh) => modBase(sh) === id && !T.isDeck(sh)).map(varOf);
   elHub(false); add(vs.length ? Math.max(...vs) + 1 : 1);
@@ -3128,7 +3172,7 @@ function elNoteGo(id) { // zum Blatt springen, Notiz in die Mitte
 // Ist es das offene Projekt, wählen Häkchen die Module (CJ 18.10.2026); only = Vorwahl ein Modul (Exportieren › Modul teilen). Alle Häkchen = ganzes Projekt.
 async function elShareDialog(id, only = null) {
   const name = EL_S.onlist?.find((x) => x.id === id)?.name || elName(), mine = S.doc.project?.online?.id === id;
-  const ids = mine ? E.modIds(S.doc).filter((m) => !E.modById(m)?.auto) : [], pick = mine ? { ids, on: new Set(only ? [only] : ids) } : null, nm = (m) => modName(mine ? S.doc : {}, m);
+  const ids = mine ? E.modIds(S.doc).filter((m) => !E.modById(m)?.auto && E.baseOf(m) !== "plan") : [], pick = mine ? { ids, on: new Set(only ? [only] : ids) } : null, nm = (m) => modName(mine ? S.doc : {}, m);
   let links = null;
   const draw = () => { const m = $("#modal-root .modal"); if (m) m.querySelector(".el-shbody").innerHTML = E.shareDialogHTML(name, links, shareUrl, pick, nm); };
   const load = async (fn) => { try { const l = await fn(); if (l) links = l; } catch (err) { toast(err.message || String(err), "error"); } draw(); };
@@ -3155,6 +3199,7 @@ async function elShareDialog(id, only = null) {
 // Exportieren › Modul teilen (CJ 18.10.2026): Link nur für das offene Modul. Geteilt wird der Online-Stand, darum vorher online speichern.
 async function elShareModule() {
   if (S.shared) return;
+  if (E.baseOf(elMod() || "") === "plan") { toast("Einen Plan einzeln zu teilen geht noch nicht. Das ganze Projekt teilen geht (Bereich Online in der Übersicht)."); return; } // share_mod_of in Supabase kennt „plan“ nicht (nicht geprüft)
   if (!cloudUser() && !(await elLogin())) return;
   if (!S.doc.project?.online || S.dirty) {
     if (!(await confirmDialog("Zuerst online speichern", "Geteilt wird der online gespeicherte Stand. Jetzt online speichern und dann den Link erstellen?", "Online speichern"))) return;

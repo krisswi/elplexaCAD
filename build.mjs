@@ -50,6 +50,9 @@ const pdfOut = { name: "pdf-out", setup(b) {
   // Handnotizen (src/hand.js) nur im elplexaCAD-Bau: sonst Platzhalter, jsPDF und pdf.js-Anteile für Notizen kommen nicht in v3
   if (!EL) b.onResolve({ filter: /\/hand\.js$/ }, () => ({ path: "hand", namespace: "handstub" }));
   b.onLoad({ filter: /.*/, namespace: "handstub" }, () => ({ contents: "export const openHand = null;" }));
+  // Modul Plan (src/planedit.js, CJ 23.10.2026) nur im elplexaCAD-Bau
+  if (!EL) b.onResolve({ filter: /\/planedit\.js$/ }, () => ({ path: "planedit", namespace: "planstub" }));
+  b.onLoad({ filter: /.*/, namespace: "planstub" }, () => ({ contents: "export const makePlan = null;" }));
 } };
 const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker, pdfOut], external: ["html2canvas", "dompurify", "canvg"], define: { ELPLEXA: String(EL), APP_BUILD: JSON.stringify(new Date().toISOString().slice(0, 16).replace("T", " ")) } });
 const css = fs.readFileSync("src/style.css", "utf8") + (EL ? "\n" + fs.readFileSync("src/elplexa.css", "utf8") : "");

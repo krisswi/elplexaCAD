@@ -10,9 +10,10 @@ import { splitWandlerDoc } from "./wandler.js";
 import { cleanShape, isColor, SHAPE_LAYER } from "./formen.js";
 import { cleanAssets, cleanBg, usedAssets, cleanLayers, cleanPvItem, cleanLayerId, cleanPvDoc, PV_ITEMS, checkStrings, cleanPaper, anlageFromSheet, tidyPv, cleanHide, cleanPmid, cleanNorth, cleanStrk } from "./pv.js";
 import { cleanAdr, cleanGwr } from "./gwr.js";
+import { cleanPlanSheet } from "./plan.js";
 
 export const FORMAT = "schemacad";
-export const VERSION = 19; // 19: Prinzipschema (kind "prinzip", Symbole PZ_*), seit 21.10.2026. // 18: Modulstatus (doc.mods[Modul].st) und eigene Reihenfolge der Module (.o), seit 20.10.2026. // 17: Text ausgerichtet (al), Klemmentexte (lab, vert), Steuerkasten (ctrl), seit 19.10.2026. // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
+export const VERSION = typeof ELPLEXA !== "undefined" && ELPLEXA ? 20 : 19; // 20: Plan (kind "plan", nur elplexaCAD; v3 bleibt bei 19 und lehnt solche Dateien ab), seit 23.10.2026. // 19: Prinzipschema (kind "prinzip", Symbole PZ_*), seit 21.10.2026. // 18: Modulstatus (doc.mods[Modul].st) und eigene Reihenfolge der Module (.o), seit 20.10.2026. // 17: Text ausgerichtet (al), Klemmentexte (lab, vert), Steuerkasten (ctrl), seit 19.10.2026. // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
 // 10: // 10: Wandlermessung in Teilen (ZW_WANDLER, ZW_ZAEHLER, Leitungen mit of/wm) oder Klemmenleiste ohne Klemmen (noterm), seit 16.10.2026. // 9: Disposition mit NH-Hersteller (maker), Textzeilen (lines) oder Textgrösse (tf) (seit 16.10.2026; Stände mit 8 lehnen ab, statt die Angaben still zu verlieren). 8: Disposition mit Schrank, Teilen oder neuen Geräteangaben (seit 16.10.2026, schrank.js; ältere Stände lehnen ab statt still zu verlieren). 7: 7: Hauptlinien neu (seit 16.10.2026, Blatt main, Gruppenverweise mit main; ältere Stände lehnen ab, sonst entstünden doppelte Verweise). 6: mit Stringplan (seit 15.10.2026, Umbau 5ab: gedrehte Module, ältere Stände lehnen ab). 5: mit Titelseite und Inhaltsverzeichnis (kind "title", "toc", titel.js). höchste lesbare Version. 2: mehrere Blätter (sheets), Version 1 (ein Blatt) wird beim Öffnen umgewandelt. 3: wie 2, mit Blättern vom Typ Disposition (nur dann wird 3 geschrieben). 4: mit Stringplan (kind "pv", PDF unter assets) oder Stringübersicht (kind "pvtab").
 
 export const WIRE_KINDS = {
@@ -53,6 +54,7 @@ export function newMeta() {
 // "prinzip" = Prinzipschema (prinzip.js, einpolig, Papier-mm), sonst Schema.
 // Eine Disposition trägt eine sid, damit eine Ansicht auf dem Schemablatt ihre Quelle wiederfindet.
 export const KINDS = ["dispo", "pv", "pvtab", "prinzip", "title", "toc", "legend"];
+if (typeof ELPLEXA !== "undefined" && ELPLEXA) KINDS.push("plan"); // Plan (plan.js, nur elplexaCAD, CJ 23.10.2026)
 export const newSheet = (kind = "schema") => ({ meta: newMeta(), items: [], ...(KINDS.includes(kind) ? { kind } : {}) });
 // Ein Dokument: mehrere Blätter, Objekt-IDs gelten im ganzen Dokument (wichtig für Verweise von Blatt zu Blatt)
 export const newDoc = () => ({ format: FORMAT, version: 2, active: 0, nextId: 1, sheets: [newSheet()] });
@@ -89,6 +91,7 @@ export function parseModel(text) {
     if (!m.kind) { if (isNum(rs.sid)) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); } if (rs.main) m.main = cleanMain(rs.main); } // Hauptlinien (hauptlinien.js): Ziel über sid
     Object.assign(m.meta, rs.meta || {});
     doc.sheets.push(m);
+    if (typeof ELPLEXA !== "undefined" && ELPLEXA && m.kind === "plan") { maxId = cleanPlanSheet(rs, m, maxId); continue; } // Wände, Öffnungen, Masse (plan.js)
     maxId = parseItems(rs.items || [], m, maxId);
     if (m.kind === "dispo" && m.items.some((i) => !isDispoItem(i))) throw new Error("Eine Disposition darf nur Bauteile und Texte enthalten.");
     if (m.kind !== "dispo" && m.items.some((i) => PLAN_TYPES.has(i.type))) throw new Error("Bauteile der Disposition gehören auf ein Dispositionsblatt.");
@@ -101,6 +104,7 @@ export function parseModel(text) {
     if ((m.kind === "title" || m.kind === "toc" || m.kind === "legend") && m.items.length) throw new Error("Titelseite, Inhaltsverzeichnis und Legende enthalten keine eigenen Objekte.");
   }
   for (const sh of doc.sheets) if ((sh.kind === "dispo" || sh.kind === "pv") && !sh.sid) sh.sid = ++maxId;
+  if (typeof ELPLEXA !== "undefined" && ELPLEXA) for (const sh of doc.sheets) if (sh.kind === "plan" && !sh.sid) sh.sid = ++maxId; // eigene sid: Notizen im Teilen-Link
   if (Object.keys(assets).length) doc.assets = assets;
   const oldAn = !pv?.anlage && rawSheets.map((rs) => rs.kind === "pv" && anlageFromSheet(rs.anlage)).find(Boolean); // erste Fassung 5k: Anlage am Blatt
   if (oldAn) doc.pv = tidyPv({ ...pv, anlage: oldAn }); else if (pv) doc.pv = pv; // Katalog: Modultypen (Schritt 4), WR-Typen, Zuordnung und Tmin (Schritt 6)
@@ -127,7 +131,8 @@ export function parseModel(text) {
 // und gleicher Nummer var (fehlt = 1). Kennung „schema“, „dispo“, „pv“ für Nr. 1, sonst „pv:2“. doc.mods[Kennung] = { name, cont }:
 // name = eigener Name (z. B. „Schema HV“), cont = PV: Strings fortsetzen nach dem PV-Modul mit dieser Nummer.
 export const MOD_LABELS = { schema: "Schema", dispo: "Disposition", pv: "PV-Stringplan", prinzip: "Prinzipschema", legende: "Legende" };
-export const modBase = (sh) => (sh.kind === "dispo" ? "dispo" : sh.kind === "pv" || sh.kind === "pvtab" ? "pv" : sh.kind === "prinzip" ? "prinzip" : sh.kind === "legend" ? "legende" : "schema");
+if (typeof ELPLEXA !== "undefined" && ELPLEXA) MOD_LABELS.plan = "Plan";
+export const modBase = (sh) => (typeof ELPLEXA !== "undefined" && ELPLEXA && sh.kind === "plan" ? "plan" : sh.kind === "dispo" ? "dispo" : sh.kind === "pv" || sh.kind === "pvtab" ? "pv" : sh.kind === "prinzip" ? "prinzip" : sh.kind === "legend" ? "legende" : "schema");
 export const modKey = (base, v) => (v > 1 ? `${base}:${v}` : base);
 export const modOf = (sh) => modKey(modBase(sh), ["title", "toc", "legend"].includes(sh.kind) ? 1 : sh.var || 1);
 export const modVar = (id) => Number(String(id).split(":")[1]) || 1;
@@ -139,7 +144,7 @@ export function cleanMods(o) {
   if (!o || typeof o !== "object") return null;
   const out = {};
   for (const [k, v] of Object.entries(o)) {
-    if (!MOD_ID.test(k) || !v || typeof v !== "object") continue;
+    if (!(MOD_ID.test(k) || (typeof ELPLEXA !== "undefined" && ELPLEXA && /^plan(:([2-9]|[1-9]\d))?$/.test(k))) || !v || typeof v !== "object") continue;
     const e = {};
     if (typeof v.name === "string" && v.name.trim()) e.name = v.name.trim().slice(0, 80);
     if (k.startsWith("pv") && Number.isInteger(v.cont) && v.cont >= 1 && v.cont <= 99 && v.cont !== modVar(k)) e.cont = v.cont;
@@ -167,7 +172,7 @@ export function cleanProject(o) {
   if (typeof o.id === "string" && /^[a-z0-9]{6,20}$/.test(o.id)) p.id = o.id;
   if (Array.isArray(o.auto)) {
     const a = o.auto.filter((e) => e && /^[a-z0-9]{4,16}$/.test(e.k) && /^\d{4}-\d{2}-\d{2}$/.test(e.d) && isNum(e.s) && e.s >= 0 && e.s <= 86400)
-      .map((e) => ({ k: e.k, d: e.d, s: Math.round(e.s), m: (Array.isArray(e.m) ? e.m : []).filter((x) => ["schema", "dispo", "pv", "prinzip", "legende"].includes(x)), ...(e.x === "ok" || e.x === "weg" ? { x: e.x } : {}) }));
+      .map((e) => ({ k: e.k, d: e.d, s: Math.round(e.s), m: (Array.isArray(e.m) ? e.m : []).filter((x) => (typeof ELPLEXA !== "undefined" && ELPLEXA ? ["schema", "dispo", "pv", "prinzip", "legende", "plan"] : ["schema", "dispo", "pv", "prinzip", "legende"]).includes(x)), ...(e.x === "ok" || e.x === "weg" ? { x: e.x } : {}) }));
     if (a.length) p.auto = a;
   }
   // Adresse und GWR (CJ 19.10.2026, gwr.js)
@@ -301,5 +306,6 @@ export function serializeModel(m, { noAssets = false } = {}) {
   const usesV17 = sheets.some((sh) => sh.items.some((i) => (i.type === "text" && i.al) || (i.type === "terminals" && (i.lab || i.vert)) || i.type === "ctrl")) || sheets.some((sh) => sh.ins); // Wünsche CJ 19.10.2026: Textausrichtung, Klemmentexte, Steuerkasten, Dispo im Schema (ins)
   const usesV18 = Object.values(m.mods || {}).some((e) => e.st || e.o); // Modulstatus, Reihenfolge (20.10.2026)
   const usesV19 = sheets.some((sh) => sh.kind === "prinzip"); // Prinzipschema (21.10.2026): ältere Stände machten daraus still ein Schemablatt
-  return JSON.stringify({ ...rest, version: usesV19 ? 19 : usesV18 ? 18 : usesV17 ? 17 : usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
+  // 20: Plan (23.10.2026, nur elplexaCAD; Bedingung hier im Ausdruck, damit sie im v3-Bau ganz wegfällt)
+  return JSON.stringify({ ...rest, version: typeof ELPLEXA !== "undefined" && ELPLEXA && sheets.some((sh) => sh.kind === "plan") ? 20 : usesV19 ? 19 : usesV18 ? 18 : usesV17 ? 17 : usesV16 ? 16 : usesV15 ? 15 : usesV14 ? 14 : usesV13 ? 13 : usesV12 ? 12 : usesV11 ? 11 : usesV10 ? 10 : usesV9 ? 9 : usesSchrank ? 8 : sheets.some((sh) => sh.main) ? 7 : usesPv ? 6 : usesDeck ? 5 : usesDispo ? 3 : 2, ...(Object.keys(assets).length ? { assets } : {}) }, null, 1);
 }

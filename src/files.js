@@ -76,6 +76,7 @@ export function makeFiles(c) {
     if (ELPLEXA && S.shared) { S.elUnlock(); return; } // geteilte Ansicht: kein Export
     closeEditor(true);
     if (S.model.kind === "pv" || S.model.kind === "pvtab") { toast("DXF für Stringpläne kommt später."); return; }
+    if (ELPLEXA && S.model.kind === "plan") { toast("DXF für den Plan kommt später."); return; }
     if (S.model.kind === "prinzip") { toast("DXF fürs Prinzipschema kommt später. PDF: Exportieren → PDF."); return; }
     if (T.isDeck(S.model)) { toast("DXF für Titelseite und Inhaltsverzeichnis kommt später. Sie sind im PDF enthalten."); return; }
     let text;
@@ -98,6 +99,7 @@ export function makeFiles(c) {
     const pages = S.doc.sheets.map((sh, i) => [sh, i]).filter(([sh]) => !pick || pick.has(sh)).flatMap(([sh, i]) => {
       if (sh.kind === "pv" || sh.kind === "pvtab") return pv.printPages(sh, i);
       if (sh.kind === "legend") return L.printPages(S.doc, sh); // A4 hoch
+      if (ELPLEXA && sh.kind === "plan") return []; // Plan: PDF folgt in Schritt 4
       if (sh.kind === "prinzip") return PZ.printPages(sh); // eigenes Papier, Plankopf wie Stringplan (prinzip.js)
       if (T.isDeck(sh)) return T.deckPrintPages(S.doc, sh);
       if (sh.kind === "dispo") { // freie Fläche: Inhalt mit Rand auf eine Seite einpassen, Linienstärke in Papier-mm
@@ -158,7 +160,7 @@ export function makeFiles(c) {
     closeEditor(true);
     const files = [];
     try {
-      S.doc.sheets.forEach((sh, i) => sh.kind !== "pv" && sh.kind !== "pvtab" && sh.kind !== "prinzip" && !T.isDeck(sh) && files.push([`${baseName()}_${sh.kind === "dispo" ? "Dispo" : "Blatt"}-${safeName(String(sh.meta.BLATT || i + 1))}.dxf`, exportDxf(sh)]));
+      S.doc.sheets.forEach((sh, i) => (!ELPLEXA || sh.kind !== "plan") && sh.kind !== "pv" && sh.kind !== "pvtab" && sh.kind !== "prinzip" && !T.isDeck(sh) && files.push([`${baseName()}_${sh.kind === "dispo" ? "Dispo" : "Blatt"}-${safeName(String(sh.meta.BLATT || i + 1))}.dxf`, exportDxf(sh)]));
     } catch (err) { toast("Der DXF-Export ist fehlgeschlagen: " + (err.message || err), "error"); return; }
     // Ordner wählen. Chrome sperrt in der Ordnerwahl Systemordner (z. B. ~/Library und damit iCloud Drive) und meldet
     // „Dieser Ordner kann nicht geöffnet werden“; die App erfährt nur „abgebrochen“. Darum danach immer die ZIP anbieten.

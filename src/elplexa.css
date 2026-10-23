@@ -478,3 +478,7 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 .el-nt { min-width: 0; display: grid; gap: 2px; }
 .el-ntx { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (hover: hover) and (pointer: fine) { .el-nitem:hover:not(:disabled) { background: var(--hover); } }
+
+/* Modul Plan (CJ 23.10.2026): Wände, Öffnungen und Masse im Massstab wie gedruckt (Strich in Welt-mm), Griffe und Marker in Pixeln */
+#world .pl-items *, #world .pl-scale * { vector-effect: none; }
+.pl-layers .pl-layact { flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }

@@ -4,7 +4,7 @@ import fs from "fs";
 import assert from "node:assert";
 import { newDoc, parseModel, serializeModel } from "../src/model.js";
 import { exportDxf } from "../src/dxf.js";
-import { SYMBOL_BY_NAME, FAMILIES, isDevice, variantByKey, hasTrenner } from "../src/symbols.js";
+import { SYMBOL_BY_NAME, FAMILIES, isDevice, variantByKey, hasTrenner, localBBox } from "../src/symbols.js";
 
 // Jede Variante der Palette existiert, Anschlüsse liegen auf dem 2,5-mm-Raster, Varianten einer Familie haben eigene Texte
 for (const f of FAMILIES) {
@@ -45,9 +45,20 @@ const dots = (s) => s.prims.filter((p) => p.t === "c" && p.f);
 for (const n of ["FI_2P", "FI_4P", "RCBO_1PN", "RCBO_2P", "RCBO_3PN", "RCBO_4P"]) { const s = SYMBOL_BY_NAME[n], last = (s.poles - 1) * 5; assert.deepStrictEqual(dots(s).map((p) => [p.cx, p.cy]), [[last, -1], [last - 5, -17.5]], n); }
 assert.strictEqual(dots(SYMBOL_BY_NAME.LS_4P).length, 0);
 for (const n of ["ZAEHLER_2P", "ZAEHLER_4P"]) { const s = SYMBOL_BY_NAME[n]; assert.strictEqual(dots(s).length, 0); // ohne Punkte (CJ 16.10.)
- assert.ok(s.prims.some((p) => p.t === "t" && p.s === "kWh" && p.y > -7)); assert.strictEqual(s.pins.length, s.poles * 2); }
+ assert.ok(s.prims.some((p) => p.t === "t" && p.s === "kWh" && p.y < -7)); assert.strictEqual(s.pins.length, s.poles * 2 + 5); } // kWh im grossen Feld, 5 Seitenkontakte (CJ 22.10.)
 assert.deepStrictEqual(SYMBOL_BY_NAME.ZAEHLER_4P.pins.slice(0, 2), [{ x: 0, y: 0 }, { x: 0, y: -20 }]); // Anschlüsse wie bisher: alte Dateien bleiben verbunden
 assert.deepStrictEqual(SYMBOL_BY_NAME.ERDE_1P.pins, [{ x: 0, y: 0 }]);
+// CJ 22.10.2026: Relais ohne Schrägstrich, Schütz mit Halbkreis (Relais nicht), Taster mit Druckknopf, Motor mit Stromart
+assert.deepStrictEqual(SYMBOL_BY_NAME.RELAIS_1P.prims, SYMBOL_BY_NAME.SPULE_1P.prims);
+assert.strictEqual(SYMBOL_BY_NAME.SCHUETZ_3P.prims.length - SYMBOL_BY_NAME.KS_3P.prims.length, 3 * 8 + 6, "je Pol ein Halbkreis aus 8 Linien, Klemmennummern");
+for (const n of ["TASTER_S_1P", "TASTER_O_1P"]) assert.ok(SYMBOL_BY_NAME[n].prims.some((p) => p.t === "l" && p.x1 === -6 && p.y1 === -8 && p.x2 === -5.2), n);
+assert.ok(SYMBOL_BY_NAME.MOTOR_3P.attrs.some((a) => a.tag === "STROMART" && a.def === "3~"));
+// HAK (CJ 22.10.2026): Rahmen mit Spitze zwischen L2 und L3 (x 7,5), HAK_4P mit PE (Anschlüsse L1 bis N wie bisher)
+for (const n of ["HAK_4P", "HAK_TNCS", "HAK_TNCS_1"]) { const ls = SYMBOL_BY_NAME[n].prims.filter((p) => p.t === "l"), low = Math.min(...ls.map((p) => Math.min(p.y1, p.y2)));
+  assert.ok(ls.some((p) => (p.x1 === 7.5 && p.y1 === low) || (p.x2 === 7.5 && p.y2 === low)), `${n}: Spitze bei x 7,5`);
+  assert.ok(["L1", "L2", "L3", "N", "PE"].every((t) => SYMBOL_BY_NAME[n].prims.some((p) => p.t === "t" && p.s === t)), `${n}: L1 bis PE angeschrieben`); }
+assert.deepStrictEqual(SYMBOL_BY_NAME.HAK_4P.pins.slice(0, 8), [0, 1, 2, 3].flatMap((i) => [{ x: i * 5, y: 0 }, { x: i * 5, y: -20 }]));
+assert.deepStrictEqual(SYMBOL_BY_NAME.HAK_4P.pins.slice(8), [{ x: 20, y: 0 }, { x: 20, y: -20 }]);
 assert.deepStrictEqual(SYMBOL_BY_NAME.TNC_TNS.pins[4], { x: 20, y: 0 }); // umgedreht (CJ 16.10.): PE oben, PEN unten
 assert.ok(FAMILIES.some((f) => f.id === "TNC_TNS") && FAMILIES.some((f) => f.id === "ERDE") && !isDevice(SYMBOL_BY_NAME.TNC_TNS));
 
@@ -65,7 +76,12 @@ assert.ok(hasTrenner("LS_2P") && hasTrenner("NH_4P") && !hasTrenner("FI_2P") && 
 { const w = SYMBOL_BY_NAME.ZAEHLER_4P_W; assert.deepStrictEqual(w.pins, [{ x: 0, y: 0 }, { x: 15, y: -5 }, { x: 30, y: -10 }, { x: 42.5, y: -15 }]); // BKW-Schema (17.10.): Aussenleiter 15 mm
   assert.strictEqual(w.prims.filter((p) => p.t === "l" && p.d).length, 16); const tx = w.prims.filter((p) => p.t === "t").map((p) => p.s); // 16 = 12 Wandlerkästen + 4 Stücke N gestrichelt (18.10.)
   assert.ok(tx.some((s) => s.startsWith("Prüfklemmen")) && tx.includes("braun (1)") && tx.includes("grau (6)") && !tx.includes("Steuerleiter hellgrau mit Nummern") && tx.includes("S1") && tx.includes("P2")); }
-assert.strictEqual(SYMBOL_BY_NAME.ZAEHLER_4P.vlabel, "4-polig (3P+N)"); assert.strictEqual(K("ZAEHLER_4P_W", "3"), null); assert.strictEqual(K("ZAEHLER_4P_W", "1"), "ZAEHLER_2P"); assert.strictEqual(K("ZAEHLER_4P", "n"), null);
+assert.strictEqual(SYMBOL_BY_NAME.ZAEHLER_4P.vlabel, "4 Anschlüsse"); assert.strictEqual(K("ZAEHLER_4P_W", "1"), "ZAEHLER_1P"); assert.strictEqual(K("ZAEHLER_4P", "n"), null);
+// Zähler (CJ 22.10.2026): Tasten 1 bis 8, ohne N und ohne Anschlussstücke, rechts oben 5 Seitenkontakte auf der Kante
+assert.strictEqual(K("ZAEHLER_4P", "8"), "ZAEHLER_8P"); assert.strictEqual(K("ZAEHLER_8P", "3"), "ZAEHLER_3P"); assert.strictEqual(K("LS_3P", "5"), null);
+for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) { const z = SYMBOL_BY_NAME[`ZAEHLER_${n}P`], b = localBBox(z), side = z.pins.slice(2 * n);
+  assert.ok(side.length === 5 && side.every((p, k) => p.x === b.x1 && p.y === -2.5 * (k + 1)), `ZAEHLER_${n}P Seitenkontakte`);
+  assert.ok(!z.prims.some((p) => p.t === "t" && p.s === "N") && b.y0 === -20 && b.y1 === 0, `ZAEHLER_${n}P Kasten`); }
 assert.strictEqual(SYMBOL_BY_NAME.RCBO_1PN.attrs.find((a) => a.tag === "CHAR").def, "C");
 assert.strictEqual(SYMBOL_BY_NAME.TNC_TNS.pins.filter((p) => p.y === 0).length, 5); assert.strictEqual(SYMBOL_BY_NAME.TNC_TNS.pins.filter((p) => p.y === -20).length, 4);
 assert.strictEqual(SYMBOL_BY_NAME.HAK_TNCS.pins.filter((p) => p.y === 0).length, 5); assert.ok(FAMILIES.find((f) => f.id === "HAK").variants.includes("HAK_TNCS"));
@@ -76,7 +92,16 @@ assert.strictEqual(K("NH_3P", "n"), null); assert.strictEqual(K("SPD_3P", "n"), 
 assert.strictEqual(K("SCHUETZ_3P", "4"), "SCHUETZ_4P"); assert.strictEqual(K("HAK_4P", "1"), null); assert.strictEqual(K("LS_4P", "5"), null);
 
 // Alle neuen Symbole auf einem Blatt: Speichern und Laden unverändert, DXF schreibt jeden Block
-const NEW = ["LS_1PN", "LS_1PT", "LS_3PN", "LS_3PT", "RCBO_1PN", "RCBO_3PN", "NH_1PT", "NH_3PT", "NTRENN_1P", "HAK_4P", "ZAEHLER_2P", "ZAEHLER_4P", "ZW_WANDLER", "ZW_ZAEHLER", "SPD_2P", "SPD_4P", "SPD_2P_1", "SPD_4P_1", "HAK_TNCS", "TNC_TNS", "SPULE_1P", "RELAIS_1P", "SCHUETZ_3P", "SCHUETZ_4P", "FI_4P", "RCBO_4P", "TNC_TNS", "ERDE_1P"];
+// Schritt 4a (CJ 22.10.2026): neue Kontakte und Relais in der Palette, ohne Kennbuchstaben-Automatik
+const NEU4A = ["KW_1P", "TRK_O_1P", "TRK_S_1P", "TR_1P", "TR_3P", "STR_1P", "ZR_AB_1P", "ZR_AN_1P", "USR_1P", "HSCH_1P", "DSCH_1P", "DTAST_1P", "UMS_1P"];
+assert.ok(NEU4A.every((n) => SYMBOL_BY_NAME[n] && FAMILIES.some((f) => f.variants.includes(n)) && !isDevice(SYMBOL_BY_NAME[n])));
+assert.strictEqual(K("TR_1P", "3"), "TR_3P"); assert.deepStrictEqual(SYMBOL_BY_NAME.KW_1P.pins, [{ x: 0, y: 0 }, { x: -5, y: 0 }, { x: 0, y: -20 }]);
+const NEU4B = ["LAMPE_1P", "MESS_V_1P", "MESS_A_1P", "MESS_H_1P", "R_1P", "C_1P", "L_1P", "LED_1P", "BATT_1P", "STD_1P", "FU_1P", "SANFT_1P", "GEN_1P"]; // Schritt 4b
+assert.ok(NEU4B.every((n) => SYMBOL_BY_NAME[n] && FAMILIES.some((f) => f.variants.includes(n)) && !isDevice(SYMBOL_BY_NAME[n])));
+const NEU5 = ["ERDE_PA", "ERDE_ANS", "ERDE_KK", "ERDE_SE", "ERDBAND"]; // Schritt 5: Erdung
+assert.ok(NEU5.every((n) => SYMBOL_BY_NAME[n] && FAMILIES.some((f) => f.variants.includes(n))));
+assert.strictEqual(K("ERDE_PA", "1"), null); assert.strictEqual(K("TRK_S_1P", "1"), null); // Ziffern wechseln nicht zwischen Arten gleicher Polzahl
+const NEW = [...NEU4A, ...NEU4B, ...NEU5, "LS_1PN", "LS_1PT", "LS_3PN", "LS_3PT", "RCBO_1PN", "RCBO_3PN", "NH_1PT", "NH_3PT", "NTRENN_1P", "HAK_4P", "ZAEHLER_2P", "ZAEHLER_4P", "ZW_WANDLER", "ZW_ZAEHLER", "SPD_2P", "SPD_4P", "SPD_2P_1", "SPD_4P_1", "HAK_TNCS", "TNC_TNS", "SPULE_1P", "RELAIS_1P", "SCHUETZ_3P", "SCHUETZ_4P", "FI_4P", "RCBO_4P", "TNC_TNS", "ERDE_1P"];
 const d = newDoc(), m = d.sheets[0];
 NEW.forEach((n, i) => m.items.push({ id: i + 1, type: "symbol", sym: n, x: 30 + (i % 8) * 30, y: 170 - Math.floor(i / 8) * 50, rot: 0, attrs: Object.fromEntries(SYMBOL_BY_NAME[n].attrs.map((a) => [a.tag, a.def])) }));
 const back = parseModel(serializeModel(d));

@@ -24,7 +24,7 @@ with sync_playwright() as p:
     labels = [page.locator(f'#left .var[data-sym="{s}"] .vl').inner_text() for s in ("LS_1PT", "LS_3PN", "SPD_4P_1", "FI_2P")]
     check("Kurztexte 1P+N-Tr., 3P+N, 3+1, 2P", labels == ["1P+N-Tr.", "3P+N", "3+1", "2P"], str(labels))
     check("Voller Name im Tooltip", page.get_attribute('#left .var[data-sym="LS_1PT"]', "title") == "Leitungsschutzschalter 1P + N-Trenner")
-    check("Einzelgerät bleibt Zeile (Erde)", page.locator('#left .sym[data-sym="ERDE_1P"]').count() == 1)
+    check("Einzelgerät bleibt Zeile (Motor; Erde hat seit 22.10. Varianten)", page.locator('#left .sym[data-sym="MOTOR_3P"]').count() == 1)
     check("HAK und Zähler mit Varianten als Kacheln (CJ 16.10.)", page.locator('#left .var[data-sym="HAK_TNCS"]').count() == 1 and page.locator('#left .var[data-sym="ZAEHLER_4P_W"]').count() == 1)
     # Ein Klick links genügt: LS 3P+N direkt setzen, ohne Auswahl rechts
     page.click('#left .var[data-sym="LS_3PN"]')

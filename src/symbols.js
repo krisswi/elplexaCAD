@@ -1,7 +1,7 @@
 // Symboldefinitionen (eigene, generische Symbole). Einheit mm, y nach oben (wie DXF).
 // Ursprung = oberer Anschluss von Pol 1. Alles liegt auf einem 2,5-mm-Raster.
 // Dieselben Daten zeichnen das Symbol im Editor und schreiben den DXF-Block.
-import { PRINZIP_SYMBOLS } from "./prinzipsym.js"; // Prinzipschema, einpolig (CJ 21.10.2026)
+import { PRINZIP_SYMBOLS, PZ_AUS_SCHEMA, fromSchema } from "./prinzipsym.js"; // Prinzipschema, einpolig (CJ 21.10.2026)
 
 const line = (x1, y1, x2, y2, dashed = false) => ({ t: "l", x1, y1, x2, y2, d: dashed });
 const circle = (cx, cy, r) => ({ t: "c", cx, cy, r });
@@ -27,8 +27,10 @@ function tripMark(x) {
   p.push(line(x - 6.7, -15.9, x - 1.17, -12.78), line(x - 6.7, -15.9, x - 4.76, -15.38), line(x - 6.7, -15.9, x - 5.28, -14.49), line(x - 5.28, -14.49, x - 4.76, -15.38), line(x - 6.7, -15.9, x - 5.02, -14.94)); // Freiauslösung, Pfeil
   return p;
 }
-function pole(x, kind, trip = false) {
-  if (kind === "t") return [line(x, 0, x, -POLE_LEN), line(x - 1.2, -8, x + 1.2, -8), line(x - 1.2, -12, x + 1.2, -12), text(x + 1.8, -2.5, 1.8, "N")];
+// N-Trenner: Querstriche auf Höhe der Kontaktlücke daneben (CJ 22.10.2026): beim LS/RCBO wie dessen Schaltstück (y -8.5 bis -15.5), sonst wie Schliesser und NH (y -6 bis -14)
+const GAP_LS = [-8.5, -15.5], GAP_K = [-6, -14];
+function pole(x, kind, trip = false, gap = GAP_K) {
+  if (kind === "t") return [line(x, 0, x, -POLE_LEN), ...gap.map((y) => line(x - 1.2, y, x + 1.2, y)), text(x + 1.8, -2.5, 1.8, "N")];
   const p = [line(x, 0, x, -8.5), line(x - 3, -8.5, x, -15.5), line(x, -15.5, x, -POLE_LEN)];
   // Kreuz klein (CJ 16.10.), mit Abstand über dem Querstrich wie bei QElectroTech disjonct-m_3fn (CJ 16.10.)
   if (kind !== "c") p.push(line(x - 0.8, -8.5, x + 0.8, -8.5), line(x - 0.6, CROSS_Y - 0.6, x + 0.6, CROSS_Y + 0.6), line(x + 0.6, CROSS_Y - 0.6, x - 0.6, CROSS_Y + 0.6));
@@ -40,7 +42,7 @@ function pole(x, kind, trip = false) {
 // kinds: eine Polart je Pol, z. B. "sssn" = 3P+N. Auslöser am ersten Schutzpol, Kopplung über alle geschalteten Pole (ohne Trenner).
 function poles(kinds) {
   const prims = [], pins = [];
-  [...kinds].forEach((k, i) => { prims.push(...pole(i * POLE, k, k === "s" && i === kinds.indexOf("s"))); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); });
+  [...kinds].forEach((k, i) => { prims.push(...pole(i * POLE, k, k === "s" && i === kinds.indexOf("s"), GAP_LS)); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); });
   const sw = kinds.replace(/t+$/, "").length;
   if (sw > 1) prims.push(line(bladeX(0, COUPLE_Y), COUPLE_Y, bladeX((sw - 1) * POLE, COUPLE_Y), COUPLE_Y, true)); // mechanische Kopplung
   if (kinds === "ssss") prims.push(text(3 * POLE + 1.8, -2.5, 1.8, "N")); // 4-polig: 4. Pol ist der geschützte N (CJ 16.10.)
@@ -114,17 +116,20 @@ const nTrenner = {
 };
 
 // Kontakte: Schliesser (KS), Öffner (KO), Taster; Spule für Schütz und Relais. Eigene Zeichnung nach der üblichen Darstellung (Entwurf, von CJ zu prüfen).
+// Öffner (CJ 22.10.2026): Querstrich am Festkontakt nach rechts, das Schaltstück läuft knapp vor dessen Ende darüber hinaus.
+const NC_END = { x: 1.6, y: -5.5 }, couplingX = (nc) => (nc ? (NC_END.x * 4) / 8.5 : -1.25); // Schaltstück auf Höhe y -10
 function contactPole(x, nc) {
   const p = [line(x, -14, x, -POLE_LEN)];
-  if (nc) p.push(line(x, 0, x, -6), line(x, -6, x - 2.5, -6), line(x, -14, x - 2.5, -6));
+  if (nc) p.push(line(x, 0, x, -6), line(x, -6, x + 2.2, -6), line(x, -14, x + NC_END.x, NC_END.y));
   else p.push(line(x, 0, x, -6), line(x, -14, x - 2.5, -6));
   return p;
 }
 function contactVariant(nc, n, push = false) {
   const prims = [], pins = [];
   for (let i = 0; i < n; i++) { prims.push(...contactPole(i * POLE, nc)); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); }
-  if (n > 1) prims.push(line(-1.2, -10, (n - 1) * POLE - 1.2, -10, true));
-  if (push) { prims.push(line(-1.2, -10, -6, -10, true), line(-6, -8, -6, -12)); }
+  const cx = couplingX(nc);
+  if (n > 1) prims.push(line(cx, -10, (n - 1) * POLE + cx, -10, true));
+  if (push) { prims.push(line(cx, -10, -6, -10, true), line(-6, -8, -6, -12), line(-6, -8, -5.2, -8), line(-6, -12, -5.2, -12)); } // Druckknopf (CJ 22.10.)
   const fam = push ? (nc ? "TASTER_O" : "TASTER_S") : nc ? "KO" : "KS";
   const label = push ? (nc ? "Taster Öffner" : "Taster Schliesser") : nc ? "Öffner" : "Schliesser";
   return {
@@ -133,12 +138,17 @@ function contactVariant(nc, n, push = false) {
   };
 }
 
+// Schütz-Funktion (CJ 22.10.2026, nach IEC 60617): Halbkreis links am Ende des Festkontakts, aus kurzen Linien
+const contactorArc = (x, r = 0.8, n = 8) => Array.from({ length: n }, (_, i) => {
+  const a = (k) => Math.PI / 2 + (Math.PI * k) / n, px = (k) => r3(x + r * Math.cos(a(k))), py = (k) => r3(-6 + r + r * Math.sin(a(k)));
+  return line(px(i), py(i), px(i + 1), py(i + 1));
+});
 // Schütz-Hauptkontakte (CJ 16.10., nach Musterschema): Schliesser mit Klemmennummern 1/2, 3/4, 5/6, 7/8 rechts an den Polen
 function schuetzVariant(n) {
   const prims = [], pins = [];
   for (let i = 0; i < n; i++) {
     const x = i * POLE;
-    prims.push(...contactPole(x, false), text(x + 1.6, -2.5, 1.6, String(2 * i + 1)), text(x + 1.6, -17.5, 1.6, String(2 * i + 2)));
+    prims.push(...contactPole(x, false), ...contactorArc(x), text(x + 1.6, -2.5, 1.6, String(2 * i + 1)), text(x + 1.6, -17.5, 1.6, String(2 * i + 2)));
     pins.push({ x, y: 0 }, { x, y: -POLE_LEN });
   }
   if (n > 1) prims.push(line(-1.2, -10, (n - 1) * POLE - 1.2, -10, true));
@@ -148,16 +158,102 @@ function schuetzVariant(n) {
   };
 }
 
-// Spule (CJ 16.10., nach Musterschema): liegendes Rechteck 8 x 4 mm, A1 oben, A2 unten, BMK links. Relais mit Schrägstrich.
+// Spule (CJ 16.10., nach Musterschema): liegendes Rechteck 8 x 4 mm, A1 oben, A2 unten, BMK links.
+// Relais wie in IEC 60617 ein leeres Rechteck (CJ 22.10.2026: Schrägstrich hiess Remanenzrelais), gleich wie die Schützspule.
 function coilVariant(relay) {
   const prims = [line(0, 0, 0, -8), ...rect(-4, -8, 4, -12), line(0, -12, 0, -20), text(2.2, -6.5, 1.8, "A1"), text(2.2, -13.5, 1.8, "A2")];
-  if (relay) prims.push(line(-1.5, -12, 1.5, -8));
   return {
     name: relay ? "RELAIS_1P" : "SPULE_1P", family: relay ? "RELAIS" : "SPULE", poles: 1, label: relay ? "Spule Relais" : "Spule Schütz", layer: "SCH_SYMBOLE", prims,
     pins: [{ x: 0, y: 0 }, { x: 0, y: -20 }],
     attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "K?", x: -14, y: -9, h: 2.5 }, { tag: "TEXT", label: "Funktion", def: "", x: -14, y: -12.5, h: 2.5 }],
   };
 }
+
+// Neue Kontakte und Relais (CJ 22.10.2026, nach der Symbolzusammenfassung IEC 60617, selbst gezeichnet). Masse wie Schliesser:
+// Leiter oben bis y -6, Schaltstück von (0, -14) schräg nach oben, Betätigung links bei x -6, Wirklinie auf y -10.
+const kBmk = (def, y = -4) => [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def, x: -14, y, h: 2.5 }];
+const kSym = (name, family, label, prims, pins, def = "K?") => ({ name, family, poles: 1, label, layer: "SCH_SYMBOLE", prims, pins, attrs: kBmk(def) });
+const NO = [line(0, 0, 0, -6), line(0, -14, -2.5, -6), line(0, -14, 0, -POLE_LEN)]; // Schliesser
+const NC = [line(0, 0, 0, -6), line(0, -6, 2.2, -6), line(0, -14, 1.6, -5.5), line(0, -14, 0, -POLE_LEN)]; // Öffner wie KO
+const P1 = [{ x: 0, y: 0 }, { x: 0, y: -POLE_LEN }];
+const handAct = [line(-6, -8, -6, -12)]; // handbetätigt allgemein
+const rotAct = [line(-6.8, -12, -6, -12), line(-6, -12, -6, -8), line(-6, -8, -5.2, -8)]; // Drehbetätigung
+const thermAct = [line(-6, -8, -6, -12), line(-6, -9.2, -5.2, -9.2), line(-5.2, -9.2, -5.2, -10.8), line(-5.2, -10.8, -6, -10.8)]; // thermische Betätigung
+const link = (x1, nc = false) => line(x1, -10, nc ? 0.75 : -1.25, -10, true); // Wirklinie bis zum Schaltstück
+const nums = (top, bot) => [text(1.8, -2.5, 1.6, top), text(1.8, -17.5, 1.6, bot)];
+const kontakte = [
+  { ...kSym("TRK_O_1P", "TRK", "Kontakt Thermorelais, Öffner 95/96", [...NC, ...thermAct, link(-6, true), ...nums("95", "96")], P1, "F?"), vlabel: "Öffner 95/96" },
+  { ...kSym("TRK_S_1P", "TRK", "Kontakt Thermorelais, Schliesser 97/98", [...NO, ...thermAct, link(-6), ...nums("97", "98")], P1, "F?"), vlabel: "Schliesser 97/98" },
+  kSym("HSCH_1P", "HSCH", "Schalter handbetätigt", [...NO, ...handAct, link(-6)], P1, "S?"),
+  kSym("DSCH_1P", "DSCH", "Drehschalter mit Raste", [...NO, ...rotAct, line(-5.2, -10, -4.4, -10), line(-4.4, -10, -3.9, -10.9), line(-3.9, -10.9, -3.4, -10), line(-3.4, -10, -1.25, -10)], P1, "S?"),
+  kSym("DTAST_1P", "DTAST", "Schwenktaster (Drehknopf, Rückstellung)", [...NO, ...rotAct, link(-5.2)], P1, "S?"),
+  // Wechsler: gemeinsamer Anschluss unten 11, Öffner links oben 12, Schliesser rechts oben 14
+  kSym("KW_1P", "KW", "Wechsler (Umschaltkontakt)", [line(-5, 0, -5, -6), line(-5, -6, -2, -6), line(0, 0, 0, -6), line(0, -14, -2.4, -5.5), line(0, -14, 0, -POLE_LEN),
+    text(-3.2, -2.5, 1.6, "12"), text(1.8, -2.5, 1.6, "14"), text(1.8, -17.5, 1.6, "11")], [{ x: 0, y: 0 }, { x: -5, y: 0 }, { x: 0, y: -POLE_LEN }]),
+  // Zweiweg-Umschalter mit Aus-Stellung: zwei Festkontakte oben, Schaltstück in der Mitte, Drehpunkt als Kreis
+  kSym("UMS_1P", "UMS", "Umschalter mit Aus-Stellung", [line(-2.5, 0, -2.5, -6), line(2.5, 0, 2.5, -6), line(0, -13.5, 0, -8), circle(0, -14, 0.5), line(0, -14.5, 0, -POLE_LEN)],
+    [{ x: -2.5, y: 0 }, { x: 2.5, y: 0 }, { x: 0, y: -POLE_LEN }], "S?"),
+];
+// Thermorelais (Überlastrelais, Hauptstrom) wie in der Quelle (CJ 22.10.2026): liegendes Rechteck 8 × 4 mm wie die Spule, bei 3 Polen
+// ein breites Rechteck über alle Pole; in jedem Pol das Bimetall-Zeichen (Leiter mit Ausbuchtung nach rechts) nebeneinander.
+function trVariant(n) {
+  const prims = [...rect(-4, -8, (n - 1) * POLE + 4, -12)], pins = [];
+  for (let i = 0; i < n; i++) {
+    const x = i * POLE;
+    prims.push(line(x, 0, x, -9.2), line(x, -9.2, x + 1.2, -9.2), line(x + 1.2, -9.2, x + 1.2, -10.8), line(x + 1.2, -10.8, x, -10.8), line(x, -10.8, x, -POLE_LEN));
+    pins.push({ x, y: 0 }, { x, y: -POLE_LEN });
+  }
+  return { name: `TR_${n}P`, family: "TR", poles: n, label: `Thermorelais ${n}-polig`, layer: "SCH_SYMBOLE", prims, pins, attrs: [...kBmk("F?", -9), attrStrom("")] };
+}
+// Spulen mit Kennzeichen (wie Spule Schütz, 8 × 4 mm): Stromstossrelais, abfall- und anzugsverzögert; Unterspannungsrelais als Kasten mit U<
+function coilMark(name, family, label, mark, vlabel) {
+  const p = coilVariant(true);
+  return { ...p, name, family, label, prims: [...p.prims, ...mark], ...(vlabel ? { vlabel } : {}) };
+}
+const relais = [
+  coilMark("STR_1P", "STR", "Stromstossrelais", [line(-2.5, -11.2, -2.5, -10.3), line(-2.5, -10.3, 2, -10.3), line(2, -10.3, 2, -9)]),
+  coilMark("ZR_AB_1P", "ZR", "Zeitrelais abfallverzögert", [line(-2.5, -8, -2.5, -12), ...[0, 1, 2, 3, 4, 5].map((k) => line(-3.75 + k * 0.25, -8, -3.75 + k * 0.25, -12))], "abfallverzögert"),
+  coilMark("ZR_AN_1P", "ZR", "Zeitrelais anzugsverzögert", [line(-2.5, -8, -2.5, -12), line(-4, -8, -2.5, -12), line(-4, -12, -2.5, -8)], "anzugsverzögert"),
+  { name: "USR_1P", family: "USR", poles: 1, label: "Unterspannungsrelais", layer: "SCH_SYMBOLE", prims: [line(0, 0, 0, -6), ...rect(-5, -6, 5, -14), text(0, -10, 3, "U<"), line(0, -14, 0, -POLE_LEN)],
+    pins: P1, attrs: kBmk("K?", -9) },
+];
+
+// Schritt 4b (CJ 22.10.2026): Meldeleuchte, Messgeräte, Bauteile, Antriebe. Senkrecht wie die Kontakte: Anschluss oben y 0, unten y -20,
+// das Zeichen sitzt in der Mitte (y -10). Bögen und Sinus aus kurzen Linien, gefüllte Flächen aus dichten Strichen (wie DXF ohne Schraffur).
+const arcPts = (cx, cy, r, a0, a1, n = 10) => Array.from({ length: n }, (_, i) => {
+  const a = (k) => ((a0 + ((a1 - a0) * k) / n) * Math.PI) / 180;
+  return line(r3(cx + r * Math.cos(a(i))), r3(cy + r * Math.sin(a(i))), r3(cx + r * Math.cos(a(i + 1))), r3(cy + r * Math.sin(a(i + 1))));
+});
+const sineAt = (cx, cy, w = 3.5, h = 0.8) => Array.from({ length: 12 }, (_, i) => {
+  const x = (k) => r3(cx - w / 2 + (w * k) / 12), y = (k) => r3(cy + h * Math.sin((2 * Math.PI * k) / 12));
+  return line(x(i), y(i), x(i + 1), y(i + 1));
+});
+const fill = (x0, y0, x1, y1, n = 6) => Array.from({ length: n + 1 }, (_, k) => line(r3(x0 + ((x1 - x0) * k) / n), y0, r3(x0 + ((x1 - x0) * k) / n), y1));
+const arrowTo = (x0, y0, x1, y1, s = 1) => { const a = Math.atan2(y1 - y0, x1 - x0), d = (t) => [r3(x1 - s * Math.cos(a + t)), r3(y1 - s * Math.sin(a + t))];
+  return [line(x0, y0, x1, y1), line(x1, y1, ...d(0.45)), line(x1, y1, ...d(-0.45))]; };
+const leads = (top, bot) => [line(0, 0, 0, top), line(0, bot, 0, -POLE_LEN)];
+const v4b = (name, family, label, vlabel, prims, def, extra = []) => ({ ...kSym(name, family, label, prims, P1, def), vlabel, attrs: [...kBmk(def, -9), ...extra] });
+const txtAttr = (def) => [{ tag: "TEXT", label: "Text", def, x: -14, y: -12.5, h: 2.5 }];
+const box10 = [...rect(-5, -5, 5, -15)];
+const bauteile = [
+  v4b("LAMPE_1P", "LAMPE", "Meldeleuchte", "Meldeleuchte", [...leads(-7.5, -12.5), circle(0, -10, 2.5), line(-1.77, -8.23, 1.77, -11.77), line(-1.77, -11.77, 1.77, -8.23)], "P?", txtAttr("")),
+  v4b("MESS_V_1P", "MESS", "Voltmeter", "Voltmeter", [...leads(-6.5, -13.5), circle(0, -10, 3.5), text(0, -10, 3, "V")], "P?"),
+  v4b("MESS_A_1P", "MESS", "Amperemeter", "Amperemeter", [...leads(-6.5, -13.5), circle(0, -10, 3.5), text(0, -10, 3, "A")], "P?"),
+  v4b("MESS_H_1P", "MESS", "Stundenzähler", "Stundenzähler", [...leads(-5, -15), ...rect(-3.5, -5, 3.5, -15), line(-3.5, -7.5, 3.5, -7.5), text(0, -11.25, 3, "h")], "P?"),
+  v4b("R_1P", "BAUTEIL", "Widerstand", "Widerstand", [...leads(-6, -14), ...rect(-1.25, -6, 1.25, -14)], "R?"),
+  v4b("C_1P", "BAUTEIL", "Kondensator", "Kondensator", [...leads(-9.25, -10.75), line(-2.5, -9.25, 2.5, -9.25), line(-2.5, -10.75, 2.5, -10.75)], "C?"),
+  v4b("L_1P", "BAUTEIL", "Spule, Drossel", "Spule, Drossel", [...leads(-6, -14), ...[0, 1, 2, 3].flatMap((k) => arcPts(0, -7 - 2 * k, 1, 90, -90, 8))], "L?"),
+  v4b("LED_1P", "BAUTEIL", "Leuchtdiode (LED)", "LED", [...leads(-8.5, -11.5), line(-2, -8.5, 2, -8.5), line(2, -8.5, 0, -11.5), line(0, -11.5, -2, -8.5), line(-2, -11.5, 2, -11.5),
+    ...arrowTo(2, -9.5, 4, -7.5, 0.8), ...arrowTo(2.6, -10.7, 4.6, -8.7, 0.8)], "P?"),
+  v4b("BATT_1P", "BAUTEIL", "Batterie", "Batterie", [...leads(-8, -13), ...[-8, -10, -12].flatMap((y) => [line(-2.5, y, 2.5, y), line(-1.25, y - 1, 1.25, y - 1)]), text(3.5, -6.5, 2, "+")], "G?"), // drei Zellen (CJ 23.10.2026)
+  v4b("STD_1P", "STD", "Steckdose und Stecker", "Steckdose und Stecker", [line(0, 0, 0, -6.5), ...arcPts(0, -9, 2.5, 180, 0, 12), ...fill(-1, -9, 1, -13, 8), line(-1, -9, 1, -9), line(-1, -13, 1, -13), line(0, -13, 0, -POLE_LEN)], "X?"),
+  v4b("FU_1P", "FU", "Frequenzumformer", "Frequenzumformer", [...leads(-5, -15), ...box10, line(-5, -15, 5, -5), ...sineAt(-2.5, -7.5), ...sineAt(2.5, -12.5), ...arrowTo(1, -14, 4, -11, 0.8)], "T?", txtAttr("")),
+  v4b("SANFT_1P", "SANFT", "Sanftanlasser", "Sanftanlasser", [...leads(-5, -15), ...box10, line(-5, -5, 0, -8.5), line(0, -8.5, 5, -5), ...arrowTo(-3, -11, 6.5, -2.5, 1),
+    line(-4, -12, 4, -12), line(-1.5, -10.5, -1.5, -13.5), line(-1.5, -10.5, 1.5, -12), line(-1.5, -13.5, 1.5, -12), line(1.5, -10.5, 1.5, -13.5)], "T?"),
+  { name: "GEN_1P", family: "GEN", poles: 1, label: "Generator", layer: "SCH_SYMBOLE", prims: [circle(0, 0, 5), text(0, 1.2, 3.5, "G")], pins: [{ x: 0, y: 5 }],
+    attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "G?", x: 8, y: 2, h: 2.5 }, { tag: "LEISTUNG", label: "Leistung", def: "", x: 8, y: -1.5, h: 2.5 },
+      { tag: "STROMART", label: "Stromart (im Kreis)", def: "3~", x: -1.2, y: -3.4, h: 2.2 }] },
+];
 
 // NH-Sicherung: Rechteck mit Schmelzleiter in jedem Pol, auf Wunsch mit Neutralleitertrenner als letztem Pol
 function nhPole(x) {
@@ -173,56 +269,68 @@ function nhVariant(v) {
   };
 }
 
-// Hausanschlusskasten: 3 NH-Sicherungen und Neutralleitertrenner in einem gestrichelten Kasten, "HAK" rechts daneben
+// Hausanschlusskasten: 3 NH-Sicherungen und Neutralleitertrenner im gestrichelten Rahmen, "HAK" rechts daneben.
+// Rahmen wie das HAK-Zeichen nach IEC (CJ 22.10.2026): durchgezogen, Kasten 1,3 × so hoch wie breit, Querstrich, darunter
+// Spitze zur Zuleitung (0,55 × Breite). Die Anschlüsse liegen im Rahmen (CJ: dürfen im HAK drin sein), damit alte Dateien verbunden bleiben.
+// Spitze immer zwischen L2 und L3 (x 7,5), wo die Zuleitung abgeht (CJ 22.10.), auch wenn der Rahmen dann nicht ganz gleichseitig ist.
+function hakFrame(x0, x1, top, tx = 7.5) {
+  const w = x1 - x0, side = r3(top - 1.3 * w), ty = r3(side - 0.55 * w);
+  return [line(x0, top, x1, top), line(x1, top, x1, side), line(x0, side, x0, top), line(x0, side, x1, side), line(x1, side, tx, ty), line(tx, ty, x0, side)];
+}
+const lNames = (n = 3) => Array.from({ length: n }, (_, i) => text(i * POLE + 1.8, -2.5, 1.8, `L${i + 1}`)); // L1 bis L3 an den Leitern, wo N und PE stehen (CJ 22.10.)
 const hak = {
-  name: "HAK_4P", family: "HAK", poles: 4, vlabel: "TN-S", label: "Hausanschlusskasten (3 NH + N-Trenner)", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...pole(3 * POLE, "t"), ...rect(-3.5, -4, 19, -16, true), text(23.5, -10, 2.2, "HAK")],
-  pins: [0, 1, 2, 3].flatMap((i) => [{ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }]),
+  // TN-S: PE läuft rechts durch (CJ 22.10.2026); Anschlüsse von L1 bis N wie bisher, PE hinten angehängt
+  name: "HAK_4P", family: "HAK", poles: 5, vlabel: "TN-S", label: "Hausanschlusskasten (3 NH + N-Trenner, PE)", layer: "SCH_SYMBOLE",
+  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...pole(3 * POLE, "t"), line(20, 0, 20, -POLE_LEN), text(21.8, -2.5, 1.8, "PE"), ...lNames(), ...hakFrame(-3.5, 25, 7), text(29.5, -10, 2.2, "HAK")],
+  pins: [0, 1, 2, 3, 4].flatMap((i) => [{ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }]),
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
 };
 // HAK mit Übergang TN-C > TN-S (CJ 16.10.: passiert in der Regel im HAK). Einspeisung von unten wie TNC_TNS: unten L1, L2, L3, PEN,
 // oben L1, L2, L3, N (mit N-Trenner), PE. PEN teilt sich im Kasten bei y -15.5.
 const hakTncs = {
   name: "HAK_TNCS", family: "HAK", poles: 5, vlabel: "TN-C > TN-S", label: "Hausanschlusskasten mit PEN-Aufteilung", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), line(15, 0, 15, -POLE_LEN), line(13.8, -7, 16.2, -7), line(13.8, -10, 16.2, -10),
-    dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0), ...rect(-3.5, -4, 23, -17.5, true),
-    text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(17.8, -19, 1.8, "PEN"), text(27.5, -10, 2.2, "HAK")],
+  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), line(15, 0, 15, -POLE_LEN), line(13.8, -6, 16.2, -6), line(13.8, -14, 16.2, -14),
+    dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0), ...hakFrame(-3.5, 25, 7), ...lNames(),
+    text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(17.8, -19, 1.8, "PEN"), text(29.5, -10, 2.2, "HAK")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), ...[0, 1, 2, 3].map((i) => ({ x: i * POLE, y: -POLE_LEN }))],
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
 };
 
 // HAK der Eingangsverdrahtung (CJ 16.10., Bild „CJ Eingangsverdrahtung“): Zuleitung einpolig von unten (Anschluss x 7,5, y -30),
 // teilt sich im Kasten auf L1, L2, L3, PEN (Querstrich y -25); 3 NH, N mit Trenner, PEN-Aufteilung N/PE. Oben L1, L2, L3, N, PE.
-// Der gestrichelte Kasten schliesst die Aufteilung ein.
+// Der gestrichelte Rahmen (Fünfeck) schliesst die Aufteilung ein; L1, L2, L3 und PEN laufen schräg auf die Zuleitung zu (CJ 22.10.2026).
 const hakFeed = {
   name: "HAK_TNCS_1", family: "HAK", poles: 5, vlabel: "TN-C > TN-S, Zuleitung", label: "Hausanschlusskasten mit PEN-Aufteilung, Zuleitung einpolig", layer: "SCH_SYMBOLE",
-  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...[0, 1, 2].map((i) => line(i * POLE, -POLE_LEN, i * POLE, -25)), line(15, 0, 15, -25),
-    line(13.8, -7, 16.2, -7), line(13.8, -10, 16.2, -10), dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0),
-    line(0, -25, 15, -25), dot(7.5, -25), line(7.5, -25, 7.5, -30), ...rect(-3.5, -3, 23.5, -27.5, true),
-    text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(18, -19, 1.8, "PEN"), text(28, -12.5, 2.2, "HAK")],
+  prims: [...[0, 1, 2].flatMap((i) => nhPole(i * POLE)), ...[0, 1, 2, 3].map((i) => line(i * POLE, -POLE_LEN, 7.5, -25)), line(15, 0, 15, -POLE_LEN),
+    line(13.8, -6, 16.2, -6), line(13.8, -14, 16.2, -14), dot(15, -15.5), line(15, -15.5, 20, -10.5), line(20, -10.5, 20, 0),
+    dot(7.5, -25), line(7.5, -25, 7.5, -30), ...hakFrame(-3.5, 25, 4), ...lNames(),
+    text(16.8, -2.5, 1.8, "N"), text(21.8, -2.5, 1.8, "PE"), text(18, -19, 1.8, "PEN"), text(29.5, -12.5, 2.2, "HAK")],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), { x: 7.5, y: -30 }],
   attrs: [attrBMK("HAK"), attrStrom("63A"), { tag: "GROESSE", label: "Baugrösse", def: "NH00", x: -14, y: -11, h: 2.5 }],
 };
 // Hauptpotentialausgleichsschiene (CJ 16.10., Darstellung Annahme): Schiene 20 x 2,5 mm mit 5 Anschlusspunkten, Anschluss oben und unten
 const hpas = {
-  name: "HPAS_1P", family: "HPAS", poles: 1, label: "Hauptpotentialausgleichsschiene (HPAS)", layer: "SCH_SYMBOLE",
+  name: "HPAS_1P", family: "HPAS", poles: 1, vlabel: "HPAS", label: "Hauptpotentialausgleichsschiene (HPAS)", layer: "SCH_SYMBOLE",
   prims: [line(0, 0, 0, -2.5), ...rect(-10, -2.5, 10, -5), ...[-8, -4, 0, 4, 8].map((x) => dot(x, -3.75)), line(0, -5, 0, -7.5)],
   pins: [{ x: 0, y: 0 }, { x: 0, y: -7.5 }],
   attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "HPAS", x: 12, y: -3, h: 2.5 }, { tag: "BEZ", label: "Bezeichnung", def: "Hauptpotentialausgleich", x: 12, y: -6.5, h: 2.5 }],
 };
 
-// Zähler (Energiezähler, CJ 16.10. nach Vorlage „CJ Zaehler Vorlage“): hoher Kasten über alle Leiter, "kWh" oben,
-// darunter eine waagrechte Linie mit gefüllten Punkten links und rechts am Kasten. Leiter oben und unten angeschlossen.
+// Zähler (Energiezähler, CJ 16.10. nach Vorlage „CJ Zaehler Vorlage“; CJ 22.10.2026): Kasten 20 mm hoch, Kopfband oben, "kWh" im grossen Feld.
+// 1 bis 8 Anschlüsse oben und unten (Tasten 1 bis 8), ohne Anschlussstücke und ohne N: die Leitung geht direkt an den Kasten.
+// Rechts oben immer 5 Seitenkontakte im Abstand 2,5 mm (nur Fangpunkte auf der Kante). Kasten mindestens 15 mm breit.
+const SIDE_PINS = 5;
 function zaehlerVariant(n) {
-  const r = (n - 1) * POLE + 2.5, vl = n === 2 ? "2-polig (1P+N)" : "4-polig (3P+N)", pins = []; // Kachel „2P“/„4P“ (CJ 16.10.: „Zähler braucht es auch 4-polig“)
-  // Kasten 18 mm hoch (CJ 16.10.: 20 % länger als 15 mm), Anschlüsse oben 0 und unten -20 wie bisher
-  const prims = [...rect(-2.5, -1, r, -19), text(r / 2 - 1.25, -3.25, 2.2, "kWh"), line(-2.5, -5.5, r, -5.5)]; // ohne Punkte (CJ 16.10.)
-  for (let i = 0; i < n; i++) { prims.push(line(i * POLE, 0, i * POLE, -1), line(i * POLE, -19, i * POLE, -POLE_LEN)); pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); }
+  const r = Math.max((n - 1) * POLE + 2.5, 12.5), vl = `${n} Anschl${n > 1 ? "üsse" : "uss"}`, pins = [];
+  const prims = [...rect(-2.5, 0, r, -POLE_LEN), text(r / 2 - 1.25, -12.5, 3, "kWh"), line(-2.5, -5, r, -5)];
+  for (let i = 0; i < n; i++) pins.push({ x: i * POLE, y: 0 }, { x: i * POLE, y: -POLE_LEN }); // Anschlüsse oben 0 und unten -20 wie bisher: alte Dateien bleiben verbunden
+  for (let k = 1; k <= SIDE_PINS; k++) pins.push({ x: r, y: -2.5 * k });
   return {
-    name: `ZAEHLER_${n}P`, family: "ZAEHLER", poles: n, lp: n - 1, nm: "n", vlabel: vl, label: `Zähler ${vl}`, layer: "SCH_SYMBOLE", prims, pins,
+    name: `ZAEHLER_${n}P`, family: "ZAEHLER", poles: n, lp: n, nm: "", vlabel: vl, label: `Zähler, ${vl}`, layer: "SCH_SYMBOLE", prims, pins,
     attrs: [attrBMK("P?"), { tag: "ZAEHLERNR", label: "Zählernummer", def: "", x: -14, y: -7.5, h: 2.5 }],
   };
 }
+export const ZAEHLER_N = [1, 2, 3, 4, 5, 6, 7, 8];
 
 // Wandlermessung (CJ 16.10., nach Anschlussschema Wandlermessung GEBNET, umgekehrt: bei uns laufen die Hauptlinien oben durch).
 // Ursprung = L1-Hauptlinie; L2, L3, N liegen 5, 10, 15 mm darunter. Je Aussenleiter ein Stromwandler (gestrichelter Kasten mit
@@ -405,15 +513,25 @@ const wmBox = {
 // die übrigen Symbole. Erde: Anschluss oben, Stich 2,5 mm, drei kürzer werdende Striche.
 const earth = (x, y) => [line(x, y, x, y - 2.5), line(x - 1.75, y - 2.5, x + 1.75, y - 2.5), line(x - 1.25, y - 3.25, x + 1.25, y - 3.25), line(x - 0.5, y - 4, x + 0.5, y - 4)];
 const erde = {
-  name: "ERDE_1P", family: "ERDE", poles: 1, label: "Erde", layer: "SCH_SYMBOLE", prims: earth(0, 0), pins: [{ x: 0, y: 0 }],
+  name: "ERDE_1P", family: "ERDE", poles: 1, vlabel: "Erdung", label: "Erde", layer: "SCH_SYMBOLE", prims: earth(0, 0), pins: [{ x: 0, y: 0 }],
   attrs: [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "", x: -14, y: -2, h: 2.5 }],
 };
+// Weitere Erdungszeichen nach der Symbolzusammenfassung 5.120 (CJ 22.10.2026, selbst gezeichnet), Anschluss oben bei (0, 0)
+const erdSym = (name, label, vlabel, prims, pins = [{ x: 0, y: 0 }], attrs = [{ tag: "BMK", label: "Betriebsmittelkennzeichen", def: "", x: -14, y: -2, h: 2.5 }]) =>
+  ({ name, family: name === "ERDBAND" ? "ERDBAND" : "ERDE", poles: 1, vlabel, label, layer: "SCH_SYMBOLE", prims, pins, attrs });
+const erdArten = [
+  erdSym("ERDE_PA", "Potenzialausgleich", "Potenzialausgleich", [line(0, 0, 0, -2.5), line(-2, -2.5, 2, -2.5), line(2, -2.5, 0, -5.5), line(0, -5.5, -2, -2.5)]),
+  erdSym("ERDE_ANS", "Erdungs-Anschluss", "Erdungs-Anschluss", [dot(0, -0.5), ...earth(0, -0.5)]),
+  erdSym("ERDE_KK", "Erdungs-Klemmkasten", "Erdungs-Klemmkasten", [...rect(-4, 0, 4, -3.5), line(0, 0, 0, -1), line(-1.75, -1, 1.75, -1), line(-1.25, -1.75, 1.25, -1.75), line(-0.5, -2.5, 0.5, -2.5)]),
+  erdSym("ERDE_SE", "Schutzerde", "Schutzerde", [circle(0, -4, 3.5), line(0, 0, 0, -4.5), line(-1.75, -4.5, 1.75, -4.5), line(-1.25, -5.25, 1.25, -5.25), line(-0.5, -6, 0.5, -6)]),
+  erdSym("ERDBAND", "Erdband", "Erdband", [line(0, 0, 10, 0, true)], [{ x: 0, y: 0 }, { x: 10, y: 0 }], [{ tag: "TEXT", label: "Text", def: "Fe 30/3", x: 1.5, y: 1, h: 2.5 }]),
+];
 // TN-C > TN-S (CJ 16.10.: „auf dem Kopf“, jetzt Einspeisung von unten): unten L1, L2, L3, PEN; L1 bis L3 laufen durch,
 // PEN teilt sich bei y -12.5 (Punkt, geerdet) in N (gerade hoch) und PE (schräg nach rechts oben, 5 mm daneben). Oben L1, L2, L3, N, PE.
 const tncTns = {
   name: "TNC_TNS", family: "TNC_TNS", poles: 4, label: "Netz TN-C > TN-S", layer: "SCH_SYMBOLE",
   prims: [...[0, 1, 2, 3].map((i) => line(i * POLE, 0, i * POLE, -POLE_LEN)), dot(15, -12.5), line(15, -12.5, 20, -7.5), line(20, -7.5, 20, 0),
-    line(15, -12.5, 23.5, -12.5), ...earth(23.5, -12.5), text(17.8, -17.5, 1.8, "PEN"), text(13.2, -2.5, 1.8, "N"), text(22.2, -2.5, 1.8, "PE")],
+    line(15, -12.5, 23.5, -12.5), ...earth(23.5, -12.5), text(17.8, -17.5, 1.8, "PEN"), text(13.2, -2.5, 1.8, "N"), text(22.2, -2.5, 1.8, "PE"), ...[0, 1, 2].map((i) => text(i * POLE - 1.8, -2.5, 1.8, `L${i + 1}`))],
   pins: [...[0, 1, 2, 3, 4].map((i) => ({ x: i * POLE, y: 0 })), ...[0, 1, 2, 3].map((i) => ({ x: i * POLE, y: -POLE_LEN }))],
   attrs: [attrBMK("")],
 };
@@ -453,7 +571,7 @@ function refVariant(dir, n) {
     const x = i * POLE;
     // dünner Pfeil nach unten: abgehend = Spitze am unteren Ende, ankommend = Spitze am oberen Ende
     const tip = dir === "OUT" ? -5 : -1.8;
-    prims.push(line(x, 0, x, -5), line(x, tip, x - 0.9, tip + 1.8), line(x, tip, x + 0.9, tip + 1.8));
+    prims.push(line(x, dir === "OUT" ? 0 : tip, x, -5), line(x, tip, x - 0.9, tip + 1.8), line(x, tip, x + 0.9, tip + 1.8)); // ankommend: kein Strich zwischen den Flügeln (CJ 22.10.)
     pins.push(dir === "OUT" ? { x, y: 0 } : { x, y: -5 });
   }
   const out = dir === "OUT";
@@ -506,7 +624,7 @@ export const SYMBOLS = [
   ...[2, 4].map(fiVariant),
   ...["1PN", "2P", "3PN", "4P"].map(rcboVariant),
   ...["1P", "1PT", "3P", "3PT", "4P"].map(nhVariant),
-  nTrenner, hak, hakTncs, hakFeed, hpas, zaehlerVariant(2), zaehlerVariant(4), zaehlerWandler, wmTrafo, wmBox, ct, sich, pk, pk1, zaehler2, tncTns, erde, ...[1, 2, 3, 4].map((n) => spdVariant(n)), spdVariant(2, true), spdVariant(4, true),
+  nTrenner, hak, hakTncs, hakFeed, hpas, ...ZAEHLER_N.map(zaehlerVariant), zaehlerWandler, wmTrafo, wmBox, ct, sich, pk, pk1, zaehler2, tncTns, erde, ...erdArten, ...[1, 2, 3, 4].map((n) => spdVariant(n)), spdVariant(2, true), spdVariant(4, true),
   ...[1, 2, 3, 4].map((n) => refVariant("OUT", n)),
   ...[1, 2, 3, 4].map((n) => refVariant("IN", n)),
   ...[1, 2, 3, 4].map((n) => edgeRef("OUT", n)),
@@ -515,21 +633,26 @@ export const SYMBOLS = [
   ...[1, 2, 3, 4].map((n) => contactVariant(true, n)),
   contactVariant(false, 1, true), contactVariant(true, 1, true),
   coilVariant(false), coilVariant(true),
+  ...kontakte, trVariant(1), trVariant(3), ...relais,
+  ...bauteile,
   ...[1, 2, 3, 4].map(schuetzVariant),
   {
-    name: "MOTOR_3P", family: "MOTOR", poles: 3, label: "Motor 3-phasig", layer: "SCH_SYMBOLE",
-    prims: [circle(0, 0, 5), text(0, 0, 3.5, "M")],
+    name: "MOTOR_3P", family: "MOTOR", poles: 3, label: "Motor", layer: "SCH_SYMBOLE", // Stromart beschriftbar, auch 1~ (CJ 22.10.2026)
+    prims: [circle(0, 0, 5), text(0, 1.2, 3.5, "M")],
     pins: [{ x: 0, y: 5 }],
     attrs: [
       { tag: "BMK", label: "Betriebsmittelkennzeichen", def: "M?", x: 8, y: 2, h: 2.5 },
       { tag: "LEISTUNG", label: "Leistung", def: "0.55kW", x: 8, y: -1.5, h: 2.5 },
       { tag: "SPANNUNG", label: "Spannung", def: "400V", x: 8, y: -5, h: 2.5 },
+      { tag: "STROMART", label: "Stromart (im Kreis)", def: "3~", x: -1.2, y: -3.4, h: 2.2 },
     ],
   },
   terminalCell("KLEMME_R", "Klemme", false),
   terminalCell("KLEMME_PE", "PE-Klemme", true),
   ...PRINZIP_SYMBOLS, // nicht in FAMILIES, eigene Palette (prinzipsym.js)
 ];
+// Prinzipschema-Fassungen einiger Schema-Symbole (CJ 23.10.2026, Schritt 6.4), Zeichnung aus dem Schema
+SYMBOLS.push(...PZ_AUS_SCHEMA.map(([src, name, lage, lead, mirror, flip]) => fromSchema(SYMBOLS.find((s) => s.name === src), name, lage, lead, mirror, flip)));
 
 // Schutzgeräte: bekommen automatisch Nummer (F) und Klemmen unten
 export const DEVICE_FAMILIES = ["LS", "FI", "RCBO", "NH"];
@@ -551,17 +674,17 @@ export function registerSymbol(sym) {
 
 // Palette: eine Zeile pro Familie, Polzahl wird beim Setzen oder in den Eigenschaften gewählt
 export const FAMILIES = [
-  { id: "HAK", label: "Hausanschlusskasten", sub: "3 NH + N-Trenner, auch mit PEN-Aufteilung", def: "HAK_4P", variants: ["HAK_4P", "HAK_TNCS", "HAK_TNCS_1"] },
-  { id: "HPAS", label: "Potentialausgleichsschiene", sub: "HPAS, an PE und Erde", def: "HPAS_1P", variants: ["HPAS_1P"] },
-  { id: "ZAEHLER", label: "Zähler", sub: "2- oder 4-polig, Wandlermessung", def: "ZAEHLER_4P", variants: ["ZAEHLER_2P", "ZAEHLER_4P", "ZAEHLER_4P_W"] },
+  { id: "HAK", label: "Hausanschlusskasten", sub: "TN-S oder TN-C > TN-S (PEN-Aufteilung)", def: "HAK_4P", variants: ["HAK_4P", "HAK_TNCS", "HAK_TNCS_1"] },
+  { id: "ZAEHLER", label: "Zähler", sub: "1 bis 8 Anschlüsse, 5 Seitenkontakte, Wandlermessung", def: "ZAEHLER_4P", variants: [...ZAEHLER_N.map((n) => `ZAEHLER_${n}P`), "ZAEHLER_4P_W"] },
   { id: "TNC_TNS", label: "Netz TN-C > TN-S", sub: "PEN teilt in N und PE", def: "TNC_TNS", variants: ["TNC_TNS"] },
   { id: "SPD", label: "Überspannungsschutz (SPD)", sub: "1 bis 4 polig, 1+1, 3+1", def: "SPD_4P", variants: ["SPD_1P", "SPD_2P", "SPD_2P_1", "SPD_3P", "SPD_4P", "SPD_4P_1"] },
   { id: "LS", label: "Leitungsschutzschalter", sub: "1 bis 4 polig, +N, + N-Trenner", def: "LS_4P", variants: ["LS_1P", "LS_1PN", "LS_1PT", "LS_2P", "LS_3P", "LS_3PN", "LS_3PT", "LS_4P"] },
   { id: "FI", label: "FI-Schutzschalter", sub: "2 oder 4 polig", def: "FI_4P", variants: ["FI_2P", "FI_4P"] },
   { id: "RCBO", label: "FI/LS-Schalter (RCBO)", sub: "1P+N, 2P, 3P+N, 4P", def: "RCBO_4P", variants: ["RCBO_1PN", "RCBO_2P", "RCBO_3PN", "RCBO_4P"] },
-  { id: "NH", label: "NH-Sicherung", sub: "1 oder 3 polig, + N-Trenner, 4 polig", def: "NH_4P", variants: ["NH_1P", "NH_1PT", "NH_3P", "NH_3PT", "NH_4P"] },
+  { id: "NH", label: "NH-Sicherung", sub: "1 oder 3 polig, + N-Trenner", def: "NH_3PT", variants: ["NH_1P", "NH_1PT", "NH_3P", "NH_3PT", "NH_4P"], hide: ["NH_4P"] }, // NH_4P nur noch für alte Dateien (CJ 22.10.)
   { id: "NTRENN", label: "Neutralleitertrenner", sub: "einzeln", def: "NTRENN_1P", variants: ["NTRENN_1P"] },
-  { id: "ERDE", label: "Erde", sub: "Erdung", def: "ERDE_1P", variants: ["ERDE_1P"] },
+  { id: "ERDE", label: "Erdung", sub: "Erde, Potenzialausgleich, HPAS, Schutzerde", def: "ERDE_1P", variants: ["ERDE_1P", "ERDE_PA", "HPAS_1P", "ERDE_ANS", "ERDE_KK", "ERDE_SE"] }, // HPAS zur Erdung (CJ 22.10.)
+  { id: "ERDBAND", label: "Erdband", sub: "z. B. Fe 30/3", def: "ERDBAND", variants: ["ERDBAND"] },
   { id: "VOUT", label: "Verweis abgehend", sub: "weiter auf anderem Blatt", def: "VOUT_4P", variants: ["VOUT_1P", "VOUT_2P", "VOUT_3P", "VOUT_4P"] },
   { id: "VIN", label: "Verweis ankommend", sub: "von anderem Blatt", def: "VIN_4P", variants: ["VIN_1P", "VIN_2P", "VIN_3P", "VIN_4P"] },
   { id: "SPULE", label: "Spule Schütz", sub: "Betätigung A1/A2", def: "SPULE_1P", variants: ["SPULE_1P"] },
@@ -571,7 +694,24 @@ export const FAMILIES = [
   { id: "KO", label: "Öffner", sub: "Kontakt, 1 bis 4 polig", def: "KO_4P", variants: ["KO_1P", "KO_2P", "KO_3P", "KO_4P"] },
   { id: "TASTER_S", label: "Taster Schliesser", sub: "Handbetätigt", def: "TASTER_S_1P", variants: ["TASTER_S_1P"] },
   { id: "TASTER_O", label: "Taster Öffner", sub: "Handbetätigt", def: "TASTER_O_1P", variants: ["TASTER_O_1P"] },
-  { id: "MOTOR", label: "Motor 3-phasig", sub: "mit Leistung und Spannung", def: "MOTOR_3P", variants: ["MOTOR_3P"] },
+  { id: "KW", label: "Wechsler", sub: "Umschaltkontakt 11/12/14", def: "KW_1P", variants: ["KW_1P"] },
+  { id: "TRK", label: "Kontakt Thermorelais", sub: "Öffner 95/96 oder Schliesser 97/98", def: "TRK_O_1P", variants: ["TRK_O_1P", "TRK_S_1P"] },
+  { id: "TR", label: "Thermorelais", sub: "Überlastrelais, 1 oder 3 polig", def: "TR_3P", variants: ["TR_1P", "TR_3P"] },
+  { id: "STR", label: "Stromstossrelais", sub: "Spule mit Schrittzeichen", def: "STR_1P", variants: ["STR_1P"] },
+  { id: "ZR", label: "Zeitrelais", sub: "abfall- oder anzugsverzögert", def: "ZR_AB_1P", variants: ["ZR_AB_1P", "ZR_AN_1P"] },
+  { id: "USR", label: "Unterspannungsrelais", sub: "U<", def: "USR_1P", variants: ["USR_1P"] },
+  { id: "HSCH", label: "Schalter", sub: "handbetätigt", def: "HSCH_1P", variants: ["HSCH_1P"] },
+  { id: "DSCH", label: "Drehschalter", sub: "mit Raste", def: "DSCH_1P", variants: ["DSCH_1P"] },
+  { id: "DTAST", label: "Schwenktaster", sub: "Drehknopf mit Rückstellung", def: "DTAST_1P", variants: ["DTAST_1P"] },
+  { id: "UMS", label: "Umschalter mit Aus", sub: "zwei Wege, Mittelstellung Aus", def: "UMS_1P", variants: ["UMS_1P"] },
+  { id: "LAMPE", label: "Meldeleuchte", sub: "Signallampe", def: "LAMPE_1P", variants: ["LAMPE_1P"] },
+  { id: "MESS", label: "Messgerät", sub: "Voltmeter, Amperemeter, Stundenzähler", def: "MESS_V_1P", variants: ["MESS_V_1P", "MESS_A_1P", "MESS_H_1P"] },
+  { id: "STD", label: "Steckdose und Stecker", sub: "Steckverbindung", def: "STD_1P", variants: ["STD_1P"] },
+  { id: "FU", label: "Frequenzumformer", sub: "z. B. Wärmepumpe, Lüftung", def: "FU_1P", variants: ["FU_1P"] },
+  { id: "SANFT", label: "Sanftanlasser", sub: "Motoranlauf", def: "SANFT_1P", variants: ["SANFT_1P"] },
+  { id: "GEN", label: "Generator", sub: "Stromart beschriftbar", def: "GEN_1P", variants: ["GEN_1P"] },
+  { id: "BAUTEIL", label: "Bauteil", sub: "Widerstand, Kondensator, Spule, LED, Batterie", def: "R_1P", variants: ["R_1P", "C_1P", "L_1P", "LED_1P", "BATT_1P"] },
+  { id: "MOTOR", label: "Motor", sub: "Stromart beschriftbar, z. B. 3~ oder 1~", def: "MOTOR_3P", variants: ["MOTOR_3P"] },
 ];
 
 // Polzahl per Taste (CJ 16.10.): 1 bis 4 wählt die Anzahl Pole (N-Art bleibt, wenn es die Variante gibt), N schaltet den
@@ -582,9 +722,10 @@ export function variantByKey(name, key) {
   const fam = FAMILIES.find((f) => f.variants.includes(name));
   if (!fam || fam.variants.length < 2) return null;
   const info = (v) => { const s = SYMBOL_BY_NAME[v]; return { v, lp: s.lp ?? s.poles, nm: s.nm ?? "", poles: s.poles }; };
-  const cur = info(name), all = fam.variants.map(info);
+  const cur = info(name), all = fam.variants.filter((v) => v === name || !fam.hide?.includes(v)).map(info);
   let pick;
-  if (/^[1-4]$/.test(key)) {
+  if (/^[1-8]$/.test(key)) { // 5 bis 8 nur beim Zähler (CJ 22.10.)
+    if (all.every((o) => o.lp === all[0].lp)) return null; // Varianten gleicher Polzahl (z. B. Erdungsarten): Ziffer wechselt nichts
     const k = Number(key);
     pick = all.find((o) => o.lp === k && o.nm === cur.nm) ?? all.find((o) => o.lp === k && o.nm === "") ?? all.find((o) => o.poles === k) ?? all.find((o) => o.lp === k);
   } else if (key === "n" || key === "N") {

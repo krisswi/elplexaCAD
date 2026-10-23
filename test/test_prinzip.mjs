@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { newDoc, newSheet, parseModel, serializeModel, modOf, modName, VERSION } from "../src/model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, bmkLetter } from "../src/symbols.js";
-import { polNext, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
+import { polNext, sichName, kabelN, PZ_ABGANG, PZ_POL, PZ_AUS_SCHEMA, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
 import { exportDxf } from "../src/dxf.js";
 import { renumberAll } from "../src/numbering.js";
 import { partsList, fuseLegend } from "../src/auswertung.js";
@@ -19,8 +19,27 @@ for (const s of PRINZIP_SYMBOLS) {
   assert.ok(!FAMILIES.some((f) => f.variants.includes(s.name)), `${s.name}: nicht in der Schema-Palette`);
 }
 assert.ok(PRINZIP_FAMILIES.every((f) => f.variants.every((v) => SYMBOL_BY_NAME[v])), "Palette zeigt nur vorhandene Symbole");
-for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS", "PZ_SICH", "PZ_ZAEHLER", "PZ_RSE", "PZ_GERAET", "PZ_HAK"]) assert.ok(SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: leeres BMK-Feld für später`);
+for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS", "PZ_SICH", "PZ_ZAEHLER", "PZ_RSE", "PZ_WANDLER", "PZ_GERAET", "PZ_WR", "PZ_GR", "PZ_HAK"]) assert.ok(SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: leeres BMK-Feld für später`);
+assert.ok(PRINZIP_FAMILIES.some((f) => f.def === "PZ_WANDLER") && SYMBOL_BY_NAME.PZ_WANDLER.pins.length === 3, "Stromwandler in der Palette, drei Anschlüsse (CJ 23.10.)");
+// Schritt 6.5 (CJ 23.10.2026): Geräte nur im Prinzipschema, mit BMK und in der Palette; Motorschutz als Abgang, Verteilgeräte mit Polzahl
+for (const n of ["PZ_MSS", "PZ_MSS_M", "PZ_LTR", "PZ_LTS", "PZ_TRS", "PZ_TRENN", "PZ_LSCH", "PZ_SICH_M"]) assert.ok(PRINZIP_FAMILIES.some((f) => f.def === n) && SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: in der Palette mit BMK`);
+assert.ok(["PZ_MSS", "PZ_MSS_M"].every((n) => PZ_ABGANG.includes(n)) && ["PZ_LTR", "PZ_LTS", "PZ_TRS", "PZ_TRENN", "PZ_LSCH"].every((n) => PZ_POL.includes(n) && SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "POL")), "Polzahl-Tasten für Motorschutz und Verteilgeräte");
+// Schritt 6.4 (CJ 23.10.2026): Schema-Symbole im Prinzipschema, Anschlüsse auf 2,5 mm, waagrechte mit Anschluss links bei 0
+for (const [src, n, lage] of PZ_AUS_SCHEMA) {
+  const s = SYMBOL_BY_NAME[n];
+  assert.ok(s && PRINZIP_FAMILIES.some((f) => f.variants.includes(n)) && s.attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: aus ${src}, in der Palette, BMK leer`);
+  assert.ok(s.pins.every((p) => Math.abs(p.x / 2.5 - Math.round(p.x / 2.5)) < 1e-9 && Math.abs(p.y / 2.5 - Math.round(p.y / 2.5)) < 1e-9), `${n}: Anschlüsse auf dem Raster`);
+  if (lage === "w") assert.ok(s.pins.every((p) => p.y === 0 || p.x > 0) && s.pins.some((p) => p.x === 0 && p.y === 0), `${n}: waagrecht`);
+}
+assert.strictEqual(SYMBOL_BY_NAME.BATT_1P.prims.filter((p) => p.t === "l" && p.y1 === p.y2).length, 6, "Batterie: drei Zellen (CJ 23.10.)");
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITER_3.prims.length, 4, "Leitungsangabe: Leitung und drei Striche");
+// Leitungsangabe neu (CJ 23.10.2026): ein Strich, Anzahl im Text; Tasten setzen die Zahl vorne, der Querschnitt bleibt
+assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITUNG.prims.length, 2, "Leitungsangabe: Leitung und ein Strich");
+// Hauptverteilung (CJ 23.10.2026): Rechteck mit Diagonale als Form, Grösse frei; Werkzeug aus der Palette, nicht in der Werkzeugleiste
+assert.ok(PRINZIP_FAMILIES.some((f) => f.tool === "shape-vert") && !PRINZIP_FAMILIES.some((f) => f.def === "PZ_KLEMME"), "Palette: Hauptverteilung als Form");
+assert.deepStrictEqual([["3x1,5mm²", 5], ["16mm²", 1], ["", 3], ["4 x 10mm²", 2]].map(([k, n]) => kabelN(k, n)), ["5x1,5mm²", "1x16mm²", "3x", "2x10mm²"]);
+assert.ok(PRINZIP_FAMILIES.some((f) => f.def === "PZ_LEITUNG") && !PRINZIP_FAMILIES.some((f) => f.variants.includes("PZ_LEITER_3")), "Palette: nur noch die neue Leitungsangabe");
+assert.ok(["PZ_PA_D", "PZ_ERDE_ANS", "PZ_ERDE_KK", "PZ_SCHUTZERDE", "PZ_ERDBAND"].every((n) => PRINZIP_FAMILIES.some((f) => f.def === n)), "Erdungszeichen in der Palette (CJ 22.10.)");
 // Abgangsgeräte: drei Zeilen oberhalb, BMK zuoberst, dann Bezeichnung, dann Polzahl (CJ 21.10.2026)
 for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS"]) {
   const [b, t, p] = ["BMK", "TEXT", "POL"].map((g) => SYMBOL_BY_NAME[n].attrs.find((a) => a.tag === g));
@@ -28,6 +47,15 @@ for (const n of ["PZ_LS", "PZ_FI", "PZ_FILS"]) {
 }
 assert.deepStrictEqual(["1", "2", "3", "n"].map((k) => polNext("LN", k)), ["LN", "2LN", "3LN", "L"], "Polzahl: Tasten 1–3 und N");
 assert.strictEqual(polNext("3L", "n"), "3LN"); assert.strictEqual(polNext("", "2"), "2LN");
+// Sicherung (CJ 23.10.2026): Striche im Rechteck je Polzahl, N = Strich mit Punkt, Anschlüsse wie PZ_SICH
+assert.deepStrictEqual(["L", "LN", "2L", "2LN", "3L", "3LN"].map(sichName), ["PZ_SICH_1", "PZ_SICH_1N", "PZ_SICH_2", "PZ_SICH_2N", "PZ_SICH_3", "PZ_SICH_3N"]);
+for (const [n, m, dot] of [["PZ_SICH_1", 1, 0], ["PZ_SICH_3", 3, 0], ["PZ_SICH_3N", 4, 1], ["PZ_SICH_1N", 2, 1]]) {
+  const s = SYMBOL_BY_NAME[n], st = s.prims.filter((p) => p.t === "l" && p.y1 === p.y2 && p.x1 === -1.5 && p.y1 < -2.5 && p.y1 > -10);
+  assert.ok(st.length === m && s.prims.filter((p) => p.t === "c" && p.f).length === dot, `${n}: ${m} Striche, ${dot} Punkt`);
+  assert.deepStrictEqual(s.pins, SYMBOL_BY_NAME.PZ_SICH.pins, `${n}: Anschlüsse wie PZ_SICH`);
+}
+const nY = (n) => SYMBOL_BY_NAME[n].prims.find((p) => p.t === "c" && p.f).cy, lY = (n) => SYMBOL_BY_NAME[n].prims.filter((p) => p.t === "l" && p.y1 === p.y2 && p.x1 === -1.5 && p.y1 < -2.5 && p.y1 > -10).map((p) => p.y1);
+assert.ok(nY("PZ_SICH_1N") === nY("PZ_SICH_3N") && lY("PZ_SICH_1N")[0] === lY("PZ_SICH_3")[0], "Sicherung: L1 und N immer am gleichen Platz (CJ 23.10.)");
 console.log("ok Symbole");
 
 // ---------- Datenmodell: Blatt prinzip, Papier, Modul, Rundlauf, Version 19 ----------

@@ -39,7 +39,7 @@ import { makePdf } from "./pdfout.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
 import { fetchGwr, searchAdr, adrText } from "./gwr.js";
 import * as PZ from "./prinzip.js";
-import { PRINZIP_GROUPS, PRINZIP_FAMILIES, PZ_ABGANG, polNext } from "./prinzipsym.js";
+import { PRINZIP_GROUPS, PRINZIP_FAMILIES, PZ_ABGANG, PZ_POL, polNext, sichName, kabelN } from "./prinzipsym.js";
 
 
 const $ = (s) => document.querySelector(s);
@@ -52,6 +52,10 @@ const PX_PER_MM = 96 / 25.4;
 const TERMINALS = "TERMINALS"; // Platzhalter für „Klemmenleiste setzen“
 const CTRL = "CTRL"; // Platzhalter für „Steuerung (Kasten) setzen“ (steuerung.js)
 const familyOf = (name) => [...FAMILIES, ...PRINZIP_FAMILIES].find((f) => f.variants.includes(name)); // mit Prinzipschema (Anzahl Striche)
+const isSich = (name) => SYMBOL_BY_NAME[name]?.family === "PZ_SICH"; // Prinzipschema-Sicherung, Polzahl über Varianten
+const sameSymbols = (sel) => (sel.length > 1 && sel.every((i) => i.type === "symbol" && i.sym === sel[0].sym) ? sel[0].sym : null); // Mehrfachauswahl gleicher Symbole
+// Polzahl beim Setzen: zuletzt mit den Tasten gewählte je Symbol, sonst die Vorgabe des Symbols (LS LN, Motorschutz und Verteilung 3L)
+const pzPolOf = (name) => S.pzPol?.[name] ?? SYMBOL_BY_NAME[name].attrs.find((a) => a.tag === "POL").def;
 
 const TOOLS = [
   { id: "select", label: "Auswählen", key: "V", icon: "select" },
@@ -289,7 +293,7 @@ function renderOverlay() {
   // Griffe an den Punkten gewählter Leitungen (ziehen = Punkt verschieben)
   if (S.tool === "select") for (const w of selectedItems()) if (w.type === "wire") for (const p of w.pts) s += `<rect class="wire-handle" x="${p[0] - 0.9}" y="${p[1] - 0.9}" width="1.8" height="1.8"/>`;
   if (S.tool === "select") for (const it of selectedItems()) if (it.type === "shape") for (const p of shapeHandles(it)) s += `<rect class="wire-handle" x="${p.x - 0.9}" y="${p.y - 0.9}" width="1.8" height="1.8"/>`; // Griffe der Formen
-  if (S.shapeDraft && S.mouse) s += `<g opacity="0.8" pointer-events="none">${shapeSVG(shapeFrom(shapeTool(S.tool).k, S.shapeDraft.a, S.mouse, S.shift, S.shapeStyle))}</g>`;
+  if (S.shapeDraft && S.mouse) s += `<g opacity="0.8" pointer-events="none">${shapeSVG(shapeFrom(shapeTool(S.tool).k, S.shapeDraft.a, S.mouse, S.shift, { ...S.shapeStyle, diag: shapeTool(S.tool).diag }))}</g>`;
   if (shapeTool(S.tool) && S.mouse) s += `<circle cx="${S.mouse.x}" cy="${S.mouse.y}" r="0.6" fill="#17212b" stroke="none" pointer-events="none"/>`;
   // Griffe und Live-Mass in der Disposition
   const hi = handleItem();
@@ -355,8 +359,10 @@ function hintText() {
   }
   if (S.tool === "place" && templateOf(S.placeSym)) return `Abgang ${templateOf(S.placeSym).label}: Klicken in eine freie Spalte setzt Geräte, Leitungen zu den Hauptlinien und Klemmen mit Kabel. Esc beendet.`;
   if (S.tool === "place" && S.placeSym === CTRL) return "Steuerung: Klicken setzt die linke obere Ecke. Klemmen oben und unten rechts frei eintragen, Leitungen rasten an den Klemmen ein. Esc beendet.";
-  if (S.tool === "place" && isPrinzip() && PZ_ABGANG.includes(S.placeSym)) return `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht, 1 bis 3 = L, 2L, 3L, N mit/ohne Neutralleiter (jetzt ${S.pzPol || "LN"}), Esc beendet.`;
-  if (S.tool === "place") return S.placeSym === TERMINALS ? "Klemmenleiste: Klicken setzt die obere Kante auf die gewählte Stelle, die Klemmen hängen darunter. Esc beendet." : `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht${familyOf(S.placeSym)?.variants.length > 1 ? `, 1 bis 4 Polzahl, N Neutralleiter${hasTrenner(S.placeSym) ? ", T N-Trenner" : ""}` : ""}, Esc beendet. Der Fang rastet auf Feldmitten ein, Alt schaltet ihn aus.${isDevice(SYMBOL_BY_NAME[S.placeSym]) ? " Alt+V verdrahtet das zuletzt gesetzte Gerät." : ""}`;
+  if (S.tool === "place" && isPrinzip() && S.placeSym === "PZ_LEITUNG") return `Leitungsangabe: Klicken setzt sie auf die Leitung, R dreht, 1 bis 5 = Anzahl Leiter (jetzt ${kabelN(SYMBOL_BY_NAME.PZ_LEITUNG.attrs[0].def, S.pzLeiter || 3)}), Esc beendet. Markierte Leitungsangaben ändern die Tasten gemeinsam.`;
+  if (S.tool === "place" && isPrinzip() && isSich(S.placeSym)) return `Sicherung: Klicken setzt das Symbol, R dreht, 1 bis 3 = Striche für L, 2L, 3L, N Strich mit Punkt (jetzt ${SYMBOL_BY_NAME[S.placeSym].attrs.find((a) => a.tag === "POL").def || "ohne"}), Esc beendet.`;
+  if (S.tool === "place" && isPrinzip() && PZ_POL.includes(S.placeSym)) return `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht, 1 bis 3 = L, 2L, 3L, N mit/ohne Neutralleiter (jetzt ${pzPolOf(S.placeSym)}), Esc beendet.`;
+  if (S.tool === "place") return S.placeSym === TERMINALS ? "Klemmenleiste: Klicken setzt die obere Kante auf die gewählte Stelle, die Klemmen hängen darunter. Esc beendet." : `${SYMBOL_BY_NAME[S.placeSym].label}: Klicken setzt das Symbol, R dreht${familyOf(S.placeSym)?.variants.length > 1 ? (familyOf(S.placeSym).id === "ZAEHLER" ? ", 1 bis 8 Anschlüsse" : `, 1 bis 4 Polzahl, N Neutralleiter${hasTrenner(S.placeSym) ? ", T N-Trenner" : ""}`) : ""}, Esc beendet. Der Fang rastet auf Feldmitten ein, Alt schaltet ihn aus.${isDevice(SYMBOL_BY_NAME[S.placeSym]) ? " Alt+V verdrahtet das zuletzt gesetzte Gerät." : ""}`;
   if (S.tool === "wire") return S.wireDraft ? "Klicken setzt einen Punkt. Nochmals auf den letzten Punkt klicken oder Eingabetaste beendet. Shift wechselt die Knickrichtung." : S.bundleN > 1 ? `Klicken startet ${S.bundleN} parallele Leiter. Der erste liegt auf dem Klickpunkt, die weiteren rechts oder darunter.` : "Klicken startet eine Leitung. Anschlusspunkte der Symbole rasten ein.";
   if (S.tool === "text") return `Klicken setzt einen Text, die Eingabetaste bestätigt. R dreht (jetzt ${S.textR || 0}°), Ausrichtung rechts.`;
   if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
@@ -405,10 +411,10 @@ function renderLeftBody() {
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
   if (isPrinzip()) { leftEl.innerHTML = prinzipLeftHTML(h); return; }
-  for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
+  for (const t of [...TOOLS, ...SHAPE_TOOLS.filter((t) => !t.hidden)]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
   h += `</section>` + abgangHTML() + `<section class="section"><h2 class="section-title">Symbole</h2>`;
   for (const f of FAMILIES) { // Wunsch CJ 16.10.: jede Variante direkt wählbar, ein Klick setzt das Gerät
-    if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${f.variants.map(varTile).join("")}</div></div>`; continue; }
+    if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${shownVariants(f).map(varTile).join("")}</div></div>`; continue; }
     const on = S.tool === "place" && f.variants.includes(S.placeSym);
     h += `<button class="sym" data-sym="${f.def}" aria-pressed="${on}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
   }
@@ -420,12 +426,13 @@ function renderLeftBody() {
 
 // Prinzipschema (CJ 21.10.2026): Werkzeuge wie im Schema (Leitung ohne Menü Leiterzahl), Symbole einpolig in Gruppen, ohne Abgänge, Klemmen und Bibliothek
 function prinzipLeftHTML(h) {
-  for (const t of [...TOOLS, ...SHAPE_TOOLS]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] && t.id !== "wire" ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`;
+  for (const t of [...TOOLS, ...SHAPE_TOOLS.filter((t) => !t.hidden)]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] && t.id !== "wire" ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`;
   for (const [title, fams] of PRINZIP_GROUPS) {
     h += `</section><section class="section"><h2 class="section-title">${title}</h2>`;
     for (const f of fams) {
-      if (f.variants.length > 1) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${f.variants.map(varTile).join("")}</div></div>`; continue; }
-      h += `<button class="sym" data-sym="${f.def}" aria-pressed="${S.tool === "place" && S.placeSym === f.def}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
+      if (f.tool) { h += `<button class="sym" data-tool="${f.tool}" aria-pressed="${S.tool === f.tool}"><span class="thumb">${R.icons.srect}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`; continue; } // Form statt Symbol
+      if (f.variants.length > 1 && !f.keys) { h += `<div class="symfam"><span class="name">${R.esc(f.label)}</span><div class="vargrid">${shownVariants(f).map(varTile).join("")}</div></div>`; continue; }
+      h += `<button class="sym" data-sym="${f.def}" aria-pressed="${S.tool === "place" && (f.keys ? f.variants.includes(S.placeSym) : S.placeSym === f.def)}"><span class="thumb">${R.thumbSVG(SYMBOL_BY_NAME[f.def])}</span><span><span class="name">${R.esc(f.label)}</span><br><span class="sub">${R.esc(f.sub)}</span></span></button>`;
     }
   }
   return h + "</section>";
@@ -584,7 +591,8 @@ function setMainEnd(t) {
   });
 }
 const kindSelect = (attr, value) => `<div class="field"><label>Art der Leitung</label><select ${attr}>${Object.entries(WIRE_KINDS).map(([k, v]) => `<option value="${k}"${k === value ? " selected" : ""}>${v.label}</option>`).join("")}</select></div>`;
-const poleSelect = (attr, family, value) => `<div class="field"><label>Polzahl</label><select ${attr}>${family.variants.map((v) => `<option value="${v}"${v === value ? " selected" : ""}>${SYMBOL_BY_NAME[v].vlabel ?? SYMBOL_BY_NAME[v].poles + "-polig"}</option>`).join("")}</select></div>`;
+const shownVariants = (f, keep) => f.variants.filter((v) => v === keep || !f.hide?.includes(v)); // hide: nur für alte Dateien
+const poleSelect = (attr, family, value) => `<div class="field"><label>Polzahl</label><select ${attr}>${shownVariants(family, value).map((v) => `<option value="${v}"${v === value ? " selected" : ""}>${SYMBOL_BY_NAME[v].vlabel ?? SYMBOL_BY_NAME[v].poles + "-polig"}</option>`).join("")}</select></div>`;
 const bundleSelect = () => `<div class="field"><label>Anzahl Leiter pro Zug</label><select data-newbundle>${Object.entries(BUNDLE_LABELS).map(([n, l]) => `<option value="${n}"${Number(n) === S.bundleN ? " selected" : ""}>${l}</option>`).join("")}</select></div>`;
 // Klemmentexte (CJ 18.10.2026): je Klemme ein Feld, leer = Nummer; 2 Zeilen à 5 Zeichen mit „|“; Haken senkrecht
 const termLabCells = (it) => { const n = termCount(it); return Array.from({ length: n }, (_, i) => `<input type="text" data-tlab="${i}" value="${R.esc(it.lab?.[i] ?? "")}" placeholder="${it.pe !== "none" && i === n - 1 ? "PE" : i + 1}" maxlength="11" aria-label="Klemme ${i + 1}" autocomplete="off" spellcheck="false">`).join(""); };
@@ -675,12 +683,14 @@ function renderRightPanel() {
       if (isRail(it)) h += `<p class="note">Hauptlinie ${R.esc(railName(it))}${isGroupWire(S.model.items, it) ? ", Grundverkabelung L1 bis N gemeinsam" : ""}</p>` + (isGroupWire(S.model.items, it) ? mainPanelHTML() : railEndSelect("l", it) + railEndSelect("r", it));
       h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else if (it.type === "shape") {
-      h += head(SHAPE_KINDS[it.k], "Freie Form") + styleHTML(sel) + actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
+      h += head(it.diag ? "Hauptverteilung" : SHAPE_KINDS[it.k], it.diag ? "Rechteck mit Diagonale, Grösse an den Ecken ziehen" : "Freie Form") + styleHTML(sel) + actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
     } else {
       h += textPanelHTML(it, false, isSchema()).replace('<div class="row">', styleHTML(sel) + '<div class="row">');
     }
   } else if (sel.length > 1) {
-    h += `<div class="prop-head"><h2>${sel.length} Objekte</h2><p>Mehrfachauswahl</p></div>`;
+    const same = sameSymbols(sel);
+    h += `<div class="prop-head"><h2>${same ? `${sel.length} × ${R.esc(SYMBOL_BY_NAME[same].label)}` : `${sel.length} Objekte`}</h2><p>Mehrfachauswahl</p></div>`;
+    if (same) for (const a of SYMBOL_BY_NAME[same].attrs) if (!a.auto) { const v = new Set(sel.map((i) => i.attrs[a.tag] ?? "")); h += fieldHTML(a.label + (v.size > 1 ? " (verschieden)" : ""), `data-attr="${a.tag}"`, v.size === 1 ? [...v][0] : ""); }
     if (sel.every((i) => i.type === "shape" || i.type === "text")) h += styleHTML(sel);
     h += actions([["dup", "copy", "Duplizieren"], ["del", "trash", "Löschen", "danger"]]);
   } else {
@@ -1065,7 +1075,7 @@ function finishShape(c, shift) {
   const f = S.shapeDraft, t = shapeTool(S.tool);
   S.shapeDraft = null;
   if (!f || !t) return;
-  const sh = shapeFrom(t.k, f.a, c, shift, S.shapeStyle);
+  const sh = shapeFrom(t.k, f.a, c, shift, { ...S.shapeStyle, diag: t.diag }); // Hauptverteilung: mit Diagonale
   if (!shapeEmpty(sh)) change(() => { S.model.items.push({ id: nextId(), ...sh }); S.sel.clear(); });
   renderOverlay(); updateHint();
 }
@@ -1125,7 +1135,8 @@ function addSymbol(name, x, y, rot) {
   if (same) { S.sel = new Set([same.id]); renderRight(); renderOverlay(); return; } // gleiches Symbol am gleichen Ort (z. B. Doppelklick): nicht doppelt setzen
   change(() => {
     const dev = { id: nextId(), type: "symbol", sym: name, x, y, rot, attrs: Object.fromEntries(sym.attrs.map((a) => [a.tag, a.def])) };
-    if (isPrinzip() && S.pzPol && "POL" in dev.attrs) dev.attrs.POL = S.pzPol; // zuletzt mit 1–3/N gewählte Polzahl
+    if (name === "PZ_LEITUNG" && S.pzLeiter) dev.attrs.KABEL = kabelN(dev.attrs.KABEL, S.pzLeiter); // zuletzt mit 1–5 gewählte Anzahl Leiter
+    if (isPrinzip() && PZ_POL.includes(name)) dev.attrs.POL = pzPolOf(name); // zuletzt mit 1–3/N gewählte Polzahl je Symbol (Sicherung: Variante)
     S.model.items.push(dev);
     if (isDevice(sym) && !columnHasTerminals(S.model.items, dev)) S.model.items.push(deviceTerminals(dev, S.model.items, nextId));
     placed = dev;
@@ -1168,7 +1179,7 @@ function pzWire(dev) {
   else {
     const n = pzStriche(dev.attrs.POL);
     add.push({ type: "wire", kind: S.wireKind, pts: [[xr, y], [xr + 20, y]] },
-      { type: "symbol", sym: `PZ_LEITER_${n}`, x: xr + 20, y, rot: 0, attrs: { KABEL: `${n}x1,5mm²` } },
+      { type: "symbol", sym: "PZ_LEITUNG", x: xr + 20, y, rot: 0, attrs: { KABEL: `${n}x1,5mm²` } },
       { type: "wire", kind: S.wireKind, pts: [[xr + 25, y], [xr + 30, y]] },
       { type: "symbol", sym: "PZ_VERBR", x: xr + 30, y, rot: 0, attrs: { TEXT: "Verbraucher" } });
   }
@@ -1571,13 +1582,27 @@ stage.addEventListener("wheel", (e) => {
 // ---------- Tastatur ----------
 // Tasten 1 bis 4 und N (CJ 16.10.): beim Setzen die Variante des neuen Symbols, sonst die des einen gewählten Symbols
 // Prinzipschema: Tasten 1, 2, 3 und N setzen die Polzahl (Feld POL) beim Setzen bzw. an den gewählten Schutzgeräten
+// Sicherung (CJ 23.10.2026): die Tasten wechseln die Variante (Striche im Rechteck), die Zeile Polzahl geht mit
 function pzPolKey(key) {
-  if (!/^[123nN]$/.test(key)) return false;
-  if (S.tool === "place") {
-    if (!PZ_ABGANG.includes(S.placeSym)) return false;
-    S.pzPol = polNext(S.pzPol, key); renderRight(); updateHint(); return true;
+  if (/^[1-5]$/.test(key)) { // Leitungsangabe: Anzahl Leiter vorne im Text, beim Setzen oder für alle markierten
+    if (S.tool === "place" && S.placeSym === "PZ_LEITUNG") { S.pzLeiter = Number(key); renderRight(); updateHint(); return true; }
+    const ls = S.tool === "select" ? selectedItems().filter((i) => i.type === "symbol" && i.sym === "PZ_LEITUNG") : [];
+    if (ls.length) { change(() => { for (const it of ls) it.attrs.KABEL = kabelN(it.attrs.KABEL, key); }); return true; }
   }
-  const sel = selectedItems().filter((i) => i.type === "symbol" && PZ_ABGANG.includes(i.sym));
+  if (!/^[123nN]$/.test(key)) return false;
+  if (S.tool === "place" && isSich(S.placeSym)) {
+    S.placeSym = sichName(polNext(SYMBOL_BY_NAME[S.placeSym].attrs.find((a) => a.tag === "POL").def, key)); renderLeft(); renderRight(); renderOverlay(); updateHint(); return true;
+  }
+  if (S.tool === "select") {
+    const fs = selectedItems().filter((i) => i.type === "symbol" && isSich(i.sym));
+    if (fs.length) change(() => { for (const it of fs) { it.attrs.POL = polNext(it.attrs.POL, key); it.sym = sichName(it.attrs.POL); } });
+    if (fs.length && !selectedItems().some((i) => i.type === "symbol" && PZ_POL.includes(i.sym))) return true;
+  }
+  if (S.tool === "place") {
+    if (!PZ_POL.includes(S.placeSym)) return false;
+    (S.pzPol ||= {})[S.placeSym] = polNext(pzPolOf(S.placeSym), key); renderRight(); updateHint(); return true;
+  }
+  const sel = selectedItems().filter((i) => i.type === "symbol" && PZ_POL.includes(i.sym));
   if (S.tool !== "select" || !sel.length) return false;
   change(() => { for (const it of sel) it.attrs.POL = polNext(it.attrs.POL, key); });
   return true;
@@ -1738,7 +1763,8 @@ onPanel("focusin", (e) => { if (e.target.matches("input,select,textarea")) { S.p
 function firstEdit() { if (!S.pendingPushed) { pushUndo(S.pending ?? snapshot()); S.pendingPushed = true; } }
 onPanel("input", (e) => {
   const t = e.target, one = selectedItems()[0];
-  if (t.dataset.attr && one) {
+  if (t.dataset.attr && one && selectedItems().length > 1 && sameSymbols(selectedItems())) { firstEdit(); for (const it of selectedItems()) it.attrs[t.dataset.attr] = t.value; if (t.dataset.attr === "BMK") renumberAll(S.doc); } // gleiche Symbole gemeinsam (CJ 23.10.)
+  else if (t.dataset.attr && one) {
     firstEdit(); one.attrs[t.dataset.attr] = t.value;
     if ((t.dataset.attr === "BMK" && bmkLetter(SYMBOL_BY_NAME[one.sym])) || (t.dataset.attr === "FBMK" && one.sym === "ZW_SICH")) { one.manual = t.value.trim() !== ""; renumberAll(S.doc); }
   }

@@ -123,6 +123,44 @@ const erdKk = sym("PZ_ERDE_KK", "Erdungs-Klemmkasten", [...rect(-4, -3.5, 4, 0),
 const schutzerde = sym("PZ_SCHUTZERDE", "Schutzerde", [circle(0, -4, 3.5), line(0, 0, 0, -4.5), line(-1.75, -4.5, 1.75, -4.5), line(-1.25, -5.25, 1.25, -5.25), line(-0.5, -6, 0.5, -6)], [{ x: 0, y: 0 }], [attr("TEXT", "Text", "", 5, -4)]);
 const erdband = sym("PZ_ERDBAND", "Erdband", [{ ...line(0, 0, 10, 0), d: true }], H(10), [attr("TEXT", "Text", "Fe 30/3", 1.5, 1)]);
 
+// Aus dem Schema übernommen (CJ 23.10.2026, Schritt 6.4): gleiche Zeichnung, Anschlussstriche auf das Raster des Prinzipschemas gekürzt.
+// "w" = waagrecht wie die Abgänge (Einspeisung links, Betätigung oben), "s" = senkrecht wie die Sicherung. lead 0 = ohne Striche oben und unten.
+// symbols.js ruft fromSchema mit dem Schema-Symbol auf (hier keine Importe). Beschriftung: BMK und Bezeichnung, leer.
+export const PZ_AUS_SCHEMA = [
+  ["HSCH_1P", "PZ_HSCH", "w"], ["DSCH_1P", "PZ_DSCH", "w"], ["DTAST_1P", "PZ_DTAST", "w"], ["UMS_1P", "PZ_UMS", "w"],
+  ["ZR_AB_1P", "PZ_ZR_AB", "s"], ["ZR_AN_1P", "PZ_ZR_AN", "s"], ["USR_1P", "PZ_USR", "s"],
+  ["STD_1P", "PZ_STD", "w", 2.5, false, true], ["MESS_V_1P", "PZ_MESS_V", "s", 0], ["MESS_A_1P", "PZ_MESS_A", "s", 0], ["MESS_H_1P", "PZ_MESS_H", "s", 0],
+  ["FU_1P", "PZ_FU", "s", 0], ["SANFT_1P", "PZ_SANFT", "s", 0], ["GEN_1P", "PZ_GEN", "s"], ["BATT_1P", "PZ_BATT", "s"],
+  ["R_1P", "PZ_R", "w"], ["C_1P", "PZ_C", "w"], ["L_1P", "PZ_L", "w"], ["LED_1P", "PZ_LED", "w", 2.5, true, true], // Steckdose und LED schauen nach rechts (CJ 23.10.)
+];
+const r3 = (n) => Math.round(n * 1000) / 1000;
+export function fromSchema(src, name, lage, lead = 2.5, mirror = false, flip = false) {
+  if (src.pins.length === 1) { // Generator: ein Anschluss oben, Kreis darunter
+    const dy = -src.pins[0].y, mv = (p) => p.t === "l" ? { ...p, y1: p.y1 + dy, y2: p.y2 + dy } : p.t === "c" ? { ...p, cy: p.cy + dy } : { ...p, y: p.y + dy };
+    return { ...src, name, family: name, label: src.label, prims: src.prims.map(mv), pins: [{ x: 0, y: 0 }],
+      attrs: src.attrs.map((a) => ({ ...a, y: a.y + dy, def: a.tag === "BMK" ? "" : a.def })) };
+  }
+  const isLead = (p) => p.t === "l" && p.x1 === p.x2 && src.pins.some((q) => q.x === p.x1 && (q.y === p.y1 || q.y === p.y2));
+  const leads = src.prims.filter(isLead), top = Math.max(...leads.filter((p) => Math.max(p.y1, p.y2) === 0).map((p) => Math.min(p.y1, p.y2)));
+  const bot = Math.min(...leads.filter((p) => Math.max(p.y1, p.y2) < 0).map((p) => Math.max(p.y1, p.y2))), len = top - bot;
+  const T = Math.ceil((len + 2 * lead) / 2.5 - 1e-9) * 2.5, ex = (T - len) / 2, dy = -(top + ex);
+  const topX = src.pins.filter((q) => q.y === 0).map((q) => q.x);
+  const sh = (p) => p.t === "l" ? { ...p, y1: p.y1 + dy, y2: p.y2 + dy } : p.t === "c" ? { ...p, cy: p.cy + dy } : { ...p, y: p.y + dy };
+  let prims = [...src.prims.filter((p) => !isLead(p)).map(sh), ...(ex > 0 ? [...topX.map((x) => line(x, 0, x, -ex)), line(0, ex - T, 0, -T)] : [])];
+  let pins = [...topX.map((x) => ({ x, y: 0 })), { x: 0, y: -T }];
+  if (lage === "w") { // drehen: unten -> links, links -> oben (gespiegelt: rechts -> oben)
+    const M = (x, y) => [r3(flip ? -y : y + T), r3(mirror ? x : -x)]; // flip: links und rechts getauscht
+    prims = prims.map((p) => p.t === "l" ? { ...p, ...Object.fromEntries([["x1", "y1"], ["x2", "y2"]].flatMap(([a, b]) => { const [x, y] = M(p[a], p[b]); return [[a, x], [b, y]]; })) }
+      : p.t === "c" ? (([x, y]) => ({ ...p, cx: x, cy: y }))(M(p.cx, p.cy)) : (([x, y]) => ({ ...p, x, y }))(M(p.x, p.y)));
+    pins = [...(flip ? [] : [{ x: 0, y: 0 }]), ...topX.map((x) => (([a, b]) => ({ x: a, y: b }))(M(x, 0))), ...(flip ? [{ x: T, y: 0 }] : [])];
+  } else prims = prims.map((p) => p.t === "l" ? { ...p, y1: r3(p.y1), y2: r3(p.y2) } : p);
+  const xs = prims.flatMap((p) => p.t === "l" ? [p.x1, p.x2] : p.t === "c" ? [p.cx + p.r] : [p.x]), ys = prims.flatMap((p) => p.t === "l" ? [p.y1, p.y2] : p.t === "c" ? [p.cy + p.r] : [p.y]);
+  const def = src.attrs.find((a) => a.tag === "TEXT")?.def ?? "";
+  const attrs = lage === "w" ? [bmk(0, Math.max(...ys) + 4.5), attr("TEXT", "Bezeichnung", def, 0, Math.max(...ys) + 1.5)]
+    : [bmk(Math.max(...xs) + 2, -T / 2 + 1.5), attr("TEXT", "Bezeichnung", def, Math.max(...xs) + 2, -T / 2 - 2)];
+  return { name, family: name, poles: 1, label: src.label, layer: src.layer, prims, pins, attrs };
+}
+
 export const PRINZIP_SYMBOLS = [ls, fi, fils, mss, mssM, ltr, lts, trs, trenn, lsch, sichM, sich, ...SICH_POL.map(sichPol), ...[1, 2, 3, 4, 5].map(leiter), verbr, klemme, zaehler, rse, wandler, geraet, wr, gr, hak, erder, pa, paD, erdAns, erdKk, schutzerde, erdband];
 
 // Palette des Prinzipschemas, gruppiert. Gleiche Form wie FAMILIES in symbols.js (Varianten: Anzahl Striche).
@@ -152,6 +190,22 @@ export const PRINZIP_GROUPS = [
     { id: "PZ_WR", label: "Wechselrichter", sub: "Gleichstrom zu Wechselstrom, z. B. PV", def: "PZ_WR", variants: ["PZ_WR"] },
     { id: "PZ_GR", label: "Gleichrichter", sub: "Wechselstrom zu Gleichstrom", def: "PZ_GR", variants: ["PZ_GR"] },
     { id: "PZ_HAK", label: "Hausanschluss", sub: "Anschlussüberstromunterbrecher", def: "PZ_HAK", variants: ["PZ_HAK"] },
+  ]],
+  ["Schalten", [
+    { id: "PZ_HSCH", label: "Schalter", sub: "handbetätigt", def: "PZ_HSCH", variants: ["PZ_HSCH"] },
+    { id: "PZ_DSCH", label: "Drehschalter", sub: "mit Raste", def: "PZ_DSCH", variants: ["PZ_DSCH"] },
+    { id: "PZ_DTAST", label: "Schwenktaster", sub: "Drehknopf, Rückstellung", def: "PZ_DTAST", variants: ["PZ_DTAST"] },
+    { id: "PZ_UMS", label: "Umschalter mit Aus", sub: "ein Eingang, zwei Ausgänge", def: "PZ_UMS", variants: ["PZ_UMS"] },
+    { id: "PZ_ZR", label: "Zeitrelais", sub: "abfall- / anzugsverzögert", def: "PZ_ZR_AB", variants: ["PZ_ZR_AB", "PZ_ZR_AN"] },
+    { id: "PZ_USR", label: "Unterspannungsrelais", sub: "U<", def: "PZ_USR", variants: ["PZ_USR"] },
+  ]],
+  ["Geräte", [
+    { id: "PZ_STD", label: "Steckdose und Stecker", sub: "waagrecht", def: "PZ_STD", variants: ["PZ_STD"] },
+    { id: "PZ_MESS", label: "Messgerät", sub: "Voltmeter, Amperemeter, Stundenzähler", def: "PZ_MESS_V", variants: ["PZ_MESS_V", "PZ_MESS_A", "PZ_MESS_H"] },
+    { id: "PZ_FU", label: "Frequenzumformer", sub: "z. B. Wärmepumpe", def: "PZ_FU", variants: ["PZ_FU"] },
+    { id: "PZ_SANFT", label: "Sanftanlasser", sub: "Motoranlauf", def: "PZ_SANFT", variants: ["PZ_SANFT"] },
+    { id: "PZ_GEN", label: "Generator", sub: "Stromart im Kreis", def: "PZ_GEN", variants: ["PZ_GEN"] },
+    { id: "PZ_BAUTEIL", label: "Bauteil", sub: "Batterie, Widerstand, Kondensator, Spule, LED", def: "PZ_BATT", variants: ["PZ_BATT", "PZ_R", "PZ_C", "PZ_L", "PZ_LED"] },
   ]],
   ["Erdung", [
     { id: "PZ_ERDER", label: "Erder", sub: "z. B. Fundamenterder", def: "PZ_ERDER", variants: ["PZ_ERDER"] },

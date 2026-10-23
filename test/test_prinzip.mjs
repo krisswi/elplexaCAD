@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { newDoc, newSheet, parseModel, serializeModel, modOf, modName, VERSION } from "../src/model.js";
 import { SYMBOL_BY_NAME, FAMILIES, isDevice, bmkLetter } from "../src/symbols.js";
-import { polNext, sichName, PZ_ABGANG, PZ_POL, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
+import { polNext, sichName, PZ_ABGANG, PZ_POL, PZ_AUS_SCHEMA, PRINZIP_SYMBOLS, PRINZIP_FAMILIES } from "../src/prinzipsym.js";
 import { exportDxf } from "../src/dxf.js";
 import { renumberAll } from "../src/numbering.js";
 import { partsList, fuseLegend } from "../src/auswertung.js";
@@ -24,6 +24,14 @@ assert.ok(PRINZIP_FAMILIES.some((f) => f.def === "PZ_WANDLER") && SYMBOL_BY_NAME
 // Schritt 6.5 (CJ 23.10.2026): Geräte nur im Prinzipschema, mit BMK und in der Palette; Motorschutz als Abgang, Verteilgeräte mit Polzahl
 for (const n of ["PZ_MSS", "PZ_MSS_M", "PZ_LTR", "PZ_LTS", "PZ_TRS", "PZ_TRENN", "PZ_LSCH", "PZ_SICH_M"]) assert.ok(PRINZIP_FAMILIES.some((f) => f.def === n) && SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: in der Palette mit BMK`);
 assert.ok(["PZ_MSS", "PZ_MSS_M"].every((n) => PZ_ABGANG.includes(n)) && ["PZ_LTR", "PZ_LTS", "PZ_TRS", "PZ_TRENN", "PZ_LSCH"].every((n) => PZ_POL.includes(n) && SYMBOL_BY_NAME[n].attrs.some((a) => a.tag === "POL")), "Polzahl-Tasten für Motorschutz und Verteilgeräte");
+// Schritt 6.4 (CJ 23.10.2026): Schema-Symbole im Prinzipschema, Anschlüsse auf 2,5 mm, waagrechte mit Anschluss links bei 0
+for (const [src, n, lage] of PZ_AUS_SCHEMA) {
+  const s = SYMBOL_BY_NAME[n];
+  assert.ok(s && PRINZIP_FAMILIES.some((f) => f.variants.includes(n)) && s.attrs.some((a) => a.tag === "BMK" && a.def === ""), `${n}: aus ${src}, in der Palette, BMK leer`);
+  assert.ok(s.pins.every((p) => Math.abs(p.x / 2.5 - Math.round(p.x / 2.5)) < 1e-9 && Math.abs(p.y / 2.5 - Math.round(p.y / 2.5)) < 1e-9), `${n}: Anschlüsse auf dem Raster`);
+  if (lage === "w") assert.ok(s.pins.every((p) => p.y === 0 || p.x > 0) && s.pins.some((p) => p.x === 0 && p.y === 0), `${n}: waagrecht`);
+}
+assert.strictEqual(SYMBOL_BY_NAME.BATT_1P.prims.filter((p) => p.t === "l" && p.y1 === p.y2).length, 6, "Batterie: drei Zellen (CJ 23.10.)");
 assert.strictEqual(SYMBOL_BY_NAME.PZ_LEITER_3.prims.length, 4, "Leitungsangabe: Leitung und drei Striche");
 assert.ok(["PZ_PA_D", "PZ_ERDE_ANS", "PZ_ERDE_KK", "PZ_SCHUTZERDE", "PZ_ERDBAND"].every((n) => PRINZIP_FAMILIES.some((f) => f.def === n)), "Erdungszeichen in der Palette (CJ 22.10.)");
 // Abgangsgeräte: drei Zeilen oberhalb, BMK zuoberst, dann Bezeichnung, dann Polzahl (CJ 21.10.2026)

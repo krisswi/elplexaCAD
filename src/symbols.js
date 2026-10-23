@@ -1,7 +1,7 @@
 // Symboldefinitionen (eigene, generische Symbole). Einheit mm, y nach oben (wie DXF).
 // Ursprung = oberer Anschluss von Pol 1. Alles liegt auf einem 2,5-mm-Raster.
 // Dieselben Daten zeichnen das Symbol im Editor und schreiben den DXF-Block.
-import { PRINZIP_SYMBOLS } from "./prinzipsym.js"; // Prinzipschema, einpolig (CJ 21.10.2026)
+import { PRINZIP_SYMBOLS, PZ_AUS_SCHEMA, fromSchema } from "./prinzipsym.js"; // Prinzipschema, einpolig (CJ 21.10.2026)
 
 const line = (x1, y1, x2, y2, dashed = false) => ({ t: "l", x1, y1, x2, y2, d: dashed });
 const circle = (cx, cy, r) => ({ t: "c", cx, cy, r });
@@ -245,7 +245,7 @@ const bauteile = [
   v4b("L_1P", "BAUTEIL", "Spule, Drossel", "Spule, Drossel", [...leads(-6, -14), ...[0, 1, 2, 3].flatMap((k) => arcPts(0, -7 - 2 * k, 1, 90, -90, 8))], "L?"),
   v4b("LED_1P", "BAUTEIL", "Leuchtdiode (LED)", "LED", [...leads(-8.5, -11.5), line(-2, -8.5, 2, -8.5), line(2, -8.5, 0, -11.5), line(0, -11.5, -2, -8.5), line(-2, -11.5, 2, -11.5),
     ...arrowTo(2, -9.5, 4, -7.5, 0.8), ...arrowTo(2.6, -10.7, 4.6, -8.7, 0.8)], "P?"),
-  v4b("BATT_1P", "BAUTEIL", "Batterie", "Batterie", [...leads(-8, -12.5), line(-2.5, -8, 2.5, -8), line(-1.25, -9, 1.25, -9), line(-2.5, -11.5, 2.5, -11.5), line(-1.25, -12.5, 1.25, -12.5), text(3.5, -6.5, 2, "+")], "G?"),
+  v4b("BATT_1P", "BAUTEIL", "Batterie", "Batterie", [...leads(-8, -13), ...[-8, -10, -12].flatMap((y) => [line(-2.5, y, 2.5, y), line(-1.25, y - 1, 1.25, y - 1)]), text(3.5, -6.5, 2, "+")], "G?"), // drei Zellen (CJ 23.10.2026)
   v4b("STD_1P", "STD", "Steckdose und Stecker", "Steckdose und Stecker", [line(0, 0, 0, -6.5), ...arcPts(0, -9, 2.5, 180, 0, 12), ...fill(-1, -9, 1, -13, 8), line(-1, -9, 1, -9), line(-1, -13, 1, -13), line(0, -13, 0, -POLE_LEN)], "X?"),
   v4b("FU_1P", "FU", "Frequenzumformer", "Frequenzumformer", [...leads(-5, -15), ...box10, line(-5, -15, 5, -5), ...sineAt(-2.5, -7.5), ...sineAt(2.5, -12.5), ...arrowTo(1, -14, 4, -11, 0.8)], "T?", txtAttr("")),
   v4b("SANFT_1P", "SANFT", "Sanftanlasser", "Sanftanlasser", [...leads(-5, -15), ...box10, line(-5, -5, 0, -8.5), line(0, -8.5, 5, -5), ...arrowTo(-3, -11, 6.5, -2.5, 1),
@@ -651,6 +651,8 @@ export const SYMBOLS = [
   terminalCell("KLEMME_PE", "PE-Klemme", true),
   ...PRINZIP_SYMBOLS, // nicht in FAMILIES, eigene Palette (prinzipsym.js)
 ];
+// Prinzipschema-Fassungen einiger Schema-Symbole (CJ 23.10.2026, Schritt 6.4), Zeichnung aus dem Schema
+SYMBOLS.push(...PZ_AUS_SCHEMA.map(([src, name, lage, lead, mirror, flip]) => fromSchema(SYMBOLS.find((s) => s.name === src), name, lage, lead, mirror, flip)));
 
 // Schutzgeräte: bekommen automatisch Nummer (F) und Klemmen unten
 export const DEVICE_FAMILIES = ["LS", "FI", "RCBO", "NH"];

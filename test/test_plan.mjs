@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 21, "elplexa liest Version 21 (Plan mit Symbolen)");
+assert.strictEqual(M.VERSION, 22, "elplexa liest Version 22 (Plan mit Leitungen und Farben)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -219,6 +219,79 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   P.moveItem(e2, e2.items.find((i) => i.id === 32), 100, -50);
   assert.deepStrictEqual(e2.items.find((i) => i.id === 32).at, [2100, 1450], "Symbol verschieben");
   assert.ok(P.deleteLayer(e2, "l1") && !e2.items.some((i) => i.id === 30), "Ebene löschen nimmt ihre Symbole mit");
+  // Texte drehen mit, stehen nie auf dem Kopf (CJ 24.10.2026)
+  assert.deepStrictEqual([0, 90, 91, 180, 270, 271].map((r) => P.readable(r)), [{ a: 0, flip: false }, { a: 90, flip: false }, { a: -89, flip: true }, { a: 0, flip: true }, { a: 90, flip: true }, { a: -89, flip: false }], "Winkel lesbar: −90 bis 90");
+  const tx = (o) => P.symTexts({ at: [0, 0], ...o }, 50);
+  for (const r of [0, 45, 90, 135, 180, 225, 270, 315]) assert.ok(tx({ key: "STD_T15", r, txt: "Kühlschrank", h: 110 }).every((x) => x.a > -90 && x.a <= 90), `nie auf dem Kopf (r ${r})`);
+  const t15 = (r) => tx({ key: "STD_T15", r })[0];
+  assert.deepStrictEqual([t15(0).a, t15(90).a, t15(180).a, t15(270).a], [0, 90, 0, 90], "T15 dreht mit der Wand");
+  near(t15(0).at, [145, 50], "T15 rechts neben der Steckdose (r 0)");
+  near(t15(180).at, [-145, -50], "T15 an der oberen Wand: gleicher Ort am Symbol");
+  const lb = (r) => tx({ key: "STD", r, txt: "A", h: 40 });
+  assert.deepStrictEqual(lb(0).map((x) => [x.s, x.anchor]), [["A", "start"], ["40", "start"]], "Beschriftung und Höhe rechts, linksbündig");
+  assert.ok(lb(0)[0].at[1] > lb(0)[1].at[1], "Beschriftung über der Höhe");
+  assert.deepStrictEqual(lb(180).map((x) => x.anchor), ["end", "end"], "obere Wand: gekippt, rechtsbündig vom Symbol weg");
+  assert.ok(lb(180)[0].at[1] > lb(180)[1].at[1] && lb(180)[0].at[0] < 0, "gekippt: Beschriftung bleibt oben, links neben dem Symbol");
+  assert.ok(lb(90)[0].at[1] > 0 && lb(90)[0].at[0] < lb(90)[1].at[0], "rechte Wand: Text senkrecht über dem Symbol, Beschriftung links der Höhe");
+  const usb = tx({ key: "STD_USB", r: 0, txt: "Bett" }), w0 = usb[0].at[0] + usb[0].s.length * usb[0].size * 0.3;
+  assert.ok(usb[1].at[0] > w0, "Beschriftung beginnt hinter «2×USB»");
+  assert.strictEqual(tx({ key: "VERWEIS", r: 180, fu: "F3", nr: "2" })[0].a, 0, "Verweis F3 / 2 nie auf dem Kopf");
+  // Schalterhebel ragen nicht in die Wand (y ≥ 0), Aufputz-Halbkreis passt zum Kreis
+  for (const d of S2.PLAN_SYMS.filter((x) => x.wall)) assert.ok(d.parts.filter((q) => q[0] === "l").every((q) => q[2] >= -1e-9 && q[4] >= -1e-9), `${d.key}: nichts unter der Wandfläche`);
+  for (const k of ["SCH3", "SCH6"]) { const d = S2.SYM_BY_KEY.get(k), c = d.parts.find((q) => q[0] === "c"); assert.ok(d.ap[1] === `M0,${c[2] + 1}A1 1 0 0 1 0,${c[2] - 1}Z` && d.c[1] === c[2], `${k}: Aufputz und Mitte am Kreis`); }
+}
+
+// ---------- Schritt 3: Leitungen, Farben, Mehrfachwahl (CJ 24.10.2026) ----------
+{
+  const lines = [
+    { id: 40, type: "line", layer: "bg", pts: [[300, 300], [300, 1500], [2000, 1500]], kind: "decke" },
+    { id: 41, type: "line", layer: "l1", pts: [[1000, 75], [1000, 900]], kind: "flex", col: "#ed3f2a" },
+  ];
+  const syms = [{ id: 42, type: "sym", layer: "bg", key: "STD", at: [1000, 75], r: 0, col: "#7aba4b" }, { id: 43, type: "sym", layer: "bg", key: "STEIG_AUF", at: [2000, 1500], r: 0 }];
+  const d3 = M.parseModel(file([plan([...kueche(), ...lines, ...syms])], 22)), b3 = JSON.parse(M.serializeModel(d3));
+  assert.strictEqual(b3.version, 22, "Plan mit Leitungen: Version 22");
+  assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
+  assert.throws(() => M.parseModel(file([plan(lines)], 23)), /neueren Version/, "Version 23 abgelehnt");
+  const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
+  assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
+  assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#3FBBEB" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
+  assert.strictEqual(cl({ pts: [[0, 0], [100, 0]], col: "rot" }).col, undefined, "ungültige Farbe weg");
+  // Farben nach 5.100: Vorgabe Leitung blau, Symbol nach Kategorie, Mauern schwarz
+  assert.strictEqual(P.LINE_COL, "#3fbbeb", "Leitungen: Vorgabe blau (CJ)");
+  const it = (key) => ({ type: "sym", key });
+  assert.deepStrictEqual(["SCH0", "STD", "DOSE", "STEIG_AB"].map((k) => P.colOf(it(k))), ["#3fbbeb", "#ed3f2a", "#000000", "#3fbbeb"], "Schalter blau, Steckdose rot, Dose schwarz, Steigleitung wie Leitung");
+  assert.strictEqual(P.colOf({ type: "wall" }), "#000000", "Mauern schwarz");
+  const y = { type: "sym", key: "STD" }; P.setCol(y, "#7ABA4B"); assert.strictEqual(y.col, "#7aba4b", "eigene Farbe gespeichert"); P.setCol(y, "#ed3f2a"); assert.ok(!("col" in y), "zurück auf Vorgabe: Feld weg");
+  const wl = { type: "wall" }; P.setCol(wl, "#ed3f2a"); assert.ok(!("col" in wl), "Wand bekommt keine Farbe");
+  assert.strictEqual(P.PLAN_COLS.length, 9, "9 Farben aus 5.100");
+  // Treffer: Symbol vor Leitung vor Wand; Rahmenwahl
+  const e3 = d3.sheets[0];
+  assert.strictEqual(P.hitPlan(e3, e3.items, [300, 800], 10)?.id, 40, "Leitung getroffen");
+  assert.strictEqual(P.hitPlan(e3, e3.items, [2000, 1500], 10)?.id, 43, "Symbol vor Leitung");
+  const box = { x0: 200, y0: 200, x1: 2100, y1: 1600 };
+  assert.deepStrictEqual(e3.items.filter((i) => P.inBox(e3, i, box)).map((i) => i.id), [40, 43], "Rahmen: nur Objekte ganz darin");
+  // Mehrere verschieben: gemeinsame Ecke nur einmal, Nachbarwand folgt, Öffnung geht mit ihrer Wand
+  const g = M.parseModel(file([plan([...kueche(), ...lines])], 22)).sheets[0], by = (id) => g.items.find((i) => i.id === id);
+  P.moveItems(g, [by(1), by(2), by(5), by(40)], 0, 100);
+  assert.deepStrictEqual([by(1).a, by(1).b, by(2).b], [[0, 100], [4000, 100], [4000, 3100]], "Wände 1 und 2: jede Ecke einmal verschoben");
+  assert.deepStrictEqual([by(4).b, by(3).a], [[0, 100], [4000, 3100]], "Nachbarwände folgen an der Ecke");
+  assert.strictEqual(by(5).t, 500, "Tür bleibt an ihrer Stelle in der Wand");
+  assert.deepStrictEqual(by(40).pts[0], [300, 400], "Leitung verschoben");
+  assert.deepStrictEqual(by(9).a, [0, 100], "Mass mit Bezug folgt");
+  // Kopieren und Einfügen: neue ids, Öffnung mit ihrer Wand, fremder Massbezug fällt weg, Ebene unbekannt → aktive
+  const h = M.parseModel(file([plan([...kueche(), ...lines])], 22)).sheets[0], hb = (id) => h.items.find((i) => i.id === id);
+  const clip = P.copyItems(h, [hb(1), hb(6), hb(11), hb(41)]);
+  assert.deepStrictEqual(clip.map((i) => i.id), [1, 5, 11, 41], "Wand 1 mit Tür 5, Fenster an Wand 3 ohne Wand fällt weg");
+  let n = 100; h.alay = "bg"; h.layers = h.layers.filter((l) => l.id === "bg");
+  const out = P.pasteItems(h, clip, 250, -250, () => ++n);
+  assert.deepStrictEqual(out.map((i) => i.id), [101, 102, 103, 104], "neue ids");
+  assert.deepStrictEqual([out[0].a, out[1].wall, out[2].layer, out[3].pts[0]], [[250, -250], 101, "bg", [1250, -175]], "versetzt, Tür an der neuen Wand, Ebene l1 fehlt → aktive");
+  assert.ok(P.copyItems(h, [hb(9)])[0].ref === undefined, "Mass ohne seine Wand kopiert: frei");
+  assert.ok(P.contentBox({ ...h, items: [lines[0]] }).x1 === 2000, "Leitung zählt zum Inhalt");
+  // Steigleitungen nach 5.110
+  assert.deepStrictEqual(["STEIG_AUF", "STEIG_AB", "STEIG_DURCH"].map((k) => S2.SYM_BY_KEY.get(k)?.group), ["Allgemein", "Allgemein", "Allgemein"], "Leitung nach oben, unten, durchgehend");
 }
 
 console.log("test_plan: alles ok");

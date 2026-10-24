@@ -1,8 +1,9 @@
 // Modul «Plan» (CJ 23.10.2026, nur elplexaCAD), Schritt 1: Bedienung. Zeichenfläche mit Nullpunkt, Raster und Papierrahmen, Ebenenliste,
-// Werkzeuge Wand (W), Öffnung (O), Mass (B), Auswahl (V) mit Einzelwahl, Verschieben und Eckpunkte ziehen, Fenster Druck mit Massstab.
+// Werkzeuge Wand (W), Öffnung (O), Mass (B), Auswahl (V) mit Verschieben und Eckpunkte ziehen, Fenster Druck mit Massstab.
+// Schritt 3 (CJ 24.10.2026): Leitung (K), Farben nach 5.100, Mehrfachwahl (Rahmen, Shift-Klick oder Knopf «Mehrfachwahl»), ⌘A/⌘C/⌘V/⌘D.
 // Daten und Geometrie in plan.js. Im SchemaCAD-Bau ersetzt build.mjs diese Datei durch einen Platzhalter.
 import * as P from "./plan.js";
-import { PLAN_SYMS, SYM_BY_KEY, SYM_GROUPS, AP_HALF } from "./plansym.js";
+import { PLAN_SYMS, SYM_BY_KEY, SYM_GROUPS } from "./plansym.js";
 import { PAPERS, paperSize, printArea, paperLabel, fmtDen } from "./pv.js";
 import { pageInner } from "./pvprint.js";
 import * as R from "./render.js";
@@ -13,6 +14,8 @@ const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe n
 const ICON = {
   wall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v6H3z"/><path d="M6 15l6-6M11 15l6-6M16 15l5-5"/></svg>',
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h5M17 18h5"/><path d="M7 18V8"/><path d="M7 8a10 10 0 0110 10"/></svg>',
+  line: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18L10 8h10"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>',
+  multi: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5" stroke-dasharray="3 2.5"/><path d="M8 12l3 3 5-6"/></svg>',
   eye: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>',
   eyeOff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" opacity=".35"/><path d="M4 4l16 16"/></svg>',
   lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>',
@@ -26,7 +29,9 @@ export function makePlan(c) {
   const sh = () => S.model;
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Längenbezug, Öffnung, Kontrollmass
-  const opt = { d: P.WALL_D, mat: "mauer", lref: "mitte", okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0 }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand
+  const opt = { d: P.WALL_D, mat: "mauer", lref: "mitte", okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", multi: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart; multi = Klick fügt zur Wahl hinzu
+  let lineDraft = null; // Leitung im Entstehen: { pts }
+  let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
   let draft = null; // Wand im Entstehen: { a, start, len, ang, field }
   let dimDraft = null; // Mass im Entstehen: { a, b? }
   let drag = null, mouse = null, raw = null;
@@ -43,6 +48,9 @@ export function makePlan(c) {
   }
   const grid = () => (S.gridSize.plan ??= 100);
   const snapAt = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined });
+  // Leitung: zusätzlich Fang an Symbolmitten und Leitungspunkten (ohne die Leitung skip)
+  const lineSnaps = (skip) => visible().flatMap((i) => (i.type === "sym" ? [P.symCenter(i, den())] : i.type === "line" && i.id !== skip ? i.pts : []));
+  const snapLine = (w, ortho, skip) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: lineSnaps(skip) });
 
   // ---------- Darstellung ----------
   // Druckmitte: gesetzt (sheet.pmid, Werkzeug «Druckmitte setzen» im Fenster Druck), sonst Mitte des Inhalts (auf 10 mm), ohne Inhalt der Nullpunkt
@@ -107,22 +115,28 @@ export function makePlan(c) {
     const m = [(A[0] + B[0]) / 2 + n[0] * 1.6 * k, (A[1] + B[1]) / 2 + n[1] * 1.6 * k];
     return s + txt(m[0], m[1], label, 2.5 * k, Math.atan2(u[1], u[0]) * 180 / Math.PI, d.ctrl && ci.diff && Math.abs(ci.diff) >= 1 ? "#c0392b" : stroke);
   }
-  // Symbol (plansym.js): Teile in Papier-mm, in der Welt × Massstab k, gedreht um r. Texte aufrecht; Beschriftung und Höhe rechts der Mitte.
+  // Leitung: Strichmuster nach Art (Papier-mm × k), flexibel mit einer Welle in der Mitte jedes Abschnitts
+  function lineSVG(it, k, stroke = P.colOf(it), pts = it.pts) {
+    const dash = P.LINE_DASH[it.kind], w = 0.35 * k;
+    let s = `<path d="M${pts.map(pt).join("L")}" fill="none" stroke="${stroke}" stroke-width="${f(w)}" stroke-linejoin="round" ${dash ? `stroke-linecap="butt" stroke-dasharray="${dash.map((x) => f(x * k)).join(" ")}"` : 'stroke-linecap="round"'}/>`;
+    if (it.kind === "flex") for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (L < 4 * k) continue;
+      const u = [(b[0] - a[0]) / L, (b[1] - a[1]) / L], n = [-u[1], u[0]], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], at = (t, q) => [m[0] + u[0] * t * k + n[0] * q * k, m[1] + u[1] * t * k + n[1] * q * k];
+      s += `<path d="M${pt(at(-1.2, 0))}L${pt(at(1.2, 0))}" stroke="#fff" stroke-width="${f(w * 1.6)}"/><path d="M${pt(at(-1.2, 0))}Q${pt(at(-0.6, 1.1))} ${pt(at(0, 0))}Q${pt(at(0.6, -1.1))} ${pt(at(1.2, 0))}" fill="none" stroke="${stroke}" stroke-width="${f(w)}" stroke-linecap="round"/>`;
+    }
+    return s;
+  }
+  // Symbol (plansym.js): Teile in Papier-mm, in der Welt × Massstab k, gedreht um r. Texte drehen mit und bleiben lesbar (P.symTexts).
   function symSVG(it, k, stroke = INK) {
-    const def = SYM_BY_KEY.get(it.key), a = (it.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
-    const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)];
-    let g = "", t = "";
-    for (const q of it.ap ? [...def.parts, AP_HALF] : def.parts) {
+    const def = SYM_BY_KEY.get(it.key);
+    let g = "";
+    for (const q of it.ap && def.ap ? [...def.parts, def.ap] : def.parts) {
       if (q[0] === "l") g += `<line x1="${q[1]}" y1="${q[2]}" x2="${q[3]}" y2="${q[4]}"/>`;
       else if (q[0] === "c") g += `<circle cx="${q[1]}" cy="${q[2]}" r="${q[3]}"${q[4] ? ` fill="${stroke}"` : ""}/>`;
       else if (q[0] === "p") g += `<path d="${q[1]}"${q[2] ? ` fill="${stroke}"` : ""}/>`;
-      else if (q[0] === "t") { const m = w(q[1], q[2]); t += txt(m[0], m[1], q[4], q[3] * k, 0, stroke); }
     }
-    if (def.ref && (it.fu || it.nr)) { const m = w(-4.9, 0); t += txt(m[0], m[1], [it.fu, it.nr].filter(Boolean).join(" / "), 1.4 * k, it.r, stroke); }
-    // Beschriftung und Höhe neben dem Symbol, in Richtung seiner x-Achse (Wandsymbol: entlang der Wand), Texte aufrecht und waagrecht
-    const c = P.symCenter(it, k), lines = [it.txt, it.h !== undefined ? fmtH(it.h) : ""].filter(Boolean), d = (def.r + 0.6) * k;
-    const ax = co > 0.5 ? "start" : co < -0.5 ? "end" : "middle", up = ax === "middle" ? Math.sign(si) * (d + (lines.length - 1) * 1.1 * k) : 0;
-    lines.forEach((s0, i) => { t += txt(c[0] + (ax === "middle" ? 0 : co * d), c[1] + up + ((lines.length - 1) / 2 - i) * 2.2 * k, s0, 1.8 * k, 0, stroke, ax); });
+    const t = P.symTexts(it, k, fmtH).map((x) => txt(x.at[0], x.at[1], x.s, x.size, x.a, stroke, x.anchor)).join("");
     return `<g transform="translate(${f(it.at[0])} ${f(it.at[1])}) rotate(${it.r}) scale(${k})" fill="none" stroke="${stroke}" stroke-width="0.18" stroke-linecap="round">${g}</g>${t}`;
   }
   const fmtH = (h) => `${String(Math.round(h * 10) / 10).replace(".", ",")}`; // Höhe in cm, ohne Einheit (wie im Plan üblich)
@@ -145,7 +159,8 @@ export function makePlan(c) {
       if (segs.length) s += `<path d="${segs.map(([a, b]) => `M${pt(a)}L${pt(b)}`).join("")}" fill="none" stroke="${INK}" stroke-width="${f(0.5 * k)}" stroke-linecap="round"/>`;
       for (const o of ops) if (byId.get(o.wall)?.layer === l.id) s += openingSVG(byId.get(o.wall), o, k);
       for (const d of S0.items) if (d.type === "dim" && d.layer === l.id) s += dimSVG(d, k);
-      for (const y of S0.items) if (y.type === "sym" && y.layer === l.id) s += symSVG(y, k);
+      for (const y of S0.items) if (y.type === "line" && y.layer === l.id) s += lineSVG(y, k);
+      for (const y of S0.items) if (y.type === "sym" && y.layer === l.id) s += symSVG(y, k, P.colOf(y));
     }
     return `<g class="pl-items">${s}</g>`;
   }
@@ -169,7 +184,10 @@ export function makePlan(c) {
       else if (it.type === "opening") { const w = sh().items.find((i) => i.id === it.wall); if (w) s += `<g class="pl-scale">${openingSVG(w, it, k, SEL)}</g>` + edgeGrips(w, it).map((g) => grip(g.p)).join(""); }
       else if (it.type === "dim") { s += `<g class="pl-scale">${dimSVG(it, k, SEL)}</g>`; if (it.ref === undefined) s += grip(it.a) + grip(it.b); }
       else if (it.type === "sym") s += `<g class="pl-scale">${symSVG(it, k, SEL)}</g>`;
+      else if (it.type === "line") s += `<g class="pl-scale">${lineSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? it.pts.map(grip).join("") : "");
     }
+    if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, [...lineDraft.pts, [mouse.x, mouse.y]])}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
+    if (drag?.type === "box" && drag.started) { const b = boxOf(drag); s += `<rect x="${f(b.x0)}" y="${f(b.y0)}" width="${f(b.x1 - b.x0)}" height="${f(b.y1 - b.y0)}" fill="rgba(47,158,88,.08)" stroke="${SEL}" stroke-width="1" stroke-dasharray="5 3"/>`; }
     if (draft && mouse) {
       const b = draftEnd(), w = { id: -1, a: draft.a, b, d: opt.d };
       if (Math.hypot(b[0] - draft.a[0], b[1] - draft.a[1]) > 1) {
@@ -225,6 +243,13 @@ export function makePlan(c) {
       change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r, h: def.h }, id)));
       return;
     }
+    if (T === "pl-line") {
+      const p = snapLine(w, lineDraft?.pts.at(-1)), q = [p.x, p.y]; mouse = p;
+      if (!lineDraft) { if (layerOk()) lineDraft = { pts: [q] }; }
+      else if (same(q, lineDraft.pts.at(-1))) finishLine(); // Doppelklick oder Klick auf den letzten Punkt beendet
+      else lineDraft.pts.push(q);
+      renderOverlay(); updateHint(); return;
+    }
     if (T === "pl-dim") {
       const p = snapAt(w, dimDraft?.a); mouse = p;
       if (!dimDraft) { if (layerOk()) dimDraft = { a: [p.x, p.y] }; }
@@ -234,7 +259,8 @@ export function makePlan(c) {
     }
     if (T === "pl-pmid") { change(() => { sh().pmid = [Math.round(w.x), Math.round(w.y)]; }); setTool("select"); c.renderSheet(); toast("Druckmitte gesetzt. Oben unter „Druck“ zurück auf automatisch."); return; }
     if (T !== "select") return;
-    const one = sel()[0], t = tol(), near = (p) => Math.hypot(p[0] - w.x, p[1] - w.y) <= t;
+    const one = S.sel.size === 1 ? sel()[0] : null, t = tol(), near = (p) => Math.hypot(p[0] - w.x, p[1] - w.y) <= t;
+    if (one?.type === "line") { const i = one.pts.findIndex(near); if (i >= 0) { drag = { type: "lpt", it: one, i, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; } }
     if (one && (one.type === "wall" || (one.type === "dim" && one.ref === undefined))) {
       const e2 = ["a", "b"].find((k) => near(one[k]));
       if (e2) { // Eckpunkt ziehen: alle Enden an diesem Punkt (Wand: Nachbarwände, freie Masse), freies Mass nur sein Ende
@@ -246,19 +272,25 @@ export function makePlan(c) {
       const wl = sh().items.find((i) => i.id === one.wall), g = wl && edgeGrips(wl, one).find((x) => near(x.p));
       if (g) { drag = { type: "edge", it: one, wall: wl, edge: g.edge, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; }
     }
-    const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t);
-    S.sel = hit ? new Set([hit.id]) : new Set();
-    if (hit) drag = { type: "move", it: hit, sx: w.x, sy: w.y, started: false, snap: snapshot(), ...(hit.type === "wall" ? { ea: P.nodeEnds(sh(), hit.a), eb: P.nodeEnds(sh(), hit.b), a0: [...hit.a], b0: [...hit.b] } : hit.type === "opening" ? { t0: hit.t } : hit.type === "sym" ? { at0: [...hit.at], r0: hit.r } : { off0: hit.off }) };
+    const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t), more = e.shiftKey || opt.multi;
+    if (!hit) { if (!more) S.sel = new Set(); drag = { type: "box", sx: w.x, sy: w.y, ex: w.x, ey: w.y, add: more, started: false }; renderRight(); renderOverlay(); return; } // Rahmen ziehen
+    if (more) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; renderRight(); renderOverlay(); return; } // Shift-Klick: dazu oder weg
+    if ((S.sel.has(hit.id) && S.sel.size > 1) || hit.type === "line") { if (!S.sel.has(hit.id)) S.sel = new Set([hit.id]); drag = { type: "multi", items: sel(), sx: w.x, sy: w.y, dx: 0, dy: 0, started: false, snap: snapshot() }; renderRight(); renderOverlay(); return; }
+    S.sel = new Set([hit.id]);
+    drag = { type: "move", it: hit, sx: w.x, sy: w.y, started: false, snap: snapshot(), ...(hit.type === "wall" ? { ea: P.nodeEnds(sh(), hit.a), eb: P.nodeEnds(sh(), hit.b), a0: [...hit.a], b0: [...hit.b] } : hit.type === "opening" ? { t0: hit.t } : hit.type === "sym" ? { at0: [...hit.at], r0: hit.r } : { off0: hit.off }) };
     renderRight(); renderOverlay();
   }
   function move(w, e) {
     raw = w; S.shift = e.shiftKey; S.alt = e.altKey;
-    mouse = S.tool === "pl-wall" ? snapAt(w, draft?.a) : S.tool === "pl-dim" ? snapAt(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
+    mouse = S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapAt(w, draft?.a) : S.tool === "pl-dim" ? snapAt(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
     const d = drag;
     if (d) {
       if (!d.started && Math.hypot(w.x - d.sx, w.y - d.sy) * S.view.z > 3) d.started = true;
+      if (d.started && d.type === "box") { d.ex = w.x; d.ey = w.y; renderOverlay(); return; }
       if (d.started) {
-        if (d.type === "node") { const skip = new Set(d.ends.map((x) => x.it.id)), p = P.snapPlan(sh(), visible().filter((i) => !skip.has(i.id)), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? otherEnd(d) : undefined }); mouse = p; P.setEnds(sh(), d.ends, [p.x, p.y]); }
+        if (d.type === "multi") { const g = S.grid.on && !S.alt ? S.grid.size : 1, tx = Math.round((w.x - d.sx) / g) * g, ty = Math.round((w.y - d.sy) / g) * g; P.moveItems(sh(), d.items, tx - d.dx, ty - d.dy); d.dx = tx; d.dy = ty; }
+        else if (d.type === "lpt") { const o = d.it.pts[d.i > 0 ? d.i - 1 : 1], p = snapLine(w, o, d.it.id); mouse = p; d.it.pts[d.i] = [p.x, p.y]; }
+        else if (d.type === "node") { const skip = new Set(d.ends.map((x) => x.it.id)), p = P.snapPlan(sh(), visible().filter((i) => !skip.has(i.id)), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? otherEnd(d) : undefined }); mouse = p; P.setEnds(sh(), d.ends, [p.x, p.y]); }
         else if (d.type === "edge") { P.setOpeningEdge(d.wall, d.it, d.edge, P.along(d.wall, [w.x, w.y]), S.alt ? 1 : 10); renderRight(); }
         else if (d.it.type === "wall") { const g = S.grid.on && !S.alt ? S.grid.size : 1, dx = Math.round((w.x - d.sx) / g) * g, dy = Math.round((w.y - d.sy) / g) * g; P.setEnds(sh(), d.ea, [d.a0[0] + dx, d.a0[1] + dy]); P.setEnds(sh(), d.eb, [d.b0[0] + dx, d.b0[1] + dy]); }
         else if (d.it.type === "opening") { const wl = sh().items.find((i) => i.id === d.it.wall), g = S.grid.on && !S.alt ? 10 : 1; d.it.t = d.t0 + Math.round((P.along(wl, [w.x, w.y]) - P.along(wl, [d.sx, d.sy])) / g) * g; P.clampOpening(wl, d.it); }
@@ -270,11 +302,18 @@ export function makePlan(c) {
     renderOverlay();
   }
   const otherEnd = (d) => { const it = d.ends[0]?.it; return it ? it[d.ends[0].e === "a" ? "b" : "a"] : undefined; };
+  const boxOf = (d) => ({ x0: Math.min(d.sx, d.ex), y0: Math.min(d.sy, d.ey), x1: Math.max(d.sx, d.ex), y1: Math.max(d.sy, d.ey) });
   function up() {
     const d = drag; drag = null;
+    if (d?.type === "box") { if (d.started) { const ids = pickable().filter((i) => P.inBox(sh(), i, boxOf(d))).map((i) => i.id); S.sel = new Set([...(d.add ? S.sel : []), ...ids]); } renderRight(); renderOverlay(); return; }
+    if (d?.type === "lpt" && d.started) { const q = d.it.pts.filter((p, i, a) => !i || !same(p, a[i - 1])); if (q.length >= 2) d.it.pts = q; }
     if (d?.started) { pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); }
   }
-  function tap(w) { const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], 14 / S.view.z); S.sel = hit ? new Set([hit.id]) : new Set(); renderRight(); renderOverlay(); }
+  function tap(w) {
+    const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], 14 / S.view.z);
+    if (opt.multi && hit) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; } else S.sel = hit ? new Set([hit.id]) : new Set();
+    renderRight(); renderOverlay();
+  }
 
   // ---------- Wände und Masse anlegen ----------
   function commit(b, close = false) {
@@ -295,10 +334,25 @@ export function makePlan(c) {
     renderOverlay(); updateHint();
   }
   const same = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < P.EPS;
+  // Leitung abschliessen (ab zwei Punkten), sonst verwerfen
+  function finishLine() {
+    const pts = lineDraft?.pts ?? []; lineDraft = null;
+    if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "line", layer: sh().alay, pts, kind: opt.lkind }, id))); }
+    renderOverlay(); updateHint();
+  }
+  // Kopieren, Einfügen (je Mal 5 mm auf dem Papier weiter versetzt), Duplizieren, alles wählen
+  function copySel() { if (!S.sel.size) return; clip = P.copyItems(sh(), sel()); clipN = 0; toast(`${clip.filter((i) => i.type !== "opening").length} Objekt(e) kopiert. Einfügen mit ⌘V.`); renderRight(); }
+  function pasteFrom(src, n) {
+    const off = 5 * den() * n;
+    change(() => { const out = P.pasteItems(sh(), src, off, -off, nextId); S.sel = new Set(out.filter((i) => i.type !== "opening").map((i) => i.id)); });
+  }
+  function paste() { if (!clip?.length) { toast("Nichts kopiert. Erst wählen und ⌘C (oder Knopf Kopieren)."); return; } if (S.tool !== "select") setTool("select"); pasteFrom(clip, ++clipN); }
+  function dup() { if (S.sel.size) pasteFrom(P.copyItems(sh(), sel()), 1); }
+  function selAll() { if (S.tool !== "select") setTool("select"); S.sel = new Set(pickable().map((i) => i.id)); renderRight(); renderOverlay(); }
   // Entwurf beenden. Gibt true, wenn etwas abgebrochen wurde.
   function cancel() {
-    const had = !!(draft || dimDraft);
-    draft = null; dimDraft = null;
+    const had = !!(draft || dimDraft || lineDraft);
+    draft = null; dimDraft = null; lineDraft = null;
     return had;
   }
   function del() {
@@ -308,11 +362,15 @@ export function makePlan(c) {
   }
 
   // ---------- Tasten ----------
-  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim" };
+  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", k: "pl-line" };
   function key(e, mod) {
     const k = e.key;
     if (mod) {
-      if (["a", "d", "c", "v"].includes(k.toLowerCase())) { toast("Im Plan gibt es in Schritt 1 nur Einzelwahl. Mehrfachwahl, Kopieren und Einfügen folgen."); return true; }
+      const m = k.toLowerCase();
+      if (m === "a") { selAll(); return true; }
+      if (m === "c") { copySel(); return true; }
+      if (m === "v") { paste(); return true; }
+      if (m === "d") { dup(); return true; }
       return false;
     }
     if (draft) {
@@ -323,18 +381,22 @@ export function makePlan(c) {
       if (k === "Enter") { if (draft.len.trim() || draft.ang.trim()) { if (draft.len.trim() && !Number.isFinite(P.parseLen(draft.len))) { toast(`Länge „${draft.len}“ nicht verstanden. Beispiele: 3450, 345 cm, 3,45 m.`, "error"); return true; } commit(draftEnd()); } else { draft = null; renderOverlay(); updateHint(); } return true; }
       if (k === "Escape") { draft = null; renderOverlay(); updateHint(); return true; }
     }
+    if (lineDraft) {
+      if (k === "Enter" || k === "Escape") { finishLine(); return true; }
+      if (k === "Backspace") { lineDraft.pts.pop(); if (!lineDraft.pts.length) lineDraft = null; renderOverlay(); updateHint(); return true; }
+    }
     if (dimDraft && k === "Escape") { dimDraft = null; renderOverlay(); updateHint(); return true; }
     if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { setTool(TOOL_KEYS[k.toLowerCase()]); return true; }
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
-      const step = e.shiftKey ? 270 : 90, one = sel()[0];
+      const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym");
       if (S.tool === "pl-sym") { opt.symR = (opt.symR + step) % 360; renderOverlay(); return true; }
-      if (one?.type === "sym") { change(() => { one.r = (one.r + step) % 360; }); return true; }
+      if (ys.length) { change(() => { for (const y of ys) y.r = (y.r + step) % 360; }); return true; }
       return true;
     }
     if ("ltiqry".includes(k.toLowerCase()) && k.length === 1) return true; // Werkzeuge anderer Blätter: hier ohne Wirkung
     if (k.startsWith("Arrow") && S.sel.size) {
       const step = (S.grid.on ? S.grid.size : 10) * (e.shiftKey ? 5 : 1), dx = k === "ArrowLeft" ? -step : k === "ArrowRight" ? step : 0, dy = k === "ArrowUp" ? step : k === "ArrowDown" ? -step : 0;
-      change(() => { for (const it of sel()) P.moveItem(sh(), it, dx, dy); }, { panel: true });
+      change(() => P.moveItems(sh(), sel(), dx, dy), { panel: true });
       return true;
     }
     return false;
@@ -345,7 +407,9 @@ export function makePlan(c) {
   function leftHTML() {
     const S0 = sh();
     let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>` + toolBtn("select", R.icons.select, "Auswählen", "V") + toolBtn("hand", R.icons.hand, "Ansicht schieben", "H")
+      + `<button class="tool" data-plact="multi" aria-pressed="${opt.multi}" title="Mehrfachwahl: Klick fügt hinzu oder nimmt weg (wie Shift-Klick)">${ICON.multi}<span>Mehrfachwahl</span><span class="key">⇧</span></button>`
       + `</section><section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B")
+      + `</section><section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "K")
       + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`;
     for (const l of [...S0.layers].reverse()) { // oben = zuletzt gezeichnet
       const btn = (k, on, icon, label) => `<button class="layer-btn" data-plact="${k}" data-layer="${l.id}" data-key="${k}" aria-pressed="${on}" title="${label}" aria-label="${R.esc(l.name)}: ${label}">${icon}</button>`;
@@ -371,6 +435,7 @@ export function makePlan(c) {
   }
   async function leftAct(b) {
     const S0 = sh(), id = b.dataset.layer, a = b.dataset.plact;
+    if (a === "multi") { opt.multi = !opt.multi; if (S.tool !== "select") setTool("select"); renderLeft(); updateHint(); return; }
     if (a === "alay") { if (S0.alay !== id) { change(() => { S0.alay = id; }, { panel: false }); setTool(S.tool); } return; }
     if (a === "show" || a === "lock") { change(() => { const l = P.layerById(S0, id); l[a] = !l[a]; if (!P.isPickable(S0, { layer: id })) S.sel = new Set([...S.sel].filter((x) => P.isPickable(S0, S0.items.find((i) => i.id === x)))); }); renderLeft(); return; }
     if (a === "up" || a === "down") { change(() => P.moveLayer(S0, S0.alay, a === "up" ? 1 : -1)); renderLeft(); return; }
@@ -388,10 +453,18 @@ export function makePlan(c) {
   const inp = (k, label, v, attr = 'data-plf') => `<div class="field"><label>${label}</label><input type="text" inputmode="decimal" ${attr}="${k}" value="${R.esc(v)}" autocomplete="off"></div>`;
   const layerOpts = () => sh().layers.map((l) => [l.id, l.name]);
   const del1 = () => `<div class="row"><button class="btn outline small danger" data-act="del">${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Löschen</button></div>`;
+  // Farbe (5.100): Felder für Leitungen und Symbole der Wahl, «Vorgabe» nimmt die eigene Farbe weg
+  function colField(items) {
+    const cs = new Set(items.map(P.colOf)), cur = cs.size === 1 ? [...cs][0] : null, own = items.some((i) => i.col !== undefined);
+    const dv = new Set(items.map(P.defCol)), dname = (c) => P.PLAN_COLS.find(([x]) => x === c)?.[1].split(" –")[0] ?? c;
+    return `<div class="field"><label>Farbe${cur ? ` (${R.esc(dname(cur))})` : " (verschieden)"}</label><div class="swatches">${P.PLAN_COLS.map(([c, l]) => `<button class="swatch" style="--sw:${c}" data-plcol="${c}" aria-pressed="${c === cur}" title="${R.esc(l)}" aria-label="${R.esc(l)}"></button>`).join("")}</div></div>`
+      + `<div class="row"><button class="btn outline small" data-plact="coldef"${own ? "" : " disabled"}>Vorgabe${dv.size === 1 ? ` (${R.esc(dname([...dv][0]))})` : ""}</button></div>`;
+  }
+  const copyRow = () => `<div class="row"><button class="btn outline small" data-plact="copy">Kopieren</button><button class="btn outline small" data-plact="dup">Duplizieren</button>${clip?.length ? `<button class="btn outline small" data-plact="paste">Einfügen</button>` : ""}</div>`;
   function panelHTML(sel0, { head }) {
     const it = sel0.length === 1 ? sel0[0] : null, note = (t) => `<p class="note">${t}</p>`;
     if (it?.type === "wall") return head("Wand", P.MATS.find(([k]) => k === it.mat)[1]) + inp("len", "Länge Mittellinie in mm", P.fmtLen(P.wallLen(it))) + inp("d", "Dicke in mm", P.fmtLen(it.d))
-      + sel1("mat", P.MATS, it.mat, "Material") + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Länge ändern verschiebt das Ende (Griff am Ende), angeschlossene Ecken folgen. Ecken ziehen: Griff an den Enden.") + del1();
+      + sel1("mat", P.MATS, it.mat, "Material") + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Länge ändern verschiebt das Ende (Griff am Ende), angeschlossene Ecken folgen. Ecken ziehen: Griff an den Enden.") + copyRow() + del1();
     if (it?.type === "opening") {
       const w = sh().items.find((i) => i.id === it.wall);
       return head(P.OPENINGS.find(([k]) => k === it.kind)[1], "Öffnung in der Wand") + sel1("kind", P.OPENINGS, it.kind, "Art") + inp("w", "Breite in mm", P.fmtLen(it.w)) + inp("t", "Abstand ab Wandecke in mm", P.fmtLen(it.t))
@@ -412,16 +485,29 @@ export function makePlan(c) {
       const def = SYM_BY_KEY.get(it.key), tin = (k, label, v) => `<div class="field"><label>${label}</label><input type="text" data-plf="${k}" value="${R.esc(v ?? "")}" autocomplete="off" spellcheck="false"></div>`;
       return head(def.label, def.group) + (def.ref ? tin("fu", "Sicherung (z. B. F3)", it.fu) + tin("nr", "Nummer (Stromkreis)", it.nr) : "") + tin("txt", "Beschriftung", it.txt)
         + inp("sh", "Höhe in cm (leer = ohne)", it.h === undefined ? "" : fmtH(it.h)) + inp("rot", "Drehung in Grad", String(it.r))
-        + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz</label>` : "") + sel1("layer", layerOpts(), it.layer, "Ebene")
-        + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben.`) + del1();
+        + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
+        + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben.`) + copyRow() + del1();
     }
-    if (sel0.length > 1) return head(`${sel0.length} Objekte`) + del1();
+    if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
+      + note(`${it.pts.length} Punkte. Griffe an den Punkten ziehen (Fang an Symbolmitten und Leitungspunkten, Shift 0/45/90°), Ziehen an der Linie verschiebt sie.`) + copyRow() + del1();
+    if (it) return head(it.type) + copyRow() + del1();
+    if (sel0.length > 1) {
+      const n = (t) => sel0.filter((i) => i.type === t).length, parts = [["wall", "Wände"], ["opening", "Öffnungen"], ["dim", "Masse"], ["sym", "Symbole"], ["line", "Leitungen"]].filter(([t]) => n(t)).map(([t, l]) => `${n(t)} ${l}`);
+      const cols = sel0.filter(P.hasCol), lays = new Set(sel0.filter((i) => i.type !== "opening").map((i) => i.layer));
+      return head(`${sel0.length} Objekte`, parts.join(", ")) + (cols.length ? colField(cols) : note("Farbe nur für Leitungen und Symbole; Mauern, Öffnungen und Masse bleiben schwarz."))
+        + (lays.size ? sel1("mlayer", lays.size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], lays.size === 1 ? [...lays][0] : "", "Ebene") : "")
+        + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. Shift-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
+    }
     let h = "";
     if (S.tool === "pl-wall") h += head("Neue Wand", "Klick Start, Länge tippen, Enter") + inp("d", "Dicke in mm", P.fmtLen(opt.d), "data-plo") + sel1("mat", P.MATS, opt.mat, "Material").replace("data-plf", "data-plo")
       + sel1("lref", P.LEN_REFS, opt.lref, "Eingetippte Länge gilt für").replace("data-plf", "data-plo") + note("Gespeichert wird immer die Mittellinie. Innen-/Aussenkante: Annahme rechtwinklige Ecken mit gleich dicken Wänden (± Dicke).");
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
     else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Vorgabe Höhe: ${def.h !== undefined ? `${def.h} cm` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`); }
+    else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo")
+      + note("Fang an Symbolmitten, Leitungspunkten und Wandecken, Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
+    if (S.tool === "select" && clip?.length) h += `<div class="row"><button class="btn outline small" data-plact="paste">Einfügen (${clip.filter((i) => i.type !== "opening").length})</button><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
+    else if (S.tool === "select") h += `<div class="row"><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
     h += head(c.sheetLabel(sh(), S.active), "Plan") + note(`Massstab ${fmtDen(den())}, Papier und Plankopf oben unter „Druck“. Roter Kreis = gemeinsamer Nullpunkt aller Pläne.`)
       + `<div class="row"><button class="btn outline small" data-act="dupsheet">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${c.workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
     return h;
@@ -434,6 +520,7 @@ export function makePlan(c) {
       if (k === "d") { const v = P.parseLen(t.value); if (v > 0) opt.d = v; else toast("Dicke nicht verstanden.", "error"); }
       else if (k === "ow") { const v = P.parseLen(t.value); if (v > 0) opt.ow[opt.okind] = v; }
       else if (k === "ctrl") opt.ctrl = t.checked;
+      else if (k === "lkind") { opt.lkind = t.value; updateHint(); }
       else opt[k] = t.value;
       renderRight(); renderOverlay(); return true;
     }
@@ -443,7 +530,10 @@ export function makePlan(c) {
       change(() => { S0.paper = p; }); c.renderSheet(); renderItems(); return true;
     }
     if (t.dataset.plf === undefined || !it) return false;
-    const k = t.dataset.plf, v = t.value, L = P.parseLen(v), bad = () => { toast(`„${v}“ nicht verstanden. Beispiele: 3450, 345 cm, 3,45 m.`, "error"); renderRight(); };
+    const k = t.dataset.plf, v = t.value;
+    if (k === "mlayer") { if (P.layerById(S0, v)) change(() => { for (const x of sel()) if (x.type !== "opening") x.layer = v; }); else renderRight(); return true; }
+    if (k === "lk") { change(() => { it.kind = v; }); return true; }
+    const L = P.parseLen(v), bad = () => { toast(`„${v}“ nicht verstanden. Beispiele: 3450, 345 cm, 3,45 m.`, "error"); renderRight(); };
     if (k === "len") { if (!(L > 0)) return bad(), true; change(() => (it.type === "wall" ? P.setWallLength(S0, it, L) : P.setDimLength(S0, it, L))); return true; }
     if (k === "soll") { const s = v.trim() ? L : undefined; if (v.trim() && !(L > 0)) return bad(), true; change(() => { if (s) it.soll = s; else delete it.soll; }); return true; }
     if (k === "off") { const o = Number(v.trim().replace(",", ".").replace("−", "-")); if (!Number.isFinite(o)) return bad(), true; change(() => { it.off = o; }); return true; }
@@ -484,9 +574,10 @@ export function makePlan(c) {
     if (S.tool === "pl-open") return `Öffnung: Klick auf eine Wand setzt ${P.OPENINGS.find(([k]) => k === opt.okind)[1]} (${P.fmtLen(opt.ow[opt.okind])} mm) mittig auf den Klick. Art und Breite rechts.`;
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
     if (S.tool === "pl-sym") return `Symbol: Klick setzt ${SYM_BY_KEY.get(opt.sym).label}. ${SYM_BY_KEY.get(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."} Esc oder V beendet.`;
+    if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;
     if (S.tool === "pl-pmid") return "Druckmitte: in den Plan klicken, dort liegt die Mitte des Planfelds (Rahmen zeigt den Druckbereich). Esc bricht ab.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
-    return "Plan: Klick wählt ein Objekt, Ziehen verschiebt, Griffe an den Enden ziehen Ecken (Nachbarwände folgen), an Tür/Fenster die Breite. Entf löscht, Pfeiltasten schieben. W Wand, O Tür/Fenster, B Mass, R dreht ein Symbol.";
+    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "Shift-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, K Leitung, R dreht Symbole.`;
   }
 
   // Bedienung der Leisten (eigene Datenattribute, app.js kennt sie nicht)
@@ -501,6 +592,14 @@ export function makePlan(c) {
     if (!b || sh().kind !== "plan") return;
     if (b.dataset.plact === "pmid") { c.hidePop(); setTool("pl-pmid"); }
     else if (b.dataset.plact === "pmidauto") { change(() => { delete sh().pmid; }); c.renderSheet(); }
+  });
+  c.rightEl.addEventListener("click", (e) => {
+    if (sh().kind !== "plan") return;
+    const sw = e.target.closest("[data-plcol]");
+    if (sw) { change(() => { for (const it of sel()) P.setCol(it, sw.dataset.plcol); }); return; }
+    const a = e.target.closest("[data-plact]")?.dataset.plact;
+    if (a === "coldef") change(() => { for (const it of sel()) P.setCol(it, ""); });
+    else if (a === "copy") copySel(); else if (a === "paste") paste(); else if (a === "dup") dup(); else if (a === "all") selAll();
   });
   for (const el of [c.rightEl, c.popEl]) el.addEventListener("change", (e) => { if (sh().kind === "plan" && (e.target.dataset.plf !== undefined || e.target.dataset.plo !== undefined || e.target.dataset.plp !== undefined)) panelChange(e.target); });
 

@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 20, "elplexa liest Version 20");
+assert.strictEqual(M.VERSION, 21, "elplexa liest Version 21 (Plan mit Symbolen)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -185,5 +185,40 @@ assert.ok(P.contentBox(e).x0 < -100 && P.contentBox({ items: [] }) === null);
 assert.strictEqual(P.cleanPlanObj({ type: "opening", wall: 1, t: 0, w: 900, kind: "fenster", h: 1200 }, 1).h, 1200);
 assert.ok(!("h" in P.cleanPlanObj({ type: "opening", wall: 1, t: 0, w: 900, kind: "durchgang", h: 2000 }, 1)), "Durchgang ohne Höhe");
 assert.ok(!("h" in P.cleanPlanObj({ type: "opening", wall: 1, t: 0, w: 900, kind: "tuer" }, 1)), "Höhe fehlt = nicht gespeichert");
+
+// ---------- Schritt 2: Elektrosymbole ----------
+const S2 = await import("../src/plansym.js");
+assert.ok(S2.PLAN_SYMS.length >= 30 && S2.SYM_BY_KEY.size === S2.PLAN_SYMS.length, "ca. 30 Symbole, Schlüssel eindeutig");
+assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.length), "jedes Symbol mit Name, Kategorie, Gruppe, Zeichnung");
+{
+  const syms = [
+    { id: 30, type: "sym", layer: "l1", key: "STD", at: [3925, 400], r: 90, h: 110, txt: "Kühlschrank" },
+    { id: 31, type: "sym", layer: "bg", key: "SCH0", at: [300, 75], r: 0, h: 110, ap: true },
+    { id: 32, type: "sym", layer: "bg", key: "LEUCHTE", at: [2000, 1500], r: 45 },
+    { id: 33, type: "sym", layer: "bg", key: "VERWEIS", at: [1000, 1000], r: 180, fu: "F3", nr: "2" },
+  ];
+  const d2 = M.parseModel(file([plan([...kueche(), ...syms])], 21));
+  const t2 = M.serializeModel(d2), b2 = JSON.parse(t2);
+  assert.strictEqual(b2.version, 21, "Plan mit Symbolen: Version 21");
+  assert.deepStrictEqual(b2.sheets[0].items.filter((i) => i.type === "sym"), syms, "Symbole unverändert gespeichert");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan(kueche())])))).version, 20, "Plan ohne Symbole bleibt Version 20");
+  const c = (o) => P.cleanPlanObj({ type: "sym", layer: "bg", at: [0, 0], ...o }, 1);
+  assert.strictEqual(c({ key: "GIBTSNICHT" }), null, "unbekanntes Symbol abgelehnt");
+  assert.deepStrictEqual(c({ key: "LEUCHTE", r: -90, ap: true, fu: "F1", txt: "  " }), { id: 1, type: "sym", layer: "bg", key: "LEUCHTE", at: [0, 0], r: 270 }, "Drehung 0–359, Aufputz nur Schalter, Sicherung nur Verweis, leere Texte weg");
+  // Wand einrasten: nächste Fläche, Symbol zeigt in den Raum
+  const walls = kueche().filter((i) => i.type === "wall");
+  assert.deepStrictEqual(P.wallSnap(walls, [3700, 400], 600), { at: [3925, 400], r: 90, wall: 2 }, "rechte Wand innen: Symbol nach links (r 90)");
+  assert.deepStrictEqual(P.wallSnap(walls, [1000, 300], 600), { at: [1000, 75], r: 0, wall: 1 }, "untere Wand innen: r 0");
+  assert.deepStrictEqual(P.wallSnap(walls, [1000, 2700], 600), { at: [1000, 2925], r: 180, wall: 3 }, "obere Wand innen: r 180");
+  assert.deepStrictEqual(P.wallSnap(walls, [1000, -300], 600), { at: [1000, -75], r: 180, wall: 1 }, "untere Wand aussen: nach unten");
+  assert.strictEqual(P.wallSnap(walls, [2000, 1500], 600), null, "Raummitte: keine Wand in Reichweite");
+  // Treffer und Mitte (Massstab 1:50)
+  const e2 = d2.sheets[0];
+  near(P.symCenter(e2.items.find((i) => i.id === 30), 50), [3825, 400], "Mitte Wandsymbol: 2 mm × 50 in den Raum");
+  assert.strictEqual(P.hitPlan(e2, e2.items, [2010, 1490], 10)?.id, 32, "Treffer Symbol vor Wand und Mass");
+  P.moveItem(e2, e2.items.find((i) => i.id === 32), 100, -50);
+  assert.deepStrictEqual(e2.items.find((i) => i.id === 32).at, [2100, 1450], "Symbol verschieben");
+  assert.ok(P.deleteLayer(e2, "l1") && !e2.items.some((i) => i.id === 30), "Ebene löschen nimmt ihre Symbole mit");
+}
 
 console.log("test_plan: alles ok");

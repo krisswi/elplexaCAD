@@ -5,7 +5,7 @@
 import * as P from "./plan.js";
 import { PLAN_SYMS, SYM_BY_KEY, SYM_GROUPS } from "./plansym.js";
 import { PAPERS, paperSize, printArea, paperLabel, fmtDen } from "./pv.js";
-import { pageInner } from "./pvprint.js";
+import { pageInner, pageSVG } from "./pvprint.js";
 import * as R from "./render.js";
 
 const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3";
@@ -54,9 +54,10 @@ export function makePlan(c) {
 
   // ---------- Darstellung ----------
   // Druckmitte: gesetzt (sheet.pmid, Werkzeug «Druckmitte setzen» im Fenster Druck), sonst Mitte des Inhalts (auf 10 mm), ohne Inhalt der Nullpunkt
-  function center() {
-    if (sh().pmid) return sh().pmid;
-    const b = P.contentBox(sh());
+  const center = () => centerOf(sh());
+  function centerOf(S0) {
+    if (S0.pmid) return S0.pmid;
+    const b = P.contentBox(S0);
     return b ? [Math.round((b.x0 + b.x1) / 20) * 10, Math.round((b.y0 + b.y1) / 20) * 10] : [0, 0];
   }
   // Papier in Welt-mm: Ursprung der Seite so, dass die Mitte des Planfelds auf center() liegt
@@ -147,8 +148,8 @@ export function makePlan(c) {
     const q = snapAt(p);
     return { at: [q.x, q.y], r: r0 };
   }
-  function itemsSVG() {
-    const S0 = sh(), k = den(), walls = S0.items.filter((i) => i.type === "wall"), ops = S0.items.filter((i) => i.type === "opening");
+  function itemsSVG(S0 = sh()) {
+    const k = P.paperOf(S0).den, walls = S0.items.filter((i) => i.type === "wall"), ops = S0.items.filter((i) => i.type === "opening");
     const shapes = new Map(P.wallShapes(walls, ops).map((x) => [x.id, x])), byId = new Map(walls.map((w) => [w.id, w]));
     let s = patterns(k);
     for (const l of S0.layers) {
@@ -217,6 +218,47 @@ export function makePlan(c) {
     const ww = Math.min(opt.ow[opt.okind], P.wallLen(w)), o = { kind: opt.okind, w: ww, t: Math.max(0, Math.min(P.wallLen(w) - ww, Math.round(P.along(w, [raw.x, raw.y]) - ww / 2))), hinge: "l", side: 1, h: OPEN_HV[opt.okind] };
     return { w, o };
   }
+
+  // ---------- Druck und PDF (Schritt 4, CJ 24.10.2026) ----------
+  // Plan: Papier und Massstab aus dem Fenster Druck, um die Druckmitte, nur sichtbare Ebenen, ohne Raster und Nullpunkt, ausserhalb des
+  // Planfelds abgeschnitten. Linienbreiten bleiben die des Plans: --plw je Element (elplexa.css, sonst setzt das Druck-CSS alle auf 0,35 mm).
+  const keepW = (s) => s.replace(/ stroke-width="([^"]+)"/g, (m, v) => `${m} style="--plw:${v}"`);
+  function printPages(S0, i = 0) {
+    const p = P.paperOf(S0), a = printArea(p), [mx, my] = centerOf(S0), cx = (a.x0 + a.x1) / 2, cy = (a.y0 + a.y1) / 2, id = `plclip${i}`;
+    const inner = `<clipPath id="${id}"><rect x="${f(a.x0)}" y="${f(a.y0)}" width="${f(a.x1 - a.x0)}" height="${f(a.y1 - a.y0)}"/></clipPath>`
+      + `<g clip-path="url(#${id})"><g class="pl-print" transform="translate(${f(cx)} ${f(cy)}) scale(${1 / p.den}) translate(${f(-mx)} ${f(-my)})">${keepW(itemsSVG(S0))}</g></g>`;
+    return [pageSVG(p, S0.meta, info(p), inner), ...(S0.bom === false ? [] : bomPages(S0, c.sheetLabel(S0, i)))];
+  }
+  // Stückliste: A4 hoch, Symbol (Farbe der Vorgabe), Bezeichnung, Anzahl, nach Gruppen; ohne Symbole keine Seite
+  function bomPages(S0, name) {
+    const rows = P.bomOf(S0);
+    if (!rows.length) return [];
+    const p = { size: "A4", quer: false }, a = printArea(p), RH = 6.5, x0 = a.x0 + 6, x1 = a.x1 - 6, lines = [];
+    let g0 = null;
+    for (const r of rows) { if (r.group !== g0) { lines.push({ head: r.group }); g0 = r.group; } lines.push(r); }
+    const per = Math.floor((a.y1 - a.y0 - 30) / RH), pages = [], total = rows.reduce((s, r) => s + r.n, 0);
+    for (let j = 0; j < lines.length; j += per) {
+      let y = a.y1 - 10, s = txt(x0, y, `Stückliste · ${name}`, 5, 0, INK, "start") + txt(x1, y, `${total} Symbole`, 3, 0, INK, "end");
+      y -= 9; s += txt(x0, y, "Symbol", 2.8, 0, INK, "start") + txt(x0 + 16, y, "Bezeichnung", 2.8, 0, INK, "start") + txt(x1, y, "Anzahl", 2.8, 0, INK, "end");
+      s += `<line x1="${f(x0)}" y1="${f(y - 2.5)}" x2="${f(x1)}" y2="${f(y - 2.5)}" stroke="${INK}" stroke-width="0.35"/>`;
+      for (const r of lines.slice(j, j + per)) {
+        y -= RH;
+        if (r.head) { s += txt(x0, y, r.head, 3.2, 0, INK, "start"); continue; }
+        const def = SYM_BY_KEY.get(r.key), k = Math.min(1, 2.6 / def.r);
+        s += symSVG({ key: r.key, at: [x0 + 6 - def.c[0] * k, y - def.c[1] * k], r: 0 }, k, P.defCol({ type: "sym", key: r.key })) + txt(x0 + 16, y, r.label, 3, 0, INK, "start") + txt(x1, y, String(r.n), 3, 0, INK, "end");
+        s += `<line x1="${f(x0)}" y1="${f(y - RH / 2)}" x2="${f(x1)}" y2="${f(y - RH / 2)}" stroke="#c8ced6" stroke-width="0.15"/>`;
+      }
+      pages.push(pageSVG(p, S0.meta, `Stückliste · ${name}${lines.length > per ? ` · Seite ${j / per + 1}` : ""}`, `<g class="pl-print">${keepW(s)}</g>`));
+    }
+    return pages;
+  }
+  function bomCsv() {
+    const rows = P.bomOf(sh());
+    if (!rows.length) { toast("Keine Symbole auf sichtbaren Ebenen."); return; }
+    c.download(`${c.sheetLabel(sh(), S.active).replace(/[\\/:*?"<>|]+/g, "-")}_Stückliste.csv`, P.bomCsv(rows), "text/csv");
+    toast("Stückliste als CSV in den Download-Ordner geladen.");
+  }
+  S.planPages = printPages; // files.js buildPrint (nur elplexaCAD)
 
   // ---------- Zeiger ----------
   function down(w, e) {
@@ -526,6 +568,7 @@ export function makePlan(c) {
     }
     if (t.dataset.plp !== undefined) { // Fenster Druck: Papier, Ausrichtung, Massstab
       const p = { ...P.paperOf(S0) }, k = t.dataset.plp;
+      if (k === "bom") { change(() => { if (t.checked) delete S0.bom; else S0.bom = false; }); return true; }
       if (k === "size" && PAPERS[t.value]) p.size = t.value; else if (k === "quer") p.quer = t.value === "1"; else if (k === "den" && P.PLAN_DENS.includes(Number(t.value))) p.den = Number(t.value); else return true;
       change(() => { S0.paper = p; }); c.renderSheet(); renderItems(); return true;
     }
@@ -564,7 +607,9 @@ export function makePlan(c) {
       + sel2("size", Object.keys(PAPERS).map((k) => [k, `${k} (${PAPERS[k][0]} × ${PAPERS[k][1]} mm)`]), p.size, "Papier") + sel2("quer", [["0", "hoch"], ["1", "quer"]], p.quer ? "1" : "0", "Ausrichtung")
       + sel2("den", P.PLAN_DENS.map((d) => [d, fmtDen(d)]), p.den, "Massstab")
       + `<div class="row"><button class="btn outline small" data-plact="pmid">Druckmitte setzen</button>${sh().pmid ? `<button class="btn outline small" data-plact="pmidauto">Mitte automatisch</button>` : ""}</div>`
-      + `<p class="note">Gedruckt wird ${sh().pmid ? "um die gesetzte Druckmitte" : "die Mitte des Inhalts"}. Planfeld ${m((a.x1 - a.x0) * p.den)} × ${m((a.y1 - a.y0) * p.den)} mm in der Welt (${m(a.x1 - a.x0)} × ${m(a.y1 - a.y0)} mm auf dem Papier). Linien und Texte folgen dem Massstab. PDF folgt in Schritt 4.</p>`
+      + `<p class="note">Gedruckt wird ${sh().pmid ? "um die gesetzte Druckmitte" : "die Mitte des Inhalts"}. Planfeld ${m((a.x1 - a.x0) * p.den)} × ${m((a.y1 - a.y0) * p.den)} mm in der Welt (${m(a.x1 - a.x0)} × ${m(a.y1 - a.y0)} mm auf dem Papier). Linien und Texte folgen dem Massstab, nur sichtbare Ebenen. PDF: Exportieren › PDF oder Knopf PDF der Kachel.</p>`
+      + `<label class="check"><input type="checkbox" data-plp="bom"${sh().bom === false ? "" : " checked"}> Stückliste drucken (eigene Seite A4 hoch)</label>`
+      + `<div class="row"><button class="btn outline small" data-plact="bomcsv">Stückliste als CSV</button></div>`
       + `<h3 class="pv-title">Plankopf</h3>` + META_FIELDS.map((x) => fieldHTML(x.label, `data-meta="${x.tag}"`, sh().meta[x.tag] ?? "")).join("");
   }
   const printLabel = () => { const p = P.paperOf(sh()); return { text: `${paperLabel(p)} ${fmtDen(p.den)}`, warn: false }; };
@@ -592,6 +637,7 @@ export function makePlan(c) {
     if (!b || sh().kind !== "plan") return;
     if (b.dataset.plact === "pmid") { c.hidePop(); setTool("pl-pmid"); }
     else if (b.dataset.plact === "pmidauto") { change(() => { delete sh().pmid; }); c.renderSheet(); }
+    else if (b.dataset.plact === "bomcsv") bomCsv();
   });
   c.rightEl.addEventListener("click", (e) => {
     if (sh().kind !== "plan") return;

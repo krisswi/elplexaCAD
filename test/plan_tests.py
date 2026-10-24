@@ -2,7 +2,7 @@
 # Elektrosymbole (Schritt 2: Wandfang, Drehen, Beschriftung, Höhe, Aufputz, Verweis), Massstab, Druckmitte, zweites Plan-Modul, Speichern/Laden,
 # v3 lehnt die Datei ab. Vorher: node build.mjs && node build.mjs elplexa
 # Aufruf: python3 test/plan_tests.py [Ausgabeordner]. Tasten im Plan als keydown-Ereignis (page.type schickt keinen keydown an window).
-import sys, tempfile, json, math
+import sys, tempfile, json, math, re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parent.parent
@@ -245,6 +245,33 @@ with sync_playwright() as p:
     key("0"); page.wait_for_timeout(200)
     hubt = page.locator("#el-hub").inner_text()
     check("Übersicht: zwei Plan-Kacheln «Plan» und «Plan 2»", "Plan 2" in hubt and hubt.count("Plan") >= 2, hubt[:300])
+
+    # ---------- Schritt 4: PDF und Stückliste ----------
+    page.evaluate("""window.__open = []; window.open = (u) => { window.__open.push(u); return {}; }; window.__pr = '';
+      new MutationObserver(() => { const h = document.querySelector('#printroot').innerHTML; if (h) window.__pr = h; }).observe(document.querySelector('#printroot'), { childList: true }); 0""")
+    def pdf_pages():
+        page.wait_for_function("window.__open.length > 0", timeout=60000)
+        txt = page.evaluate("(async () => { const b = new Uint8Array(await (await fetch(window.__open.shift())).arrayBuffer()); let s = ''; for (const c of b) s += String.fromCharCode(c); return s; })()")
+        return [tuple(round(float(v) * 25.4 / 72) for v in m) for m in re.findall(r"/Type /Page\b.*?/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]", txt, re.S)]
+    page.click("#el-tile-plan [data-elpdf]"); pp = pdf_pages()
+    check("Knopf PDF der Plan-Kachel: Plan A3 quer und Stückliste A4 hoch", pp == [(420, 297), (210, 297)], pp)
+    pr = page.evaluate("window.__pr")
+    check("Druck: Plan mit Leitung, Symbolen, Plankopf; ohne Nullpunkt und Raster", "pl-print" in pr and "#3fbbeb" in pr and "Stückliste" in pr and "pl-origin" not in pr and "gridpat" not in pr)
+    check("Linienbreiten des Plans bleiben (Mauer dicker als Mass)", page.evaluate("(() => { const d = document.createElement('div'); d.id = 'printroot'; d.style.display = 'block'; d.innerHTML = window.__pr; document.body.append(d); const w = [...d.querySelectorAll('.pl-print path[stroke-width]')].map((e) => parseFloat(getComputedStyle(e).strokeWidth)); d.remove(); return Math.max(...w) > 3 * Math.min(...w); })()"))
+    (OUT / "plan_druck.html").write_text("<!doctype html><meta charset=utf-8><style>svg{display:block;width:420mm;margin:8px;border:1px solid #ccc}</style>" + pr)
+    bom = page.evaluate("[...new DOMParser().parseFromString(window.__pr, 'text/html').querySelectorAll('svg')].at(-1).textContent")
+    check("Stückliste zählt die Symbole je Art", "Steckdose T13 (Schutzkontakt)" in bom and "Leuchte an Decke" in bom, bom[:200])
+    page.click("#el-tile-plan"); page.wait_for_timeout(300)
+    page.click("#btn-pvdruck"); page.wait_for_timeout(200)
+    page.uncheck('[data-plp="bom"]'); page.wait_for_timeout(100)
+    check("Haken Stückliste aus: Blattfeld bom false", M().get("bom") is False)
+    with page.expect_download() as dl: page.click('[data-plact="bomcsv"]')
+    csv = Path(dl.value.path()).read_text(encoding="utf-8")
+    check("Stückliste als CSV", csv.startswith("Gruppe;Symbol;Anzahl") and "Steckdosen;Steckdose T13 (Schutzkontakt);" in csv, csv[:120])
+    page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    key("0"); page.wait_for_timeout(200)
+    page.click("#el-tile-plan [data-elpdf]"); pp = pdf_pages()
+    check("Ohne Haken: nur die Plan-Seite", pp == [(420, 297)], pp)
 
     # ---------- Speichern / Laden ohne Datenverlust ----------
     d1 = D()

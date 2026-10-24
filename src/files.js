@@ -99,7 +99,7 @@ export function makeFiles(c) {
     const pages = S.doc.sheets.map((sh, i) => [sh, i]).filter(([sh]) => !pick || pick.has(sh)).flatMap(([sh, i]) => {
       if (sh.kind === "pv" || sh.kind === "pvtab") return pv.printPages(sh, i);
       if (sh.kind === "legend") return L.printPages(S.doc, sh); // A4 hoch
-      if (ELPLEXA && sh.kind === "plan") return []; // Plan: PDF folgt in Schritt 4
+      if (ELPLEXA && sh.kind === "plan") return S.planPages(sh, i); // Plan und Stückliste (planedit.js, Schritt 4)
       if (sh.kind === "prinzip") return PZ.printPages(sh); // eigenes Papier, Plankopf wie Stringplan (prinzip.js)
       if (T.isDeck(sh)) return T.deckPrintPages(S.doc, sh);
       if (sh.kind === "dispo") { // freie Fläche: Inhalt mit Rand auf eine Seite einpassen, Linienstärke in Papier-mm
@@ -114,7 +114,7 @@ export function makeFiles(c) {
   }
   // Papier eines Blatts im Druck: Stringplan und Stringübersicht ihr eigenes, Legende A4 hoch, alles andere A4 quer
   function sheetPaper(sh) {
-    const p = sh.kind === "pv" || sh.kind === "pvtab" ? pv.paperOf(sh) : sh.kind === "prinzip" ? PZ.paperOf(sh) : { size: "A4", quer: sh.kind !== "legend" };
+    const p = sh.kind === "pv" || sh.kind === "pvtab" ? pv.paperOf(sh) : sh.kind === "prinzip" ? PZ.paperOf(sh) : ELPLEXA && sh.kind === "plan" ? { size: "A3", quer: true, ...sh.paper } : { size: "A4", quer: sh.kind !== "legend" };
     return { key: p.size + (p.quer ? "q" : "h"), label: `${p.size} ${p.quer ? "quer" : "hoch"}` };
   }
   // Ein Druck für alle Blätter, jede Seite in ihrem Papier (benannte @page in style.css und pvprint.js). Nachweis 18.10.2026 im echten

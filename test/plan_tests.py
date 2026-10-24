@@ -56,12 +56,13 @@ with sync_playwright() as p:
     check("Nullpunkt sichtbar markiert", page.locator("#sheet .pl-origin").count() == 1)
 
     # ---------- Küche: 4 Wände per Länge und Tab-Winkel, Raum schliessen ----------
-    key("w"); click(0, 0)
-    for L, a in [("4000", "0"), ("3,0 m", "90"), ("400 cm", "180")]:
+    # Gezeichnet wird die Innenkante (75|75), 3850 × 2850: die Wand wächst nach aussen (Seite automatisch nach der ersten Kurve), Mittellinie 4000 × 3000
+    key("w"); page.keyboard.down("Alt"); click(75, 75); page.keyboard.up("Alt")
+    for L, a in [("3850", "0"), ("2,85 m", "90"), ("385 cm", "180")]:
         keys(L); key("Tab"); keys(a); key("Enter")
-    click(0, 0)  # Klick auf den Anfang schliesst den Raum
+    click(75, 75)  # Klick auf den Anfang schliesst den Raum
     ws = of("wall")
-    check("4 Wände, Raum geschlossen 4000 × 3000 (Mittellinie)", len(ws) == 4 and [w["a"] for w in ws] == [[0, 0], [4000, 0], [4000, 3000], [0, 3000]] and ws[3]["b"] == [0, 0], [(w["a"], w["b"]) for w in ws])
+    check("4 Wände, Raum geschlossen 4000 × 3000 (Mittellinie, Innenkante gezeichnet)", len(ws) == 4 and [w["a"] for w in ws] == [[0, 0], [4000, 0], [4000, 3000], [0, 3000]] and ws[3]["b"] == [0, 0], [(w["a"], w["b"]) for w in ws])
     check("Wanddicke 150, Material Mauerwerk, Ebene Hintergrund", all(w["d"] == 150 and w["mat"] == "mauer" and w["layer"] == "bg" for w in ws))
     check("Nach dem Schliessen kein Entwurf mehr (Enter ohne Länge nötig nicht)", "Klick setzt den Anfang" in page.inner_text("#hint"), page.inner_text("#hint"))
     W1, W2, W3, W4 = (w["id"] for w in ws)
@@ -130,15 +131,23 @@ with sync_playwright() as p:
     ly = M()["layers"]
     check("Ebene «Installation» angelegt und aktiv", [l["name"] for l in ly] == ["Hintergrund", "Installation"] and M()["alay"] == ly[1]["id"], ly)
     LI = ly[1]["id"]
-    blur(); key("w"); click(2000, 0); keys("1500"); key("Tab"); keys("90"); key("Enter"); key("Escape")
-    iw = [w for w in of("wall") if w["layer"] == LI]
-    check("Innenwand auf Ebene Installation (T-Stoss an Wand 1)", len(iw) == 1 and iw[0]["a"] == [2000, 0] and iw[0]["b"] == [2000, 1500], iw)
+    # Grundriss-Werkzeuge nur auf der Ebene Hintergrund: Wand zeichnen dort, dann der Ebene Installation zuweisen
+    check("Auf Ebene Installation keine Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 0 and page.locator('[data-tool="pl-open"]').count() == 0 and page.locator('[data-tool="pl-dim"]').count() == 0 and page.locator('[data-tool="pl-line"]').count() == 1)
+    blur(); key("w"); check("Taste W auf Installation: Hinweis, kein Werkzeug", "nur auf der Ebene Hintergrund" in page.inner_text("#toasts") and M().get("alay") == LI)
+    page.click('[data-plact="alay"][data-layer="bg"]'); page.wait_for_timeout(100)
+    check("Auf Hintergrund wieder Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 1)
+    old_ids = {w["id"] for w in of("wall")}
+    blur(); key("w"); click(2000, 75); keys("1500"); key("Tab"); keys("90"); key("Enter"); key("Escape")
+    iw = [w for w in of("wall") if w["id"] not in old_ids]
+    check("Innenwand ab Wandfläche (Innenkante 2000|75, Wand links = westlich, T-Stoss an Wand 1)", len(iw) == 1 and iw[0]["a"] == [1925, 75] and iw[0]["b"] == [1925, 1575], iw)
     IW = iw[0]["id"]
-    blur(); key("v"); click(2000, 900); check("Innenwand wählbar", sel() == [IW], sel())
+    blur(); key("v"); click(1925, 900); page.select_option('[data-plf="layer"]', LI); page.wait_for_timeout(100)
+    check("Innenwand wählbar, Ebene Installation zugewiesen", sel() == [IW] and item(IW)["layer"] == LI, sel())
+    page.click(f'[data-plact="alay"][data-layer="{LI}"]'); page.wait_for_timeout(100)
     page.click(f'[data-plact="lock"][data-layer="{LI}"]'); page.wait_for_timeout(100)
     check("Ebene gesperrt, Auswahl aufgehoben", next(l for l in M()["layers"] if l["id"] == LI)["lock"] is True and IW not in sel())
-    click(2000, 900); check("Gesperrte Wand nicht wählbar", sel() == [], sel())
-    blur(); key("w"); click(3000, 1000)
+    click(1925, 900); check("Gesperrte Wand nicht wählbar", sel() == [], sel())
+    blur(); key("l"); click(3000, 1000)
     check("Zeichnen auf gesperrter Ebene: Hinweis", "gesperrt" in page.inner_text("#toasts"))
     key("Escape"); page.click('[data-plact="alay"][data-layer="bg"]'); page.wait_for_timeout(100)
     check("Aktive Ebene wieder Hintergrund", M()["alay"] == "bg")
@@ -241,7 +250,7 @@ with sync_playwright() as p:
     check("Zweiter Plan leer, nur Hintergrund", M()["items"] == [] and [l["name"] for l in M()["layers"]] == ["Hintergrund"])
     key("w"); click(0, 0); keys("4000"); key("Tab"); keys("0"); key("Enter"); key("Escape")
     p1 = next(s for s in D()["sheets"] if s.get("kind") == "plan" and "var" not in s)
-    check("Gleicher Nullpunkt: Wand OG ab (0|0) liegt auf Wand 1 EG, kein Versatz je Blatt", of("wall")[0]["a"] == [0, 0] and of("wall")[0]["b"] == [4000, 0] and p1["items"][0]["a"] == [0, 0] and not any(k in M() for k in ("ox", "oy", "off", "origin")))
+    check("Gleicher Nullpunkt: Innenkante OG ab (0|0), Mittellinie 75 daneben (Wand links); EG-Wand 1 ab (0|0), kein Versatz je Blatt", of("wall")[0]["a"] == [0, 75] and of("wall")[0]["b"] == [4000, 75] and p1["items"][0]["a"] == [0, 0] and not any(k in M() for k in ("ox", "oy", "off", "origin")))
     key("0"); page.wait_for_timeout(200)
     hubt = page.locator("#el-hub").inner_text()
     check("Übersicht: zwei Plan-Kacheln «Plan» und «Plan 2»", "Plan 2" in hubt and hubt.count("Plan") >= 2, hubt[:300])

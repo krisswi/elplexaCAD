@@ -91,7 +91,8 @@ export const PLAN_COLS = [["#3fbbeb", "Blau – Licht"], ["#ed3f2a", "Rot – Kr
   ["#f8a724", "Orange – Brandmelde"], ["#d37c24", "Braun – Schwachstrom, Audio"], ["#8d5995", "Violett – Radio/TV, KNX"], ["#f8f191", "Gelb – Trassen, Kanäle"], ["#000000", "Schwarz"]];
 // Vorgabe der Leitungen: blau (CJ 24.10.2026). Später in den Einstellungen änderbar, deshalb nur hier und über lineCol() gelesen.
 export const LINE_COL = "#3fbbeb";
-export const CAT_COL = { licht: "#3fbbeb", kraft: "#ed3f2a", kommunikation: "#7aba4b", schwach: "#d37c24", allg: "#000000", leitung: LINE_COL };
+// Vorgabe aller Symbole: blau (CJ 24.10.2026, vorher nach Kategorie: Kraft rot usw.); die Farbcodes 5.100 bleiben am Objekt wählbar
+export const CAT_COL = { licht: LINE_COL, kraft: LINE_COL, kommunikation: LINE_COL, schwach: LINE_COL, allg: LINE_COL, leitung: LINE_COL };
 const HEX = /^#[0-9a-f]{6}$/;
 export const lineCol = () => LINE_COL;
 // Vorgabe und wirksame Farbe eines Objekts
@@ -423,10 +424,26 @@ export function setEnds(sh, ends, p) {
 }
 // Wandlänge eintippen: Ende b wandert, Ecken an b folgen (wie ein Mass mit Bezug)
 export function setWallLength(sh, w, L) { return setDimLength(sh, { ref: w.id, a: w.a, b: w.b }, L); }
-// Länge beim Zeichnen: eingetippt an Innen- oder Aussenkante, gespeichert wird die Mittellinie. Annahme: rechtwinklige Ecken an beiden
-// Enden mit gleich dicken Wänden, also Mittellinie = Innenkante + d bzw. Aussenkante − d.
-export const LEN_REFS = [["mitte", "Mittellinie"], ["innen", "Innenkante"], ["aussen", "Aussenkante"]];
-export const centerLen = (L, ref, d) => (ref === "innen" ? L + d : ref === "aussen" ? L - d : L);
+// Wand zeichnen (CJ 24.10.2026): gezeichnet wird die Innenkante (Innenlinie p → q), die Wand liegt auf der Seite side (1 = links der
+// Zeichenrichtung, −1 = rechts, Vorgabe links: Raum im Uhrzeigersinn zeichnen). Gespeichert wird weiter die Mittellinie, um d/2 versetzt.
+// Eingetippte Länge = Länge der Innenlinie = lichte Länge zwischen den Innenecken.
+export function innerWall(p, q, d, side = 1) {
+  const u = wallDir({ a: p, b: q }), n = normal(u), k = (side < 0 ? -1 : 1) * d / 2;
+  return { a: add(p, n, k).map(r3), b: add(q, n, k).map(r3) };
+}
+// Ecke zweier aufeinanderfolgender Wände (w1.b und w2.a lagen auf demselben Punkt der Innenlinie): beide Enden in den Schnitt der Mittellinien.
+// Parallel oder sehr spitzer Winkel: unverändert. Gibt true, wenn verschoben.
+export function mitre(w1, w2) {
+  const x = lineX(w1.a, wallDir(w1), w2.a, wallDir(w2));
+  if (!x || len(sub(x, w1.b)) > 10 * Math.max(w1.d, w2.d)) return false;
+  w1.b = x.map(r3); w2.a = x.map(r3);
+  return true;
+}
+// Ecken der Wandflächen (Gehrung berücksichtigt) und die Flächenlinien aller Wände: Fang beim Zeichnen der Innenlinie
+export function faceGeom(walls) {
+  const polys = wallShapes(walls).map((x) => x.poly);
+  return { corners: polys.flat(), edges: polys.flatMap((p) => p.map((q, i) => [q, p[(i + 1) % p.length]])) };
+}
 
 // Treffer: Öffnung vor Mass vor Wand. tol in mm. items = wählbare Objekte.
 const distSeg = (p, a, b) => { const v = sub(b, a), l2 = dot(v, v), t = l2 ? Math.max(0, Math.min(1, dot(sub(p, a), v) / l2)) : 0; return len(sub(p, add(a, v, t))); };
@@ -448,17 +465,33 @@ export function hitPlan(sh, items, p, tol) {
   for (const w of items) if (w.type === "wall") { const dd = distSeg(p, w.a, w.b); if (dd <= w.d / 2 + tol && dd < bd) { bd = dd; best = w; } }
   return best;
 }
+// Ausrichtungsfang (CJ 24.10.2026): Linien durch die Bezugspunkte refs in den Richtungen dirs (Einheitsvektoren). Liegt m innerhalb tol an einer Linie,
+// rastet es darauf ein, bei zwei nicht parallelen Linien im Schnittpunkt (Rechteck schliessen: Anfang und letzter Punkt). Gibt { x, y, guides } oder null.
+export function alignSnap(m, refs, dirs, tol) {
+  const hits = [];
+  for (const r of refs) for (const u of dirs) { const v = sub(m, r), d = Math.abs(v[0] * u[1] - v[1] * u[0]); if (d <= tol) hits.push({ r, u, d }); }
+  hits.sort((x, y) => x.d - y.d);
+  const h1 = hits[0];
+  if (!h1) return null;
+  const h2 = hits.find((h) => Math.abs(h.u[0] * h1.u[1] - h.u[1] * h1.u[0]) > 0.2);
+  const p = (h2 && lineX(h1.r, h1.u, h2.r, h2.u)) || add(h1.r, h1.u, dot(sub(m, h1.r), h1.u));
+  return { x: r3(p[0]), y: r3(p[1]), guides: [h1, h2].filter(Boolean).map((h) => [h.r, [r3(p[0]), r3(p[1])]]) };
+}
 // Fang: Wand- und Massenden (auch gesperrte Ebenen), Mitte der Wand, Punkt auf der Mittellinie, Raster ab Nullpunkt. ortho = Bezugspunkt für
-// Shift (0/45/90°). Rückgabe { x, y, snap }.
-export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, extra = [] } = {}) {
+// Shift (0/45/90°). Rückgabe { x, y, snap, guides? }. faces = faceGeom() (Wand zeichnen, Mass): statt der Mittellinie fangen Ecken und Linien der Wandflächen
+// (nur Wandenden der Liste ends: false). align = { refs, dirs }: Ausrichtungsfang vor Fläche und Raster.
+export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, extra = [], faces, align } = {}) {
   const on = (q) => (ortho ? orthoPt(ortho, q) : q.map(r3));
   const m = on(p);
   if (alt) return { x: m[0], y: m[1] };
   const walls = items.filter((i) => i.type === "wall");
   const best = (cands, kind) => { let hit = null, bd = tol; for (const c of cands) { const d = len(sub(c, m)); if (d <= bd) { bd = d; const q = on(c); hit = { x: q[0], y: q[1], snap: kind }; } } return hit; };
-  return best([...walls.flatMap((w) => [w.a, w.b]), ...items.filter((i) => i.type === "dim").flatMap((d) => [d.a, d.b]), ...extra], "end")
-    || best(walls.map((w) => [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2]), "mid")
-    || (!ortho && best(walls.map((w) => { const u = wallDir(w), t = Math.max(0, Math.min(wallLen(w), dot(sub(m, w.a), u))); return add(w.a, u, t); }), "edge"))
+  const onFace = () => { let hit = null, bd = tol; for (const [a, b] of faces.edges) { const v = sub(b, a), l2 = dot(v, v), t = l2 ? Math.max(0, Math.min(1, dot(sub(m, a), v) / l2)) : 0, c = add(a, v, t), d = len(sub(c, m)); if (d <= bd) { bd = d; hit = { x: r3(c[0]), y: r3(c[1]), snap: "edge" }; } } return hit; };
+  const al = !ortho && align ? alignSnap(m, align.refs, align.dirs, tol) : null;
+  return best([...(faces ? faces.corners : walls.flatMap((w) => [w.a, w.b])), ...items.filter((i) => i.type === "dim").flatMap((d) => [d.a, d.b]), ...extra], "end")
+    || (al && { x: al.x, y: al.y, snap: "align", guides: al.guides })
+    || (faces ? onFace() : best(walls.map((w) => [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2]), "mid"))
+    || (!faces && !ortho && best(walls.map((w) => { const u = wallDir(w), t = Math.max(0, Math.min(wallLen(w), dot(sub(m, w.a), u))); return add(w.a, u, t); }), "edge"))
     || (grid > 0 ? (([x, y]) => ({ x, y, snap: "grid" }))(on([Math.round(p[0] / grid) * grid, Math.round(p[1] / grid) * grid])) : { x: m[0], y: m[1] });
 }
 // Symbol: Mitte in der Welt (Papier-mm × Massstab k, gedreht um r)

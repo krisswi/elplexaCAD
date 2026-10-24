@@ -25,8 +25,8 @@ const sw = (extra = [], cy = SC[1]) => [C(SC[0], cy, SR), ...extra];
 // Aufputz: linke Hälfte des Kreises gefüllt (nur Schalter, Feld «Aufputz»)
 const apHalf = (cy) => ["p", `M0,${cy + SR}A1 1 0 0 1 0,${cy - SR}Z`, true];
 
-// ---------- Steckdosen 5.160: Bogen auf der Wand, Stiel in den Raum, Querstrich = Schutzkontakt ----------
-const SOCK = (s = 1, oy = 0, pe = true) => [["p", `M${-1.5 * s},${oy}A${1.5 * s} ${1.5 * s} 0 0 0 ${1.5 * s},${oy}`, false], L(0, oy + 1.5 * s, 0, oy + 3.3 * s), ...(pe ? [L(-1.1 * s, oy + 2.1 * s, 1.1 * s, oy + 2.1 * s)] : [])];
+// ---------- Steckdosen 5.160: Stiel von der Wand, Bogen am Ende (Öffnung zum Raum), Querstrich = Schutzkontakt ----------
+const SOCK = (s = 1, oy = 0, pe = true) => [["p", `M${-1.5 * s},${oy + 3.3 * s}A${1.5 * s} ${1.5 * s} 0 0 1 ${1.5 * s},${oy + 3.3 * s}`, false], L(0, oy, 0, oy + 1.8 * s), ...(pe ? [L(-1.1 * s, oy + 1.2 * s, 1.1 * s, oy + 1.2 * s)] : [])]; // CJ 24.10.2026: Stiel an der Wand, Bogen zum Raum offen (vorher 180° gedreht)
 
 // ---------- Leuchten 5.190 ----------
 const halfC = (r) => ["p", `M${-r},0A${r} ${r} 0 0 0 ${r},0Z`, false];

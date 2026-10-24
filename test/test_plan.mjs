@@ -162,7 +162,35 @@ assert.strictEqual(P.hitPlan(e, pick, [4400, 1500], 10), null, "Mass auf gesperr
 assert.deepStrictEqual(P.snapPlan(e, e.items, [4030, 20], { grid: 100, tol: 60 }), { x: 4000, y: 0, snap: "end" }, "Fang: Ecke");
 assert.deepStrictEqual(P.snapPlan(e, e.items, [2010, 1520], { grid: 100, tol: 60 }), { x: 2000, y: 1500, snap: "grid" }, "Fang: Raster ab Nullpunkt");
 assert.deepStrictEqual(P.snapPlan(e, e.items, [1520, 1500], { grid: 0, tol: 1, ortho: [0, 1490] }), { x: 1520, y: 1490 }, "Shift: waagrecht");
-assert.deepStrictEqual([P.centerLen(3700, "innen", 150), P.centerLen(4150, "aussen", 150), P.centerLen(4000, "mitte", 150)], [3850, 4000, 4000], "Länge an Innen-/Aussenkante → Mittellinie");
+// Wand zeichnen (CJ 24.10.2026): Innenlinie, Wand nach links (Vorgabe) oder rechts, Gehrung im Schnitt der Mittellinien
+{
+  const w1 = { id: 1, type: "wall", ...P.innerWall([0, 0], [4000, 0], 150, 1), d: 150 }, w2 = { id: 2, type: "wall", ...P.innerWall([4000, 0], [4000, -3000], 150, 1), d: 150 };
+  assert.deepStrictEqual([w1.a, w1.b], [[0, 75], [4000, 75]], "Innenlinie nach rechts, Wand links = oben: Mittellinie um 75 nach oben");
+  assert.deepStrictEqual(P.innerWall([0, 0], [4000, 0], 150, -1), { a: [0, -75], b: [4000, -75] }, "Wand rechts der Zeichenrichtung");
+  assert.ok(P.mitre(w1, w2), "Ecke verschoben");
+  assert.deepStrictEqual([w1.b, w2.a], [[4075, 75], [4075, 75]], "Ecke im Schnitt der Mittellinien (aussen)");
+  const rect = [[0, 0], [4000, 0], [4000, -3000], [0, -3000]];
+  const ws = rect.map((p, i) => ({ id: i + 1, type: "wall", ...P.innerWall(p, rect[(i + 1) % 4], 150, 1), d: 150 }));
+  for (let i = 0; i < 4; i++) P.mitre(ws[i], ws[(i + 1) % 4]);
+  const poly = P.wallShapes(ws).map((x) => x.poly);
+  const xs = poly.flat().map((q) => q[0]), ys = poly.flat().map((q) => q[1]);
+  assert.deepStrictEqual([Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)], [-150, 4150, -3150, 150], "Aussenmasse Innenmass + 2 Dicken");
+  assert.deepStrictEqual(P.faceGeom(ws).corners.filter((q) => Math.abs(q[0]) < 1 && Math.abs(q[1]) < 1).length > 0, true, "Innenecke (0|0) ist Fangpunkt der Wandflächen");
+}
+// Ausrichtungsfang: Rechteck schliessen (Anfang senkrecht, letzter Punkt waagrecht) im Schnittpunkt
+{
+  const refs = [[0, 0], [4000, 0], [4000, -3000]], dirs = [[1, 0], [0, 1]];
+  const a = P.alignSnap([40, -2985], refs, dirs, 60);
+  assert.deepStrictEqual([a.x, a.y, a.guides.length], [0, -3000, 2], "Punkt 4: x wie Anfang, y wie letzter Punkt");
+  const b = P.alignSnap([1000, -1500], refs, dirs, 60);
+  assert.strictEqual(b, null, "weit weg: kein Fang");
+  const c = P.alignSnap([2000, -20], refs, dirs, 60);
+  assert.deepStrictEqual([c.x, c.y, c.guides.length], [2000, 0, 1], "eine Linie: nur y rastet ein");
+  const sn = P.snapPlan({}, [], [30, -2990], { grid: 100, tol: 60, align: { refs, dirs } });
+  assert.deepStrictEqual([sn.x, sn.y, sn.snap], [0, -3000, "align"], "snapPlan: Ausrichtung vor Raster");
+  assert.strictEqual(P.snapPlan({}, [], [30, -2990], { grid: 100, tol: 60, alt: true, align: { refs, dirs } }).snap, undefined, "Alt: frei");
+}
+
 assert.ok(P.setWallLength(e, E(2), 2500) && E(2).b[1] === 2500 && E(3).a[1] === 2500, "Wandlänge eintippen: Ende b und Ecke folgen");
 const ends = P.nodeEnds(e, [0, 0]);
 assert.deepStrictEqual(ends.map((x) => `${x.it.id}${x.e}`).sort(), ["10a", "1a", "4b"], "Enden an der Ecke: Wände und freie Masse (Diagonale), Mass mit Bezug folgt selbst");
@@ -261,9 +289,9 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   // Farben nach 5.100: Vorgabe Leitung blau, Symbol nach Kategorie, Mauern schwarz
   assert.strictEqual(P.LINE_COL, "#3fbbeb", "Leitungen: Vorgabe blau (CJ)");
   const it = (key) => ({ type: "sym", key });
-  assert.deepStrictEqual(["SCH0", "STD", "DOSE", "STEIG_AB"].map((k) => P.colOf(it(k))), ["#3fbbeb", "#ed3f2a", "#000000", "#3fbbeb"], "Schalter blau, Steckdose rot, Dose schwarz, Steigleitung wie Leitung");
+  assert.deepStrictEqual(["SCH0", "STD", "DOSE", "STEIG_AB"].map((k) => P.colOf(it(k))), ["#3fbbeb", "#3fbbeb", "#3fbbeb", "#3fbbeb"], "alle Symbole Vorgabe blau (CJ 24.10.2026)");
   assert.strictEqual(P.colOf({ type: "wall" }), "#000000", "Mauern schwarz");
-  const y = { type: "sym", key: "STD" }; P.setCol(y, "#7ABA4B"); assert.strictEqual(y.col, "#7aba4b", "eigene Farbe gespeichert"); P.setCol(y, "#ed3f2a"); assert.ok(!("col" in y), "zurück auf Vorgabe: Feld weg");
+  const y = { type: "sym", key: "STD" }; P.setCol(y, "#7ABA4B"); assert.strictEqual(y.col, "#7aba4b", "eigene Farbe gespeichert"); P.setCol(y, "#3fbbeb"); assert.ok(!("col" in y), "zurück auf Vorgabe: Feld weg");
   const wl = { type: "wall" }; P.setCol(wl, "#ed3f2a"); assert.ok(!("col" in wl), "Wand bekommt keine Farbe");
   assert.strictEqual(P.PLAN_COLS.length, 9, "9 Farben aus 5.100");
   // Treffer: Symbol vor Leitung vor Wand; Rahmenwahl

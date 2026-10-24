@@ -1,20 +1,22 @@
 // Modul «Plan» (CJ 23.10.2026, nur elplexaCAD), Schritt 1: Bedienung. Zeichenfläche mit Nullpunkt, Raster und Papierrahmen, Ebenenliste,
 // Werkzeuge Wand (W), Öffnung (O), Mass (B), Auswahl (V) mit Verschieben und Eckpunkte ziehen, Fenster Druck mit Massstab.
-// Schritt 3 (CJ 24.10.2026): Leitung (K), Farben nach 5.100, Mehrfachwahl (Rahmen, Shift-Klick oder Knopf «Mehrfachwahl»), ⌘A/⌘C/⌘V/⌘D.
+// Rückmeldungen 24.10.2026: freier Grund (Papier, Raster, Plankopf erst im Druck), Wand = Innenlinie, Ausrichtungsfang, Grundriss-Werkzeuge nur auf der Ebene Hintergrund.
+// Schritt 3 (CJ 24.10.2026): Leitung (K, auch L), Farben nach 5.100, Mehrfachwahl (Rahmen, Shift-Klick oder Knopf «Mehrfachwahl»), ⌘A/⌘C/⌘V/⌘D.
 // Daten und Geometrie in plan.js. Im SchemaCAD-Bau ersetzt build.mjs diese Datei durch einen Platzhalter.
 import * as P from "./plan.js";
 import { PLAN_SYMS, SYM_BY_KEY, SYM_GROUPS } from "./plansym.js";
 import { PAPERS, paperSize, printArea, paperLabel, fmtDen } from "./pv.js";
-import { pageInner, pageSVG } from "./pvprint.js";
+import { pageSVG } from "./pvprint.js";
 import * as R from "./render.js";
 
-const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3";
+const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3", GUIDE = "#e08a00", FRAME = "#6b7785";
 const OPEN_W = { tuer: 900, fenster: 1200, durchgang: 900, schiebe: 900 }; // Vorgabe Breiten in mm (Annahme)
 const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe neuer Öffnungen in mm (CJ 23.10.2026)
 const ICON = {
   wall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v6H3z"/><path d="M6 15l6-6M11 15l6-6M16 15l5-5"/></svg>',
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h5M17 18h5"/><path d="M7 18V8"/><path d="M7 8a10 10 0 0110 10"/></svg>',
   line: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18L10 8h10"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>',
+  free: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v7a5 5 0 0010 0V4"/><path d="M7 4h3v3H7zM14 4h3v3h-3z"/><path d="M3 21L21 3"/></svg>',
   multi: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5" stroke-dasharray="3 2.5"/><path d="M8 12l3 3 5-6"/></svg>',
   eye: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>',
   eyeOff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" opacity=".35"/><path d="M4 4l16 16"/></svg>',
@@ -28,8 +30,8 @@ export function makePlan(c) {
   const { S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, updateHint, fitView, pushUndo, snapshot, markDirty, nextId } = c;
   const sh = () => S.model;
   const den = () => P.paperOf(sh()).den;
-  // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Längenbezug, Öffnung, Kontrollmass
-  const opt = { d: P.WALL_D, mat: "mauer", lref: "mitte", okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", multi: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart; multi = Klick fügt zur Wahl hinzu
+  // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
+  const opt = { d: P.WALL_D, mat: "mauer", side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
   let draft = null; // Wand im Entstehen: { a, start, len, ang, field }
@@ -48,9 +50,15 @@ export function makePlan(c) {
   }
   const grid = () => (S.gridSize.plan ??= 100);
   const snapAt = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined });
-  // Leitung: zusätzlich Fang an Symbolmitten und Leitungspunkten (ohne die Leitung skip)
+  const faces = () => P.faceGeom(visible().filter((i) => i.type === "wall"));
+  const AXES = [[1, 0], [0, 1]];
+  const alignDirs = (u) => (u && Math.abs(u[0] * u[1]) > 1e-4 ? [...AXES, u, [-u[1], u[0]]] : AXES); // waagrecht, senkrecht und in und quer zur letzten Wand
+  // Wand zeichnen: gezeichnet wird die Innenlinie. Fang an Ecken und Flächen der Wände, Ausrichtungsfang an Anfang, letztem Punkt und Ecken (Rechteck schliessen).
+  const snapWall = (w, ortho) => { const fg = faces(); return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: fg, extra: draft?.pts ?? [], align: { refs: [...(draft?.pts ?? []), ...fg.corners], dirs: alignDirs(draft?.u) } }); }; // extra: Anfang und Punkte der Kette (Klick auf den Anfang schliesst)
+  const snapDim = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: faces().corners });
+  // Leitung: zusätzlich Fang an Symbolmitten und Leitungspunkten (ohne die Leitung skip), Ausrichtung an den Punkten der Leitung und den Fangpunkten
   const lineSnaps = (skip) => visible().flatMap((i) => (i.type === "sym" ? [P.symCenter(i, den())] : i.type === "line" && i.id !== skip ? i.pts : []));
-  const snapLine = (w, ortho, skip) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: lineSnaps(skip) });
+  const snapLine = (w, ortho, skip) => { const fg = faces(), sn = lineSnaps(skip); return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: [...sn, ...fg.corners], align: { refs: [...(lineDraft?.pts ?? []), ...sn, ...fg.corners], dirs: AXES } }); };
 
   // ---------- Darstellung ----------
   // Druckmitte: gesetzt (sheet.pmid, Werkzeug «Druckmitte setzen» im Fenster Druck), sonst Mitte des Inhalts (auf 10 mm), ohne Inhalt der Nullpunkt
@@ -66,10 +74,13 @@ export function makePlan(c) {
     return { p, a, k, ox: cx - ((a.x0 + a.x1) / 2) * k, oy: cy - ((a.y0 + a.y1) / 2) * k };
   }
   const info = (p) => `Plan · Massstab ${fmtDen(p.den)} · ${paperLabel(p)}`;
+  // Freier Grund wie im Stringplan: kein Papier, Raster und Plankopf kommen erst im Druck. Gestrichelt der Druckbereich (Papier und Massstab aus dem Fenster Druck).
   function sheetSVG() {
-    const { p, k, ox, oy } = pageAt(), [w, h] = paperSize(p), v = c.viewBox(), z = S.view.z;
-    let s = `<g transform="translate(${f(ox)} ${f(oy)}) scale(${k})"><rect class="paper" x="0" y="0" width="${w}" height="${h}"/>${pageInner(p, sh().meta, info(p), "")}</g>`;
+    const { p, a, k, ox, oy } = pageAt(), v = c.viewBox(), z = S.view.z, x0 = ox + a.x0 * k, y0 = oy + a.y0 * k, h = 3 * k;
+    let s = `<rect class="dispo-bg" x="-1e6" y="-1e6" width="2e6" height="2e6"/>`;
     if (S.grid.on && S.grid.size * z >= 7) s += `<rect x="${f(v.x0)}" y="${f(v.y0)}" width="${f(v.x1 - v.x0)}" height="${f(v.y1 - v.y0)}" fill="url(#gridpat)" stroke="none" pointer-events="none"/>`;
+    s += `<g class="pl-printframe" pointer-events="none"><rect x="${f(x0)}" y="${f(y0)}" width="${f((a.x1 - a.x0) * k)}" height="${f((a.y1 - a.y0) * k)}" fill="none" stroke="${FRAME}" stroke-width="1" stroke-dasharray="8 5"/>`
+      + `${txt(x0, y0 + (a.y1 - a.y0) * k + h, `Druckbereich ${paperLabel(p)}, ${fmtDen(p.den)}`, h, 0, FRAME, "start")}</g>`;
     const r = 6 / z; // Nullpunkt: gemeinsam für alle Plan-Module (Stockwerke)
     s += `<g class="pl-origin" stroke="#c0392b" stroke-width="1.5" fill="none"><circle cx="0" cy="0" r="${f(r)}"/><path d="M${f(-2 * r)},0H${f(2 * r)}M0,${f(-2 * r)}V${f(2 * r)}"/></g>`;
     return s;
@@ -165,6 +176,10 @@ export function makePlan(c) {
     }
     return `<g class="pl-items">${s}</g>`;
   }
+  // Seite der Wand: von Hand (1 links, −1 rechts) oder automatisch: die erste Kurve zeigt, wo der Raum liegt (Linkskurve = Raum links, Wand rechts).
+  // Bis zur ersten Kurve gilt links; nach der Kurve wird die erste Wand auf die richtige Seite gesetzt.
+  const turn = (b) => (draft?.u ? draft.u[0] * (b[1] - draft.a[1]) - draft.u[1] * (b[0] - draft.a[0]) : 0);
+  const wallSide = (b) => (draft?.auto && Math.abs(turn(b)) > 1e-6 ? (turn(b) > 0 ? -1 : 1) : draft?.side ?? (opt.side || 1));
   // Wand im Entstehen: Ende aus Eingabe (Länge, Winkel) oder Maus
   function draftEnd() {
     if (!draft || !mouse) return null;
@@ -172,7 +187,7 @@ export function makePlan(c) {
     if (!Number.isFinite(L) && !Number.isFinite(deg)) return [mouse.x, mouse.y];
     const m = raw && S.shift ? P.orthoPt(draft.a, [raw.x, raw.y]) : [mouse.x, mouse.y];
     const dir = Number.isFinite(deg) ? deg : Math.atan2(m[1] - draft.a[1], m[0] - draft.a[0]) * 180 / Math.PI;
-    const len = Number.isFinite(L) ? P.centerLen(L, opt.lref, opt.d) : Math.hypot(m[0] - draft.a[0], m[1] - draft.a[1]);
+    const len = Number.isFinite(L) ? L : Math.hypot(m[0] - draft.a[0], m[1] - draft.a[1]);
     return P.polar(draft.a, dir, len);
   }
   function overlaySVG() {
@@ -190,13 +205,17 @@ export function makePlan(c) {
     if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, [...lineDraft.pts, [mouse.x, mouse.y]])}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
     if (drag?.type === "box" && drag.started) { const b = boxOf(drag); s += `<rect x="${f(b.x0)}" y="${f(b.y0)}" width="${f(b.x1 - b.x0)}" height="${f(b.y1 - b.y0)}" fill="rgba(47,158,88,.08)" stroke="${SEL}" stroke-width="1" stroke-dasharray="5 3"/>`; }
     if (draft && mouse) {
-      const b = draftEnd(), w = { id: -1, a: draft.a, b, d: opt.d };
+      const b = draftEnd();
       if (Math.hypot(b[0] - draft.a[0], b[1] - draft.a[1]) > 1) {
-        const x = P.wallShapes([w])[0];
-        s += `<path d="M${x.poly.map(pt).join("L")}Z" fill="rgba(47,109,179,.12)" stroke="${DRAFT}" stroke-width="1.5"/>`;
+        const side = wallSide(b), nw = { id: -1, ...P.innerWall(draft.a, b, opt.d, side), d: opt.d }, ws = [], items = sh().items;
+        const prev = items.find((i) => i.id === draft.prev), first = items.find((i) => i.id === draft.first);
+        if (prev) { const pc = { ...prev }; if (side !== draft.side && draft.pts.length === 2) Object.assign(pc, P.innerWall(draft.pts[0], draft.pts[1], pc.d, side)); P.mitre(pc, nw); ws.push(pc); } // Ecke zur vorigen Wand schon in der Vorschau
+        if (first && first !== prev && Math.hypot(b[0] - draft.start[0], b[1] - draft.start[1]) < 1e-6) { const fc = { ...first }; P.mitre(nw, fc); ws.push(fc); }
+        const x = P.wallShapes([...ws, nw]).at(-1);
+        s += `<path d="M${x.poly.map(pt).join("L")}Z" fill="rgba(47,109,179,.12)" stroke="${DRAFT}" stroke-width="1.5"/>`
+          + `<path d="M${pt(draft.a)}L${pt(b)}" stroke="${DRAFT}" stroke-width="1" stroke-dasharray="${px(5)} ${px(3)}" fill="none"/>`; // Innenlinie
         const L = Math.hypot(b[0] - draft.a[0], b[1] - draft.a[1]), deg = Math.atan2(b[1] - draft.a[1], b[0] - draft.a[0]) * 180 / Math.PI;
-        const shown = opt.lref === "mitte" ? L : opt.lref === "innen" ? L - opt.d : L + opt.d;
-        s += label(b, `${draft.field === "len" && draft.len ? `[${draft.len}]` : P.fmtLen(shown)} mm  ${draft.field === "ang" ? `[${draft.ang}]` : num(((deg % 360) + 360) % 360)}°`);
+        s += label(b, `${draft.field === "len" && draft.len ? `[${draft.len}]` : P.fmtLen(L)} mm  ${draft.field === "ang" ? `[${draft.ang}]` : num(((deg % 360) + 360) % 360)}°`);
       }
     }
     if (dimDraft && mouse) {
@@ -206,7 +225,8 @@ export function makePlan(c) {
     if (S.tool === "pl-pmid" && mouse) { const { a, k: d, ox, oy } = pageAt([mouse.x, mouse.y]); s += `<rect x="${f(ox + a.x0 * d)}" y="${f(oy + a.y0 * d)}" width="${f((a.x1 - a.x0) * d)}" height="${f((a.y1 - a.y0) * d)}" fill="rgba(47,109,179,.06)" stroke="${DRAFT}" stroke-width="1.5" stroke-dasharray="6 4"/>`; } // Vorschau des Planfelds
     if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r, h: SYM_BY_KEY.get(opt.sym).h }, k, DRAFT)}</g>`; }
     if (S.tool === "pl-open" && raw) { const pv = openPreview(); if (pv) s += `<g class="pl-scale">${openingSVG(pv.w, pv.o, k, DRAFT)}</g>`; }
-    if (mouse && S.tool !== "select" && S.tool !== "hand" && S.tool !== "pl-sym") s += `<circle cx="${f(mouse.x)}" cy="${f(mouse.y)}" r="${px(mouse.snap && mouse.snap !== "grid" ? 5 : 3)}" fill="${mouse.snap === "end" ? "#f4c400" : "#fff"}" stroke="${DRAFT}" stroke-width="1.5"/>`;
+    if (mouse?.guides) s += mouse.guides.map(([q, r]) => `<path d="M${pt(q)}L${pt(r)}" stroke="${GUIDE}" stroke-width="1" stroke-dasharray="${px(6)} ${px(4)}" fill="none"/><circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${GUIDE}"/>`).join("");
+    if (mouse && S.tool !== "select" && S.tool !== "hand" && S.tool !== "pl-sym") s += `<circle cx="${f(mouse.x)}" cy="${f(mouse.y)}" r="${px(mouse.snap && mouse.snap !== "grid" ? 5 : 3)}" fill="${mouse.snap === "end" ? "#f4c400" : mouse.snap === "align" ? GUIDE : "#fff"}" stroke="${DRAFT}" stroke-width="1.5"/>`;
     return s;
   }
   // Griffe an beiden Kanten einer Öffnung (auf der Mittellinie der Wand): Ziehen ändert die Breite, die andere Kante bleibt
@@ -262,12 +282,12 @@ export function makePlan(c) {
 
   // ---------- Zeiger ----------
   function down(w, e) {
-    raw = w; S.shift = e.shiftKey; S.alt = e.altKey;
+    raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
     const T = S.tool;
     if (T === "pl-wall") {
-      const p = snapAt(w, draft?.a);
+      const p = snapWall(w, draft?.a);
       mouse = p;
-      if (!draft) { if (layerOk()) draft = { a: [p.x, p.y], start: [p.x, p.y], len: "", ang: "", field: "len" }; }
+      if (!draft) { if (layerOk()) draft = { a: [p.x, p.y], start: [p.x, p.y], pts: [[p.x, p.y]], side: opt.side || 1, auto: opt.side === 0, len: "", ang: "", field: "len" }; }
       else commit(draftEnd(), Math.hypot(p.x - draft.start[0], p.y - draft.start[1]) < 1e-6 && !draft.len);
       renderOverlay(); updateHint(); return;
     }
@@ -293,7 +313,7 @@ export function makePlan(c) {
       renderOverlay(); updateHint(); return;
     }
     if (T === "pl-dim") {
-      const p = snapAt(w, dimDraft?.a); mouse = p;
+      const p = snapDim(w, dimDraft?.a); mouse = p;
       if (!dimDraft) { if (layerOk()) dimDraft = { a: [p.x, p.y] }; }
       else if (!dimDraft.b) { if (Math.hypot(p.x - dimDraft.a[0], p.y - dimDraft.a[1]) > 1) dimDraft.b = [p.x, p.y]; }
       else addDim(offAt(dimDraft.a, dimDraft.b, [w.x, w.y]));
@@ -323,8 +343,8 @@ export function makePlan(c) {
     renderRight(); renderOverlay();
   }
   function move(w, e) {
-    raw = w; S.shift = e.shiftKey; S.alt = e.altKey;
-    mouse = S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapAt(w, draft?.a) : S.tool === "pl-dim" ? snapAt(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
+    raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
+    mouse = S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
     const d = drag;
     if (d) {
       if (!d.started && Math.hypot(w.x - d.sx, w.y - d.sy) * S.view.z > 3) d.started = true;
@@ -358,14 +378,23 @@ export function makePlan(c) {
   }
 
   // ---------- Wände und Masse anlegen ----------
+  // Wand an die Innenlinie a → b: Mittellinie um die halbe Dicke zur Wandseite versetzt, Ecke mit der vorigen Wand (und beim Schliessen mit der ersten)
   function commit(b, close = false) {
     if (!draft || !b) return;
     const a = draft.a;
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) { if (close) cancel(); return; }
-    const id = nextId();
-    change(() => sh().items.push({ id, type: "wall", layer: sh().alay, a: [...a], b: [b[0], b[1]], d: opt.d, mat: opt.mat }));
-    const start = draft.start;
-    draft = close || Math.hypot(b[0] - start[0], b[1] - start[1]) < 1e-6 ? null : { a: [b[0], b[1]], start, len: "", ang: "", field: "len" }; // auf den Anfang = Raum geschlossen
+    const id = nextId(), d0 = draft, side = wallSide(b), resolved = d0.auto && Math.abs(turn(b)) > 1e-6, shut = Math.hypot(b[0] - d0.start[0], b[1] - d0.start[1]) < 1e-6 && d0.first !== undefined;
+    change(() => {
+      const w = { id, type: "wall", layer: sh().alay, ...P.innerWall(a, b, opt.d, side), d: opt.d, mat: opt.mat }, items = sh().items;
+      const prev = items.find((i) => i.id === d0.prev), first = items.find((i) => i.id === d0.first);
+      if (resolved && side !== d0.side && first) Object.assign(first, P.innerWall(d0.pts[0], d0.pts[1], first.d, side)); // erste Wand auf die richtige Seite
+      if (prev) P.mitre(prev, w);
+      if (shut && first) P.mitre(w, first);
+      items.push(w);
+      P.syncDims(sh());
+    });
+    const u = [(b[0] - a[0]) / Math.hypot(b[0] - a[0], b[1] - a[1]), (b[1] - a[1]) / Math.hypot(b[0] - a[0], b[1] - a[1])];
+    draft = close || shut ? null : { a: [b[0], b[1]], start: d0.start, pts: [...d0.pts, [b[0], b[1]]], u, side, auto: d0.auto && !resolved, prev: id, first: d0.first ?? id, len: "", ang: "", field: "len" }; // auf den Anfang = Raum geschlossen
     renderOverlay(); updateHint();
   }
   function addDim(off) {
@@ -404,7 +433,10 @@ export function makePlan(c) {
   }
 
   // ---------- Tasten ----------
-  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", k: "pl-line" };
+  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", k: "pl-line", l: "pl-line" };
+  const GRUND_TOOLS = ["pl-wall", "pl-open", "pl-dim"];
+  // Grundriss-Werkzeuge (Wand, Tür/Fenster, Mass) gibt es nur auf der Ebene Hintergrund (ohne sie auf der einzigen Ebene)
+  const grundOn = () => sh().alay === "bg" || !P.layerById(sh(), "bg");
   function key(e, mod) {
     const k = e.key;
     if (mod) {
@@ -428,14 +460,15 @@ export function makePlan(c) {
       if (k === "Backspace") { lineDraft.pts.pop(); if (!lineDraft.pts.length) lineDraft = null; renderOverlay(); updateHint(); return true; }
     }
     if (dimDraft && k === "Escape") { dimDraft = null; renderOverlay(); updateHint(); return true; }
-    if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { setTool(TOOL_KEYS[k.toLowerCase()]); return true; }
+    if (k.toLowerCase() === "x" && S.tool === "pl-wall" && !e.altKey) { opt.side = -(draft?.side ?? (opt.side || 1)); if (draft) { draft.side = opt.side; draft.auto = false; } renderRight(); renderOverlay(); updateHint(); return true; } // Wandseite wechseln
+    if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Links die Ebene wechseln."); return true; } setTool(t); return true; }
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
       const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym");
       if (S.tool === "pl-sym") { opt.symR = (opt.symR + step) % 360; renderOverlay(); return true; }
       if (ys.length) { change(() => { for (const y of ys) y.r = (y.r + step) % 360; }); return true; }
       return true;
     }
-    if ("ltiqry".includes(k.toLowerCase()) && k.length === 1) return true; // Werkzeuge anderer Blätter: hier ohne Wirkung
+    if ("tiqry".includes(k.toLowerCase()) && k.length === 1) return true; // Werkzeuge anderer Blätter: hier ohne Wirkung
     if (k.startsWith("Arrow") && S.sel.size) {
       const step = (S.grid.on ? S.grid.size : 10) * (e.shiftKey ? 5 : 1), dx = k === "ArrowLeft" ? -step : k === "ArrowRight" ? step : 0, dy = k === "ArrowUp" ? step : k === "ArrowDown" ? -step : 0;
       change(() => P.moveItems(sh(), sel(), dx, dy), { panel: true });
@@ -450,8 +483,9 @@ export function makePlan(c) {
     const S0 = sh();
     let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>` + toolBtn("select", R.icons.select, "Auswählen", "V") + toolBtn("hand", R.icons.hand, "Ansicht schieben", "H")
       + `<button class="tool" data-plact="multi" aria-pressed="${opt.multi}" title="Mehrfachwahl: Klick fügt hinzu oder nimmt weg (wie Shift-Klick)">${ICON.multi}<span>Mehrfachwahl</span><span class="key">⇧</span></button>`
-      + `</section><section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B")
-      + `</section><section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "K")
+      + `<button class="tool" data-plact="free" aria-pressed="${opt.free}" title="Fang aus: frei setzen ohne Raster, Ecken und Ausrichtung (wie Alt gedrückt halten)">${ICON.free}<span>Fang aus</span><span class="key">⌥</span></button>`
+      + `</section>` + (grundOn() ? `<section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
+      + `<section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "L")
       + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`;
     for (const l of [...S0.layers].reverse()) { // oben = zuletzt gezeichnet
       const btn = (k, on, icon, label) => `<button class="layer-btn" data-plact="${k}" data-layer="${l.id}" data-key="${k}" aria-pressed="${on}" title="${label}" aria-label="${R.esc(l.name)}: ${label}">${icon}</button>`;
@@ -477,8 +511,9 @@ export function makePlan(c) {
   }
   async function leftAct(b) {
     const S0 = sh(), id = b.dataset.layer, a = b.dataset.plact;
+    if (a === "free") { opt.free = !opt.free; S.alt = opt.free; renderLeft(); mod(); updateHint(); return; }
     if (a === "multi") { opt.multi = !opt.multi; if (S.tool !== "select") setTool("select"); renderLeft(); updateHint(); return; }
-    if (a === "alay") { if (S0.alay !== id) { change(() => { S0.alay = id; }, { panel: false }); setTool(S.tool); } return; }
+    if (a === "alay") { if (S0.alay !== id) { change(() => { S0.alay = id; }, { panel: false }); if (GRUND_TOOLS.includes(S.tool) && !grundOn()) { cancel(); setTool("select"); } else setTool(S.tool); } return; }
     if (a === "show" || a === "lock") { change(() => { const l = P.layerById(S0, id); l[a] = !l[a]; if (!P.isPickable(S0, { layer: id })) S.sel = new Set([...S.sel].filter((x) => P.isPickable(S0, S0.items.find((i) => i.id === x)))); }); renderLeft(); return; }
     if (a === "up" || a === "down") { change(() => P.moveLayer(S0, S0.alay, a === "up" ? 1 : -1)); renderLeft(); return; }
     if (a === "ladd") { const r = await c.formDialog("Neue Ebene", "Name der Ebene, z. B. Steckdosen, Licht, Leitungen.", [{ label: "Name", value: `Ebene ${S0.layers.length + 1}` }], "Anlegen"); if (r) { change(() => P.addLayer(S0, r[0])); setTool(S.tool); } return; }
@@ -542,7 +577,8 @@ export function makePlan(c) {
     }
     let h = "";
     if (S.tool === "pl-wall") h += head("Neue Wand", "Klick Start, Länge tippen, Enter") + inp("d", "Dicke in mm", P.fmtLen(opt.d), "data-plo") + sel1("mat", P.MATS, opt.mat, "Material").replace("data-plf", "data-plo")
-      + sel1("lref", P.LEN_REFS, opt.lref, "Eingetippte Länge gilt für").replace("data-plf", "data-plo") + note("Gespeichert wird immer die Mittellinie. Innen-/Aussenkante: Annahme rechtwinklige Ecken mit gleich dicken Wänden (± Dicke).");
+      + sel1("side", [["0", "automatisch (nach der ersten Kurve)"], ["1", "links der Zeichenrichtung"], ["-1", "rechts der Zeichenrichtung"]], opt.side, "Wand liegt").replace("data-plf", "data-plo")
+      + note("Gezeichnet wird die Innenkante, die Wand wächst nach aussen (automatisch nach der ersten Kurve, Taste X wechselt die Seite). Eingetippte Länge = lichte Länge. Gespeichert wird die Mittellinie. Orange Hilfslinien: Ausrichtung an Anfang, Ecken und letztem Punkt (Alt ohne Fang).");
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
     else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Vorgabe Höhe: ${def.h !== undefined ? `${def.h} cm` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo")
@@ -563,8 +599,9 @@ export function makePlan(c) {
       else if (k === "ow") { const v = P.parseLen(t.value); if (v > 0) opt.ow[opt.okind] = v; }
       else if (k === "ctrl") opt.ctrl = t.checked;
       else if (k === "lkind") { opt.lkind = t.value; updateHint(); }
+      else if (k === "side") { opt.side = Number(t.value) < 0 ? -1 : Number(t.value) > 0 ? 1 : 0; if (draft) { draft.side = opt.side || 1; draft.auto = opt.side === 0; } }
       else opt[k] = t.value;
-      renderRight(); renderOverlay(); return true;
+      renderRight(); renderOverlay(); updateHint(); return true;
     }
     if (t.dataset.plp !== undefined) { // Fenster Druck: Papier, Ausrichtung, Massstab
       const p = { ...P.paperOf(S0) }, k = t.dataset.plp;
@@ -615,7 +652,7 @@ export function makePlan(c) {
   const printLabel = () => { const p = P.paperOf(sh()); return { text: `${paperLabel(p)} ${fmtDen(p.den)}`, warn: false }; };
 
   function hint() {
-    if (S.tool === "pl-wall") return draft ? `Wand: Länge tippen (${{ mitte: "Mittellinie", innen: "Innenkante", aussen: "Aussenkante" }[opt.lref]}, z. B. 3450 oder 3,45 m), Tab = Winkel tippen, Enter setzt, oder klicken. Shift 0/45/90°, Alt ohne Fang, Klick auf den Anfang schliesst, Esc beendet.${draft.len || draft.ang ? `  Eingabe: ${draft.len || "–"} mm, ${draft.ang || "–"}°` : ""}` : "Wand: Klick setzt den Anfang (Ecken, Wandmitte und Raster rasten ein). Dicke und Material rechts.";
+    if (S.tool === "pl-wall") return draft ? `Wand: Länge tippen (Innenkante, z. B. 3450 oder 3,45 m), Tab = Winkel tippen, Enter setzt, oder klicken. Shift 0/45/90°, orange Linie = Ausrichtung (Rechteck schliessen), Alt ohne Fang, X wechselt die Wandseite, Klick auf den Anfang schliesst, Esc beendet.${draft.len || draft.ang ? `  Eingabe: ${draft.len || "–"} mm, ${draft.ang || "–"}°` : ""}` : `Wand: Klick setzt den Anfang der Innenkante (Wandecken, Wandflächen, Ausrichtung und Raster rasten ein, Alt frei). Die Wand liegt ${opt.side === 0 ? "automatisch aussen (nach der ersten Kurve)" : opt.side > 0 ? "links der Zeichenrichtung" : "rechts der Zeichenrichtung"}, X wechselt. Dicke und Material rechts.`;
     if (S.tool === "pl-open") return `Öffnung: Klick auf eine Wand setzt ${P.OPENINGS.find(([k]) => k === opt.okind)[1]} (${P.fmtLen(opt.ow[opt.okind])} mm) mittig auf den Klick. Art und Breite rechts.`;
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
     if (S.tool === "pl-sym") return `Symbol: Klick setzt ${SYM_BY_KEY.get(opt.sym).label}. ${SYM_BY_KEY.get(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."} Esc oder V beendet.`;
@@ -649,5 +686,7 @@ export function makePlan(c) {
   });
   for (const el of [c.rightEl, c.popEl]) el.addEventListener("change", (e) => { if (sh().kind === "plan" && (e.target.dataset.plf !== undefined || e.target.dataset.plo !== undefined || e.target.dataset.plp !== undefined)) panelChange(e.target); });
 
-  return { sheetSVG, itemsSVG, overlaySVG, bounds, hint, leftHTML, panelHTML, popHTML, printLabel, down, move, up, tap, key, del, cancel, grid, pickable };
+  // Alt oder Shift gedrückt oder losgelassen: Fangpunkt unter dem Zeiger neu berechnen
+  const mod = () => { if (raw) move(raw, { shiftKey: S.shift, altKey: S.alt }); };
+  return { mod, sheetSVG, itemsSVG, overlaySVG, bounds, hint, leftHTML, panelHTML, popHTML, printLabel, down, move, up, tap, key, del, cancel, grid, pickable };
 }

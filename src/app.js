@@ -857,7 +857,7 @@ function addPlan(v) {
     sh.sid = nextId(); sh.meta.BLATT = String(maxNo("plan") + 1);
     S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
   });
-  afterSheetChange(k0);
+  afterSheetChange(k0, { fit: true }); // CJ 24.10.2026: neuer Plan eingepasst, nicht mit Zoom/Ausschnitt des vorigen Plans (lag dort, wo die Maus beim Zoomen war)
 }
 // Stringübersicht: eine für alle Stringpläne der Datei (CJ 14.10.), seit 18.10.2026 eine je PV-Modul. Gibt es sie schon, wird sie angezeigt.
 function addPvTab() {
@@ -1721,7 +1721,7 @@ window.addEventListener("keydown", (e) => {
   if (typing) { if (e.key === "Escape") t.blur(); return; }
   if (e.key === " ") { e.preventDefault(); if (!S.space) { S.space = true; svg.classList.add("cursor-hand"); } return; }
   if (e.key === "Shift") { S.shift = true; renderOverlay(); }
-  if (e.key === "Alt") S.alt = true;
+  if (e.key === "Alt") { S.alt = true; if (ELPLEXA && isPlan()) PL.mod(); }
   if (isPv() && e.key === "Tab" && !mod && !e.altKey && PV.cornerKey(e.shiftKey)) { e.preventDefault(); return; } // Bezugsecke bei Modul und Modulfeld (5x)
   if (isDispo() && e.key === "Tab" && !mod && !e.altKey && dispoCornerKey(e.shiftKey)) { e.preventDefault(); renderRight(); renderOverlay(); updateHint(); return; } // Bezugsecke neuer Platten (CJ 16.10.)
   if (isPv() && !mod && !e.altKey && PV.toolKey(e.key)) return; // S, P, E, B: Werkzeuge des Stringplans (Schritt 5d)
@@ -1767,7 +1767,7 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("keyup", (e) => {
   if (e.key === " ") { S.space = false; if (S.tool !== "hand") svg.classList.remove("cursor-hand"); }
   if (e.key === "Shift") { S.shift = false; renderOverlay(); }
-  if (e.key === "Alt") S.alt = false;
+  if (e.key === "Alt") { S.alt = false; if (ELPLEXA && isPlan()) PL.mod(); }
 });
 
 // ---------- Seitenleisten-Ereignisse ----------

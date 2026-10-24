@@ -124,6 +124,7 @@ export function makeFiles(c) {
     if (!sheets.length) return;
     const old = document.title, pvUsed = sheets.some((sh) => sh.kind === "pv" || sh.kind === "pvtab");
     if (pvUsed) await pv.preparePrint(); // PDF-Pläne der Stringpläne fertig rendern
+    if (ELPLEXA) await S.planPrep(sheets); // PDF-Pläne im Modul Plan (planedit.js)
     buildPrint(sheets);
     document.title = baseName() + suffix;
     if (ELPLEXA) await showPdf([...$("#printroot").children], baseName() + suffix, toast, confirmDialog);

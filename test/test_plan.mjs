@@ -294,4 +294,17 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(["STEIG_AUF", "STEIG_AB", "STEIG_DURCH"].map((k) => S2.SYM_BY_KEY.get(k)?.group), ["Allgemein", "Allgemein", "Allgemein"], "Leitung nach oben, unten, durchgehend");
 }
 
+// ---------- Schritt 4: Stückliste (CJ 24.10.2026) ----------
+{
+  const syms = [["STD", "bg"], ["STD", "bg"], ["SCH0", "bg"], ["STD", "l1"], ["LEUCHTE", "bg"]].map(([key, layer], i) => ({ id: 50 + i, type: "sym", layer, key, at: [i * 100, 0], r: 0 }));
+  const sh = M.parseModel(file([plan([...syms, { id: 60, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }], { bom: false })], 22)).sheets[0];
+  assert.strictEqual(sh.bom, false, "Haken Stückliste aus bleibt gespeichert");
+  assert.ok(!("bom" in M.parseModel(file([plan(syms, { bom: true })], 22)).sheets[0]), "Vorgabe (drucken) nicht gespeichert");
+  assert.deepStrictEqual(P.bomOf(sh).map((r) => [r.key, r.n]), [["SCH0", 1], ["STD", 3], ["LEUCHTE", 1]], "Anzahl je Symbol, Reihenfolge der Palette, Leitungen zählen nicht");
+  sh.layers.find((l) => l.id === "l1").show = false;
+  assert.strictEqual(P.bomOf(sh).find((r) => r.key === "STD").n, 2, "ausgeblendete Ebene zählt nicht");
+  assert.strictEqual(P.bomCsv(P.bomOf(sh)), "Gruppe;Symbol;Anzahl\r\nSchalter;Schalter Sch. 0, 1-polig;1\r\nSteckdosen;Steckdose T13 (Schutzkontakt);2\r\nLeuchten;Leuchte an Decke;1\r\n", "CSV mit Semikolon");
+  assert.strictEqual(P.bomCsv([{ group: "A", label: 'x;"y"', n: 1 }]).split("\r\n")[1], 'A;"x;""y""";1', "CSV: Semikolon und Anführungszeichen maskiert");
+}
+
 console.log("test_plan: alles ok");

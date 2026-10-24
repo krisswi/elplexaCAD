@@ -9,7 +9,7 @@
 // Leitung { id, type: "line", layer, pts: [[x, y] …] (mind. 2), kind, col? } (Schritt 3, CJ 24.10.2026; kind = Verlegeart nach 5.110).
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
-import { SYM_BY_KEY } from "./plansym.js";
+import { SYM_BY_KEY, PLAN_SYMS } from "./plansym.js";
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const r3 = (n) => Math.round(n * 1000) / 1000 + 0;
@@ -152,6 +152,7 @@ export function cleanPlanSheet(rs, m, maxId) {
   m.layers = cleanPlanLayers(rs.layers);
   m.alay = layerById(m, rs.alay) ? rs.alay : m.layers[0].id;
   const pm = cleanPmid(rs.pmid); if (pm) m.pmid = pm; // Druckmitte frei gewählt (wie Stringplan 5ao)
+  if (rs.bom === false) m.bom = false; // Stückliste nicht drucken (Schritt 4, fehlt = drucken)
   if (isNum(rs.sid) && rs.sid > 0) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); }
   for (const it of Array.isArray(rs.items) ? rs.items : []) {
     const id = isNum(it?.id) ? it.id : ++maxId;
@@ -480,6 +481,17 @@ export function symTexts(it, k, fmtH = (h) => String(h)) {
   const lines = [it.txt, it.h !== undefined ? fmtH(it.h) : ""].filter(Boolean), c = symCenter(it, k), d = (ext + 0.6) * k, sg = flip ? -1 : 1;
   lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * k * sg; out.push({ at: [c[0] + co * d - si * o, c[1] + si * d + co * o].map(r3), s, size: 1.8 * k, a, anchor: flip ? "end" : "start" }); });
   return out;
+}
+// Stückliste (Schritt 4, CJ 24.10.2026): Anzahl je Symbol auf sichtbaren Ebenen, Reihenfolge wie die Palette. Leitungen zählen nicht.
+export function bomOf(sh) {
+  const n = new Map();
+  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it)) n.set(it.key, (n.get(it.key) ?? 0) + 1);
+  return PLAN_SYMS.filter((d) => n.has(d.key)).map((d) => ({ key: d.key, label: d.label, group: d.group, n: n.get(d.key) }));
+}
+// CSV wie die übrigen Listen: Semikolon, Text in Anführungszeichen wenn nötig
+export function bomCsv(rows) {
+  const q = (s) => (/[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  return ["Gruppe;Symbol;Anzahl", ...rows.map((r) => `${q(r.group)};${q(r.label)};${r.n}`)].join("\r\n") + "\r\n";
 }
 // Wandsymbol einrasten: nächste Wandfläche innerhalb reach (mm ab Fläche). Gibt { at, r, wall } (r: Symbol steht senkrecht zur Fläche, in den
 // Raum auf der Seite von p) oder null.

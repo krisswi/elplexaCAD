@@ -482,3 +482,6 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 /* Modul Plan (CJ 23.10.2026): Wände, Öffnungen und Masse im Massstab wie gedruckt (Strich in Welt-mm), Griffe und Marker in Pixeln */
 #world .pl-items *, #world .pl-scale * { vector-effect: none; }
 .pl-layers .pl-layact { flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+
+/* Plan im Druck (Schritt 4, 24.10.2026): eigene Linienbreiten statt der festen 0,35 mm aus style.css (#printroot [stroke-width]) */
+#printroot .pl-print [stroke-width] { stroke-width: var(--plw) !important; }

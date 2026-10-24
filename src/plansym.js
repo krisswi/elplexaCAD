@@ -3,7 +3,7 @@
 // Masse in Papier-mm (Symbol ca. 5 mm, fest auf dem Papier wie Texte; in der Welt × Massstab), y nach oben, Ursprung = Einsetzpunkt.
 // Wandsymbole (wall: true): Ursprung auf der Wandfläche, das Symbol steht nach +y in den Raum. Übrige: Ursprung = Mitte.
 // Teile: ["l", x1, y1, x2, y2] Linie, ["c", cx, cy, r, fill] Kreis, ["p", d, fill] Pfad (SVG, y nach oben: Bogen-Flag 1 = gegen den Uhrzeigersinn), ["t", x, y, h, s] Text (Mitte; dreht mit, steht nie auf dem Kopf).
-// ap = Aufputz-Teil (Halbkreis) oder false. cat = Kategorie für die Farben in Schritt 3 (Farbcodes 5.100): kraft, licht, kommunikation, schwach, allg. h = Vorgabe Höhe in cm.
+// ap = Aufputz-Teil (Halbkreis) oder false. cat = Kategorie für die Farben (Farbcodes 5.100, CAT_COL in plan.js): kraft, licht, kommunikation, schwach, allg, leitung (wie die Leitungen). h = Vorgabe Höhe in cm.
 
 const r3 = (n) => Math.round(n * 1000) / 1000 + 0;
 const L = (x1, y1, x2, y2) => ["l", r3(x1), r3(y1), r3(x2), r3(y2)];
@@ -30,6 +30,11 @@ const SOCK = (s = 1, oy = 0, pe = true) => [["p", `M${-1.5 * s},${oy}A${1.5 * s}
 
 // ---------- Leuchten 5.190 ----------
 const halfC = (r) => ["p", `M${-r},0A${r} ${r} 0 0 0 ${r},0Z`, false];
+
+// ---------- Steigleitungen 5.110: Punkt (Kreis), Linie unter 45°, halber Pfeil (offenes Dreieck links der Linie) ----------
+const DG = Math.SQRT1_2, at45 = (t) => [t * DG, t * DG];
+const half = (t0, t1) => { const a = at45(t0), b = at45(t1), q = [a[0] - 0.75 * DG, a[1] + 0.75 * DG]; return [L(a[0], a[1], b[0], b[1]), L(b[0], b[1], q[0], q[1]), L(q[0], q[1], a[0], a[1])]; }; // Spitze bei t1
+const seg45 = (t0, t1) => L(...at45(t0), ...at45(t1));
 
 const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts, wall: !!o.wall, h: o.h, ap: o.ap ? apHalf(o.cy ?? SC[1]) : false, c: o.c ?? (o.wall ? [0, 2] : [0, 0]), r: o.r ?? 2.6, ref: !!o.ref });
 // Tabellen als /* @__PURE__ */-Aufrufe: so fallen sie im SchemaCAD-Bau ganz weg (v3 byte-gleich), obwohl plan.js sie importiert
@@ -75,6 +80,10 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("EINLASS", "Einlasskasten Gr. 1", "allg", "Allgemein", [C(0, 0, 1.5), ["p", "M0,0L1.5,0A1.5 1.5 0 0 0 0,-1.5Z", true]], { r: 1.8 }),
   S("VERTEILER", "Verteiler (Schaltgerätekombination)", "kraft", "Allgemein", [...box(-2.8, 0, 2.8, 2.4), ["p", "M-2.8,0L2.8,2.4L2.8,0Z", true]], { wall: true, c: [0, 1.2], r: 3 }),
   S("ANSCHLUSS", "Anschluss Elektro", "kraft", "Allgemein", [C(-1.4, -1.4, 0.4), ["p", "M-1.1,-1.1L0.4,0.4L-0.2,0.7L1.4,1.9", false], L(1.4, 1.9, 0.7, 1.8), L(1.4, 1.9, 1.15, 1.25)], { r: 2.1 }),
+  // Steigleitungen (Leitung nach oben, nach unten, durchgehend); cat leitung = Farbe der Leitungen
+  S("STEIG_AUF", "Leitung nach oben", "leitung", "Allgemein", [C(0, 0, 0.4), seg45(0.4, 4.2), ...half(3.2, 4.2)], { r: 2.4, c: [1.5, 1.5] }),
+  S("STEIG_AB", "Leitung nach unten", "leitung", "Allgemein", [C(0, 0, 0.4), seg45(-4.2, -0.4), ...half(-1.5, -0.5)], { r: 2.4, c: [-1.5, -1.5] }),
+  S("STEIG_DURCH", "Leitung durchgehend", "leitung", "Allgemein", [C(0, 0, 0.4), seg45(-4.2, -0.4), seg45(0.4, 4.2), ...half(-1.5, -0.5), ...half(3.2, 4.2)], { r: 3.2 }),
   S("VERWEIS", "Hinweispfeil (Verweis)", "allg", "Allgemein", [...box(-8, -1.3, -1.8, 1.3), ["p", "M-1.8,-1.3L0,0L-1.8,1.3Z", true]], { c: [-4, 0], r: 3.5, ref: true }),
 ])();
 export const SYM_BY_KEY = /* @__PURE__ */ (() => new Map(PLAN_SYMS.map((s) => [s.key, s])))();

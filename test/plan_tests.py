@@ -180,6 +180,42 @@ with sync_playwright() as p:
     check("Leuchte wählbar", sel() == [LE], sel())
     blur(); key("v"); page.mouse.click(*at(-2000, -2000)); page.wait_for_timeout(80)
 
+    # ---------- Schritt 3: Leitungen, Farben, Mehrfachwahl ----------
+    key("k"); check("Taste K: Werkzeug Leitung", page.evaluate("window.__schemacad.view") is not None and page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true")
+    n0 = len(M()["items"])
+    click(2600, 600); click(2600, 1200); click(3300, 1200); key("Enter")
+    ln = of("line"); LN = ln[-1]["id"] if ln else None
+    check("Leitung mit drei Punkten, Vorgabe Decke, Farbe ohne Feld (blau)", len(ln) == 1 and ln[0]["pts"] == [[2600, 600], [2600, 1200], [3300, 1200]] and ln[0]["kind"] == "decke" and "col" not in ln[0], ln)
+    check("Leitung blau gezeichnet", "#3fbbeb" in page.inner_html("#items"))
+    click(3000, 1600); click(3000, 2200); page.mouse.dblclick(*at(3400, 2200)); page.wait_for_timeout(100)
+    check("Doppelklick beendet die zweite Leitung", len(of("line")) == 2 and len(of("line")[-1]["pts"]) == 3, of("line")[-1:])
+    key("v"); click(2600, 900)
+    check("Leitung wählbar: rechts Verlegeart und Farbe", sel() == [LN] and page.locator('[data-plf="lk"]').count() == 1 and page.locator("[data-plcol]").count() == 9, sel())
+    page.select_option('[data-plf="lk"]', "boden"); page.wait_for_timeout(100)
+    page.click('[data-plcol="#ed3f2a"]'); page.wait_for_timeout(100)
+    check("Verlegeart Boden (gestrichelt), Farbe rot", item(LN)["kind"] == "boden" and item(LN).get("col") == "#ed3f2a" and "stroke-dasharray" in page.inner_html("#items"), item(LN))
+    page.click('[data-plact="coldef"]'); page.wait_for_timeout(100)
+    check("Vorgabe: Farbe wieder ohne Feld", "col" not in item(LN), item(LN))
+    page.keyboard.down("Shift"); click(2000, 2000); page.keyboard.up("Shift")
+    check("Shift-Klick: Leitung und Leuchte gewählt", sorted(sel()) == sorted([LN, LE]) and "2 Objekte" in page.inner_text("#right"), sel())
+    page.click('[data-plcol="#7aba4b"]'); page.wait_for_timeout(100)
+    check("Farbe gemeinsam: beide grün", item(LN).get("col") == "#7aba4b" and item(LE).get("col") == "#7aba4b")
+    a0 = item(LE)["at"]; drag(2600, 900, 2800, 900)
+    check("Ziehen verschiebt beide", item(LE)["at"] == [a0[0] + 200, a0[1]] and item(LN)["pts"][0] == [2800, 600], (item(LE)["at"], item(LN)["pts"][0]))
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(100); check("Rückgängig: zurück", item(LN)["pts"][0] == [2600, 600])
+    blur(); page.keyboard.press("Meta+c"); page.wait_for_timeout(80); page.keyboard.press("Meta+v"); page.wait_for_timeout(150)
+    check("⌘C/⌘V: zwei Kopien, gewählt, versetzt", len(M()["items"]) == n0 + 4 and len(sel()) == 2 and not set(sel()) & {LN, LE}, sel())
+    page.keyboard.press("Delete"); page.wait_for_timeout(100); check("Kopien gelöscht", len(M()["items"]) == n0 + 2)
+    page.mouse.click(*at(-1500, -1500)); page.wait_for_timeout(60)
+    drag(2500, 500, 3450, 1300)
+    check("Rahmen wählt die Leitung darin", sel() == [LN], sel())
+    page.click('[data-plact="multi"]'); page.wait_for_timeout(60); click(3000, 2200)
+    check("Knopf Mehrfachwahl: Klick fügt hinzu (ohne Shift)", len(sel()) == 2, sel())
+    page.click('[data-plact="multi"]'); page.wait_for_timeout(60)
+    page.keyboard.press("Meta+a"); page.wait_for_timeout(80); mm = M(); ok_l = {l["id"] for l in mm["layers"] if l["show"] and not l["lock"]}; wl = {i["id"]: i["layer"] for i in mm["items"] if i["type"] == "wall"}
+    check("⌘A wählt alles auf wählbaren Ebenen", sorted(sel()) == sorted(i["id"] for i in mm["items"] if (wl.get(i.get("wall")) if i["type"] == "opening" else i["layer"]) in ok_l), len(sel()))
+    blur(); key("v"); page.mouse.click(*at(-2000, -2000)); page.wait_for_timeout(80)
+
     # ---------- Massstab und Druckmitte ----------
     page.click("#btn-pvdruck"); page.wait_for_timeout(200)
     page.select_option('[data-plp="den"]', "100"); page.wait_for_timeout(150)
@@ -212,12 +248,12 @@ with sync_playwright() as p:
 
     # ---------- Speichern / Laden ohne Datenverlust ----------
     d1 = D()
-    check("Datei: Version 21 (Plan mit Symbolen)", d1["version"] == 21, d1["version"])
+    check("Datei: Version 22 (Plan mit Leitungen und Farben)", d1["version"] == 22, d1["version"])
     blur()
     with page.expect_download() as dl: page.keyboard.press("Shift+Meta+s")
     out = OUT / "plan_rundlauf.elplexa.json"; dl.value.save_as(str(out)); page.wait_for_timeout(300)
     raw = json.loads(out.read_text())
-    check("Gespeichert: Version 21, zwei Pläne", raw["version"] == 21 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
+    check("Gespeichert: Version 22, zwei Pläne", raw["version"] == 22 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
     blur()
     with page.expect_file_chooser() as fc:
         page.keyboard.press("Meta+o"); page.wait_for_timeout(300)
@@ -229,7 +265,7 @@ with sync_playwright() as p:
     check("Nach dem Laden: Ebene gesperrt, Druckmitte, Tür 1000 mm", pl["layers"][1]["lock"] is True and pl["pmid"] == pm and next(i for i in pl["items"] if i["id"] == T)["w"] == 1000)
     page.close()
 
-    # ---------- SchemaCAD v3: Datei mit Plan (Version 21) wird abgelehnt ----------
+    # ---------- SchemaCAD v3: Datei mit Plan (Version 22) wird abgelehnt ----------
     page = b.new_page(viewport={"width": 1400, "height": 900}); page.on("pageerror", lambda e: errors.append(str(e)))
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")
     page.goto((ROOT / "dist" / "schemacad.html").as_uri()); page.wait_for_timeout(300); page.keyboard.press("Escape"); page.wait_for_timeout(100)

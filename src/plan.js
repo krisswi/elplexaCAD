@@ -6,6 +6,8 @@
 // Mass { id, type: "dim", layer, a, b, off, ref?, ctrl?, soll? } (ref = Wand-id: Mass der Mittellinie, a/b folgen der Wand),
 // Symbol { id, type: "sym", layer, key, at: [x, y], r, h?, txt?, ap?, fu?, nr? } (Schritt 2, plansym.js; r Drehung in Grad, h Höhe in cm,
 // txt Beschriftung, ap Aufputz, fu/nr Sicherung und Nummer am Hinweispfeil). Symbole hängen nicht an der Wand (wandern nicht mit).
+// Leitung { id, type: "line", layer, pts: [[x, y] …] (mind. 2), kind, col? } (Schritt 3, CJ 24.10.2026; kind = Verlegeart nach 5.110).
+// col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
 import { SYM_BY_KEY } from "./plansym.js";
 
@@ -80,7 +82,24 @@ export const WALL_D = 150; // Vorgabe Wanddicke in mm
 export const MATS = [["beton", "Beton"], ["mauer", "Mauerwerk"], ["leicht", "Leichtbau/Gips"]]; // beton = Kreuzschraffur, mauer = Schraffur /, leicht = nur Umriss
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
-export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym"]);
+export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line"]);
+// Leitungsarten (Symbolzusammenfassung 5.110). Strichmuster in Papier-mm (× Massstab), flex = durchgezogen mit Welle je Abschnitt.
+export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"]];
+export const LINE_DASH = { decke: null, boden: [3, 1.5], wand: [3, 1, 0.8, 1], doppel: [3, 0.8, 0.6, 0.8, 0.6, 0.8], flex: null };
+// Farben (Farbcodes 5.100, Hex aus dem PDF gemessen). Mauern, Öffnungen und Masse bleiben schwarz.
+export const PLAN_COLS = [["#3fbbeb", "Blau – Licht"], ["#ed3f2a", "Rot – Kraft, Potenzialausgleich"], ["#7aba4b", "Grün – Notlicht, Telefon, IT"], ["#e50981", "Rosa – Zutritt, Alarm"],
+  ["#f8a724", "Orange – Brandmelde"], ["#d37c24", "Braun – Schwachstrom, Audio"], ["#8d5995", "Violett – Radio/TV, KNX"], ["#f8f191", "Gelb – Trassen, Kanäle"], ["#000000", "Schwarz"]];
+// Vorgabe der Leitungen: blau (CJ 24.10.2026). Später in den Einstellungen änderbar, deshalb nur hier und über lineCol() gelesen.
+export const LINE_COL = "#3fbbeb";
+export const CAT_COL = { licht: "#3fbbeb", kraft: "#ed3f2a", kommunikation: "#7aba4b", schwach: "#d37c24", allg: "#000000", leitung: LINE_COL };
+const HEX = /^#[0-9a-f]{6}$/;
+export const lineCol = () => LINE_COL;
+// Vorgabe und wirksame Farbe eines Objekts
+export const defCol = (it) => (it.type === "line" ? lineCol() : it.type === "sym" ? (SYM_BY_KEY.get(it.key).cat === "leitung" ? lineCol() : CAT_COL[SYM_BY_KEY.get(it.key).cat] ?? "#000000") : "#000000");
+export const colOf = (it) => it.col ?? defCol(it);
+export const hasCol = (it) => it.type === "line" || it.type === "sym";
+// Farbe setzen: gleich der Vorgabe = Feld entfernen
+export function setCol(it, col) { if (!hasCol(it)) return; const c = String(col ?? "").toLowerCase(); if (!HEX.test(c) || c === defCol(it)) delete it.col; else it.col = c; }
 
 // Ein Objekt prüfen (ohne Bezüge auf andere Objekte, die prüft cleanPlanSheet). Gibt das saubere Objekt oder null.
 export function cleanPlanObj(it, id) {
@@ -113,6 +132,14 @@ export function cleanPlanObj(it, id) {
     if (str(it.txt, 60)) o.txt = str(it.txt, 60);
     if (def.ap && it.ap === true) o.ap = true;
     if (def.ref) { if (str(it.fu, 12)) o.fu = str(it.fu, 12); if (str(it.nr, 12)) o.nr = str(it.nr, 12); }
+    setCol(o, it.col);
+    return o;
+  }
+  if (it.type === "line") {
+    const pts = (Array.isArray(it.pts) ? it.pts : []).filter(isPt).map((p) => [p[0], p[1]]).filter((p, i, a) => !i || !same(p, a[i - 1]));
+    if (pts.length < 2) return null;
+    const o = { id, type: "line", layer: String(it.layer ?? ""), pts, kind: LINE_KINDS.some(([k]) => k === it.kind) ? it.kind : "decke" };
+    setCol(o, it.col);
     return o;
   }
   return null;
@@ -285,12 +312,59 @@ export function moveNode(sh, from, to, skip) {
 // Wand oder Mass als Ganzes verschieben (Ecken bleiben mit den Nachbarn verbunden: deren Enden folgen)
 export function moveItem(sh, it, dx, dy) {
   if (it.type === "sym") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
+  if (it.type === "line") { it.pts = it.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); return; }
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall), u = wallDir(w); it.t += dx * u[0] + dy * u[1]; clampOpening(w, it); return; }
   const a = it.a, b = it.b, na = [a[0] + dx, a[1] + dy], nb = [b[0] + dx, b[1] + dy];
   if (it.type === "wall") { moveNode(sh, a, na, it.id); moveNode(sh, b, nb, it.id); }
   it.a = na.map(r3); it.b = nb.map(r3);
   fixOpenings(sh);
   syncDims(sh);
+}
+// Mehrere Objekte gemeinsam verschieben (Mehrfachwahl, Schritt 3): jede Ecke nur einmal; Nachbarwände ausserhalb der Wahl folgen an der Ecke
+// (wie beim Verschieben einer Wand). Öffnungen gehen mit ihrer Wand, allein gewählt gleiten sie entlang der Wand. Masse mit Bezug folgen der Wand.
+export function moveItems(sh, items, dx, dy) {
+  const ids = new Set(items.map((i) => i.id)), nodes = [];
+  for (const it of items) if (it.type === "wall" || (it.type === "dim" && it.ref === undefined)) for (const e of ["a", "b"]) if (!nodes.some((p) => same(p, it[e]))) nodes.push([...it[e]]);
+  const ends = nodes.map((p) => nodeEnds(sh, p)); // erst alle Enden sammeln, dann setzen (sonst fallen verschobene Ecken auf andere)
+  ends.forEach((es, i) => { for (const { it, e } of es) it[e] = [r3(nodes[i][0] + dx), r3(nodes[i][1] + dy)]; });
+  for (const it of items) {
+    if (it.type === "sym" || it.type === "line") moveItem(sh, it, dx, dy);
+    else if (it.type === "opening" && !ids.has(it.wall)) moveItem(sh, it, dx, dy);
+  }
+  fixOpenings(sh);
+  syncDims(sh);
+}
+// Kopie für die Zwischenablage: Objekte samt Öffnungen ihrer Wände; Öffnungen ohne kopierte Wand fallen weg, Masse verlieren fremde Bezüge
+export function copyItems(sh, items) {
+  const ids = new Set(items.filter((i) => i.type !== "opening").map((i) => i.id));
+  const out = sh.items.filter((i) => (i.type === "opening" ? ids.has(i.wall) : ids.has(i.id)));
+  return JSON.parse(JSON.stringify(out)).map((i) => { if (i.type === "dim" && i.ref !== undefined && !ids.has(i.ref)) delete i.ref; return i; });
+}
+// Einfügen: neue ids (newId()), um dx/dy versetzt, unbekannte Ebene → aktive Ebene. Gibt die neuen Objekte (schon im Blatt).
+export function pasteItems(sh, clip, dx, dy, newId) {
+  const map = new Map(clip.map((i) => [i.id, newId()])), out = [];
+  for (const c0 of clip) {
+    const c = JSON.parse(JSON.stringify(c0)); c.id = map.get(c0.id);
+    if (c.type === "opening") c.wall = map.get(c0.wall);
+    else if (!layerById(sh, c.layer)) c.layer = sh.alay;
+    if (c.type === "dim" && c.ref !== undefined) c.ref = map.get(c.ref);
+    for (const k of ["a", "b", "at"]) if (c[k]) c[k] = [r3(c[k][0] + dx), r3(c[k][1] + dy)];
+    if (c.pts) c.pts = c.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]);
+    const o = cleanPlanObj(c, c.id);
+    if (o) out.push(o);
+  }
+  sh.items.push(...out);
+  syncDims(sh);
+  return out;
+}
+// Rahmenwahl: Objekte ganz im Rechteck (Symbol: Mitte, Öffnung: Mitte auf der Wand)
+export function inBox(sh, it, b) {
+  const ins = (p) => p[0] >= b.x0 && p[0] <= b.x1 && p[1] >= b.y0 && p[1] <= b.y1;
+  if (it.type === "wall" || it.type === "dim") return ins(it.a) && ins(it.b);
+  if (it.type === "line") return it.pts.every(ins);
+  if (it.type === "sym") return ins(symCenter(it, paperOf(sh).den));
+  if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall); return !!w && ins(add(w.a, wallDir(w), it.t + it.w / 2)); }
+  return false;
 }
 function fixOpenings(sh) {
   const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w]));
@@ -362,6 +436,7 @@ export function dimLine(d) { // Masslinie: a, b um off nach links (von a nach b)
 export function hitPlan(sh, items, p, tol) {
   const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w])), k = paperOf(sh).den;
   for (const it of [...items].reverse()) if (it.type === "sym") { const def = SYM_BY_KEY.get(it.key); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
+  for (const it of [...items].reverse()) if (it.type === "line" && it.pts.some((q, i) => i && distSeg(p, it.pts[i - 1], q) <= tol)) return it;
   for (const o of items) {
     if (o.type !== "opening") continue;
     const w = walls.get(o.wall), u = wallDir(w), s = dot(sub(p, w.a), u), q = Math.abs(dot(sub(p, w.a), normal(u)));
@@ -423,7 +498,7 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(SYM_BY_KEY.get(i.key), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(SYM_BY_KEY.get(i.key), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? i.pts : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }

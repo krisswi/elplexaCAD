@@ -219,6 +219,26 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   P.moveItem(e2, e2.items.find((i) => i.id === 32), 100, -50);
   assert.deepStrictEqual(e2.items.find((i) => i.id === 32).at, [2100, 1450], "Symbol verschieben");
   assert.ok(P.deleteLayer(e2, "l1") && !e2.items.some((i) => i.id === 30), "Ebene löschen nimmt ihre Symbole mit");
+  // Texte drehen mit, stehen nie auf dem Kopf (CJ 24.10.2026)
+  assert.deepStrictEqual([0, 90, 91, 180, 270, 271].map((r) => P.readable(r)), [{ a: 0, flip: false }, { a: 90, flip: false }, { a: -89, flip: true }, { a: 0, flip: true }, { a: 90, flip: true }, { a: -89, flip: false }], "Winkel lesbar: −90 bis 90");
+  const tx = (o) => P.symTexts({ at: [0, 0], ...o }, 50);
+  for (const r of [0, 45, 90, 135, 180, 225, 270, 315]) assert.ok(tx({ key: "STD_T15", r, txt: "Kühlschrank", h: 110 }).every((x) => x.a > -90 && x.a <= 90), `nie auf dem Kopf (r ${r})`);
+  const t15 = (r) => tx({ key: "STD_T15", r })[0];
+  assert.deepStrictEqual([t15(0).a, t15(90).a, t15(180).a, t15(270).a], [0, 90, 0, 90], "T15 dreht mit der Wand");
+  near(t15(0).at, [145, 50], "T15 rechts neben der Steckdose (r 0)");
+  near(t15(180).at, [-145, -50], "T15 an der oberen Wand: gleicher Ort am Symbol");
+  const lb = (r) => tx({ key: "STD", r, txt: "A", h: 40 });
+  assert.deepStrictEqual(lb(0).map((x) => [x.s, x.anchor]), [["A", "start"], ["40", "start"]], "Beschriftung und Höhe rechts, linksbündig");
+  assert.ok(lb(0)[0].at[1] > lb(0)[1].at[1], "Beschriftung über der Höhe");
+  assert.deepStrictEqual(lb(180).map((x) => x.anchor), ["end", "end"], "obere Wand: gekippt, rechtsbündig vom Symbol weg");
+  assert.ok(lb(180)[0].at[1] > lb(180)[1].at[1] && lb(180)[0].at[0] < 0, "gekippt: Beschriftung bleibt oben, links neben dem Symbol");
+  assert.ok(lb(90)[0].at[1] > 0 && lb(90)[0].at[0] < lb(90)[1].at[0], "rechte Wand: Text senkrecht über dem Symbol, Beschriftung links der Höhe");
+  const usb = tx({ key: "STD_USB", r: 0, txt: "Bett" }), w0 = usb[0].at[0] + usb[0].s.length * usb[0].size * 0.3;
+  assert.ok(usb[1].at[0] > w0, "Beschriftung beginnt hinter «2×USB»");
+  assert.strictEqual(tx({ key: "VERWEIS", r: 180, fu: "F3", nr: "2" })[0].a, 0, "Verweis F3 / 2 nie auf dem Kopf");
+  // Schalterhebel ragen nicht in die Wand (y ≥ 0), Aufputz-Halbkreis passt zum Kreis
+  for (const d of S2.PLAN_SYMS.filter((x) => x.wall)) assert.ok(d.parts.filter((q) => q[0] === "l").every((q) => q[2] >= -1e-9 && q[4] >= -1e-9), `${d.key}: nichts unter der Wandfläche`);
+  for (const k of ["SCH3", "SCH6"]) { const d = S2.SYM_BY_KEY.get(k), c = d.parts.find((q) => q[0] === "c"); assert.ok(d.ap[1] === `M0,${c[2] + 1}A1 1 0 0 1 0,${c[2] - 1}Z` && d.c[1] === c[2], `${k}: Aufputz und Mitte am Kreis`); }
 }
 
 console.log("test_plan: alles ok");

@@ -2,8 +2,8 @@
 // 5.110–5.190, Clean-Room, nichts übernommen). Ohne DOM und ohne Importe, mit node testbar.
 // Masse in Papier-mm (Symbol ca. 5 mm, fest auf dem Papier wie Texte; in der Welt × Massstab), y nach oben, Ursprung = Einsetzpunkt.
 // Wandsymbole (wall: true): Ursprung auf der Wandfläche, das Symbol steht nach +y in den Raum. Übrige: Ursprung = Mitte.
-// Teile: ["l", x1, y1, x2, y2] Linie, ["c", cx, cy, r, fill] Kreis, ["p", d, fill] Pfad (SVG, y nach oben: Bogen-Flag 1 = gegen den Uhrzeigersinn), ["t", x, y, h, s] Text (aufrecht).
-// cat = Kategorie für die Farben in Schritt 3 (Farbcodes 5.100): kraft, licht, kommunikation, schwach, allg. h = Vorgabe Höhe in cm.
+// Teile: ["l", x1, y1, x2, y2] Linie, ["c", cx, cy, r, fill] Kreis, ["p", d, fill] Pfad (SVG, y nach oben: Bogen-Flag 1 = gegen den Uhrzeigersinn), ["t", x, y, h, s] Text (Mitte; dreht mit, steht nie auf dem Kopf).
+// ap = Aufputz-Teil (Halbkreis) oder false. cat = Kategorie für die Farben in Schritt 3 (Farbcodes 5.100): kraft, licht, kommunikation, schwach, allg. h = Vorgabe Höhe in cm.
 
 const r3 = (n) => Math.round(n * 1000) / 1000 + 0;
 const L = (x1, y1, x2, y2) => ["l", r3(x1), r3(y1), r3(x2), r3(y2)];
@@ -13,16 +13,17 @@ const box = (x0, y0, x1, y1) => [L(x0, y0, x1, y0), L(x1, y0, x1, y1), L(x1, y1,
 const X = (cx, cy, s) => [L(cx - s, cy - s, cx + s, cy + s), L(cx - s, cy + s, cx + s, cy - s)];
 
 // ---------- Schalter 5.140: Kreis, Hebel nach rechts oben, Querstrich(e) am Ende ----------
-const SC = [0, 2.2], SR = 1; // Kreis über der Wand
+// Kreis über der Wand (Höhe cy); Sch. 3 und 6 höher, damit die Hebel nach unten nicht in die Wand ragen
+const SC = [0, 2.2], SR = 1, CY3 = 2.5, CY6 = 3.1;
 const dir = (deg) => [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
-function lever(deg = 45, ticks = 1, len = 3.2) {
-  const u = dir(deg), t = dir(deg - 90), out = [L(SC[0] + u[0] * SR, SC[1] + u[1] * SR, SC[0] + u[0] * len, SC[1] + u[1] * len)];
-  for (let i = 0; i < ticks; i++) { const s = len - i * 0.55, p = [SC[0] + u[0] * s, SC[1] + u[1] * s]; out.push(L(p[0], p[1], p[0] + t[0] * 0.9, p[1] + t[1] * 0.9)); }
+function lever(deg = 45, ticks = 1, cy = SC[1], len = 3.2) {
+  const u = dir(deg), t = dir(deg - 90), out = [L(u[0] * SR, cy + u[1] * SR, u[0] * len, cy + u[1] * len)];
+  for (let i = 0; i < ticks; i++) { const s = len - i * 0.55, p = [u[0] * s, cy + u[1] * s]; out.push(L(p[0], p[1], p[0] + t[0] * 0.9, p[1] + t[1] * 0.9)); }
   return out;
 }
-const sw = (extra = []) => [C(SC[0], SC[1], SR), ...extra];
+const sw = (extra = [], cy = SC[1]) => [C(SC[0], cy, SR), ...extra];
 // Aufputz: linke Hälfte des Kreises gefüllt (nur Schalter, Feld «Aufputz»)
-export const AP_HALF = ["p", "M0,3.2A1 1 0 0 1 0,1.2Z", true]; // Kreis SC/SR, als fester Text (sonst bliebe er im v3-Bau)
+const apHalf = (cy) => ["p", `M0,${cy + SR}A1 1 0 0 1 0,${cy - SR}Z`, true];
 
 // ---------- Steckdosen 5.160: Bogen auf der Wand, Stiel in den Raum, Querstrich = Schutzkontakt ----------
 const SOCK = (s = 1, oy = 0, pe = true) => [["p", `M${-1.5 * s},${oy}A${1.5 * s} ${1.5 * s} 0 0 0 ${1.5 * s},${oy}`, false], L(0, oy + 1.5 * s, 0, oy + 3.3 * s), ...(pe ? [L(-1.1 * s, oy + 2.1 * s, 1.1 * s, oy + 2.1 * s)] : [])];
@@ -30,14 +31,14 @@ const SOCK = (s = 1, oy = 0, pe = true) => [["p", `M${-1.5 * s},${oy}A${1.5 * s}
 // ---------- Leuchten 5.190 ----------
 const halfC = (r) => ["p", `M${-r},0A${r} ${r} 0 0 0 ${r},0Z`, false];
 
-const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts, wall: !!o.wall, h: o.h, ap: !!o.ap, c: o.c ?? (o.wall ? [0, 2] : [0, 0]), r: o.r ?? 2.6, ref: !!o.ref });
+const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts, wall: !!o.wall, h: o.h, ap: o.ap ? apHalf(o.cy ?? SC[1]) : false, c: o.c ?? (o.wall ? [0, 2] : [0, 0]), r: o.r ?? 2.6, ref: !!o.ref });
 // Tabellen als /* @__PURE__ */-Aufrufe: so fallen sie im SchemaCAD-Bau ganz weg (v3 byte-gleich), obwohl plan.js sie importiert
 export const PLAN_SYMS = /* @__PURE__ */ (() => [
   // Schalter (Unterputz; Aufputz über Feld)
   S("SCH0", "Schalter Sch. 0, 1-polig", "licht", "Schalter", sw(lever()), { wall: true, h: 110, ap: true }),
   S("SCH0_2", "Schalter Sch. 0, 2-polig", "licht", "Schalter", sw(lever(45, 2)), { wall: true, h: 110, ap: true }),
-  S("SCH3", "Schalter Sch. 3 (Wechsel)", "licht", "Schalter", sw([...lever(), ...lever(225)]), { wall: true, h: 110, ap: true }),
-  S("SCH6", "Schalter Sch. 6 (Kreuz)", "licht", "Schalter", sw([...lever(), ...lever(135, 1), ...lever(225), ...lever(315, 1)]), { wall: true, h: 110, ap: true }),
+  S("SCH3", "Schalter Sch. 3 (Wechsel)", "licht", "Schalter", sw([...lever(45, 1, CY3), ...lever(225, 1, CY3)], CY3), { wall: true, h: 110, ap: true, cy: CY3, c: [0, CY3], r: 3 }),
+  S("SCH6", "Schalter Sch. 6 (Kreuz)", "licht", "Schalter", sw([...lever(45, 1, CY6), ...lever(135, 1, CY6), ...lever(225, 1, CY6), ...lever(315, 1, CY6)], CY6), { wall: true, h: 110, ap: true, cy: CY6, c: [0, CY6], r: 3.3 }),
   S("TASTER", "Drucktaster", "licht", "Schalter", sw([L(0.71, 2.91, 2.4, 4.6), L(1.8, 5.2, 3, 4)]), { wall: true, h: 110, ap: true }),
   S("DIMMER", "Lichtregler (Dimmer)", "licht", "Schalter", sw([...lever(), L(1.5, 3.7, 1.0, 4.9), L(1.0, 4.9, 2.2, 4.5)]), { wall: true, h: 110, ap: true }),
   S("STOREN", "Storenschalter", "kraft", "Schalter", sw([...lever(), ["p", "M2.9,4.9L3.7,4.9L3.3,4.3Z", false], ["p", "M3.9,4.3L4.7,4.3L4.3,4.9Z", true]]), { wall: true, h: 110, ap: true }),

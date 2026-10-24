@@ -2,7 +2,7 @@
 // Werkzeuge Wand (W), Öffnung (O), Mass (B), Auswahl (V) mit Einzelwahl, Verschieben und Eckpunkte ziehen, Fenster Druck mit Massstab.
 // Daten und Geometrie in plan.js. Im SchemaCAD-Bau ersetzt build.mjs diese Datei durch einen Platzhalter.
 import * as P from "./plan.js";
-import { PLAN_SYMS, SYM_BY_KEY, SYM_GROUPS, AP_HALF } from "./plansym.js";
+import { PLAN_SYMS, SYM_BY_KEY, SYM_GROUPS } from "./plansym.js";
 import { PAPERS, paperSize, printArea, paperLabel, fmtDen } from "./pv.js";
 import { pageInner } from "./pvprint.js";
 import * as R from "./render.js";
@@ -107,22 +107,16 @@ export function makePlan(c) {
     const m = [(A[0] + B[0]) / 2 + n[0] * 1.6 * k, (A[1] + B[1]) / 2 + n[1] * 1.6 * k];
     return s + txt(m[0], m[1], label, 2.5 * k, Math.atan2(u[1], u[0]) * 180 / Math.PI, d.ctrl && ci.diff && Math.abs(ci.diff) >= 1 ? "#c0392b" : stroke);
   }
-  // Symbol (plansym.js): Teile in Papier-mm, in der Welt × Massstab k, gedreht um r. Texte aufrecht; Beschriftung und Höhe rechts der Mitte.
+  // Symbol (plansym.js): Teile in Papier-mm, in der Welt × Massstab k, gedreht um r. Texte drehen mit und bleiben lesbar (P.symTexts).
   function symSVG(it, k, stroke = INK) {
-    const def = SYM_BY_KEY.get(it.key), a = (it.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
-    const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)];
-    let g = "", t = "";
-    for (const q of it.ap ? [...def.parts, AP_HALF] : def.parts) {
+    const def = SYM_BY_KEY.get(it.key);
+    let g = "";
+    for (const q of it.ap && def.ap ? [...def.parts, def.ap] : def.parts) {
       if (q[0] === "l") g += `<line x1="${q[1]}" y1="${q[2]}" x2="${q[3]}" y2="${q[4]}"/>`;
       else if (q[0] === "c") g += `<circle cx="${q[1]}" cy="${q[2]}" r="${q[3]}"${q[4] ? ` fill="${stroke}"` : ""}/>`;
       else if (q[0] === "p") g += `<path d="${q[1]}"${q[2] ? ` fill="${stroke}"` : ""}/>`;
-      else if (q[0] === "t") { const m = w(q[1], q[2]); t += txt(m[0], m[1], q[4], q[3] * k, 0, stroke); }
     }
-    if (def.ref && (it.fu || it.nr)) { const m = w(-4.9, 0); t += txt(m[0], m[1], [it.fu, it.nr].filter(Boolean).join(" / "), 1.4 * k, it.r, stroke); }
-    // Beschriftung und Höhe neben dem Symbol, in Richtung seiner x-Achse (Wandsymbol: entlang der Wand), Texte aufrecht und waagrecht
-    const c = P.symCenter(it, k), lines = [it.txt, it.h !== undefined ? fmtH(it.h) : ""].filter(Boolean), d = (def.r + 0.6) * k;
-    const ax = co > 0.5 ? "start" : co < -0.5 ? "end" : "middle", up = ax === "middle" ? Math.sign(si) * (d + (lines.length - 1) * 1.1 * k) : 0;
-    lines.forEach((s0, i) => { t += txt(c[0] + (ax === "middle" ? 0 : co * d), c[1] + up + ((lines.length - 1) / 2 - i) * 2.2 * k, s0, 1.8 * k, 0, stroke, ax); });
+    const t = P.symTexts(it, k, fmtH).map((x) => txt(x.at[0], x.at[1], x.s, x.size, x.a, stroke, x.anchor)).join("");
     return `<g transform="translate(${f(it.at[0])} ${f(it.at[1])}) rotate(${it.r}) scale(${k})" fill="none" stroke="${stroke}" stroke-width="0.18" stroke-linecap="round">${g}</g>${t}`;
   }
   const fmtH = (h) => `${String(Math.round(h * 10) / 10).replace(".", ",")}`; // Höhe in cm, ohne Einheit (wie im Plan üblich)

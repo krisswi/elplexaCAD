@@ -390,6 +390,22 @@ export function symCenter(it, k) {
   const c = SYM_BY_KEY.get(it.key).c, a = (it.r * Math.PI) / 180;
   return [it.at[0] + k * (c[0] * Math.cos(a) - c[1] * Math.sin(a)), it.at[1] + k * (c[0] * Math.sin(a) + c[1] * Math.cos(a))];
 }
+// Text lesbar halten: Winkel 0–359 → (-90, 90], flip = um 180° gekippt (sonst stünde er auf dem Kopf)
+export function readable(ang) { const a = ((ang % 360) + 360) % 360, flip = a > 90 && a <= 270; return { a: flip ? a - 180 : a > 270 ? a - 360 : a, flip }; }
+// Texte eines Symbols in der Welt (CJ 24.10.2026): drehen mit dem Symbol, stehen nie auf dem Kopf. Zusatztexte (T15, USB, 3, LED) und Verweis
+// mittig an ihrem Ort; Beschriftung und Höhe neben der Mitte in Richtung der x-Achse des Symbols (Wandsymbol: entlang der Wand), Zeilen untereinander.
+// Gibt [{ at, s, size, a, anchor }] (size und Abstände in Papier-mm × k).
+export function symTexts(it, k, fmtH = (h) => String(h)) {
+  const def = SYM_BY_KEY.get(it.key), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
+  const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)], out = [];
+  for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[4], size: q[3] * k, a, anchor: "middle" });
+  if (def.ref && (it.fu || it.nr)) out.push({ at: w(-4.9, 0), s: [it.fu, it.nr].filter(Boolean).join(" / "), size: 1.4 * k, a, anchor: "middle" });
+  // Abstand: hinter dem Symbol und hinter Zusatztexten rechts der Mitte (Breite ca. 0,6 × Höhe je Zeichen)
+  const ext = Math.max(def.r, ...def.parts.filter((q) => q[0] === "t").map((q) => q[1] - def.c[0] + q[4].length * q[3] * 0.3));
+  const lines = [it.txt, it.h !== undefined ? fmtH(it.h) : ""].filter(Boolean), c = symCenter(it, k), d = (ext + 0.6) * k, sg = flip ? -1 : 1;
+  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * k * sg; out.push({ at: [c[0] + co * d - si * o, c[1] + si * d + co * o].map(r3), s, size: 1.8 * k, a, anchor: flip ? "end" : "start" }); });
+  return out;
+}
 // Wandsymbol einrasten: nächste Wandfläche innerhalb reach (mm ab Fläche). Gibt { at, r, wall } (r: Symbol steht senkrecht zur Fläche, in den
 // Raum auf der Seite von p) oder null.
 export function wallSnap(walls, p, reach) {

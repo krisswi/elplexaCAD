@@ -26,7 +26,7 @@ const sw = (extra = [], cy = SC[1]) => [C(SC[0], cy, SR), ...extra];
 const apHalf = (cy) => ["p", `M0,${cy + SR}A1 1 0 0 1 0,${cy - SR}Z`, true];
 
 // ---------- Steckdosen 5.160: Stiel von der Wand, Bogen am Ende (Öffnung zum Raum), Querstrich = Schutzkontakt ----------
-const SOCK = (s = 1, oy = 0, pe = true) => [["p", `M${-1.5 * s},${oy + 3.3 * s}A${1.5 * s} ${1.5 * s} 0 0 1 ${1.5 * s},${oy + 3.3 * s}`, false], L(0, oy, 0, oy + 1.8 * s), ...(pe ? [L(-1.1 * s, oy + 1.2 * s, 1.1 * s, oy + 1.2 * s)] : [])]; // CJ 24.10.2026: Stiel an der Wand, Bogen zum Raum offen (vorher 180° gedreht)
+const SOCK = (s = 1, oy = 0, pe = true) => [["p", `M${-1.5 * s},${oy + 3.9 * s}A${1.5 * s} ${1.5 * s} 0 0 1 ${1.5 * s},${oy + 3.9 * s}`, false], L(0, oy, 0, oy + 2.4 * s), ...(pe ? [L(-1.5 * s, oy + 2.4 * s, 1.5 * s, oy + 2.4 * s)] : [])]; // CJ 24.10.2026: Stiel an der Wand, Bogen zum Raum offen; Variante B: Querstrich am Bogenscheitel, so breit wie der Bogen (5.160)
 
 // ---------- Leuchten 5.190 ----------
 const halfC = (r) => ["p", `M${-r},0A${r} ${r} 0 0 0 ${r},0Z`, false];
@@ -50,11 +50,11 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("SCH_LAMPE", "Schalter mit Signallampe", "licht", "Schalter", sw([...X(SC[0], SC[1], 0.7), ...lever()]), { wall: true, h: 110 }),
   // Steckdosen
   S("STD", "Steckdose T13 (Schutzkontakt)", "kraft", "Steckdosen", SOCK(), { wall: true, h: 110 }),
-  S("STD3", "Steckdose 3-fach", "kraft", "Steckdosen", [...SOCK(), T(1.6, 3.6, 1.6, "3")], { wall: true, h: 110 }),
+  S("STD3", "Steckdose 3-fach", "kraft", "Steckdosen", [...SOCK(), T(2.4, 3.6, 1.6, "3")], { wall: true, h: 110 }),
   S("STD_T15", "Steckdose T15", "kraft", "Steckdosen", [...SOCK(), T(2.9, 1.0, 1.4, "T15")], { wall: true, h: 110 }),
   S("STD_USB", "Steckdose T13 mit 2 × USB", "kraft", "Steckdosen", [...SOCK(), T(3.4, 1.0, 1.2, "2×USB")], { wall: true, h: 110 }),
   S("STD_BODEN", "Bodensteckdose", "kraft", "Steckdosen", [...box(-1.8, -1.8, 1.8, 1.8), ...SOCK(0.75, -1.3)], {}),
-  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [...SOCK(), C(0, 4.1, 0.8), L(0.57, 4.67, 1.6, 5.7), L(1.6, 5.7, 2.2, 5.1)], { wall: true, h: 110, c: [0, 2.6] }),
+  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [...SOCK(), C(0, 4.7, 0.8), L(0.57, 5.27, 1.6, 6.3), L(1.6, 6.3, 2.2, 5.7)], { wall: true, h: 110, c: [0, 3.2] }),
   // Leuchten
   S("LEUCHTE", "Leuchte an Decke", "licht", "Leuchten", X(0, 0, 1.4), { r: 2 }),
   S("LEUCHTE_EB", "Einbauleuchte an Decke", "licht", "Leuchten", [C(0, 0, 1.7), ...X(0, 0, 1.2)], { r: 2 }),

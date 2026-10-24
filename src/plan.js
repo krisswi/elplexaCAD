@@ -6,7 +6,9 @@
 // Mass { id, type: "dim", layer, a, b, off, ref?, ctrl?, soll? } (ref = Wand-id: Mass der Mittellinie, a/b folgen der Wand),
 // Symbol { id, type: "sym", layer, key, at: [x, y], r, h?, txt?, ap?, fu?, nr? } (Schritt 2, plansym.js; r Drehung in Grad, h Höhe in cm,
 // txt Beschriftung, ap Aufputz, fu/nr Sicherung und Nummer am Hinweispfeil). Symbole hängen nicht an der Wand (wandern nicht mit).
-// Leitung { id, type: "line", layer, pts: [[x, y] …] (mind. 2), kind, col? } (Schritt 3, CJ 24.10.2026; kind = Verlegeart nach 5.110).
+// Leitung { id, type: "line", layer, pts: [[x, y] …] (mind. 2), kind, col?, curve? } (Schritt 3, CJ 24.10.2026; kind = Verlegeart nach 5.110;
+// curve: true = geschwungen, glatte Kurve durch alle Punkte, CJ 24.10.2026, Dateiversion 23).
+// Hintergrund bg (CJ 24.10.2026, Dateiversion 23): PDF-Seite wie im Stringplan (pv.js: Massstab, Fixpunkt = Nullpunkt, Drehung), liegt auf der Ebene «Hintergrund».
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
 import { SYM_BY_KEY, PLAN_SYMS } from "./plansym.js";
@@ -141,6 +143,7 @@ export function cleanPlanObj(it, id) {
     if (pts.length < 2) return null;
     const o = { id, type: "line", layer: String(it.layer ?? ""), pts, kind: LINE_KINDS.some(([k]) => k === it.kind) ? it.kind : "decke" };
     setCol(o, it.col);
+    if (it.curve === true) o.curve = true;
     return o;
   }
   return null;
@@ -454,7 +457,7 @@ export function dimLine(d) { // Masslinie: a, b um off nach links (von a nach b)
 export function hitPlan(sh, items, p, tol) {
   const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w])), k = paperOf(sh).den;
   for (const it of [...items].reverse()) if (it.type === "sym") { const def = SYM_BY_KEY.get(it.key); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
-  for (const it of [...items].reverse()) if (it.type === "line" && it.pts.some((q, i) => i && distSeg(p, it.pts[i - 1], q) <= tol)) return it;
+  for (const it of [...items].reverse()) if (it.type === "line") { const q = linePts(it); if (q.some((x, i) => i && distSeg(p, q[i - 1], x) <= tol)) return it; }
   for (const o of items) {
     if (o.type !== "opening") continue;
     const w = walls.get(o.wall), u = wallDir(w), s = dot(sub(p, w.a), u), q = Math.abs(dot(sub(p, w.a), normal(u)));
@@ -543,8 +546,34 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(SYM_BY_KEY.get(i.key), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? i.pts : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(SYM_BY_KEY.get(i.key), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }
+// ---------- Geschwungene Leitung (CJ 24.10.2026) ----------
+// Glatte Kurve durch alle Punkte (Catmull-Rom als kubische Bézier): je Abschnitt [p1, c1, c2, p2]. Enden: Tangente zum Nachbarpunkt.
+export function curveSegs(pts) {
+  const out = [];
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = pts[Math.max(0, i - 2)], p1 = pts[i - 1], p2 = pts[i], p3 = pts[Math.min(pts.length - 1, i + 1)];
+    out.push([p1, add(p1, sub(p2, p0), 1 / 6), add(p2, sub(p3, p1), -1 / 6), p2]);
+  }
+  return out;
+}
+// Punkt und Richtung (nicht normiert) auf einem Bézier-Abschnitt bei t
+export function bezAt([a, b, c, d], t) {
+  const u = 1 - t, p = [0, 1].map((j) => u * u * u * a[j] + 3 * u * u * t * b[j] + 3 * u * t * t * c[j] + t * t * t * d[j]);
+  const v = [0, 1].map((j) => 3 * u * u * (b[j] - a[j]) + 6 * u * t * (c[j] - b[j]) + 3 * t * t * (d[j] - c[j]));
+  return { p, v };
+}
+const CURVE_N = 16; // Stützpunkte je Abschnitt für Treffer und Inhalt
+// Linienzug der Leitung (geschwungen: angenähert), für Treffer, Rahmen und Inhalt
+export const linePts = (it) => (it.curve && it.pts.length > 2 ? [it.pts[0], ...curveSegs(it.pts).flatMap((sg) => Array.from({ length: CURVE_N }, (_, j) => bezAt(sg, (j + 1) / CURVE_N).p.map(r3)))] : it.pts);
+// Geschwungen mit nur zwei Punkten: Zwischenpunkt in der Mitte, um ein Fünftel der Länge nach links versetzt (ergibt einen Bogen, Punkt ziehbar)
+export function bowPts(pts) {
+  if (pts.length !== 2) return pts;
+  const [a, b] = pts, v = sub(b, a), m = add(a, v, 0.5), n = normal([v[0], v[1]]);
+  return [a, add(m, n, 0.2).map(r3), b];
+}
+
 export { segX, normal };

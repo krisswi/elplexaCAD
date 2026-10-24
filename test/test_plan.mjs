@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 22, "elplexa liest Version 22 (Plan mit Leitungen und Farben)");
+assert.strictEqual(M.VERSION, 23, "elplexa liest Version 23 (Plan mit PDF-Hintergrund, geschwungene Leitung)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -281,7 +281,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 23)), /neueren Version/, "Version 23 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 24)), /neueren Version/, "Version 24 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#3FBBEB" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
@@ -333,6 +333,39 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.strictEqual(P.bomOf(sh).find((r) => r.key === "STD").n, 2, "ausgeblendete Ebene zählt nicht");
   assert.strictEqual(P.bomCsv(P.bomOf(sh)), "Gruppe;Symbol;Anzahl\r\nSchalter;Schalter Sch. 0, 1-polig;1\r\nSteckdosen;Steckdose T13 (Schutzkontakt);2\r\nLeuchten;Leuchte an Decke;1\r\n", "CSV mit Semikolon");
   assert.strictEqual(P.bomCsv([{ group: "A", label: 'x;"y"', n: 1 }]).split("\r\n")[1], 'A;"x;""y""";1', "CSV: Semikolon und Anführungszeichen maskiert");
+}
+
+// ---------- Geschwungene Leitung und PDF-Plan (CJ 24.10.2026) ----------
+{
+  const cur = { id: 70, type: "line", layer: "bg", pts: [[0, 0], [1000, 1000], [2000, 0]], kind: "flex", curve: true };
+  const d = M.parseModel(file([plan([cur])], 23)), b = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(b.version, 23, "geschwungene Leitung: Version 23");
+  assert.deepStrictEqual(b.sheets[0].items[0], cur, "curve gespeichert");
+  assert.ok(!("curve" in P.cleanPlanObj({ ...cur, curve: "ja" }, 1)), "nur true gilt");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ ...cur, curve: undefined }])], 23)))).version, 22, "gerade Leitung bleibt Version 22");
+  // Kurve läuft durch alle Punkte, Enden der Abschnitte = Punkte
+  const sg = P.curveSegs(cur.pts);
+  assert.strictEqual(sg.length, 2, "ein Bézier je Abschnitt");
+  near(sg[0][0], [0, 0], "Anfang"); near(sg[0][3], [1000, 1000], "durch den Mittelpunkt"); near(sg[1][3], [2000, 0], "Ende");
+  near(sg[0][2], [1000 - 2000 / 6, 1000], "Tangente am Scheitel waagrecht");
+  near(P.bezAt(sg[0], 1).p, [1000, 1000], "bezAt t=1");
+  // Treffer folgt der Kurve, nicht der Sehne
+  const sh = d.sheets[0], top = P.bezAt(sg[0], 0.5).p;
+  assert.ok(top[1] > 500 + 50, "Kurve liegt über der Sehne");
+  assert.strictEqual(P.hitPlan(sh, sh.items, top, 10)?.id, 70, "Treffer auf der Kurve");
+  assert.ok(P.linePts(cur).length > cur.pts.length && P.linePts({ ...cur, curve: undefined }) === cur.pts, "Linienzug nur bei Kurve angenähert");
+  // Zwei Punkte geschwungen: Bogen mit Zwischenpunkt links, um 1/5 der Länge versetzt
+  assert.deepStrictEqual(P.bowPts([[0, 0], [1000, 0]]), [[0, 0], [500, 200], [1000, 0]], "Bogen nach links");
+  assert.deepStrictEqual(P.bowPts(cur.pts), cur.pts, "drei Punkte bleiben");
+  // PDF-Plan je Plan-Blatt (wie Stringplan): bg mit Massstab, Fixpunkt und Drehung bleibt, PDF nur einmal gespeichert
+  const bg = { asset: "pdf1", name: "Plaene.pdf", page: 2, w: 1190.55, h: 841.89, fix: [100, 700], mmPerPt: 50 * 25.4 / 72, rot: 2.5 };
+  const raw = { ...JSON.parse(file([plan([], { bg }), plan([], { sid: 8, var: 2, bg: { ...bg, page: 3 } })], 23)), assets: { pdf1: { name: "Plaene.pdf", type: "application/pdf", data: "JVBERg==" } } };
+  const e = M.parseModel(JSON.stringify(raw)), eb = JSON.parse(M.serializeModel(e));
+  assert.strictEqual(eb.version, 23, "Plan mit PDF: Version 23");
+  assert.deepStrictEqual([eb.sheets[0].bg, eb.sheets[1].bg.page], [bg, 3], "Hintergrund unverändert, je Stockwerk eigene Seite");
+  assert.deepStrictEqual(Object.keys(eb.assets), ["pdf1"], "PDF einmal gespeichert");
+  assert.ok(!M.serializeModel(e, { noAssets: true }).includes("JVBERg"), "Zwischenspeicher ohne PDF");
+  assert.deepStrictEqual(M.parseModel(M.serializeModel(e, { noAssets: true })).sheets[0].bg.asset, undefined, "fehlende PDF: Massstab und Fixpunkt bleiben, asset fehlt");
 }
 
 console.log("test_plan: alles ok");

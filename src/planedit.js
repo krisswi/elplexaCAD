@@ -2,13 +2,16 @@
 // Werkzeuge Wand (W), Öffnung (O), Mass (B), Auswahl (V) mit Verschieben und Eckpunkte ziehen, Fenster Druck mit Massstab.
 // Rückmeldungen 24.10.2026: freier Grund (Papier, Raster, Plankopf erst im Druck), Wand = Innenlinie, Ausrichtungsfang, Grundriss-Werkzeuge nur auf der Ebene Hintergrund.
 // Schritt 3 (CJ 24.10.2026): Leitung (K, auch L), Farben nach 5.100, Mehrfachwahl (Rahmen, Shift-Klick oder Knopf «Mehrfachwahl»), ⌘A/⌘C/⌘V/⌘D.
+// CJ 24.10.2026: Leitung geschwungen (Form), PDF-Plan einlesen wie im Stringplan (Massstab eingeben oder messen, Fixpunkt = Nullpunkt, Plan drehen).
 // Daten und Geometrie in plan.js. Im SchemaCAD-Bau ersetzt build.mjs diese Datei durch einen Platzhalter.
 import * as P from "./plan.js";
 import { PLAN_SYMS, SYM_BY_KEY, SYM_GROUPS } from "./plansym.js";
-import { PAPERS, paperSize, printArea, paperLabel, fmtDen } from "./pv.js";
+import { PAPERS, paperSize, printArea, paperLabel, fmtDen, PT_MM, mmPerPt, fixOf, bgBox, pageToWorld, worldToPage, scaleFromMeasure, nearestStd, denOf, kOfDen, parseDen, fmtPct, newBg, fixMode, rotatePlan, alignAngle, fmtDeg } from "./pv.js";
+import { openPdf, pageSize, toBase64, imageFor, imageReady } from "./pdfbg.js";
 import { pageSVG } from "./pvprint.js";
 import * as R from "./render.js";
 
+const BG_OPACITY = 0.6; // PDF-Plan blass, damit der Elektroplan hervortritt (wie Stringplan)
 const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3", GUIDE = "#e08a00", FRAME = "#6b7785";
 const OPEN_W = { tuer: 900, fenster: 1200, durchgang: 900, schiebe: 900 }; // Vorgabe Breiten in mm (Annahme)
 const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe neuer Öffnungen in mm (CJ 23.10.2026)
@@ -16,6 +19,11 @@ const ICON = {
   wall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v6H3z"/><path d="M6 15l6-6M11 15l6-6M16 15l5-5"/></svg>',
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h5M17 18h5"/><path d="M7 18V8"/><path d="M7 8a10 10 0 0110 10"/></svg>',
   line: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18L10 8h10"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>',
+  pdf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/></svg>',
+  scale: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h18M3 14v3M7.5 15.5V17M12 14v3M16.5 15.5V17M21 14v3"/><path d="M7 5v6M12 6.5v.01M12 9.5v.01M16 5v6"/></svg>',
+  measure: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20L20 4"/><path d="M4 15v5h5M20 9V4h-5"/></svg>',
+  fix: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 2v20M2 12h20"/></svg>',
+  rotate: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 11-2.3-5.7"/><path d="M20 4v5h-5"/></svg>',
   free: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v7a5 5 0 0010 0V4"/><path d="M7 4h3v3H7zM14 4h3v3h-3z"/><path d="M3 21L21 3"/></svg>',
   multi: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5" stroke-dasharray="3 2.5"/><path d="M8 12l3 3 5-6"/></svg>',
   eye: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>',
@@ -27,12 +35,13 @@ const f = R.f, pt = (p) => `${f(p[0])},${f(p[1])}`;
 const num = (v) => String(Math.round(v * 10) / 10).replace(".", ",").replace("-", "−");
 
 export function makePlan(c) {
-  const { S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, updateHint, fitView, pushUndo, snapshot, markDirty, nextId } = c;
+  const { S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, updateHint, fitView, pushUndo, snapshot, markDirty, nextId, chooseDialog, formDialog, confirmDialog } = c;
   const sh = () => S.model;
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
-  const opt = { d: P.WALL_D, mat: "mauer", side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: false, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
+  let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
   let draft = null; // Wand im Entstehen: { a, start, len, ang, field }
   let dimDraft = null; // Mass im Entstehen: { a, b? }
@@ -63,9 +72,10 @@ export function makePlan(c) {
   // ---------- Darstellung ----------
   // Druckmitte: gesetzt (sheet.pmid, Werkzeug «Druckmitte setzen» im Fenster Druck), sonst Mitte des Inhalts (auf 10 mm), ohne Inhalt der Nullpunkt
   const center = () => centerOf(sh());
+  const unionBox = (a, b) => (a && b ? { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) } : a || b);
   function centerOf(S0) {
     if (S0.pmid) return S0.pmid;
-    const b = P.contentBox(S0);
+    const b = P.contentBox(S0) || (S0.bg ? bgBox(S0.bg) : null); // ohne Objekte die Mitte des PDF-Plans
     return b ? [Math.round((b.x0 + b.x1) / 20) * 10, Math.round((b.y0 + b.y1) / 20) * 10] : [0, 0];
   }
   // Papier in Welt-mm: Ursprung der Seite so, dass die Mitte des Planfelds auf center() liegt
@@ -77,7 +87,9 @@ export function makePlan(c) {
   // Freier Grund wie im Stringplan: kein Papier, Raster und Plankopf kommen erst im Druck. Gestrichelt der Druckbereich (Papier und Massstab aus dem Fenster Druck).
   function sheetSVG() {
     const { p, a, k, ox, oy } = pageAt(), v = c.viewBox(), z = S.view.z, x0 = ox + a.x0 * k, y0 = oy + a.y0 * k, h = 3 * k;
-    let s = `<rect class="dispo-bg" x="-1e6" y="-1e6" width="2e6" height="2e6"/>`;
+    let s = `<rect class="dispo-bg" x="-1e6" y="-1e6" width="2e6" height="2e6"/>` + bgImg(sh(), () => { if (sh().kind === "plan") c.renderSheet(); });
+    const b = sh().bg;
+    if (b?.measure && bgShown(sh()) && grundOn()) s += measureSVG(pageToWorld(b, ...b.measure.a), pageToWorld(b, ...b.measure.b), `${P.fmtLen(b.measure.mm)} mm`, z);
     if (S.grid.on && S.grid.size * z >= 7) s += `<rect x="${f(v.x0)}" y="${f(v.y0)}" width="${f(v.x1 - v.x0)}" height="${f(v.y1 - v.y0)}" fill="url(#gridpat)" stroke="none" pointer-events="none"/>`;
     s += `<g class="pl-printframe" pointer-events="none"><rect x="${f(x0)}" y="${f(y0)}" width="${f((a.x1 - a.x0) * k)}" height="${f((a.y1 - a.y0) * k)}" fill="none" stroke="${FRAME}" stroke-width="1" stroke-dasharray="8 5"/>`
       + `${txt(x0, y0 + (a.y1 - a.y0) * k + h, `Druckbereich ${paperLabel(p)}, ${fmtDen(p.den)}`, h, 0, FRAME, "start")}</g>`;
@@ -85,8 +97,156 @@ export function makePlan(c) {
     s += `<g class="pl-origin" stroke="#c0392b" stroke-width="1.5" fill="none"><circle cx="0" cy="0" r="${f(r)}"/><path d="M${f(-2 * r)},0H${f(2 * r)}M0,${f(-2 * r)}V${f(2 * r)}"/></g>`;
     return s;
   }
+  // ---------- PDF-Plan (Hintergrund wie im Stringplan, pv.js) ----------
+  const bgLayer = (S0) => P.layerById(S0, "bg");
+  const bgShown = (S0) => !!S0.bg?.asset && bgLayer(S0)?.show !== false; // liegt auf der Ebene Hintergrund (ohne sie immer sichtbar)
+  // PDF-Seite als Bild in der Welt (Massstab, Fixpunkt, Drehung). Ohne Bild ein Platzhalter, bis es gerendert ist.
+  function bgImg(S0, onReady) {
+    if (!bgShown(S0)) return "";
+    const b = S0.bg, url = imageFor(S.doc.assets, b.asset, b.page, (err) => { if (err) toast("Der PDF-Plan lässt sich nicht anzeigen: " + err, "error"); onReady(); });
+    const k = mmPerPt(b), [fu, fv] = fixOf(b), tr = `${b.rot ? `rotate(${b.rot}) ` : ""}translate(${f(-fu * k)} ${f(fv * k)}) scale(${k} ${-k})`;
+    if (url) return `<g transform="${tr}" opacity="${BG_OPACITY}" pointer-events="none"><image href="${url}" x="0" y="0" width="${b.w}" height="${b.h}" preserveAspectRatio="none"/></g>`;
+    return `<rect transform="${tr}" x="0" y="0" width="${b.w}" height="${b.h}" fill="#eef1f4" pointer-events="none"/>`;
+  }
+  function measureSVG(a, e, label, z) {
+    const mx = (a.x + e.x) / 2, my = (a.y + e.y) / 2, h = 12 / z;
+    return `<g pointer-events="none"><line x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(e.x)}" y2="${f(e.y)}" stroke="${GUIDE}" stroke-width="2" stroke-dasharray="${f(6 / z)} ${f(4 / z)}"/>`
+      + `<circle cx="${f(a.x)}" cy="${f(a.y)}" r="${f(3 / z)}" fill="${GUIDE}"/><circle cx="${f(e.x)}" cy="${f(e.y)}" r="${f(3 / z)}" fill="${GUIDE}"/>`
+      + (label ? txt(mx, my + h, label, h, 0, GUIDE) : "") + "</g>";
+  }
+  function bgFree() {
+    const l = bgLayer(sh());
+    if (!l || (l.show && !l.lock)) return true;
+    toast(`Die Ebene „${l.name}“ ist ${l.lock ? "gesperrt" : "ausgeblendet"}. Links unter „Ebenen“ freigeben.`, "error");
+    return false;
+  }
+  function pickFile(accept = ".pdf,application/pdf") {
+    return new Promise((res) => {
+      const inp = document.createElement("input"); inp.type = "file"; inp.accept = accept;
+      inp.onchange = () => res(inp.files[0] || null);
+      inp.addEventListener("cancel", () => res(null));
+      inp.click();
+    });
+  }
+  // PDF wählen, Seite wählen (z. B. EG, UG, OG in einer PDF), Massstab angeben. Mit bestehendem Plan: neuer Planstand.
+  async function loadPdf() {
+    if (!bgFree()) return;
+    const old = sh().bg;
+    if (old?.asset && !(await confirmDialog("Neuen Planstand laden?", "Die Objekte bleiben relativ zum Nullpunkt, der neue Plan übernimmt die Drehung des alten. Danach den Massstab angeben oder messen und den Fixpunkt an derselben Stelle wie im alten Plan setzen. Rückgängig ist möglich.", "PDF wählen"))) return;
+    const file = await pickFile();
+    if (!file) return;
+    let bytes, info;
+    try { bytes = new Uint8Array(await file.arrayBuffer()); info = await openPdf(bytes); }
+    catch (err) { toast("Die PDF lässt sich nicht öffnen: " + (err?.message || err), "error"); return; }
+    let page = 1, size;
+    try {
+      if (info.pages > 1) {
+        const ch = await chooseDialog("Seite wählen", `Die PDF hat ${info.pages} Seiten. Welche gehört zu „${c.sheetLabel(sh(), S.active)}“?`, Array.from({ length: info.pages }, (_, i) => ({ label: `Seite ${i + 1}`, n: i + 1 })));
+        if (!ch?.option) return;
+        page = ch.option.n;
+      }
+      size = await pageSize(info.doc, page);
+    } catch (err) { toast("Die PDF-Seite lässt sich nicht lesen: " + (err?.message || err), "error"); return; }
+    finally { info.close(); }
+    const { w, h } = size, S0 = sh();
+    const relink = old && !old.asset; // nur die PDF fehlte: Massstab und Fixpunkt bleiben, keine Frage
+    const sc = relink ? null : await askScale(w, h);
+    const data = toBase64(bytes), same = Object.entries(S.doc.assets || {}).find(([, a]) => a.data === data); // dieselbe PDF für mehrere Stockwerke nur einmal speichern
+    const id = same ? same[0] : "pdf" + nextId();
+    if (!same) S.doc.assets = { ...(S.doc.assets || {}), [id]: { name: file.name, type: "application/pdf", data } };
+    change(() => { S0.bg = newBg(old, id, file.name, page, w, h); if (sc?.den) S0.bg.mmPerPt = kOfDen(sc.den); });
+    setTool(sc?.measure ? "pl-measure" : "select"); fitView();
+    const fixMsg = old ? "Jetzt den Fixpunkt an derselben Stelle wie im alten Plan setzen." : "Jetzt den Fixpunkt setzen (gleicher Punkt in allen Stockwerken).";
+    if (relink) toast("Plan wieder verbunden.");
+    else if (sc?.den) toast(`${old ? "Neuer Planstand" : "Plan"} geladen, Massstab ${fmtDen(sc.den)}. ${fixMsg}`);
+    else toast(`${old ? "Neuer Planstand" : "Plan"} geladen. Jetzt den Massstab messen (Messstrecke), dann den Fixpunkt setzen.`);
+  }
+  // Massstab bekannt (1:n eingeben, vorbelegt mit dem Druckmassstab) oder Strecke messen. Ergebnis { den }, { measure: true } oder null (später).
+  // Annahme Claude (wie Stringplan): Die PDF-Seite hat das Papierformat, auf dem der Massstab gilt (nicht verkleinert oder an die Seite angepasst).
+  function askScale(w, h, cur) {
+    const size = `${P.fmtLen(w * PT_MM)} × ${P.fmtLen(h * PT_MM)} mm`, v = cur ?? den();
+    const body = `<p>Massstab des Plans? Die PDF-Seite misst ${size}. Der Massstab stimmt nur, wenn der Plan auf dieser Seitengrösse gezeichnet ist (nicht verkleinert oder an die Seite angepasst). Im Zweifel eine bekannte Strecke messen.</p>`
+      + `<div class="field"><label>Massstab 1:</label><input type="text" data-den placeholder="z. B. 50" value="${String(Math.round(v * 100) / 100).replace(".", ",")}" autocomplete="off" spellcheck="false"></div>`
+      + `<div class="actions"><button class="btn outline" data-c>${cur === undefined ? "Später" : "Abbrechen"}</button><button class="btn outline" data-m>Strecke messen</button><button class="btn primary" data-ok>Massstab übernehmen</button></div>`;
+    return c.openModal("Massstab des Plans", body, (b, done) => {
+      if (b.dataset.c !== undefined) done(null);
+      else if (b.dataset.m !== undefined) done({ measure: true });
+      else if (b.dataset.ok !== undefined) {
+        const d = parseDen(document.querySelector("#modal-root [data-den]").value);
+        if (d) done({ den: d }); else toast("Bitte einen Massstab eingeben, z. B. 50 für 1:50.", "error");
+      }
+    }, null, "[data-den]");
+  }
+  async function enterScale() {
+    const b = sh().bg;
+    if (!b?.asset || !bgFree()) return;
+    const sc = await askScale(b.w, b.h, b.mmPerPt ? denOf(b.mmPerPt) : undefined);
+    if (!sc) return;
+    if (sc.measure) { setTool("pl-measure"); return; }
+    const k = kOfDen(sc.den);
+    if (k !== b.mmPerPt || b.measure) change(() => { b.mmPerPt = k; delete b.measure; }); // alte Messstrecke passt nicht mehr
+    fitView();
+    toast(`Massstab ${fmtDen(sc.den)} gesetzt.`);
+  }
+  async function finishMeasure(a, e) {
+    const b = sh().bg, pa = worldToPage(b, a[0], a[1]), pe = worldToPage(b, e[0], e[1]);
+    const r = await formDialog("Messstrecke", "Wie lang ist die Strecke in Wirklichkeit? Angabe in mm, z. B. 4500 für 4,5 m.", [{ label: "Länge in mm", value: "" }], "Weiter");
+    if (!r) return;
+    const mm = P.parseLen(r[0]), k = scaleFromMeasure([pa.u, pa.v], [pe.u, pe.v], mm);
+    if (!k) { toast("Bitte eine Länge grösser als 0 eingeben.", "error"); return; }
+    const std = nearestStd(k), d = denOf(k), prev = b.mmPerPt ? ` Bisher ${fmtDen(denOf(b.mmPerPt))}, Abweichung ${fmtPct(k / b.mmPerPt - 1)}.` : "";
+    const ch = await chooseDialog("Massstab bestätigen", `Aus der Messstrecke ergibt sich ${fmtDen(d)}. Vorschlag: ${fmtDen(std)}.${prev}`,
+      [{ label: `${fmtDen(std)} übernehmen (Normmassstab)`, k: kOfDen(std) }, { label: `${fmtDen(d)} übernehmen (wie gemessen)`, k }]);
+    if (!ch?.option) return;
+    change(() => { b.mmPerPt = ch.option.k; b.measure = { a: [pa.u, pa.v], b: [pe.u, pe.v], mm }; });
+    setTool("select"); fitView();
+    toast(`Massstab ${fmtDen(denOf(ch.option.k))} gesetzt.`);
+  }
+  // Plan drehen: Kante a→b soll waagrecht oder senkrecht liegen. Nur der PDF-Plan dreht (um den Nullpunkt), gezeichnete Objekte bleiben.
+  async function finishRotate(a, e) {
+    const d = alignAngle(a, e);
+    const r = await formDialog("Plan drehen", "Drehung des PDF-Plans um den Nullpunkt in Grad, positiv = gegen den Uhrzeigersinn. Der Vorschlag legt die angeklickte Kante waagrecht oder senkrecht. Wände, Symbole und Leitungen bleiben.", [{ label: "Drehung in Grad", value: String(Math.round(d * 100) / 100).replace(".", ",") }], "Drehen");
+    if (!r) return;
+    const deg = parseFloat(r[0].replace(/\s/g, "").replace(",", ".").replace("−", "-"));
+    if (!Number.isFinite(deg)) { toast("Bitte einen Winkel eingeben, z. B. 12,5.", "error"); return; }
+    if (!deg) return;
+    let rot;
+    change(() => { rot = rotatePlan(sh(), deg); });
+    c.renderSheet(); setTool("select");
+    toast(`Plan gedreht, jetzt ${fmtDeg(rot)}.`);
+  }
+  // Fixpunkt = gemeinsamer Nullpunkt aller Pläne: in jedem Stockwerk am selben Punkt des Gebäudes setzen, dann liegen die Pläne übereinander.
+  async function placeFix(p) {
+    const S0 = sh(), b = S0.bg;
+    let mode = fixMode(b, S0.items.length > 0);
+    if (mode === "ask") {
+      const ch = await chooseDialog("Fixpunkt verschieben", "Auf dem Plan liegen schon Objekte. Was soll mit ihnen geschehen?",
+        [{ label: "Objekte bleiben auf dem Plan (werden mitverschoben)", m: "plan" }, { label: "Objekte bleiben am Nullpunkt (neuer Planstand)", m: "fix" }]);
+      if (!ch?.option) return;
+      mode = ch.option.m;
+    }
+    const [x, y] = p;
+    change(() => {
+      const q = worldToPage(b, x, y); b.fix = [q.u, q.v]; delete b.swap;
+      if (mode === "plan") { P.moveItems(S0, S0.items.filter((i) => i.type !== "opening"), -x, -y); if (S0.pmid) S0.pmid = [Math.round(S0.pmid[0] - x), Math.round(S0.pmid[1] - y)]; }
+    });
+    S.view.x += x * S.view.z; S.view.y -= y * S.view.z; // Ansicht mitführen, der Plan bleibt auf dem Bildschirm stehen
+    c.applyView(); c.renderSheet(); setTool("select");
+    toast("Fixpunkt gesetzt.");
+  }
+  // Fang für Messen, Fixpunkt, Drehen: Ecken und Flächen der Wände, sonst frei (kein Raster, der PDF-Plan hat sein eigenes)
+  const snapBg = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: faces() });
+  // Vor dem Druck: Bilder der PDF-Pläne fertig rendern (files.js printSheets)
+  S.planPrep = async (sheets) => {
+    for (const S0 of sheets) {
+      if (S0.kind !== "plan" || !bgShown(S0)) continue;
+      const url = await imageReady(S.doc.assets, S0.bg.asset, S0.bg.page);
+      if (url) { const img = new Image(); img.src = url; await img.decode().catch(() => {}); }
+    }
+  };
+
   function bounds() {
-    const b = P.contentBox(sh());
+    const b = unionBox(P.contentBox(sh()), sh().bg ? bgBox(sh().bg) : null);
     if (b) { const pad = Math.max(500, Math.max(b.x1 - b.x0, b.y1 - b.y0) * 0.08); return { x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad }; }
     const { p, k, ox, oy } = pageAt(), [w, h] = paperSize(p);
     return { x0: ox, y0: oy, x1: ox + w * k, y1: oy + h * k };
@@ -127,14 +287,16 @@ export function makePlan(c) {
     const m = [(A[0] + B[0]) / 2 + n[0] * 1.6 * k, (A[1] + B[1]) / 2 + n[1] * 1.6 * k];
     return s + txt(m[0], m[1], label, 2.5 * k, Math.atan2(u[1], u[0]) * 180 / Math.PI, d.ctrl && ci.diff && Math.abs(ci.diff) >= 1 ? "#c0392b" : stroke);
   }
-  // Leitung: Strichmuster nach Art (Papier-mm × k), flexibel mit einer Welle in der Mitte jedes Abschnitts
-  function lineSVG(it, k, stroke = P.colOf(it), pts = it.pts) {
-    const dash = P.LINE_DASH[it.kind], w = 0.35 * k;
-    let s = `<path d="M${pts.map(pt).join("L")}" fill="none" stroke="${stroke}" stroke-width="${f(w)}" stroke-linejoin="round" ${dash ? `stroke-linecap="butt" stroke-dasharray="${dash.map((x) => f(x * k)).join(" ")}"` : 'stroke-linecap="round"'}/>`;
+  // Leitung: Strichmuster nach Art (Papier-mm × k), flexibel mit einer Welle in der Mitte jedes Abschnitts. Geschwungen: glatte Kurve durch die Punkte.
+  function lineSVG(it, k, stroke = P.colOf(it), pts = it.pts, curve = it.curve) {
+    const dash = P.LINE_DASH[it.kind], w = 0.35 * k, segs = curve && pts.length > 2 ? P.curveSegs(pts) : null;
+    const d = segs ? `M${pt(pts[0])}${segs.map(([, b, c2, e]) => `C${pt(b)} ${pt(c2)} ${pt(e)}`).join("")}` : `M${pts.map(pt).join("L")}`;
+    let s = `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${f(w)}" stroke-linejoin="round" ${dash ? `stroke-linecap="butt" stroke-dasharray="${dash.map((x) => f(x * k)).join(" ")}"` : 'stroke-linecap="round"'}/>`;
     if (it.kind === "flex") for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1], b = pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (L < 4 * k) continue;
-      const u = [(b[0] - a[0]) / L, (b[1] - a[1]) / L], n = [-u[1], u[0]], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], at = (t, q) => [m[0] + u[0] * t * k + n[0] * q * k, m[1] + u[1] * t * k + n[1] * q * k];
+      const bz = segs && P.bezAt(segs[i - 1], 0.5), v = bz ? bz.v : [b[0] - a[0], b[1] - a[1]], lv = Math.hypot(v[0], v[1]) || 1; // geschwungen: Welle in der Mitte des Bogens, entlang der Kurve
+      const u = [v[0] / lv, v[1] / lv], n = [-u[1], u[0]], m = bz ? bz.p : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], at = (t, q) => [m[0] + u[0] * t * k + n[0] * q * k, m[1] + u[1] * t * k + n[1] * q * k];
       s += `<path d="M${pt(at(-1.2, 0))}L${pt(at(1.2, 0))}" stroke="#fff" stroke-width="${f(w * 1.6)}"/><path d="M${pt(at(-1.2, 0))}Q${pt(at(-0.6, 1.1))} ${pt(at(0, 0))}Q${pt(at(0.6, -1.1))} ${pt(at(1.2, 0))}" fill="none" stroke="${stroke}" stroke-width="${f(w)}" stroke-linecap="round"/>`;
     }
     return s;
@@ -200,9 +362,9 @@ export function makePlan(c) {
       else if (it.type === "opening") { const w = sh().items.find((i) => i.id === it.wall); if (w) s += `<g class="pl-scale">${openingSVG(w, it, k, SEL)}</g>` + edgeGrips(w, it).map((g) => grip(g.p)).join(""); }
       else if (it.type === "dim") { s += `<g class="pl-scale">${dimSVG(it, k, SEL)}</g>`; if (it.ref === undefined) s += grip(it.a) + grip(it.b); }
       else if (it.type === "sym") s += `<g class="pl-scale">${symSVG(it, k, SEL)}</g>`;
-      else if (it.type === "line") s += `<g class="pl-scale">${lineSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? it.pts.map(grip).join("") : "");
+      else if (it.type === "line") s += `<g class="pl-scale">${lineSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
     }
-    if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, [...lineDraft.pts, [mouse.x, mouse.y]])}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
+    if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, draftPts([...lineDraft.pts, [mouse.x, mouse.y]]), opt.lcurve)}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
     if (drag?.type === "box" && drag.started) { const b = boxOf(drag); s += `<rect x="${f(b.x0)}" y="${f(b.y0)}" width="${f(b.x1 - b.x0)}" height="${f(b.y1 - b.y0)}" fill="rgba(47,158,88,.08)" stroke="${SEL}" stroke-width="1" stroke-dasharray="5 3"/>`; }
     if (draft && mouse) {
       const b = draftEnd();
@@ -222,6 +384,7 @@ export function makePlan(c) {
       const b = dimDraft.b ?? [mouse.x, mouse.y], d = { a: dimDraft.a, b, off: dimDraft.b ? offAt(dimDraft.a, dimDraft.b, [raw.x, raw.y]) : 0, ctrl: opt.ctrl };
       if (Math.hypot(b[0] - d.a[0], b[1] - d.a[1]) > 1) s += `<g class="pl-scale">${dimSVG(d, k, DRAFT)}</g>`;
     }
+    if (bgDraft && mouse) s += measureSVG({ x: bgDraft[0], y: bgDraft[1] }, mouse, S.tool === "pl-rotate" ? "Kante" : "", z);
     if (S.tool === "pl-pmid" && mouse) { const { a, k: d, ox, oy } = pageAt([mouse.x, mouse.y]); s += `<rect x="${f(ox + a.x0 * d)}" y="${f(oy + a.y0 * d)}" width="${f((a.x1 - a.x0) * d)}" height="${f((a.y1 - a.y0) * d)}" fill="rgba(47,109,179,.06)" stroke="${DRAFT}" stroke-width="1.5" stroke-dasharray="6 4"/>`; } // Vorschau des Planfelds
     if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r, h: SYM_BY_KEY.get(opt.sym).h }, k, DRAFT)}</g>`; }
     if (S.tool === "pl-open" && raw) { const pv = openPreview(); if (pv) s += `<g class="pl-scale">${openingSVG(pv.w, pv.o, k, DRAFT)}</g>`; }
@@ -246,7 +409,7 @@ export function makePlan(c) {
   function printPages(S0, i = 0) {
     const p = P.paperOf(S0), a = printArea(p), [mx, my] = centerOf(S0), cx = (a.x0 + a.x1) / 2, cy = (a.y0 + a.y1) / 2, id = `plclip${i}`;
     const inner = `<clipPath id="${id}"><rect x="${f(a.x0)}" y="${f(a.y0)}" width="${f(a.x1 - a.x0)}" height="${f(a.y1 - a.y0)}"/></clipPath>`
-      + `<g clip-path="url(#${id})"><g class="pl-print" transform="translate(${f(cx)} ${f(cy)}) scale(${1 / p.den}) translate(${f(-mx)} ${f(-my)})">${keepW(itemsSVG(S0))}</g></g>`;
+      + `<g clip-path="url(#${id})"><g class="pl-print" transform="translate(${f(cx)} ${f(cy)}) scale(${1 / p.den}) translate(${f(-mx)} ${f(-my)})">${bgImg(S0, () => {})}${keepW(itemsSVG(S0))}</g></g>`;
     return [pageSVG(p, S0.meta, info(p), inner), ...(S0.bom === false ? [] : bomPages(S0, c.sheetLabel(S0, i)))];
   }
   // Stückliste: A4 hoch, Symbol (Farbe der Vorgabe), Bezeichnung, Anzahl, nach Gruppen; ohne Symbole keine Seite
@@ -319,6 +482,15 @@ export function makePlan(c) {
       else addDim(offAt(dimDraft.a, dimDraft.b, [w.x, w.y]));
       renderOverlay(); updateHint(); return;
     }
+    if (T === "pl-measure" || T === "pl-rotate") {
+      const p = snapBg(w, bgDraft), q = [p.x, p.y]; mouse = p;
+      if (!bgDraft) { bgDraft = q; renderOverlay(); updateHint(); return; }
+      const a = bgDraft; bgDraft = null; renderOverlay(); updateHint();
+      if (Math.hypot(q[0] - a[0], q[1] - a[1]) < 1) return;
+      if (T === "pl-measure") finishMeasure(a, q); else finishRotate(a, q);
+      return;
+    }
+    if (T === "pl-fix") { const p = snapBg(w); placeFix([p.x, p.y]); return; }
     if (T === "pl-pmid") { change(() => { sh().pmid = [Math.round(w.x), Math.round(w.y)]; }); setTool("select"); c.renderSheet(); toast("Druckmitte gesetzt. Oben unter „Druck“ zurück auf automatisch."); return; }
     if (T !== "select") return;
     const one = S.sel.size === 1 ? sel()[0] : null, t = tol(), near = (p) => Math.hypot(p[0] - w.x, p[1] - w.y) <= t;
@@ -344,7 +516,7 @@ export function makePlan(c) {
   }
   function move(w, e) {
     raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
-    mouse = S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
+    mouse = S.tool === "pl-measure" || S.tool === "pl-rotate" || S.tool === "pl-fix" ? snapBg(w, bgDraft ?? undefined) : S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
     const d = drag;
     if (d) {
       if (!d.started && Math.hypot(w.x - d.sx, w.y - d.sy) * S.view.z > 3) d.started = true;
@@ -405,10 +577,11 @@ export function makePlan(c) {
     renderOverlay(); updateHint();
   }
   const same = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < P.EPS;
+  const draftPts = (pts) => (opt.lcurve ? P.bowPts(pts) : pts); // geschwungen mit zwei Punkten: Bogen (Zwischenpunkt)
   // Leitung abschliessen (ab zwei Punkten), sonst verwerfen
   function finishLine() {
     const pts = lineDraft?.pts ?? []; lineDraft = null;
-    if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "line", layer: sh().alay, pts, kind: opt.lkind }, id))); }
+    if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "line", layer: sh().alay, pts: draftPts(pts), kind: opt.lkind, curve: opt.lcurve }, id))); }
     renderOverlay(); updateHint();
   }
   // Kopieren, Einfügen (je Mal 5 mm auf dem Papier weiter versetzt), Duplizieren, alles wählen
@@ -422,8 +595,8 @@ export function makePlan(c) {
   function selAll() { if (S.tool !== "select") setTool("select"); S.sel = new Set(pickable().map((i) => i.id)); renderRight(); renderOverlay(); }
   // Entwurf beenden. Gibt true, wenn etwas abgebrochen wurde.
   function cancel() {
-    const had = !!(draft || dimDraft || lineDraft);
-    draft = null; dimDraft = null; lineDraft = null;
+    const had = !!(draft || dimDraft || lineDraft || bgDraft);
+    draft = null; dimDraft = null; lineDraft = null; bgDraft = null;
     return had;
   }
   function del() {
@@ -434,7 +607,7 @@ export function makePlan(c) {
 
   // ---------- Tasten ----------
   const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", k: "pl-line", l: "pl-line" };
-  const GRUND_TOOLS = ["pl-wall", "pl-open", "pl-dim"];
+  const GRUND_TOOLS = ["pl-wall", "pl-open", "pl-dim", "pl-measure", "pl-fix", "pl-rotate"];
   // Grundriss-Werkzeuge (Wand, Tür/Fenster, Mass) gibt es nur auf der Ebene Hintergrund (ohne sie auf der einzigen Ebene)
   const grundOn = () => sh().alay === "bg" || !P.layerById(sh(), "bg");
   function key(e, mod) {
@@ -459,6 +632,7 @@ export function makePlan(c) {
       if (k === "Enter" || k === "Escape") { finishLine(); return true; }
       if (k === "Backspace") { lineDraft.pts.pop(); if (!lineDraft.pts.length) lineDraft = null; renderOverlay(); updateHint(); return true; }
     }
+    if (bgDraft && k === "Escape") { bgDraft = null; renderOverlay(); updateHint(); return true; }
     if (dimDraft && k === "Escape") { dimDraft = null; renderOverlay(); updateHint(); return true; }
     if (k.toLowerCase() === "x" && S.tool === "pl-wall" && !e.altKey) { opt.side = -(draft?.side ?? (opt.side || 1)); if (draft) { draft.side = opt.side; draft.auto = false; } renderRight(); renderOverlay(); updateHint(); return true; } // Wandseite wechseln
     if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Links die Ebene wechseln."); return true; } setTool(t); return true; }
@@ -479,12 +653,16 @@ export function makePlan(c) {
 
   // ---------- Linke Leiste: Werkzeuge und Ebenen ----------
   const toolBtn = (id, icon, label, key) => `<button class="tool" data-tool="${id}" aria-pressed="${S.tool === id}" title="${label} (Taste ${key})">${icon}<span>${label}</span><span class="key">${key}</span></button>`;
+  const bgTool = (id, icon, label) => `<button class="tool" data-tool="${id}" aria-pressed="${S.tool === id}">${icon}<span>${label}</span></button>`;
   function leftHTML() {
     const S0 = sh();
     let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>` + toolBtn("select", R.icons.select, "Auswählen", "V") + toolBtn("hand", R.icons.hand, "Ansicht schieben", "H")
       + `<button class="tool" data-plact="multi" aria-pressed="${opt.multi}" title="Mehrfachwahl: Klick fügt hinzu oder nimmt weg (wie Shift-Klick)">${ICON.multi}<span>Mehrfachwahl</span><span class="key">⇧</span></button>`
       + `<button class="tool" data-plact="free" aria-pressed="${opt.free}" title="Fang aus: frei setzen ohne Raster, Ecken und Ausrichtung (wie Alt gedrückt halten)">${ICON.free}<span>Fang aus</span><span class="key">⌥</span></button>`
-      + `</section>` + (grundOn() ? `<section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
+      + `</section>` + (grundOn() ? `<section class="section"><h2 class="section-title">Plan (PDF)</h2><button class="tool" data-plact="pdf">${ICON.pdf}<span>${S0.bg?.asset ? "Neuer Planstand" : "PDF-Plan laden"}</span></button>`
+        + (S0.bg?.asset ? `<button class="tool" data-plact="scale">${ICON.scale}<span>Massstab eingeben</span></button>` + bgTool("pl-measure", ICON.measure, "Massstab messen") + bgTool("pl-fix", ICON.fix, "Fixpunkt setzen") + bgTool("pl-rotate", ICON.rotate, "Plan drehen") : "")
+        + (S0.bg ? `<p class="note">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "")
+        + `</section><section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
       + `<section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "L")
       + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`;
     for (const l of [...S0.layers].reverse()) { // oben = zuletzt gezeichnet
@@ -511,6 +689,8 @@ export function makePlan(c) {
   }
   async function leftAct(b) {
     const S0 = sh(), id = b.dataset.layer, a = b.dataset.plact;
+    if (a === "pdf") { loadPdf(); return; }
+    if (a === "scale") { enterScale(); return; }
     if (a === "free") { opt.free = !opt.free; S.alt = opt.free; renderLeft(); mod(); updateHint(); return; }
     if (a === "multi") { opt.multi = !opt.multi; if (S.tool !== "select") setTool("select"); renderLeft(); updateHint(); return; }
     if (a === "alay") { if (S0.alay !== id) { change(() => { S0.alay = id; }, { panel: false }); if (GRUND_TOOLS.includes(S.tool) && !grundOn()) { cancel(); setTool("select"); } else setTool(S.tool); } return; }
@@ -528,6 +708,7 @@ export function makePlan(c) {
   // ---------- Rechte Leiste ----------
   const sel1 = (k, opts, cur, label) => `<div class="field"><label>${label}</label><select data-plf="${k}">${opts.map(([v, l]) => `<option value="${v}"${String(v) === String(cur) ? " selected" : ""}>${R.esc(l)}</option>`).join("")}</select></div>`;
   const inp = (k, label, v, attr = 'data-plf') => `<div class="field"><label>${label}</label><input type="text" inputmode="decimal" ${attr}="${k}" value="${R.esc(v)}" autocomplete="off"></div>`;
+  const LINE_FORMS = [["0", "gerade (Ecken)"], ["1", "geschwungen (Bogen)"]];
   const layerOpts = () => sh().layers.map((l) => [l.id, l.name]);
   const del1 = () => `<div class="row"><button class="btn outline small danger" data-act="del">${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Löschen</button></div>`;
   // Farbe (5.100): Felder für Leitungen und Symbole der Wahl, «Vorgabe» nimmt die eigene Farbe weg
@@ -565,7 +746,7 @@ export function makePlan(c) {
         + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
         + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben.`) + copyRow() + del1();
     }
-    if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
+    if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + sel1("lc", LINE_FORMS, it.curve ? "1" : "0", "Form") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
       + note(`${it.pts.length} Punkte. Griffe an den Punkten ziehen (Fang an Symbolmitten und Leitungspunkten, Shift 0/45/90°), Ziehen an der Linie verschiebt sie.`) + copyRow() + del1();
     if (it) return head(it.type) + copyRow() + del1();
     if (sel0.length > 1) {
@@ -581,8 +762,8 @@ export function makePlan(c) {
       + note("Gezeichnet wird die Innenkante, die Wand wächst nach aussen (automatisch nach der ersten Kurve, Taste X wechselt die Seite). Eingetippte Länge = lichte Länge. Gespeichert wird die Mittellinie. Orange Hilfslinien: Ausrichtung an Anfang, Ecken und letztem Punkt (Alt ohne Fang).");
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
     else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Vorgabe Höhe: ${def.h !== undefined ? `${def.h} cm` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`); }
-    else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo")
-      + note("Fang an Symbolmitten, Leitungspunkten und Wandecken, Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
+    else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
+      + note("Fang an Symbolmitten, Leitungspunkten und Wandecken, Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen: die Kurve läuft durch alle Punkte, mit zwei Punkten entsteht ein Bogen (Mittelpunkt danach ziehbar). Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
     if (S.tool === "select" && clip?.length) h += `<div class="row"><button class="btn outline small" data-plact="paste">Einfügen (${clip.filter((i) => i.type !== "opening").length})</button><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
     else if (S.tool === "select") h += `<div class="row"><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
@@ -599,6 +780,7 @@ export function makePlan(c) {
       else if (k === "ow") { const v = P.parseLen(t.value); if (v > 0) opt.ow[opt.okind] = v; }
       else if (k === "ctrl") opt.ctrl = t.checked;
       else if (k === "lkind") { opt.lkind = t.value; updateHint(); }
+      else if (k === "lcurve") { opt.lcurve = t.value === "1"; updateHint(); }
       else if (k === "side") { opt.side = Number(t.value) < 0 ? -1 : Number(t.value) > 0 ? 1 : 0; if (draft) { draft.side = opt.side || 1; draft.auto = opt.side === 0; } }
       else opt[k] = t.value;
       renderRight(); renderOverlay(); updateHint(); return true;
@@ -613,6 +795,7 @@ export function makePlan(c) {
     const k = t.dataset.plf, v = t.value;
     if (k === "mlayer") { if (P.layerById(S0, v)) change(() => { for (const x of sel()) if (x.type !== "opening") x.layer = v; }); else renderRight(); return true; }
     if (k === "lk") { change(() => { it.kind = v; }); return true; }
+    if (k === "lc") { change(() => { if (v === "1") { it.curve = true; it.pts = P.bowPts(it.pts); } else delete it.curve; }); return true; }
     const L = P.parseLen(v), bad = () => { toast(`„${v}“ nicht verstanden. Beispiele: 3450, 345 cm, 3,45 m.`, "error"); renderRight(); };
     if (k === "len") { if (!(L > 0)) return bad(), true; change(() => (it.type === "wall" ? P.setWallLength(S0, it, L) : P.setDimLength(S0, it, L))); return true; }
     if (k === "soll") { const s = v.trim() ? L : undefined; if (v.trim() && !(L > 0)) return bad(), true; change(() => { if (s) it.soll = s; else delete it.soll; }); return true; }
@@ -656,7 +839,10 @@ export function makePlan(c) {
     if (S.tool === "pl-open") return `Öffnung: Klick auf eine Wand setzt ${P.OPENINGS.find(([k]) => k === opt.okind)[1]} (${P.fmtLen(opt.ow[opt.okind])} mm) mittig auf den Klick. Art und Breite rechts.`;
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
     if (S.tool === "pl-sym") return `Symbol: Klick setzt ${SYM_BY_KEY.get(opt.sym).label}. ${SYM_BY_KEY.get(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."} Esc oder V beendet.`;
-    if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;
+    if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt${opt.lcurve ? ", geschwungen" : ""}). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;
+    if (S.tool === "pl-measure") return bgDraft ? "Massstab messen: Endpunkt der bekannten Strecke klicken (Shift 0/45/90°). Esc bricht ab." : "Massstab messen: Anfang einer bekannten Strecke auf dem PDF-Plan klicken (z. B. eine Masskette). Danach die Länge in mm eingeben.";
+    if (S.tool === "pl-rotate") return bgDraft ? "Plan drehen: zweiten Punkt der Kante klicken. Esc bricht ab." : "Plan drehen: zwei Punkte einer Kante klicken, die waagrecht oder senkrecht liegen soll.";
+    if (S.tool === "pl-fix") return "Fixpunkt: Punkt auf dem PDF-Plan klicken, der in allen Stockwerken gleich liegt (z. B. Ecke Treppenhaus). Er wird zum Nullpunkt.";
     if (S.tool === "pl-pmid") return "Druckmitte: in den Plan klicken, dort liegt die Mitte des Planfelds (Rahmen zeigt den Druckbereich). Esc bricht ab.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
     return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "Shift-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, K Leitung, R dreht Symbole.`;

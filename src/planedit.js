@@ -16,6 +16,7 @@ const ICON = {
   wall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v6H3z"/><path d="M6 15l6-6M11 15l6-6M16 15l5-5"/></svg>',
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h5M17 18h5"/><path d="M7 18V8"/><path d="M7 8a10 10 0 0110 10"/></svg>',
   line: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18L10 8h10"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>',
+  free: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v7a5 5 0 0010 0V4"/><path d="M7 4h3v3H7zM14 4h3v3h-3z"/><path d="M3 21L21 3"/></svg>',
   multi: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5" stroke-dasharray="3 2.5"/><path d="M8 12l3 3 5-6"/></svg>',
   eye: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>',
   eyeOff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" opacity=".35"/><path d="M4 4l16 16"/></svg>',
@@ -30,7 +31,7 @@ export function makePlan(c) {
   const sh = () => S.model;
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
-  const opt = { d: P.WALL_D, mat: "mauer", side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", multi: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart; multi = Klick fügt zur Wahl hinzu
+  const opt = { d: P.WALL_D, mat: "mauer", side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
   let draft = null; // Wand im Entstehen: { a, start, len, ang, field }
@@ -281,7 +282,7 @@ export function makePlan(c) {
 
   // ---------- Zeiger ----------
   function down(w, e) {
-    raw = w; S.shift = e.shiftKey; S.alt = e.altKey;
+    raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
     const T = S.tool;
     if (T === "pl-wall") {
       const p = snapWall(w, draft?.a);
@@ -342,7 +343,7 @@ export function makePlan(c) {
     renderRight(); renderOverlay();
   }
   function move(w, e) {
-    raw = w; S.shift = e.shiftKey; S.alt = e.altKey;
+    raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
     mouse = S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
     const d = drag;
     if (d) {
@@ -482,6 +483,7 @@ export function makePlan(c) {
     const S0 = sh();
     let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>` + toolBtn("select", R.icons.select, "Auswählen", "V") + toolBtn("hand", R.icons.hand, "Ansicht schieben", "H")
       + `<button class="tool" data-plact="multi" aria-pressed="${opt.multi}" title="Mehrfachwahl: Klick fügt hinzu oder nimmt weg (wie Shift-Klick)">${ICON.multi}<span>Mehrfachwahl</span><span class="key">⇧</span></button>`
+      + `<button class="tool" data-plact="free" aria-pressed="${opt.free}" title="Fang aus: frei setzen ohne Raster, Ecken und Ausrichtung (wie Alt gedrückt halten)">${ICON.free}<span>Fang aus</span><span class="key">⌥</span></button>`
       + `</section>` + (grundOn() ? `<section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
       + `<section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "L")
       + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`;
@@ -509,6 +511,7 @@ export function makePlan(c) {
   }
   async function leftAct(b) {
     const S0 = sh(), id = b.dataset.layer, a = b.dataset.plact;
+    if (a === "free") { opt.free = !opt.free; S.alt = opt.free; renderLeft(); mod(); updateHint(); return; }
     if (a === "multi") { opt.multi = !opt.multi; if (S.tool !== "select") setTool("select"); renderLeft(); updateHint(); return; }
     if (a === "alay") { if (S0.alay !== id) { change(() => { S0.alay = id; }, { panel: false }); if (GRUND_TOOLS.includes(S.tool) && !grundOn()) { cancel(); setTool("select"); } else setTool(S.tool); } return; }
     if (a === "show" || a === "lock") { change(() => { const l = P.layerById(S0, id); l[a] = !l[a]; if (!P.isPickable(S0, { layer: id })) S.sel = new Set([...S.sel].filter((x) => P.isPickable(S0, S0.items.find((i) => i.id === x)))); }); renderLeft(); return; }

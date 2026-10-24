@@ -70,6 +70,17 @@ with sync_playwright() as p:
     page.click('[data-plact="alay"][data-layer="bg"]'); page.wait_for_timeout(100)
     check("Zurück auf Hintergrund: Grundriss-Werkzeuge wieder da", page.locator('[data-tool="pl-wall"]').count() == 1)
 
+    # Fang aus ohne Tastatur (Touch): Knopf wirkt wie Alt, Raster 100 mm greift nicht
+    key("w"); page.click('[data-plact="free"]'); page.wait_for_timeout(80)
+    check("Knopf «Fang aus» gedrückt", page.get_attribute('[data-plact="free"]', "aria-pressed") == "true")
+    n0 = len(of("wall")); click(2037, -513); click(3071, -513); key("Escape")
+    w = of("wall")[n0:]
+    check("Fang aus: Wand frei gesetzt, nicht auf dem Raster", len(w) == 1 and all(abs(v[0] % 100) > 1 for v in (w[0]["a"], w[0]["b"])), w)
+    page.click('[data-plact="free"]'); page.wait_for_timeout(80); n0 = len(of("wall")); click(2537, -1213); click(3571, -1213); key("Escape")
+    w = of("wall")[n0:]
+    check("Fang wieder an: Wand rastet auf dem Raster", page.get_attribute('[data-plact="free"]', "aria-pressed") == "false" and len(w) == 1 and abs(w[0]["a"][0] % 100) < 1e-6, w)
+    key("v")
+
     # Neues Plan-Modul: eingepasst, nicht mit Zoom/Ausschnitt des vorigen Plans (lag dort, wo die Maus beim Zoomen war)
     s = page.locator("#svg").bounding_box(); page.mouse.move(s["x"] + 60, s["y"] + 60)
     for _ in range(6): page.mouse.wheel(0, -300); page.wait_for_timeout(40)

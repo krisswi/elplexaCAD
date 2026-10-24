@@ -857,7 +857,7 @@ function addPlan(v) {
     sh.sid = nextId(); sh.meta.BLATT = String(maxNo("plan") + 1);
     S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
   });
-  afterSheetChange(k0);
+  afterSheetChange(k0, { fit: true }); // CJ 24.10.2026: neuer Plan eingepasst, nicht mit Zoom/Ausschnitt des vorigen Plans (lag dort, wo die Maus beim Zoomen war)
 }
 // Stringübersicht: eine für alle Stringpläne der Datei (CJ 14.10.), seit 18.10.2026 eine je PV-Modul. Gibt es sie schon, wird sie angezeigt.
 function addPvTab() {

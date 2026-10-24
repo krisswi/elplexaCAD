@@ -71,7 +71,7 @@ export function makeMenu(menu, { up = false, left = false, form = false, onOpen,
       anchorId = btn.id; menu.hidden = false; btn.setAttribute("aria-expanded", "true");
       menu.classList.toggle("instant", instant); // per Taste geöffnet: ohne Bewegung
       if (onOpen) onOpen(); else items()[0]?.focus();
-      menu.style.maxHeight = `${innerHeight - 16}px`; menu.style.overflowY = "auto"; // höher als das Fenster: scrollen statt abschneiden
+      if (typeof ELPLEXA !== "undefined" && ELPLEXA) { menu.style.maxHeight = `${innerHeight - 16}px`; menu.style.overflowY = "auto"; } // höher als das Fenster: scrollen statt abschneiden (v3 erst mit OK von CJ)
       const r = btn.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight; // am Knopf, bleibt im Bild
       if (beside) { menu.style.top = `${Math.max(8, Math.min(r.top, innerHeight - 8 - h))}px`; menu.style.left = `${Math.max(8, beside.getBoundingClientRect().left - 8 - w)}px`; menu.style.transformOrigin = "top right"; return; }
       menu.style.transformOrigin = "";

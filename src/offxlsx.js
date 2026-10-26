@@ -3,6 +3,7 @@
 // Betrag = Menge × Preis, Kapitel = SUMMEWENNS über die Positionen ohne nicht aktivierte Optionen, Zwischensumme, Rabatt (Basis als Wert),
 // MwSt, Total auf 5 Rappen. EK, Faktor, Zeit, Zeitfaktor und Ansatz stehen nie in der Datei. prices = false: ohne Preis, Betrag, Summen.
 // Spalten (auch für den späteren Import): A Pos, B Titel, C Beschreibung, D IC, E Menge, F EH, G Preis, H Betrag, I Option.
+// Gliederung (CJ 26.10.2026): Knoten als Kopfzeile «Wohnung 1 [RGL]» (Spalte B), «Total …» des Knotens = Summe seiner Kapitelsummen.
 import * as O from "./offerte.js";
 import { profilLines } from "./profil.js";
 import { zipFiles } from "./zip.js";
@@ -25,8 +26,11 @@ export function sheetRows(of, { profil = null, kunde = {}, projekt = "", prices 
   for (const [k, v] of [["Datum", of.datum], ["Version", of.ver], ["Gültig bis", of.gueltig], ["Abrechnungsart", O.ARTEN[of.art]], ["Bauart", O.BAUARTEN[of.bau]]]) if (v) add([{ v: k, s: ST.soft }, { v }]);
   add();
   add(["Pos", "Titel", "Beschreibung", "IC", "Menge", "EH", ...(prices ? ["Preis", "Betrag", "Option"] : ["Option"])].map((v) => ({ v, s: ST.b })));
-  const optCol = prices ? "I" : "G", kapCells = [];
-  of.kap.forEach((k, ki) => {
+  const optCol = prices ? "I" : "G", kapCells = new Map(), order = O.kapOrder(of), knKap = new Map(); // knKap: Kapitelsummen-Zeilen je Knoten (mit allem darunter)
+  for (const e of O.outline(of)) {
+    if (e.t === "kn") { add([{ v: "" }, { v: O.knLabel(e.n), s: ST.big }]); continue; }
+    if (e.t === "end") { if (prices) add([{ v: "" }, { v: `Total ${e.n.titel || "Ohne Titel"}`, s: ST.b }, ...Array(5).fill({ v: "" }), { f: `SUM(${(knKap.get(e.n.id) || []).map((c) => `H${c}`).join(",")})`, v: tot.kn.get(e.n.id) || 0, s: ST.chfB }]); add(); continue; }
+    const k = e.k, ki = order.indexOf(k);
     const r0 = add([{ v: k.bkp, s: ST.b }, { v: k.titel || O.bkpTitle(k.bkp), s: ST.b }]);
     k.grp.forEach((g, gi) => {
       if (g.titel) add([{ v: "" }, { v: g.titel, s: ST.b }]);
@@ -40,19 +44,20 @@ export function sheetRows(of, { profil = null, kunde = {}, projekt = "", prices 
     if (prices) {
       const label = `Total ${k.titel || ""} BKP ${O.bkpMain(k.bkp) || k.bkp}`.replace(/\s+/g, " ");
       // Kapitelsumme: Positionen (Spalte A gefüllt) ohne nicht aktivierte Optionen
-      const rs = add([{ v: "" }, { v: label, s: ST.b }, ...Array(5).fill({ v: "" }), { f: `SUMIFS(H${r0 + 1}:H${r1},${optCol}${r0 + 1}:${optCol}${r1},"<>${OPT_OFF}",A${r0 + 1}:A${r1},"<>")`, v: tot.kap[ki].summe, s: ST.chfB }]);
-      kapCells.push(rs);
+      const rs = add([{ v: "" }, { v: label, s: ST.b }, ...Array(5).fill({ v: "" }), { f: `SUMIFS(H${r0 + 1}:H${r1},${optCol}${r0 + 1}:${optCol}${r1},"<>${OPT_OFF}",A${r0 + 1}:A${r1},"<>")`, v: tot.kapSum.get(k.id) || 0, s: ST.chfB }]);
+      kapCells.set(k.id, rs);
+      for (const n of O.knPath(of, k.kn)) { if (!knKap.has(n.id)) knKap.set(n.id, []); knKap.get(n.id).push(rs); }
     }
     add();
-  });
+  }
   if (prices && of.kap.length) {
     const { rows: sr, notes } = O.summaryRows(of, tot), at = {};
     add([{ v: "" }, { v: "Schlusszusammenstellung", s: ST.big }]);
-    let ki = 0;
     for (const r of sr) {
-      const n = rows.length + 1, cell = (f, s = ST.chf) => [{ v: "" }, { v: r.text, s: s === ST.chfB ? ST.b : 0 }, ...Array(5).fill({ v: "" }), { f, v: r.betrag, s }];
-      if (r.art === "kap") { add(cell(`H${kapCells[ki++]}`)); continue; }
-      if (r.art === "zs") { at.zs = n; add(cell(`SUM(${kapCells.map((c) => `H${c}`).join(",")})`, ST.chfB)); continue; }
+      const n = rows.length + 1, ind = "   ".repeat(r.lv || 0), cell = (f, s = ST.chf) => [{ v: "" }, { v: ind + r.text, s: s === ST.chfB ? ST.b : 0 }, ...Array(5).fill({ v: "" }), { f, v: r.betrag, s }];
+      if (r.art === "kn") { add(cell(`SUM(${(knKap.get(r.id) || []).map((c) => `H${c}`).join(",")})`, ST.chfB)); continue; } // Summe je Knoten
+      if (r.art === "kap") { add(cell(`H${kapCells.get(r.id)}`)); continue; }
+      if (r.art === "zs") { at.zs = n; add(cell(`SUM(${[...kapCells.values()].map((c) => `H${c}`).join(",")})`, ST.chfB)); continue; }
       if (r.art === "rab") { (at.rab ||= []).push(n); add(cell(`-${r.basis}*${r.satz}/100`)); continue; } // Basis als Wert: Summe der Gruppen dieser Rabattgruppe
       if (r.art === "netto") { at.netto = n; add(cell(`H${at.zs}+${at.rab.map((c) => `H${c}`).join("+")}`)); continue; }
       const netto = `H${at.netto || at.zs}`;

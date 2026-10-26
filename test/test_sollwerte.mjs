@@ -60,9 +60,9 @@ set("ic", ""); assert.deepStrictEqual([p.ic, p.std], [undefined, 0.6], "IC-Code 
 const q = O.addPosition(of, g, { titel: "Schalter", std: 0.3 }); OF.apply(of, { dataset: { of: `p${q.id}.ic` }, value: "22", type: "text" });
 assert.strictEqual(q.std, 0.3, "Position mit eigener Zeit bleibt");
 
-// Kopie aus der Positionsdatenbank: Zeit aus dem IC-Code, wenn der Eintrag keine hat
+// Treffer der Positionsdatenbank (Lupe): Zeit aus dem IC-Code, wenn der Eintrag keine hat
 await PD.save({ titel: "Abzweigdose", ic: "23" }); await PD.save({ titel: "Leuchte", ic: "22", std: 1 });
-const add = (t) => { const e = PD.list().find((x) => x.titel === t), r = OF.action(of, { dataset: { ofact: "dbadd", db: e.id } }); r.fn(); return O.findPos(of, Number(r.focus().match(/\d+/)[0])).p; };
+const add = (t) => OF.dbFill(of, O.addPosition(of, g, {}).id, PD.list().find((x) => x.titel === t));
 assert.strictEqual(add("Abzweigdose").std, 0.8);
 assert.strictEqual(add("Leuchte").std, 1, "Zeit des Eintrags gilt");
 

@@ -1,11 +1,15 @@
 // Modul «Offerten», Schritt 5 (CJ 26.10.2026): bestehende Excel-Offerte (.xlsx) als neue Offerte einlesen. Ohne Bibliothek: ZIP lesen, XML der Blätter
 // mit den gespeicherten Werten (bei Formeln der zuletzt von Excel berechnete Wert). Deutung (mit CJ an Offerte.xlsx abgesprochen):
 // - Kopfzeile = erste Zeile mit einer Textspalte (Artikel, Titel, Bezeichnung, Beschreibung) und einer Mengenspalte (Menge, Anzahl, Stunden).
-// - Zeile mit Text, ohne Menge, EK und Preis: Gruppe; steht dazu eine BKP-Nummer (Spalte BKP oder Pos), ein Kapitel.
+// - Zeile mit Text, ohne Menge, EK und Preis: Knoten der Gliederung (CJ 26.10.2026, z. B. Raum), Art aus «[RGL]» am Ende (eigener Export), sonst Raum;
+//   steht dazu eine BKP-Nummer (Spalte BKP oder Pos), ein Kapitel unter dem aktuellen Knoten. Innerhalb eines solchen Kapitels (bis zur Zeile «Total …»)
+//   ist eine Textzeile eine Gruppe im Kapitel (eigener Export: Gruppen mit Titel, Messerli: Knoten stehen vor den Kapiteln).
 // - Zeile mit Text und Menge, EK oder Preis: Position. EK wird EK (Preis = EK × Materialfaktor wie im Editor), ein abweichender Preis gilt als Preis von Hand.
 //   Ohne EK gilt der Preis (bei Stunden der Ansatz). Zeilen «Total …», «Zwischensumme …» fallen weg, «Schlusszusammenstellung» beendet das Blatt.
-// - Materialfaktor aus einer Zelle «Faktor» über der Kopfzeile. Jedes weitere Blatt mit Kopfzeile wird eine eigene Gruppe (Stunden: «Arbeit»).
-// - Ohne BKP kommt alles in ein Kapitel ohne Nummer (BKP trägt CJ nach). Die eigene Excel aus dem Export (offxlsx.js) liest sich gleich wieder ein.
+//   Hat die Position eine eigene BKP-Nummer, kommt sie ins Kapitel mit dieser Nummer unter dem aktuellen Knoten.
+// - Materialfaktor aus einer Zelle «Faktor» über der Kopfzeile. Jedes weitere Blatt mit Kopfzeile wird ein eigener Knoten (Stunden: «Arbeit»).
+// - Ohne BKP kommt alles in ein Kapitel ohne Nummer (BKP trägt CJ nach). Die eigene Excel aus dem Export (offxlsx.js) liest sich wieder ein,
+//   der Baum der Gliederung wird dabei flach (alle Knoten auf oberster Ebene), Gruppentitel werden Knoten.
 import * as O from "./offerte.js";
 
 // ---------- .xlsx lesen ----------
@@ -85,35 +89,45 @@ const BKP_NR = /^\d{2,3}(\.\d{1,2})*$/, AUTO_NO = /^\d+\.\d+\.\d+$/, SKIP = /^(t
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && /^-?[\d']+([.,]\d+)?$/.test(v.trim()) ? Number(v.replace(/'/g, "").replace(",", ".")) : undefined);
 const str = (v) => (v === undefined || v === null ? "" : String(v).trim());
 
-// sheets aus readXlsx. Gibt { kap (ohne IDs, für cleanOfferte), fak, info: { blaetter, positionen, ohnePreis, uebersprungen } } zurück.
+const ART = Object.fromEntries(Object.entries(O.GL_KURZ).map(([k, v]) => [v, k])); // «[RGL]» → rgl
+// sheets aus readXlsx. Gibt { kn, kap (Knoten mit vorläufigen IDs, Kapitel ohne IDs, für cleanOfferte), fak, info: { blaetter, positionen, ohnePreis, uebersprungen } } zurück.
 export function parseOfferte(sheets, { titel = "" } = {}) {
-  const kap = [], info = { blaetter: [], positionen: 0, ohnePreis: 0, uebersprungen: 0 };
-  let fak, k = null, g = null;
-  const newKap = (bkp, t) => { k = { bkp, titel: t ?? O.bkpTitle(bkp), grp: [] }; kap.push(k); g = null; return k; };
-  const newGrp = (t) => { if (!k) newKap("", titel); g = { titel: t, pos: [] }; k.grp.push(g); return g; };
+  const kn = [], kap = [], info = { blaetter: [], positionen: 0, ohnePreis: 0, uebersprungen: 0 };
+  let fak, n = null, k = null, g = null, offen = false; // offen: Kapitel aus einer Zeile mit BKP, noch ohne «Total …»
+  const newKn = (t) => { const m = /^(.*?)\s*\[([A-Z]{2,3})\]$/.exec(t), art = m && ART[m[2]]; n = { id: kn.length + 1, titel: art ? m[1] : t, ...(art && art !== "rgl" ? { art } : {}) }; kn.push(n); k = null; offen = false; };
+  const newKap = (bkp, t) => { g = { titel: "", pos: [] }; k = { ...(n ? { kn: n.id } : {}), bkp, titel: t ?? (bkp || n ? O.bkpTitle(bkp) : titel), grp: [g] }; kap.push(k); return k; };
+  // Gruppe für eine Position: im aktuellen Kapitel, bei eigener BKP-Nummer im Kapitel mit dieser Nummer im aktuellen Knoten
+  const grpFor = (bkp) => {
+    if (k && (!bkp || bkp === k.bkp)) return g;
+    const f = bkp && kap.find((x) => x.bkp === bkp && x.kn === n?.id);
+    if (f) { k = f; g = f.grp.at(-1); } else { newKap(bkp || ""); offen = false; }
+    return g;
+  };
   sheets.forEach((sh, si) => {
     const h = header(sh.rows); if (!h) return;
     info.blaetter.push(sh.name);
     fak ??= factor(sh.rows, h.r);
     const c = h.col, cell = (row, f) => (c[f] === undefined ? undefined : row[c[f]]);
-    if (si > 0 || h.hours) newGrp(h.hours ? "Arbeit" : sh.name); // weiteres Blatt: eigene Gruppe
+    if (si > 0 || h.hours) newKn(h.hours ? "Arbeit" : sh.name); // weiteres Blatt: eigener Knoten
     for (let r = h.r + 1; r < sh.rows.length; r++) {
       const row = sh.rows[r]; if (!row) continue;
       const tx = str(cell(row, "titel")), desc = str(cell(row, "text"));
       if (/^schlusszusammenstellung/i.test(tx)) break;
       if (!tx && !desc) continue;
-      if (SKIP.test(tx)) { info.uebersprungen++; continue; }
+      if (SKIP.test(tx)) { info.uebersprungen++; if (/^total/i.test(tx)) offen = false; continue; }
       const menge = num(cell(row, "menge")), ek = num(cell(row, "ek")), preis = num(cell(row, "preis")), pos = str(cell(row, "pos"));
       const bkp = str(cell(row, "bkp")) || (BKP_NR.test(pos) ? pos : "");
-      if (menge === undefined && !ek && !preis) { if (bkp) newKap(bkp, tx || undefined); else newGrp(tx); continue; }
-      if (!g) newGrp("");
+      if (menge === undefined && !ek && !preis) {
+        if (bkp) { newKap(bkp, tx || undefined); offen = true; } else if (offen) { g = { titel: tx || desc, pos: [] }; k.grp.push(g); } else newKn(tx || desc);
+        continue;
+      }
+      grpFor(bkp);
       const p = { titel: tx || desc };
       if (desc && tx) p.text = desc;
       if (menge !== undefined) p.menge = menge;
       const eh = str(cell(row, "eh")) || (h.hours ? "h" : ""); if (eh) p.eh = eh;
       for (const f of ["her", "ic", "enr"]) { const v = str(cell(row, f)); if (v) p[f] = v; }
       if (pos && !AUTO_NO.test(pos) && !BKP_NR.test(pos)) p.npk = pos;
-      if (bkp && bkp !== k.bkp) p.bkp = bkp;
       if (ek) { p.ek = ek; if (preis !== undefined && Math.abs(preis - ek * (fak ?? O.DEF.fak)) > 0.005) p.preis = preis; } // abweichender Preis = Preis von Hand
       else if (preis !== undefined) p.preis = preis;
       if (!ek && !preis) info.ohnePreis++;
@@ -121,11 +135,13 @@ export function parseOfferte(sheets, { titel = "" } = {}) {
       g.pos.push(p); info.positionen++;
     }
   });
-  return { kap, fak, info };
+  for (const x of kap) x.grp = x.grp.filter((y) => y.pos.length); // leere Gruppe ohne Titel vor der ersten Gruppe fällt weg
+  return { kn, kap: kap.filter((x) => x.grp.length), fak, info };
 }
-// Neue Offerte aus der Deutung. base: Standardwerte (Ansatz, Faktor aus den Sollwerten), off: Gruppen (Index über alle Kapitel), deren Positionen Optionen werden.
+// Neue Offerte aus der Deutung. base: Standardwerte (Ansatz, Faktor aus den Sollwerten), off: Kapitel (Index), deren Positionen Optionen werden.
+// Knoten ohne Kapitel (auch darunter) fallen weg.
 export function buildOfferte(res, base = {}, off = new Set()) {
-  let n = 0;
-  const kap = res.kap.map((k) => ({ ...k, grp: k.grp.map((g) => { const o = off.has(n++); return { ...g, pos: g.pos.map((p) => (o ? { ...p, opt: true } : p)) }; }) }));
-  return O.cleanOfferte({ ...O.newOfferte(), ...base, ...(res.fak ? { fak: res.fak } : {}), kap });
+  const kap = res.kap.map((k, i) => (off.has(i) ? { ...k, grp: k.grp.map((g) => ({ ...g, pos: g.pos.map((p) => ({ ...p, opt: true })) })) } : k));
+  const used = new Set(kap.map((k) => k.kn));
+  return O.cleanOfferte({ ...O.newOfferte(), ...base, ...(res.fak ? { fak: res.fak } : {}), kn: res.kn.filter((n) => used.has(n.id)), kap });
 }

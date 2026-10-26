@@ -61,37 +61,44 @@ assert.strictEqual(sheets[0].rows[6][6], 15, "Formel: gespeicherter Wert");
 const res = parseOfferte(sheets, { titel: "Testimport" });
 assert.strictEqual(res.fak, 1.5, "Materialfaktor aus der Zelle «Mat Faktor»");
 assert.deepStrictEqual(res.info, { blaetter: ["Material", "Stunden"], positionen: 7, ohnePreis: 1, uebersprungen: 2 });
-assert.deepStrictEqual(res.kap.map((k) => [k.bkp, k.titel, k.grp.map((g) => `${g.titel}:${g.pos.length}`)]),
-  [["", "Testimport", ["Verteilung A:2", "Verteilung B:2"]], ["236", "Schwachstrom", [":1", "Arbeit:2"]]], "Kapitel ohne BKP, Gruppen, Kapitel aus Spalte BKP, Stunden als Gruppe Arbeit");
+assert.deepStrictEqual(res.kn.map((n) => [n.id, n.titel]), [[1, "Verteilung A"], [2, "Verteilung B"], [3, "Arbeit"]], "Textzeilen ohne Menge und Preis und Blatt Stunden werden Knoten (Gliederung)");
+assert.deepStrictEqual(res.kap.map((k) => [k.kn, k.bkp, k.titel, k.grp.length, k.grp[0].pos.length]), [[1, "", "", 1, 2], [2, "", "", 1, 2], [2, "236", "Schwachstrom", 1, 1], [3, "", "", 1, 2]],
+  "Kapitel ohne BKP je Knoten, Zeile mit BKP = Kapitel im aktuellen Knoten");
 const [x, y] = res.kap[0].grp[0].pos;
 assert.deepStrictEqual(x, { titel: "Schalter X", menge: 2, her: "Muster AG", enr: "111000111", ek: 10 }, "Position: EK statt Preis, E-Nr. als Text");
 assert.strictEqual(y.ic, "22", "IC als Text");
-assert.strictEqual(res.kap[1].grp[0].pos[0].titel, "Dose RJ45 & Co <Cat6>", "Sonderzeichen aus sharedStrings");
-assert.deepStrictEqual(res.kap[0].grp[1].pos.map((p) => [p.titel, p.ek, p.preis]), [["Ohne EK", undefined, 0], ["Preis von Hand", 10, 20]], "ohne EK: Preis 0; abweichender Preis = von Hand");
-assert.deepStrictEqual(res.kap[1].grp[1].pos[0], { titel: "Unterputz", menge: 2, eh: "h", ic: "22", preis: 90 }, "Stunden: Menge = Stunden, Preis = Ansatz");
+assert.strictEqual(res.kap[2].grp[0].pos[0].titel, "Dose RJ45 & Co <Cat6>", "Sonderzeichen aus sharedStrings");
+assert.deepStrictEqual(res.kap[1].grp[0].pos.map((p) => [p.titel, p.ek, p.preis]), [["Ohne EK", undefined, 0], ["Preis von Hand", 10, 20]], "ohne EK: Preis 0; abweichender Preis = von Hand");
+assert.deepStrictEqual(res.kap[3].grp[0].pos[0], { titel: "Unterputz", menge: 2, eh: "h", ic: "22", preis: 90 }, "Stunden: Menge = Stunden, Preis = Ansatz");
+// Position mit eigener BKP-Nummer: Kapitel mit dieser Nummer im aktuellen Knoten
+const bk = parseOfferte(await readXlsx(makeXlsx([["M", { A1: "BKP", B1: "Artikel", C1: "Menge", D1: "Preis", B2: "Küche", A3: "232", B3: "Dose", C3: 1, D3: 5, A4: "233", B4: "Leuchte", C4: 1, D4: 9, A5: "232", B5: "Schalter", C5: 1, D5: 4 }]]), inflate));
+assert.deepStrictEqual(bk.kap.map((k) => [k.kn, k.bkp, k.grp[0].pos.map((p) => p.titel).join()]), [[1, "232", "Dose,Schalter"], [1, "233", "Leuchte"]], "Positionen nach eigener BKP-Nummer im Knoten");
 
 // Offerte daraus: rechnet wie die Excel, abgewählte Gruppe wird Option
 const of = buildOfferte(res, { ansatz: 0 }), t = O.totals(of);
 assert.strictEqual(of.fak, 1.5);
 assert.ok(Math.abs(t.zwischensumme - (30 + 18 + 0 + 20 + 12 + 315)) < 1e-9, `Summe wie Excel: ${t.zwischensumme}`);
-const ids = new Set(); for (const k of of.kap) for (const g of k.grp) { ids.add(g.id); for (const p of g.pos) ids.add(p.id); }
-assert.ok(ids.size > 10 && !ids.has(0), "alle IDs gesetzt");
+const ids = new Set(of.kn.map((n) => n.id)); for (const k of of.kap) { ids.add(k.id); for (const g of k.grp) { ids.add(g.id); for (const p of g.pos) ids.add(p.id); } }
+assert.deepStrictEqual(of.kap.map((k) => O.knFind(of, k.kn)?.titel), ["Verteilung A", "Verteilung B", "Verteilung B", "Arbeit"], "Kapitel hängen an ihren Knoten");
+assert.ok(ids.size === 3 + 4 + 4 + 7 && !ids.has(0), "alle IDs gesetzt, keine doppelt");
 const of2 = buildOfferte(res, {}, new Set([0])), t2 = O.totals(of2);
-assert.ok(Math.abs(t2.zwischensumme - 347) < 1e-9 && Math.abs(t2.optionen - 48) < 1e-9, "Gruppe 0 als Option");
+assert.ok(Math.abs(t2.zwischensumme - 347) < 1e-9 && Math.abs(t2.optionen - 48) < 1e-9, "abgewähltes Kapitel 0 als Option");
 
 // ---------- Rundreise: eigener Export liest sich wieder ein ----------
 const src = O.newOfferte("26.10.2026"); src.ansatz = 80;
-const k1 = O.addKapitel(src, "232.5"); k1.grp[0].titel = "Küche";
+const kue = O.addKnoten(src, 0, "Küche", "et"), k1 = O.addKapitel(src, "232.5", undefined, kue.id);
 O.addPosition(src, k1.grp[0], { titel: "Steckdose", text: "UP, weiss", ic: "22", menge: 3, eh: "Stk", ek: 12, std: 0.5 });
 O.addPosition(src, k1.grp[0], { titel: "Dimmer", menge: 1, eh: "Stk", preis: 99, opt: true });
 O.addPosition(src, k1.grp[0], { titel: "Melder", menge: 2, eh: "Stk", preis: 50, opt: true, an: true });
+O.addPosition(src, O.addGruppe(src, k1, "Bad"), { titel: "Lampe", menge: 1, eh: "Stk", preis: 7 }); // Gruppe mit Titel im Kapitel
 const k2 = O.addKapitel(src, "236"); O.addPosition(src, k2.grp[0], { titel: "RJ45", menge: 4, eh: "Stk", preis: 33.3, npk: "513 211 212" });
 const back = buildOfferte(parseOfferte(await readXlsx(offerteXlsx(src, { kunde: { BAUHERR: "Muster" } }), inflate)), {});
 const tb = O.totals(back), ts = O.totals(src);
-assert.deepStrictEqual(back.kap.map((k) => [k.bkp, k.titel]), [["232.5", "Lichtinstallationen"], ["236", "Schwachstrominstallationen"]], "Kapitel zurück");
-assert.strictEqual(back.kap[0].grp[0].titel, "Küche");
-assert.deepStrictEqual(back.kap[0].grp[0].pos.map((p) => [p.titel, p.text, p.ic, p.eh, !!p.opt, !!p.an]), [["Steckdose", "UP, weiss", "22", "Stk", false, false], ["Dimmer", undefined, undefined, "Stk", true, false], ["Melder", undefined, undefined, "Stk", true, true]]);
-assert.strictEqual(back.kap[1].grp[0].pos[0].npk, "513 211 212", "NPK-Nr. aus Spalte Pos");
+assert.deepStrictEqual(back.kn.map((n) => [n.titel, O.knArt(n)]), [["Küche", "et"]], "Knoten zurück, Art aus «[ET]»");
+assert.deepStrictEqual(back.kap.map((k) => [O.knFind(back, k.kn)?.titel, k.bkp, k.titel]), [[undefined, "236", "Schwachstrominstallationen"], ["Küche", "232.5", "Lichtinstallationen"]], "Kapitel zurück: ohne Gliederung zuerst, dann im Knoten");
+assert.deepStrictEqual(back.kap[1].grp[0].pos.map((p) => [p.titel, p.text, p.ic, p.eh, !!p.opt, !!p.an]), [["Steckdose", "UP, weiss", "22", "Stk", false, false], ["Dimmer", undefined, undefined, "Stk", true, false], ["Melder", undefined, undefined, "Stk", true, true]]);
+assert.deepStrictEqual(back.kap[1].grp.map((g) => [g.titel, g.pos.length]), [["", 3], ["Bad", 1]], "Textzeile im Kapitel (bis «Total …») bleibt eine Gruppe");
+assert.strictEqual(back.kap[0].grp[0].pos[0].npk, "513 211 212", "NPK-Nr. aus Spalte Pos");
 assert.ok(Math.abs(tb.zwischensumme - ts.zwischensumme) < 1e-9 && Math.abs(tb.optionen - ts.optionen) < 1e-9 && tb.total === ts.total, "gleiche Summen nach der Rundreise");
 assert.ok(!JSON.stringify(back).includes('"ek"') && !JSON.stringify(back).includes('"std"'), "EK und Zeit waren nie im Export");
 await assert.rejects(readXlsx(new Uint8Array(40), inflate), /Keine Excel-Datei/);

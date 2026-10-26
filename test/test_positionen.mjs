@@ -46,20 +46,19 @@ assert.deepStrictEqual(ids("23.456"), [b.id], "NPK-Nr. mit Punkten");
 assert.deepStrictEqual(ids("23456789"), [b.id], "NPK-Nr. ohne Punkte");
 assert.deepStrictEqual(ids("kabel muster"), [], "jedes Wort muss vorkommen");
 
-// ---------- Treffer in die Offerte kopieren, danach frei änderbar ----------
-const of = O.newOfferte();
-const act = (attrs) => OF.action(of, { dataset: attrs });
-let r = act({ ofact: "dbadd", db: b.id }); r.fn();
-assert.strictEqual(of.kap.length, 1, "ohne Kapitel entsteht eines");
-let p = of.kap[0].grp[0].pos[0];
-assert.deepStrictEqual({ ...p, id: 0 }, { id: 0, titel: "Installationskabel 3x1.5", text: "FE0", enr: "022 333 444", ek: 1, eh: "m", npk: "1 23.456.789.000.00" }, "alle Felder kopiert, keine Menge");
-assert.strictEqual(r.focus(), `p${p.id}.menge`, "Fokus auf Menge");
-const k2 = O.addKapitel(of, "232.51"); OF.noteTarget(of, `g${k2.grp[0].id}.titel`);
-act({ ofact: "dbadd", db: a.id }).fn();
-assert.strictEqual(k2.grp[0].pos[0].titel, "up-steckdose  t13", "kommt in die zuletzt bearbeitete Gruppe");
-k2.grp[0].pos[0].ek = 99; k2.grp[0].pos[0].titel = "geändert";
+// ---------- Lupe (CJ 26.10.2026): Treffer füllt die Position oder kommt darunter, danach frei änderbar ----------
+const of = O.newOfferte(), g0 = O.addKapitel(of, "232.51").grp[0];
+const leer = O.addPosition(of, g0, { menge: 3 });
+assert.ok(!OF.hasContent({}) && OF.hasContent({ menge: 3 }) && OF.hasContent({ titel: "x" }), "Inhalt: Titel, Text, Menge, Preis oder EK");
+let p = OF.dbFill(of, leer.id, PD.list().find((e) => e.id === b.id));
+assert.deepStrictEqual(p, { id: leer.id, titel: "Installationskabel 3x1.5", text: "FE0", enr: "022 333 444", ek: 1, eh: "m", npk: "1 23.456.789.000.00", menge: 3 }, "ersetzen: alle Felder, ID und Menge bleiben");
+assert.strictEqual(g0.pos[0], p);
+const unten = OF.dbFill(of, p.id, PD.list().find((e) => e.id === a.id), "below");
+assert.ok(g0.pos[1] === unten && unten.id !== p.id && unten.titel === "up-steckdose  t13" && unten.menge === undefined, "darunter einfügen: neue Position mit neuer ID");
+unten.ek = 99; unten.titel = "geändert";
 assert.strictEqual(PD.list().find((e) => e.id === a.id).ek, 12, "Änderung in der Offerte ändert die Datenbank nicht");
-assert.strictEqual(act({ ofact: "dbadd", db: "gibtsnicht" }), null);
+assert.strictEqual(OF.dbFill(of, 9999, PD.list()[0]), null, "Position fehlt");
+assert.ok(OF.dbHitsHTML("022333").includes(`data-dbpick="${b.id}"`) && !OF.dbHitsHTML("022333").includes(`data-dbpick="${a.id}"`), "Suche im Fenster");
 
 // ---------- Anmelden: Gast-Stand geht online und gehört dem Benutzer ----------
 user = "a@test";

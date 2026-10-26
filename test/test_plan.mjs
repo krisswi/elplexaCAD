@@ -366,6 +366,10 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(Object.keys(eb.assets), ["pdf1"], "PDF einmal gespeichert");
   assert.ok(!M.serializeModel(e, { noAssets: true }).includes("JVBERg"), "Zwischenspeicher ohne PDF");
   assert.deepStrictEqual(M.parseModel(M.serializeModel(e, { noAssets: true })).sheets[0].bg.asset, undefined, "fehlende PDF: Massstab und Fixpunkt bleiben, asset fehlt");
+  // PDF-Plan eigener Umschalter (CJ 26.10.2026): bgOff und Deckkraft bgOp am Blatt, Vorgabe 60 % wird nicht gespeichert
+  const r2 = { ...raw, sheets: [plan([], { bg, bgOff: true, bgOp: 30 }), plan([], { sid: 8, var: 2, bg, bgOff: false, bgOp: 60 }), plan([], { sid: 9, var: 3, bgOp: 5 })] };
+  const s2 = JSON.parse(M.serializeModel(M.parseModel(JSON.stringify(r2)))).sheets;
+  assert.deepStrictEqual(s2.map((s) => [s.bgOff, s.bgOp]), [[true, 30], [undefined, undefined], [undefined, undefined]], "bgOff/bgOp bereinigt");
 }
 
 console.log("test_plan: alles ok");

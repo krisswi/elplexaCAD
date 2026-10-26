@@ -11,7 +11,6 @@ import { openPdf, pageSize, toBase64, imageFor, imageReady } from "./pdfbg.js";
 import { pageSVG } from "./pvprint.js";
 import * as R from "./render.js";
 
-const BG_OPACITY = 0.6; // PDF-Plan blass, damit der Elektroplan hervortritt (wie Stringplan)
 const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3", GUIDE = "#e08a00", FRAME = "#6b7785";
 const OPEN_W = { tuer: 900, fenster: 1200, durchgang: 900, schiebe: 900 }; // Vorgabe Breiten in mm (Annahme)
 const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe neuer Öffnungen in mm (CJ 23.10.2026)
@@ -99,13 +98,20 @@ export function makePlan(c) {
   }
   // ---------- PDF-Plan (Hintergrund wie im Stringplan, pv.js) ----------
   const bgLayer = (S0) => P.layerById(S0, "bg");
-  const bgShown = (S0) => !!S0.bg?.asset && bgLayer(S0)?.show !== false; // liegt auf der Ebene Hintergrund (ohne sie immer sichtbar)
+  const bgShown = (S0) => !!S0.bg?.asset && !S0.bgOff; // eigener Umschalter (Auge, Taste P), unabhängig von den Ebenen (CJ 26.10.2026)
+  const bgOp = (S0) => (S0.bgOp ?? P.BG_OP) / 100;
+  function bgToggle() {
+    const S0 = sh();
+    if (!S0.bg?.asset) { toast("Kein PDF-Plan geladen. Links auf der Ebene Hintergrund «PDF-Plan laden»."); return; }
+    change(() => { if (S0.bgOff) delete S0.bgOff; else S0.bgOff = true; });
+    c.renderSheet(); renderLeft();
+  }
   // PDF-Seite als Bild in der Welt (Massstab, Fixpunkt, Drehung). Ohne Bild ein Platzhalter, bis es gerendert ist.
   function bgImg(S0, onReady) {
     if (!bgShown(S0)) return "";
     const b = S0.bg, url = imageFor(S.doc.assets, b.asset, b.page, (err) => { if (err) toast("Der PDF-Plan lässt sich nicht anzeigen: " + err, "error"); onReady(); });
     const k = mmPerPt(b), [fu, fv] = fixOf(b), tr = `${b.rot ? `rotate(${b.rot}) ` : ""}translate(${f(-fu * k)} ${f(fv * k)}) scale(${k} ${-k})`;
-    if (url) return `<g transform="${tr}" opacity="${BG_OPACITY}" pointer-events="none"><image href="${url}" x="0" y="0" width="${b.w}" height="${b.h}" preserveAspectRatio="none"/></g>`;
+    if (url) return `<g transform="${tr}" class="pl-bgimg" opacity="${bgOp(S0)}" pointer-events="none"><image href="${url}" x="0" y="0" width="${b.w}" height="${b.h}" preserveAspectRatio="none"/></g>`;
     return `<rect transform="${tr}" x="0" y="0" width="${b.w}" height="${b.h}" fill="#eef1f4" pointer-events="none"/>`;
   }
   function measureSVG(a, e, label, z) {
@@ -115,6 +121,7 @@ export function makePlan(c) {
       + (label ? txt(mx, my + h, label, h, 0, GUIDE) : "") + "</g>";
   }
   function bgFree() {
+    if (sh().bgOff) { toast("Der PDF-Plan ist ausgeblendet. Links unter «Ebenen» mit dem Auge oder Taste P einblenden.", "error"); return false; }
     const l = bgLayer(sh());
     if (!l || (l.show && !l.lock)) return true;
     toast(`Die Ebene „${l.name}“ ist ${l.lock ? "gesperrt" : "ausgeblendet"}. Links unter „Ebenen“ freigeben.`, "error");
@@ -636,6 +643,7 @@ export function makePlan(c) {
     if (dimDraft && k === "Escape") { dimDraft = null; renderOverlay(); updateHint(); return true; }
     if (k.toLowerCase() === "x" && S.tool === "pl-wall" && !e.altKey) { opt.side = -(draft?.side ?? (opt.side || 1)); if (draft) { draft.side = opt.side; draft.auto = false; } renderRight(); renderOverlay(); updateHint(); return true; } // Wandseite wechseln
     if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Links die Ebene wechseln."); return true; } setTool(t); return true; }
+    if (k.toLowerCase() === "p" && !e.altKey) { bgToggle(); return true; } // PDF-Plan ein/aus (Tastenkürzel-Index)
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
       const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym");
       if (S.tool === "pl-sym") { opt.symR = (opt.symR + step) % 360; renderOverlay(); return true; }
@@ -664,7 +672,10 @@ export function makePlan(c) {
         + (S0.bg ? `<p class="note">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "")
         + `</section><section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
       + `<section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "L")
-      + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`;
+      + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`
+      + (S0.bg?.asset ? `<div class="layer-row pl-bgrow${S0.bgOff ? " off" : ""}"><span class="layer-name">PDF-Plan</span>`
+        + `<input type="range" min="10" max="100" step="10" value="${S0.bgOp ?? P.BG_OP}" data-plbgop aria-label="Deckkraft PDF-Plan in %" title="Deckkraft ${S0.bgOp ?? P.BG_OP} %"${S0.bgOff ? " disabled" : ""}>`
+        + `<button class="layer-btn" data-plact="bgshow" data-key="show" aria-pressed="${!S0.bgOff}" title="${S0.bgOff ? "Einblenden" : "Ausblenden"} (Taste P)" aria-label="PDF-Plan: ${S0.bgOff ? "Einblenden" : "Ausblenden"}">${S0.bgOff ? ICON.eyeOff : ICON.eye}</button></div>` : "");
     for (const l of [...S0.layers].reverse()) { // oben = zuletzt gezeichnet
       const btn = (k, on, icon, label) => `<button class="layer-btn" data-plact="${k}" data-layer="${l.id}" data-key="${k}" aria-pressed="${on}" title="${label}" aria-label="${R.esc(l.name)}: ${label}">${icon}</button>`;
       h += `<div class="layer-row${l.show ? "" : " off"}${l.id === S0.alay ? " active" : ""}"><button class="layer-name" data-plact="alay" data-layer="${l.id}" aria-pressed="${l.id === S0.alay}" title="Aktive Ebene: neue Objekte landen hier">${R.esc(l.name)}</button>`
@@ -690,6 +701,7 @@ export function makePlan(c) {
   async function leftAct(b) {
     const S0 = sh(), id = b.dataset.layer, a = b.dataset.plact;
     if (a === "pdf") { loadPdf(); return; }
+    if (a === "bgshow") { bgToggle(); return; }
     if (a === "scale") { enterScale(); return; }
     if (a === "free") { opt.free = !opt.free; S.alt = opt.free; renderLeft(); mod(); updateHint(); return; }
     if (a === "multi") { opt.multi = !opt.multi; if (S.tool !== "select") setTool("select"); renderLeft(); updateHint(); return; }
@@ -854,6 +866,16 @@ export function makePlan(c) {
     const y = e.target.closest("[data-plsym]");
     if (y) { opt.sym = y.dataset.plsym; opt.symR = 0; setTool("pl-sym"); renderLeft(); return; }
     const b = e.target.closest("[data-plact]"); if (b) leftAct(b);
+  });
+  c.leftEl.addEventListener("input", (e) => { // Deckkraft PDF-Plan: Vorschau beim Ziehen, gespeichert beim Loslassen (change)
+    if (sh().kind !== "plan" || e.target.dataset.plbgop === undefined) return;
+    const g = document.querySelector(".pl-bgimg"); if (g) g.setAttribute("opacity", e.target.value / 100);
+  });
+  c.leftEl.addEventListener("change", (e) => {
+    if (sh().kind !== "plan" || e.target.dataset.plbgop === undefined) return;
+    const v = Number(e.target.value), S0 = sh();
+    change(() => { if (v === P.BG_OP) delete S0.bgOp; else S0.bgOp = v; });
+    c.renderSheet(); renderLeft();
   });
   c.popEl.addEventListener("click", (e) => {
     const b = e.target.closest("[data-plact]");

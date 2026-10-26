@@ -151,12 +151,15 @@ export function cleanPlanObj(it, id) {
 
 // Blattfelder und Objekte aus der Datei. Bereinigung: Objekte auf unbekannter Ebene → aktive Ebene, Öffnung ohne Wand fällt weg,
 // Öffnung in die Wand geklemmt, Mass mit fehlender Wand verliert den Bezug. Gibt die höchste id zurück.
+export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 export function cleanPlanSheet(rs, m, maxId) {
   m.paper = cleanPlanPaper(rs.paper);
   m.layers = cleanPlanLayers(rs.layers);
   m.alay = layerById(m, rs.alay) ? rs.alay : m.layers[0].id;
   const pm = cleanPmid(rs.pmid); if (pm) m.pmid = pm; // Druckmitte frei gewählt (wie Stringplan 5ao)
   if (rs.bom === false) m.bom = false; // Stückliste nicht drucken (Schritt 4, fehlt = drucken)
+  if (rs.bgOff === true) m.bgOff = true; // PDF-Plan ausgeblendet, unabhängig von den Ebenen (CJ 26.10.2026)
+  if (isNum(rs.bgOp) && rs.bgOp >= 10 && rs.bgOp <= 100 && Math.round(rs.bgOp) !== BG_OP) m.bgOp = Math.round(rs.bgOp); // Deckkraft in %, fehlt = BG_OP
   if (isNum(rs.sid) && rs.sid > 0) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); }
   for (const it of Array.isArray(rs.items) ? rs.items : []) {
     const id = isNum(it?.id) ? it.id : ++maxId;

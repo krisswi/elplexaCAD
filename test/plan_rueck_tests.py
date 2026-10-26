@@ -66,7 +66,7 @@ with sync_playwright() as p:
     page.check("#grid-on"); plsym(page, "STD"); click(3000, -1500)
     y = of("sym")[-1]
     check("Steckdose an der Wand nach oben in den Raum (r = 0, Stiel unten)", y["r"] == 0 and abs(y["at"][1] - (-2000 - 0)) < 80 + 5 and "col" not in y, y)
-    check("Vorgabefarbe der Steckdose blau", "#3fbbeb" in page.inner_html("#items") and "#ed3f2a" not in page.inner_html("#items"))
+    check("Vorgabefarbe der Steckdose blau", "#0068c9" in page.inner_html("#items") and "#d4141c" not in page.inner_html("#items"))
 
     # Grundriss-Werkzeuge nur auf Hintergrund
     page.click('[data-plact="ladd"]'); page.wait_for_timeout(150); page.click(".modal [data-ok]"); page.wait_for_timeout(150)

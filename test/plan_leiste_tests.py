@@ -105,16 +105,16 @@ with sync_playwright() as p:
         page.mouse.move(*t); page.mouse.down(); page.mouse.move(*at(*box), steps=6); page.mouse.up(); page.wait_for_timeout(80)
         return i, ok
     key("Escape"); key("v"); key("f"); page.wait_for_timeout(100)
-    v1, ok1 = verweis(1000, 230, "#3fbbeb", ["UV EG", "11X4"], (600, 1100))
+    v1, ok1 = verweis(1000, 230, "#0068c9", ["UV EG", "11X4"], (600, 1100))
     v2, ok2 = verweis(2200, 230, None, ["UV EG", "11X6"], (2000, 1300))
-    v3, ok3 = verweis(3300, 900, "#ed3f2a", ["HZV WHG EG"], (3300, 1700))
+    v3, ok3 = verweis(3300, 900, "#d4141c", ["HZV WHG EG"], (3300, 1700))
     check("Nach dem Setzen gewählt, Zeile 1 im Fokus", all(o[0] == "fu" and o[1] == [o[2]] for o in (ok1, ok2, ok3)), (ok1, ok2, ok3))
     V = [item(v) for v in (v1, v2, v3)]
-    check("Verweise: zwei blau (Vorgabe, ohne Feld col), einer rot", "col" not in V[0] and "col" not in V[1] and V[2].get("col") == "#ed3f2a", V)
+    check("Verweise: zwei blau (Vorgabe, ohne Feld col), einer rot", "col" not in V[0] and "col" not in V[1] and V[2].get("col") == "#d4141c", V)
     check("Zeilen gespeichert", [v.get("fu") for v in V] == ["UV EG", "UV EG", "HZV WHG EG"] and V[1].get("nr") == "11X6" and "nr" not in V[2])
     check("Kasten frei gezogen (Versatz lo), Ziel bleibt", all(v.get("lo") for v in V) and [v["at"] for v in V] == [[1000, 230], [2200, 230], [3300, 900]], [v.get("lo") for v in V])
     red = page.evaluate("[...document.querySelectorAll('#items text')].filter((t) => t.textContent === 'HZV WHG EG').map((t) => t.getAttribute('fill'))")
-    check("Roter Verweis: Text rot", red == ["#ed3f2a"], red)
+    check("Roter Verweis: Text rot", red == ["#d4141c"], red)
     key("Escape"); key("f"); page.mouse.move(5, 5); page.evaluate("document.querySelector('#toasts').innerHTML = ''"); page.wait_for_timeout(150)
     page.locator("#stage").screenshot(path=str(OUT / "plan_verweis.png"))
 

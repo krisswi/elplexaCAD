@@ -61,7 +61,7 @@ with sync_playwright() as p:
     check("Leitung endet auf der oberen Seite der Dose, frei entlang der Seite", abs(ln["pts"][-1][1] - 1575) < 1e-6 and abs(ln["pts"][-1][0] - (1993 + 0.3 * t)) < 2, ln["pts"])
     check("Mittelpunkt auf dem 10-mm-Raster", ln["pts"][1] == [1600, 1300], ln["pts"])
     check("Neue Leitung geschwungen (Vorgabe)", ln.get("curve") is True and len(ln["pts"]) == 3)
-    d = page.get_attribute("#items .pl-items path[stroke='#3fbbeb']", "d")
+    d = page.get_attribute("#items .pl-items path[stroke='#0068c9']", "d")
     check("Kurve als Bézier gezeichnet", d and "C" in d, d)
     # Abzweigdose: andere Seiten, ohne Ausrichtungslinien
     key("l"); click(2075 + 0.4 * t, 1460); move(2600, 1460 + 0.3 * t)
@@ -88,7 +88,7 @@ with sync_playwright() as p:
     for q in [(300, 2500), (1000, 3200), (1700, 2500), (2400, 3200), (3100, 2500)]: click(*q)
     page.keyboard.up("Alt"); key("Enter"); key("Escape"); key("v")
     zz = of("line")[-1]
-    ys = page.evaluate("(() => { const p = document.querySelectorAll(\"#items .pl-items path[stroke='#3fbbeb']\"); const e = p[p.length - 1]; const n = e.getTotalLength(), out = []; for (let i = 0; i <= 100; i++) out.push(e.getPointAtLength(n * i / 100).y); return out; })()")
+    ys = page.evaluate("(() => { const p = document.querySelectorAll(\"#items .pl-items path[stroke='#0068c9']\"); const e = p[p.length - 1]; const n = e.getTotalLength(), out = []; for (let i = 0; i <= 100; i++) out.push(e.getPointAtLength(n * i / 100).y); return out; })()")
     check("Zickzack: Kurve bleibt zwischen den Punkten (keine Welle darüber hinaus)", len(zz["pts"]) == 5 and min(ys) >= 2500 - 1 and max(ys) <= 3200 + 1, (min(ys), max(ys)))
 
     # Bild: Leitung glatt, erstes Stück gerade

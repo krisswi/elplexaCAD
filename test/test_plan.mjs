@@ -338,16 +338,20 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.throws(() => M.parseModel(file([plan(lines)], 29)), /neueren Version/, "Version 29 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
-  assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#3FBBEB" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
+  assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#0068C9" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
   assert.strictEqual(cl({ pts: [[0, 0], [100, 0]], col: "rot" }).col, undefined, "ungültige Farbe weg");
   // Farben nach 5.100: Vorgabe Leitung blau, Symbol nach Kategorie, Mauern schwarz
-  assert.strictEqual(P.LINE_COL, "#3fbbeb", "Leitungen: Vorgabe blau (CJ)");
+  assert.strictEqual(P.LINE_COL, "#0068c9", "Leitungen: Vorgabe blau (CJ)");
   const it = (key) => ({ type: "sym", key });
-  assert.deepStrictEqual(["SCH0", "STD", "DOSE", "STEIG_AB"].map((k) => P.colOf(it(k))), ["#3fbbeb", "#3fbbeb", "#3fbbeb", "#3fbbeb"], "alle Symbole Vorgabe blau (CJ 24.10.2026)");
+  assert.deepStrictEqual(["SCH0", "STD", "DOSE", "STEIG_AB"].map((k) => P.colOf(it(k))), ["#0068c9", "#0068c9", "#0068c9", "#0068c9"], "alle Symbole Vorgabe blau (CJ 24.10.2026)");
   assert.strictEqual(P.colOf({ type: "wall" }), "#000000", "Mauern schwarz");
-  const y = { type: "sym", key: "STD" }; P.setCol(y, "#7ABA4B"); assert.strictEqual(y.col, "#7aba4b", "eigene Farbe gespeichert"); P.setCol(y, "#3fbbeb"); assert.ok(!("col" in y), "zurück auf Vorgabe: Feld weg");
+  const y = { type: "sym", key: "STD" }; P.setCol(y, "#22862A"); assert.strictEqual(y.col, "#22862a", "eigene Farbe gespeichert"); P.setCol(y, "#0068c9"); assert.ok(!("col" in y), "zurück auf Vorgabe: Feld weg");
   const wl = { type: "wall" }; P.setCol(wl, "#ed3f2a"); assert.ok(!("col" in wl), "Wand bekommt keine Farbe");
   assert.strictEqual(P.PLAN_COLS.length, 9, "9 Farben aus 5.100");
+  // Kräftigere Töne (CJ 27.10.2026): nur die Vorgabe ändert, gespeicherte bisherige Töne bleiben und heissen «(bisher)»
+  const alt = M.parseModel(file([plan([{ id: 70, type: "line", layer: "l1", pts: [[0, 0], [1, 0]], kind: "decke", col: "#ed3f2a" }, { id: 71, type: "sym", layer: "l1", key: "STD", at: [0, 0], r: 0, col: "#3fbbeb" }])], 24)).sheets[0].items;
+  assert.deepStrictEqual(alt.map((i) => i.col), ["#ed3f2a", "#3fbbeb"], "gespeicherte Farben bleiben");
+  assert.deepStrictEqual([P.colName("#3fbbeb"), P.colName("#d4141c"), P.colName("#123456")], ["Blau (bisher)", "Rot", "#123456"]);
   // Treffer: Symbol vor Leitung vor Wand; Rahmenwahl
   const e3 = d3.sheets[0];
   assert.strictEqual(P.hitPlan(e3, e3.items, [300, 800], 10)?.id, 40, "Leitung getroffen");

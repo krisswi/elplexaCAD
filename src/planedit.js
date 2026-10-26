@@ -771,7 +771,7 @@ export function makePlan(c) {
   // Farbe (5.100): Felder für Leitungen und Symbole der Wahl, «Vorgabe» nimmt die eigene Farbe weg
   function colField(items) {
     const cs = new Set(items.map(P.colOf)), cur = cs.size === 1 ? [...cs][0] : null, own = items.some((i) => i.col !== undefined);
-    const dv = new Set(items.map(P.defCol)), dname = (c) => P.PLAN_COLS.find(([x]) => x === c)?.[1].split(" –")[0] ?? c;
+    const dv = new Set(items.map(P.defCol)), dname = P.colName;
     return `<div class="field"><label>Farbe${cur ? ` (${R.esc(dname(cur))})` : " (verschieden)"}</label><div class="swatches">${P.PLAN_COLS.map(([c, l]) => `<button class="swatch" style="--sw:${c}" data-plcol="${c}" aria-pressed="${c === cur}" title="${R.esc(l)}" aria-label="${R.esc(l)}"></button>`).join("")}</div></div>`
       + `<div class="row"><button class="btn outline small" data-plact="coldef"${own ? "" : " disabled"}>Vorgabe${dv.size === 1 ? ` (${R.esc(dname([...dv][0]))})` : ""}</button></div>`;
   }

@@ -91,11 +91,15 @@ export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line"]);
 // Leitungsarten (Symbolzusammenfassung 5.110). Strichmuster in Papier-mm (× Massstab), flex = durchgezogen mit Welle je Abschnitt.
 export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"]];
 export const LINE_DASH = { decke: null, boden: [3, 1.5], wand: [3, 1, 0.8, 1], doppel: [3, 0.8, 0.6, 0.8, 0.6, 0.8], flex: null };
-// Farben (Farbcodes 5.100, Hex aus dem PDF gemessen). Mauern, Öffnungen und Masse bleiben schwarz.
-export const PLAN_COLS = [["#3fbbeb", "Blau – Licht"], ["#ed3f2a", "Rot – Kraft, Potenzialausgleich"], ["#7aba4b", "Grün – Notlicht, Telefon, IT"], ["#e50981", "Rosa – Zutritt, Alarm"],
-  ["#f8a724", "Orange – Brandmelde"], ["#d37c24", "Braun – Schwachstrom, Audio"], ["#8d5995", "Violett – Radio/TV, KNX"], ["#f8f191", "Gelb – Trassen, Kanäle"], ["#000000", "Schwarz"]];
+// Farben (Farbcodes 5.100). Mauern, Öffnungen und Masse bleiben schwarz. Seit 27.10.2026 kräftiger (CJ: Blau zu hell), auf Weiss und im Druck
+// gut lesbar (Kontrast zu Weiss ab 4,5:1, Orange 3,3, Gelb 2,3). Bisherige Töne (aus dem PDF gemessen) in PLAN_COLS_OLD: gespeicherte Farben bleiben.
+export const PLAN_COLS = [["#0068c9", "Blau – Licht"], ["#d4141c", "Rot – Kraft, Potenzialausgleich"], ["#22862a", "Grün – Notlicht, Telefon, IT"], ["#c80a78", "Rosa – Zutritt, Alarm"],
+  ["#e06d00", "Orange – Brandmelde"], ["#8f5214", "Braun – Schwachstrom, Audio"], ["#7b3a96", "Violett – Radio/TV, KNX"], ["#c9a800", "Gelb – Trassen, Kanäle"], ["#000000", "Schwarz"]];
+export const PLAN_COLS_OLD = ["#3fbbeb", "#ed3f2a", "#7aba4b", "#e50981", "#f8a724", "#d37c24", "#8d5995", "#f8f191"]; // gleiche Reihenfolge, nur für den Namen
+// Name einer Farbe: Palette, bisheriger Ton mit «(bisher)», sonst Hex
+export const colName = (c) => PLAN_COLS.find(([x]) => x === c)?.[1].split(" –")[0] ?? (PLAN_COLS_OLD.includes(c) ? `${PLAN_COLS[PLAN_COLS_OLD.indexOf(c)][1].split(" –")[0]} (bisher)` : c);
 // Vorgabe der Leitungen: blau (CJ 24.10.2026). Später in den Einstellungen änderbar, deshalb nur hier und über lineCol() gelesen.
-export const LINE_COL = "#3fbbeb";
+export const LINE_COL = "#0068c9";
 // Vorgabe aller Symbole: blau (CJ 24.10.2026, vorher nach Kategorie: Kraft rot usw.); die Farbcodes 5.100 bleiben am Objekt wählbar
 export const CAT_COL = { licht: LINE_COL, kraft: LINE_COL, kommunikation: LINE_COL, schwach: LINE_COL, allg: LINE_COL, leitung: LINE_COL };
 const HEX = /^#[0-9a-f]{6}$/;

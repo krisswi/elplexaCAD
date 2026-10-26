@@ -174,6 +174,20 @@ if (fs.existsSync(xlsx)) {
   pick.on.delete("offerte"); assert.ok(!E.shareDialogHTML("P", [], (x) => x, pick, (m) => m).includes("data-shprices"), "ohne Offerte kein Häkchen Preise");
 }
 
+// ---------- Ziehen: Position und Gruppe verschieben, auch über Gruppen und Kapitel (CJ 26.10.2026) ----------
+{
+  const m = O.newOfferte(), ka = O.addKapitel(m, "232"), kb = O.addKapitel(m, "236"), ga = ka.grp[0], gb = kb.grp[0];
+  const [a1, a2, a3] = ["A1", "A2", "A3"].map((t) => O.addPosition(m, ga, { titel: t })), b1 = O.addPosition(m, gb, { titel: "B1" });
+  const ids = (g) => g.pos.map((p) => p.titel).join(",");
+  assert.ok(O.movePos(m, a3.id, ga.id, a1.id) && ids(ga) === "A3,A1,A2", "innerhalb der Gruppe nach vorn");
+  assert.ok(O.movePos(m, a1.id, gb.id, b1.id) && ids(ga) === "A3,A2" && ids(gb) === "A1,B1", "in ein anderes Kapitel");
+  assert.ok(O.movePos(m, a2.id, gb.id) && ids(gb) === "A1,B1,A2", "ans Ende einer Gruppe");
+  assert.ok(!O.movePos(m, a2.id, gb.id, a2.id) && !O.movePos(m, 999, gb.id), "vor sich selbst oder unbekannt: nichts");
+  assert.strictEqual(O.findPos(m, a1.id).p, a1, "ID bleibt");
+  const g2 = O.addGruppe(m, ka, "Bad");
+  assert.ok(O.moveGrp(m, g2.id, kb.id, gb.id) && ka.grp.length === 1 && kb.grp[0] === g2, "Gruppe in ein anderes Kapitel, vor eine Gruppe");
+  assert.ok(O.moveGrp(m, ga.id, kb.id) && !ka.grp.length && kb.grp.at(-1) === ga, "Gruppe ans Ende, Kapitel bleibt leer stehen");
+}
 console.log("Offerten: alle Tests grün.");
 
 // Kleiner xlsx-Leser: ZIP (deflate) entpacken, gemeinsame Texte einsetzen. Gibt Map Zeile → { Spalte: Wert } zurück.

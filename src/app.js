@@ -27,6 +27,8 @@ import { makePlan } from "./planedit.js";
 import { newPlanSheet } from "./plan.js";
 import { makeDispo } from "./dispoedit.js";
 import * as OF from "./offedit.js";
+import { readXlsx, parseOfferte, buildOfferte } from "./offimport.js";
+import { totals as O_totals, fmtChf as OF_fmt } from "./offerte.js";
 import { toast, openModal, confirmDialog, formDialog, chooseDialog, makeMenu } from "./dialogs.js";
 import { fieldHTML, actions, head, dupDel, textPanelHTML, turnHTML } from "./panel.js";
 import { startDialog } from "./start.js";
@@ -253,7 +255,8 @@ function renderSheet() {
   pat.querySelector("circle").setAttribute("r", isDispo() || isPv() || ELPLEXA && isPlan() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
   gSheet.innerHTML = ELPLEXA && isPlan() ? PL.sheetSVG() : S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : isPrinzip() ? PZ.sheetSVG(S.model, S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
-function renderItems() { $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
+// Offerte: nach dem Neuzeichnen auch die Leiste (Kapitel der Offerte)
+function renderItems() { $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); renderSheetBar(); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
 const pickable = () => (ELPLEXA && isPlan() ? PL.pickable() : isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
 
 function railMap() {
@@ -749,10 +752,98 @@ function renderSheetBar() {
   $("#sheetbar").innerHTML = `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt (Bild auf)" aria-label="Vorheriges Blatt"${a === 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Liste aller Blätter (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${a + 1} von ${n}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt (Bild ab)" aria-label="Nächstes Blatt"${a === n - 1 ? " disabled" : ""}>›</button>`
-    + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>` + starBtn();
+    + (isOff() ? ofKapBtn("") + ofPlusBtn() : `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>`) + starBtn();
   if (keep) document.getElementById(keep)?.focus();
   if (open) renderSheetList();
 }
+// Blattleiste der Offerte (CJ 26.10.2026): Inhaltsverzeichnis der Offerte statt «Offerte 2» im selben Modul. ‹ › und die Liste springen zu den
+// BKP-Kapiteln und zur Schlusszusammenstellung. Plus fragt «Variante» (Kopie) oder «Nachtrag» (leer, gleiche Nummer), beides als eigenes Offerten-Modul.
+// elplexaCAD: die ganze Leiste ist das Inhaltsverzeichnis. SchemaCAD v3: die Leiste blättert weiter durch alle Blätter (sonst kein Weg zurück zum Schema),
+// dazu der Knopf «Kapitel» mit derselben Liste.
+const ofParts = () => [...ofView.querySelectorAll(".of-kap, .of-end")];
+function ofTargets() { const t = S.model.of.kap.map((k) => `BKP ${k.bkp} ${k.titel}`.trim()); if (ofView.querySelector(".of-end")) t.push("Schlusszusammenstellung"); return t; }
+let ofPin = null; // angesprungenes Kapitel { i, top }: gilt, bis von Hand gescrollt wird (kurze Offerte scrollt beim Sprung nicht)
+function ofCur() { // Kapitel oben in der Ansicht
+  if (ofPin && Math.abs(ofView.scrollTop - ofPin.top) < 2 && ofPin.i < ofParts().length) return ofPin.i;
+  ofPin = null;
+  const top = ofView.getBoundingClientRect().top + 40; let i = 0;
+  ofParts().forEach((el, n) => { if (el.getBoundingClientRect().top <= top) i = n; });
+  return i;
+}
+function ofJump(i) { const el = ofParts()[i]; if (!el) return; ofView.scrollTop += el.getBoundingClientRect().top - ofView.getBoundingClientRect().top - 8; ofPin = { i, top: ofView.scrollTop }; renderSheetBar(); }
+const ofStep = (d) => ofJump(Math.max(0, Math.min(ofTargets().length - 1, ofCur() + d)));
+let ofShown = -1;
+ofView.addEventListener("scroll", () => { if (isOff() && ofCur() !== ofShown) renderSheetBar(); }, { passive: true });
+function ofKapBtn(id = ' id="sheet-cur"') {
+  const t = ofTargets(), i = (ofShown = Math.min(ofCur(), t.length - 1));
+  if (!id) return `<button class="sheettab nav of-kapbtn" id="of-kap" data-ofkap aria-haspopup="menu" title="Kapitel der Offerte"${t.length ? "" : " disabled"}>Kapitel ▾</button>`;
+  return `<button class="sheettab cur"${id} data-ofkap aria-haspopup="menu" title="Kapitel der Offerte: Liste zum Springen"${t.length ? "" : " disabled"}><span class="cl">${R.esc(t[i] || "Noch kein Kapitel")}</span>${t.length ? `<span class="of">${i + 1} von ${t.length}</span>` : ""}<span class="caret" aria-hidden="true">▾</span></button>`;
+}
+const ofPlusBtn = () => `<button class="sheettab add" id="sheet-add" data-ofplus aria-haspopup="menu" title="Neu: Variante oder Nachtrag dieser Offerte (je ein eigenes Modul)" aria-label="Neu: Variante oder Nachtrag">${R.icons.plus}</button>`;
+// Variante (Kopie dieser Offerte) oder Nachtrag (leere Offerte mit gleicher Nummer) als neues Offerten-Modul mit eigenem Namen
+function ofNew(kind, imported = null, label = "") { // imported: fertige Offerte aus dem Excel-Import, label: Name des Moduls
+  const src = S.model.of, k0 = S.model.kind, v = Math.max(...S.doc.sheets.filter((sh) => modBase(sh) === "offerte").map(varOf)) + 1;
+  const names = E_modNames("offerte"), word = kind === "var" ? "Variante" : "Nachtrag";
+  const n = names.filter((x) => x.includes(`– ${word} `)).length + (kind === "var" ? 2 : 1), name = imported ? label : `Offerte – ${word} ${n}`;
+  setTool("select");
+  change(() => {
+    const sh = setVar(newSheet("offerte"), v);
+    if (imported) sh.of = imported;
+    else if (kind === "var") sh.of = structuredClone(src);
+    else Object.assign(sh.of, offerDefaults(), { nr: src.nr });
+    if (!imported) sh.of.ver = `${word} ${n}`;
+    sh.meta.BLATT = String(maxNo("offerte") + 1);
+    S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
+    (S.doc.mods ??= {})[modKey("offerte", v)] = { name };
+  });
+  afterSheetChange(k0);
+  if (!imported) toast(`Neues Modul «${name}»${kind === "var" ? ": Kopie der Offerte" : ""}.`);
+}
+// Excel-Offerte einlesen (Schritt 5, CJ 26.10.2026): Datei wählen, Deutung im Fenster zeigen, Gruppen abwählbar (werden Optionen, z. B. Variante V1).
+// Leere Offerte wird gefüllt, sonst entsteht ein neues Offerten-Modul mit dem Dateinamen. Ein Schritt im Rückgängig.
+async function ofImport() {
+  const file = await new Promise((res) => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; inp.onchange = () => res(inp.files[0] || null); inp.addEventListener("cancel", () => res(null)); inp.click(); });
+  if (!file) return;
+  const base = file.name.replace(/\.xlsx$/i, "");
+  let res;
+  try {
+    const inflate = async (d) => new Uint8Array(await new Response(new Blob([d]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+    res = parseOfferte(await readXlsx(new Uint8Array(await file.arrayBuffer()), inflate), { titel: base });
+  } catch (err) { toast("Die Excel-Datei liess sich nicht lesen: " + (err.message || err), "error"); return; }
+  if (!res.info.positionen) { toast("Keine Positionen gefunden. Erwartet wird eine Kopfzeile mit Text (Artikel, Titel, Beschreibung) und Menge.", "error"); return; }
+  const defs = offerDefaults(), probe = buildOfferte(res, defs), t = O_totals(probe), rows = [];
+  let gi = 0;
+  probe.kap.forEach((k) => k.grp.forEach((g) => { rows.push(`<label class="chk of-imp"><input type="checkbox" data-impg="${gi++}" checked> <span>${R.esc([k.bkp && `BKP ${k.bkp}`, g.titel || "ohne Titel"].filter(Boolean).join(" · "))}</span><span class="note">${g.pos.length} Pos. · ${OF_fmt(t.grp.get(g.id) || 0)}</span></label>`); }));
+  const i = res.info, body = `<p>${R.esc(file.name)}: Blätter ${R.esc(i.blaetter.join(", "))}, ${i.positionen} Positionen in ${gi} Gruppen${res.fak ? `, Materialfaktor ${res.fak}` : ""}. `
+    + `Summen- und Totalzeilen übernimmt der Import nicht, die Offerte rechnet selbst.${i.ohnePreis ? ` ${i.ohnePreis} Position${i.ohnePreis === 1 ? "" : "en"} ohne Preis.` : ""}</p>`
+    + `<p class="note">Abgewählte Gruppen kommen als Optionen (nicht in der Angebotssumme), z. B. eine Variante V1. Ziehen verschiebt danach Positionen und Gruppen.</p>`
+    + `<div class="print-list">${rows.join("")}</div><p class="of-imp-sum">Zwischensumme <b data-impsum>${OF_fmt(t.zwischensumme)}</b></p>`
+    + `<div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>Importieren</button></div>`;
+  const root = $("#modal-root"), off = () => new Set([...root.querySelectorAll("[data-impg]")].filter((b) => !b.checked).map((b) => Number(b.dataset.impg)));
+  const upd = () => { const el = root.querySelector("[data-impsum]"); if (el) el.textContent = OF_fmt(O_totals(buildOfferte(res, defs, off())).zwischensumme); };
+  const ask = openModal("Excel-Offerte importieren", body, (b, done) => { if (b.dataset.ok !== undefined) done(off()); else if (b.dataset.c !== undefined) done(null); }, null, "[data-ok]", "sw-modal");
+  root.addEventListener("change", upd);
+  const sel = await ask;
+  root.removeEventListener("change", upd);
+  if (!sel) return;
+  const of = buildOfferte(res, defs, sel);
+  if (!S.model.of.kap.length) { const keep = S.model.of; of.nr = keep.nr; of.datum = keep.datum || of.datum; change(() => { S.model.of = of; }); }
+  else ofNew("imp", of, `Offerte – ${base}`);
+  toast(`${i.positionen} Positionen aus «${file.name}» übernommen. BKP und Texte sind frei änderbar.`);
+}
+// Menü der Offerten-Leiste: geht nach oben auf wie die Blattliste (Kapitelliste, Variante oder Nachtrag)
+const ofMenuEl = document.createElement("div"); ofMenuEl.className = "menu"; ofMenuEl.id = "of-menu"; ofMenuEl.setAttribute("role", "menu"); ofMenuEl.hidden = true; $("#app").append(ofMenuEl);
+const ofMenu = makeMenu(ofMenuEl, { up: true, left: true, beforeShow: () => closeEditor(true) });
+function ofMenuOpen(b) {
+  const mi = (act, title, on = false, sub = "") => `<button class="mi${on ? " on" : ""}" role="menuitem" data-ofm="${act}" tabindex="-1" aria-checked="${on}"><span class="mt"><span class="mh">${R.esc(title)}</span>${sub ? `<span class="ms">${R.esc(sub)}</span>` : ""}</span></button>`;
+  const kap = b.dataset.ofkap !== undefined, cur = ofCur();
+  ofMenuEl.setAttribute("aria-label", kap ? "Kapitel der Offerte" : "Variante oder Nachtrag");
+  ofMenuEl.innerHTML = kap ? `<div class="ctx-head">Kapitel der Offerte</div>` + ofTargets().map((l, i) => mi(`k:${i}`, l, i === cur)).join("")
+    : `<div class="ctx-head">Neu als eigenes Offerten-Modul</div>` + mi("var", "Variante", false, "Kopie dieser Offerte") + mi("nach", "Nachtrag", false, "Leere Offerte mit gleicher Offertnummer");
+  ofMenu.toggle(b);
+}
+ofMenuEl.addEventListener("click", (e) => { const a = e.target.closest("[data-ofm]")?.dataset.ofm; if (!a) return; if (a.startsWith("k:")) ofJump(Number(a.slice(2))); else ofNew(a); });
+const E_modNames = (base) => [...new Set(S.doc.sheets.filter((sh) => modBase(sh) === base).map(modOf))].map((id) => modName(S.doc, id));
 // Sprünge zu wichtigen Blättern (CJ 18.10.2026): mit M (★) markierte Blätter. Knopf ★ in der Blattleiste: Klick = nächstes markiertes
 // Blatt, Rechtsklick oder gedrückt halten = Liste aller markierten (Klick-Regel). Tasten ⇧Bild ab / ⇧Bild auf. Über alle Module.
 const pinned = () => S.doc.sheets.map((sh, i) => (sh.pin ? i : -1)).filter((i) => i >= 0);
@@ -809,6 +900,7 @@ function syncKind() {
 function afterSheetChange(prevKind, { reset = false, fit = false } = {}) {
   const kindChanged = (prevKind || "schema") !== (S.model.kind || "schema");
   if (kindChanged || reset) { S.tool = "select"; S.placeSym = null; S.sel.clear(); svg.className.baseVal = ""; }
+  OF.closeDetails(); // aufgeklappte Angaben gehören zur bisherigen Offerte (IDs gelten je Offerte)
   syncKind(); renderLeft();
   if (kindChanged || fit || isDispo() || isPv()) fitView(); else renderSheet();
   renderSheetBar(); renderItems(); renderOverlay(); renderRight(); updateHint();
@@ -1951,8 +2043,10 @@ onPanel("click", (e) => {
 
 let addHeld = false, addTimer = 0; // langes Drücken auf + öffnet die Auswahl statt ein Blatt anzulegen
 $("#sheetbar").addEventListener("click", (e) => {
-  const step = e.target.closest("[data-step]");
-  if (step) stepSheet(Number(step.dataset.step));
+  const step = e.target.closest("[data-step]"), ofs = e.target.closest("[data-ofstep]"), ofm = e.target.closest("[data-ofkap], [data-ofplus]");
+  if (ofs) ofStep(Number(ofs.dataset.ofstep));
+  else if (ofm) ofMenuOpen(ofm); // Kapitelliste, Variante oder Nachtrag
+  else if (step) stepSheet(Number(step.dataset.step));
   else if (e.target.closest("[data-gosheet]")) sheetMenu.toggle($("#sheet-cur"));
   else if (e.target.closest("[data-starjump]")) jumpStar(1);
   else if (e.target.closest("[data-addsheet]")) { if (addHeld) addHeld = false; else if (addMenu.open) addMenu.hide(false); else addSameKind(); }
@@ -2000,6 +2094,8 @@ function ofClick(e) {
   if (b.dataset.ofact === "profil") { firmProfil(); return; }
   if (b.dataset.ofact === "sollwerte") { kalkFirma(); return; }
   if (b.dataset.ofact === "dbsave") { ofDbSave(Number(b.dataset.p)); return; }
+  if (b.dataset.ofact === "import") { ofImport(); return; }
+  if (b.dataset.ofact === "out") { offerteOut(S.model, b.dataset.kind, b.dataset.prices === "1"); return; } // PDF oder Excel (Schritt 5)
   if (b.dataset.ofact === "dbdel") { ofDbDel(b.dataset.db); return; }
   const r = OF.action(S.model.of, b); if (!r) return;
   if (r.ui) renderItems(); else change(r.fn);
@@ -2009,6 +2105,23 @@ for (const el of [ofView, leftEl, rightEl]) { el.addEventListener("change", ofCh
 for (const el of [ofView, rightEl]) el.addEventListener("keydown", (e) => { const t = e.target; if (isOff() && e.key === "Enter" && t.matches?.("input[type=text][data-of]")) { e.preventDefault(); const k = t.dataset.of; t.blur(); ofRefocus(`[data-of="${k}"]`); } }); // Enter übernimmt
 leftEl.addEventListener("input", (e) => { const id = e.target.id; if (!isOff() || (id !== "of-bkpfind" && id !== "of-posfind")) return; (id === "of-bkpfind" ? OF.setBkpFind : OF.setPosFind)(e.target.value); renderLeftBody(); const f = $(`#${id}`); f.focus(); f.setSelectionRange(f.value.length, f.value.length); });
 ofView.addEventListener("focusin", (e) => { if (isOff()) OF.noteTarget(S.model.of, e.target.dataset?.of); }); // Treffer der Positionsdatenbank kommen in diese Gruppe
+// Ziehen (CJ 26.10.2026): Positionen und Gruppen verschieben, auch über Gruppen und Kapitel hinweg. Ein Schritt im Rückgängig.
+let ofDrag = null, ofMark = null;
+const ofMarkSet = (t) => { if (ofMark && (!t || ofMark.el !== t.el || ofMark.mark !== t.mark)) ofMark.el.classList.remove("drop-before", "drop-after", "drop-in"); ofMark = t; if (t) t.el.classList.add(`drop-${t.mark}`); };
+const ofDragEnd = () => { ofMarkSet(null); ofView.querySelector(".dragging")?.classList.remove("dragging"); ofDrag = null; };
+ofView.addEventListener("dragstart", (e) => {
+  const h = e.target.closest?.("[data-drag]"); if (!isOff() || !h) return;
+  ofDrag = h.dataset.drag; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", ofDrag);
+  h.closest(ofDrag[0] === "p" ? "tr" : ".of-grp").classList.add("dragging");
+});
+ofView.addEventListener("dragover", (e) => { if (!ofDrag) return; const t = OF.dropAt(ofDrag, e.target, e.clientY); ofMarkSet(t); if (t) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } });
+ofView.addEventListener("drop", (e) => {
+  if (!ofDrag) return; e.preventDefault();
+  const t = OF.dropAt(ofDrag, e.target, e.clientY); ofDragEnd();
+  const c = structuredClone(S.model.of);
+  if (t && t.fn(c)) change(() => { S.model.of = c; });
+});
+ofView.addEventListener("dragend", ofDragEnd);
 // Positionsdatenbank (positionen.js, Offerte Schritt 3): Position speichern oder Eintrag löschen. Ändert die Offerte nicht.
 async function ofDbSave(pid) {
   const p = O_findPos(pid); if (!p) return;
@@ -2257,7 +2370,9 @@ window.addEventListener("resize", () => { applyView(); });
 window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 // ---------- Dateien (Code in files.js) ----------
-const { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend } = makeFiles({ S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv: PV, sheetLabel });
+// Offerte im PDF und Excel (Schritt 5): Absender aus dem Firmenprofil, Kunde aus den Projektfeldern Bauherr, Projektname
+const offCtx = () => ({ profil: loadProfil(), kunde: E.bauherrInfo(S.doc) || {}, projekt: (ELPLEXA && S.doc.project?.name) || S.doc.sheets.find((sh) => sh.kind === "title")?.meta?.OBJEKT || "" });
+const { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend, offerteOut } = makeFiles({ S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv: PV, sheetLabel, offCtx });
 
 // Titelseite: Änderung eintragen oder löschen, Logo laden (PNG, JPEG, SVG bis MAX_LOGO) oder entfernen
 function deckAction(b) {
@@ -2348,7 +2463,15 @@ function elSheetBar() {
   $("#btn-dxf-all").hidden = S.doc.sheets.length < 2;
   const open = sheetMenu?.open, keep = document.activeElement?.closest?.("#sheetbar") && document.activeElement.id;
   const mn = S.doc.mods?.[elMod()]?.name || `${m.short || m.label}${varOf(sh) > 1 && !T.isDeck(sh) ? ` ${varOf(sh)}` : ""}`; // eigener Name des Moduls (18.10.2026)
-  $("#sheetbar").innerHTML = `<span class="el-sbmod" title="Modul ${R.esc(modName(S.doc, elMod()))}"><span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>${R.esc(mn)}</span>`
+  const mod = `<span class="el-sbmod" title="Modul ${R.esc(modName(S.doc, elMod()))}"><span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>${R.esc(mn)}</span>`;
+  if (isOff()) { // Offerte: Inhaltsverzeichnis (Kapitel), Plus = Variante oder Nachtrag
+    const t = ofTargets(), i = Math.min(ofCur(), t.length - 1);
+    $("#sheetbar").innerHTML = mod + `<button class="sheettab nav" data-ofstep="-1" title="Vorheriges Kapitel (Bild auf)" aria-label="Vorheriges Kapitel"${i <= 0 ? " disabled" : ""}>‹</button>`
+      + ofKapBtn() + `<button class="sheettab nav" data-ofstep="1" title="Nächstes Kapitel (Bild ab)" aria-label="Nächstes Kapitel"${i >= t.length - 1 ? " disabled" : ""}>›</button>` + ofPlusBtn() + starBtn();
+    if (keep) document.getElementById(keep)?.focus();
+    return;
+  }
+  $("#sheetbar").innerHTML = mod
     + `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt im Modul (Bild auf)" aria-label="Vorheriges Blatt"${pos <= 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Blätter dieses Moduls (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${pos + 1} von ${idx.length}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt im Modul (Bild ab)" aria-label="Nächstes Blatt"${pos >= idx.length - 1 ? " disabled" : ""}>›</button>`
@@ -2363,7 +2486,7 @@ function elSheetList() {
   const rows = idx.map((i) => ({ sh: S.doc.sheets[i], i, label: sheetLabel(S.doc.sheets[i], i), title: S.doc.sheets[i].meta.TITEL || "" })).filter((r) => !q || `${r.label} ${r.title}`.toLowerCase().includes(q));
   $("#sheet-menu .slist").innerHTML = rows.length ? rows.map(({ sh, i, label, title }, n) => `<div class="srow"><button class="mi${i === S.active ? " on" : ""}" data-sheet="${i}" data-ctx="${i}" tabindex="-1"${i === S.active ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${R.esc(label)}</span><span class="ms">${R.esc(title || "ohne Titel")}</span></span><span class="pos">${idx.indexOf(i) + 1}</span></button><button class="pin" data-pin="${i}" tabindex="-1" title="${sh.pin ? "Markierung entfernen" : "Blatt markieren"} (M für das aktive Blatt)" aria-label="${sh.pin ? "Markierung entfernen" : "Blatt markieren"}" aria-pressed="${!!sh.pin}">${sh.pin ? "★" : "☆"}</button></div>`).join("") : `<div class="empty">Kein Blatt gefunden</div>`;
 }
-function elStep(d) { const idx = elIdx(), i = idx[idx.indexOf(S.active) + d]; if (i !== undefined) switchSheet(i); }
+function elStep(d) { if (isOff()) { ofStep(d); return; } const idx = elIdx(), i = idx[idx.indexOf(S.active) + d]; if (i !== undefined) switchSheet(i); }
 function elAddFilter() { const ok = E.ADD_KINDS[E.baseOf(elMod())] || []; for (const b of document.querySelectorAll("#add-menu [data-new]")) if (!ok.includes(b.dataset.new)) b.hidden = true; else if (b.dataset.new !== "deck") b.hidden = false; } // deck: eigene Regel davor
 function elSync() {
   const id = elMod(), m = E.modById(id);

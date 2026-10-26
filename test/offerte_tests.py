@@ -1,5 +1,6 @@
 # UI-Tests für das Modul Offerte (Schritt 1, CJ 26.10.2026) in SchemaCAD v3 und elplexaCAD. Aufruf: python3 test/offerte_tests.py [Ausgabeordner]
 # Kapitel aus dem BKP-Katalog, Position per Tastatur (Tab), Summen mit Rundung, Option, Rabatt, Rückgängig, Datei Version 25, Absender aus dem Firmenprofil (Schritt 2).
+# Schritt 5: PDF mit und ohne Preise (v3 Druckseiten, elplexaCAD echtes PDF), Excel-Download mit Formeln, ohne EK und Zeit; Blattleiste als Kapitelliste, Variante und Nachtrag.
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -65,6 +66,70 @@ def flow(page, tag):
     check(f"{tag}: Treffer in die zuletzt bearbeitete Gruppe kopiert, ohne Menge", cp.get("titel") == "Steckdose T13" and cp.get("enr") == "111 222 333" and "menge" not in cp and cp.get("id") != pos.get("id"), g)
     page.keyboard.type("4"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
     check(f"{tag}: Kopie frei änderbar, Fokus auf Menge", off(D())["of"]["kap"][0]["grp"][1]["pos"][0].get("menge") == 4)
+    # Schritt 5: PDF und Excel, mit und ohne Preise. EK, Faktor, Zeit und Ansatz nie in der Ausgabe (EK 9.99 und Zeit 0.77 als Merkmal).
+    page.fill('[data-of$=".ek"] >> nth=0', "9.99"); page.keyboard.press("Tab"); page.wait_for_timeout(50)
+    page.fill('[data-of$=".std"] >> nth=0', "0.77"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
+    page.evaluate("""() => { window.__cap = []; window.print = () => { window.__cap.push(document.querySelector('#printroot').innerHTML); setTimeout(() => dispatchEvent(new Event('afterprint')), 10); };
+      window.open = (u) => { window.__cap.push(u); return {}; }; }""")
+    for prices in ["1", "0"]:
+        page.click(f'[data-ofact="out"][data-kind="pdf"][data-prices="{prices}"]'); page.wait_for_timeout(3000 if tag == "elplexa" else 400)
+    cap = page.evaluate("window.__cap")
+    if tag == "v3":
+        strip = lambda s: __import__("re").sub(r"<[^>]+>", " ", s)
+        a, b = (strip(x) for x in cap) if len(cap) == 2 else ("", "")
+        check(f"{tag}: PDF mit Preisen: Kopf, Kapitelsumme, Schluss, Firma", all(x in a for x in ["Offerte", "Muster Elektro", "Total Lichtinstallationen allgemein BKP 232", "Schlusszusammenstellung", "Seite 1 von 1"]), a[:300])
+        check(f"{tag}: PDF ohne Preise ohne Beträge", "(ohne Preise)" in b and "Betrag" not in b and "175.41" not in b and "Schlusszusammenstellung" not in b, b[:300])
+        check(f"{tag}: PDF ohne EK und Zeit", not any(x in a + b for x in ["9.99", "0.77"]))
+    else:
+        pdfs = [page.evaluate("async (u) => { const b = new Uint8Array(await (await fetch(u)).arrayBuffer()); let s = ''; for (const c of b) s += String.fromCharCode(c); return btoa(s); }", u) for u in cap]
+        for i, b64 in enumerate(pdfs): (OUT / f"offerte_{'mit' if i == 0 else 'ohne'}_preise.pdf").write_bytes(__import__("base64").b64decode(b64))
+        check(f"{tag}: zwei PDF erstellt (mit und ohne Preise), A4 hoch", len(pdfs) == 2 and all(b"/MediaBox [0 0 595.27" in __import__("base64").b64decode(x) for x in pdfs), len(pdfs))
+    with page.expect_download() as dl: page.click('[data-ofact="out"][data-kind="xlsx"][data-prices="1"]')
+    x = OUT / f"{tag}_offerte.xlsx"; dl.value.save_as(x)
+    import zipfile
+    sh = zipfile.ZipFile(x).read("xl/worksheets/sheet1.xml").decode()
+    check(f"{tag}: Excel mit Formeln, ohne EK und Zeit", dl.value.suggested_filename.endswith("_Offerte.xlsx") and "<f>SUMIFS(" in sh and "Muster Elektro" in sh and "9.99" not in sh and "0.77" not in sh, dl.value.suggested_filename)
+    # Blattleiste (CJ 26.10.2026): Kapitel springen, Plus = Variante oder Nachtrag als eigenes Offerten-Modul
+    page.click('[data-ofact="addkap"][data-bkp="236"]'); page.wait_for_timeout(150)
+    page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(100)
+    page.click("#sheetbar [data-ofkap]"); page.wait_for_timeout(200)
+    items = page.locator("#of-menu [data-ofm]").all_inner_texts()
+    check(f"{tag}: Kapitelliste mit Schlusszusammenstellung", len(items) == 3 and "BKP 236" in items[1] and items[2] == "Schlusszusammenstellung", items)
+    page.click('#of-menu [data-ofm="k:2"]'); page.wait_for_timeout(200)
+    check(f"{tag}: Sprung zur Schlusszusammenstellung", page.evaluate("(() => { const v = document.querySelector('#of-view'), e = document.querySelector('.of-end'); return Math.abs(e.getBoundingClientRect().top - v.getBoundingClientRect().top - 8) < 3 || v.scrollTop + v.clientHeight >= v.scrollHeight - 2; })()"))
+    if tag == "elplexa":
+        check(f"{tag}: Leiste zeigt das Kapitel", "von 3" in page.inner_text("#sheetbar"), page.inner_text("#sheetbar"))
+        page.click('#sheetbar [data-ofstep="-1"]'); page.wait_for_timeout(200)
+        check(f"{tag}: ‹ springt ein Kapitel zurück", "BKP 236" in page.inner_text("#sheetbar") and "2 von 3" in page.inner_text("#sheetbar"), page.inner_text("#sheetbar"))
+    else: check(f"{tag}: v3 blättert weiter durch die Blätter", page.locator('#sheetbar [data-step="-1"]').count() == 1 and page.locator("#sheetbar .of-kapbtn").count() == 1)
+    n0 = len([x for x in D()["sheets"] if x.get("kind") == "offerte"])
+    page.click("#sheetbar [data-ofplus]"); page.wait_for_timeout(150); page.click('#of-menu [data-ofm="var"]'); page.wait_for_timeout(300)
+    d = D(); offs = [x for x in d["sheets"] if x.get("kind") == "offerte"]
+    check(f"{tag}: Variante = Kopie als eigenes Modul mit Namen", len(offs) == n0 + 1 and offs[-1].get("var") == 2 and len(offs[-1]["of"]["kap"]) == 2 and offs[-1]["of"]["ver"] == "Variante 2" and d.get("mods", {}).get("offerte:2", {}).get("name") == "Offerte – Variante 2", d.get("mods"))
+    page.click("#sheetbar [data-ofplus]"); page.wait_for_timeout(150); page.click('#of-menu [data-ofm="nach"]'); page.wait_for_timeout(300)
+    d = D(); o = [x for x in d["sheets"] if x.get("kind") == "offerte"][-1]
+    check(f"{tag}: Nachtrag = leere Offerte, gleiche Nummer", o.get("var") == 3 and not o["of"]["kap"] and o["of"]["ver"] == "Nachtrag 1" and d["mods"]["offerte:3"]["name"] == "Offerte – Nachtrag 1", o["of"])
+    # Excel-Import (leerer Nachtrag wird gefüllt) mit der eben exportierten Excel, dann Ziehen
+    with page.expect_file_chooser() as fc: page.click('[data-ofact="import"]')
+    fc.value.set_files(str(x)); page.wait_for_timeout(400)
+    dlg = page.inner_text(".modal")
+    check(f"{tag}: Import zeigt die Deutung", "Excel-Offerte importieren" in dlg and "Küche" in dlg and "Bad" in dlg and "Positionen" in dlg, dlg[:300])
+    page.click(".modal [data-ok]"); page.wait_for_timeout(300)
+    o = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]
+    gr = o["kap"][0]["grp"] if o["kap"] else []
+    check(f"{tag}: Import füllt die leere Offerte (Kapitel, Gruppen, Positionen, ohne EK)", [g["titel"] for g in gr] == ["Küche", "Bad"] and [len(g["pos"]) for g in gr] == [2, 1] and "ek" not in str(o), o.get("kap"))
+    page.set_viewport_size({"width": 1440, "height": 1400}); page.evaluate("document.querySelectorAll('.toast').forEach((t) => t.remove())")  # Ziel nicht unter Hinweisen und schwebender Blattleiste
+    if page.locator('[data-ofact="det"][aria-expanded="true"]').count(): page.click('[data-ofact="det"][aria-expanded="true"]')
+    page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(150)
+    page.drag_and_drop('.of-grp >> nth=0 >> .of-pos >> nth=0 >> .of-drag', '.of-grp >> nth=1 >> .of-pos >> nth=0', target_position={"x": 300, "y": 30}); page.wait_for_timeout(300)
+    gr = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]["kap"][0]["grp"]
+    check(f"{tag}: Position in eine andere Gruppe gezogen", [len(g["pos"]) for g in gr] == [1, 2] and gr[1]["pos"][1]["titel"] == "Steckdose T13", [[p2["titel"] for p2 in g["pos"]] for g in gr])
+    page.drag_and_drop('.of-grp >> nth=1 >> .of-gh .of-drag', '.of-grp >> nth=0', target_position={"x": 100, "y": 5}); page.wait_for_timeout(300)
+    gr = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]["kap"][0]["grp"]
+    check(f"{tag}: Gruppe nach oben gezogen", [g["titel"] for g in gr] == ["Bad", "Küche"], [g["titel"] for g in gr])
+    page.click("#btn-undo"); page.wait_for_timeout(200)
+    gr = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]["kap"][0]["grp"]
+    check(f"{tag}: Rückgängig nimmt das Ziehen zurück", [g["titel"] for g in gr] == ["Küche", "Bad"])
     page.screenshot(path=str(OUT / f"{tag}.png"))
 
 with sync_playwright() as p:

@@ -86,6 +86,25 @@ export const copyPosition = (of, grp, p, at = grp.pos.length) => { const n = { .
 export const findPos = (of, id) => { for (const k of of.kap) for (const g of k.grp) { const i = g.pos.findIndex((p) => p.id === id); if (i >= 0) return { k, g, p: g.pos[i], i }; } return null; };
 export const findGrp = (of, id) => { for (const k of of.kap) { const i = k.grp.findIndex((g) => g.id === id); if (i >= 0) return { k, g: k.grp[i], i }; } return null; };
 
+// Ziehen (CJ 26.10.2026): Position in eine Gruppe vor die Position before (null = ans Ende), auch über Gruppen und Kapitel hinweg.
+// Gruppe in ein Kapitel vor die Gruppe before. Die feste ID bleibt. Gibt false zurück, wenn nichts zu tun ist.
+export function movePos(of, pid, gid, before = null) {
+  const f = findPos(of, pid), to = findGrp(of, gid)?.g;
+  if (!f || !to || pid === before) return false;
+  f.g.pos.splice(f.i, 1);
+  const at = before === null ? -1 : to.pos.findIndex((p) => p.id === before);
+  to.pos.splice(at < 0 ? to.pos.length : at, 0, f.p);
+  return true;
+}
+export function moveGrp(of, gid, kid, before = null) {
+  const f = findGrp(of, gid), to = of.kap.find((k) => k.id === kid);
+  if (!f || !to || gid === before) return false;
+  f.k.grp.splice(f.i, 1);
+  const at = before === null ? -1 : to.grp.findIndex((g) => g.id === before);
+  to.grp.splice(at < 0 ? to.grp.length : at, 0, f.g);
+  return true;
+}
+
 // Einheitspreis einer Position (Franken, ungerundet wie im Excel). Von Hand gesetzt gilt der Preis. Sonst Material: EK × Faktor (der Position, sonst der Offerte),
 // Arbeit: Zeit × Zeitfaktor × Ansatz. Regie rechnet nur Zeit × Ansatz (Regiestunden sind tatsächliche Stunden, ohne Zeitfaktor).
 export function unitRaw(p, of) {
@@ -125,6 +144,28 @@ export function totals(of) {
   return { pos, grp, kap, zwischensumme: zs, rabatt, rabattTotal: rabSum, netto, mwst, total, optionen: opt,
     skonto: of.skonto ? { satz: of.skonto, tage: of.skTage || 0, betrag: total * of.skonto / 100 } : null }; // Skonto nur als Hinweis
 }
+
+// Schlusszusammenstellung als Zeilen (Editor, PDF und Excel, Schritt 5): { text, betrag, art } mit art = kap, zs, rab, netto, mwst, rund, total.
+// betrag in Franken (Rabatt negativ). notes: Skonto-Hinweis und Optionen (nicht in der Angebotssumme).
+export const totalLabel = (of) => (of.mwst ? "Total inkl. MwSt" : "Total ohne MwSt"); // MwSt nur am Schluss, aus = Satz 0
+export function summaryRows(of, t = totals(of)) {
+  const rows = t.kap.map((k) => ({ art: "kap", text: `BKP ${k.bkp} ${k.titel}`.trim(), betrag: k.summe }));
+  rows.push({ art: "zs", text: "Zwischensumme", betrag: t.zwischensumme });
+  for (const r of t.rabatt) rows.push({ art: "rab", text: `Rabatt${r.kz || r.name ? ` ${[r.kz, r.name].filter(Boolean).join(" ")}` : ""} ${fmtNum(r.satz)} % auf ${fmtChf(r.basis)}`, betrag: -r.betrag, satz: r.satz, basis: r.basis });
+  if (t.rabatt.length) rows.push({ art: "netto", text: "Total nach Rabatt", betrag: t.netto });
+  if (of.mwst) rows.push({ art: "mwst", text: `MwSt ${fmtNum(of.mwst)} %`, betrag: t.mwst });
+  const c = (x) => Math.round(x * 100), rd = c(t.total) - c(t.netto) - c(t.mwst); // Rundung auf 5 Rappen, damit die Zeilen sichtbar aufgehen
+  if (rd) rows.push({ art: "rund", text: "Rundung", betrag: rd / 100 });
+  rows.push({ art: "total", text: totalLabel(of), betrag: t.total });
+  const notes = [];
+  if (t.skonto) notes.push(`Skonto ${fmtNum(t.skonto.satz)} %${t.skonto.tage ? ` bei Zahlung innert ${t.skonto.tage} Tagen` : ""}: CHF ${fmtChf(t.skonto.betrag)}`);
+  if (t.optionen) notes.push(`Optionen (nicht in der Angebotssumme): CHF ${fmtChf(t.optionen)}`);
+  return { rows, notes };
+}
+// Betrag mit Vorzeichen für die Anzeige: − 12.50
+export const fmtSigned = (x) => (Math.round(x * 100) < 0 ? `− ${fmtChf(-x)}` : fmtChf(x));
+// Positionsnummer wie im Editor: NPK-Nr. oder Kapitel.Gruppe.Position
+export const posNo = (p, ki, gi, pi) => p.npk || `${ki + 1}.${gi + 1}.${pi + 1}`;
 
 // Laden: prüft und säubert die Offerte aus der Datei. Unbekannte Felder fallen weg, fehlende bleiben leer. IDs bleiben, doppelte bekommen eine neue.
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);

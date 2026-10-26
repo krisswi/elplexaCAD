@@ -81,7 +81,10 @@ export function moveLayer(sh, id, dir) {
 
 // ---------- Objekte ----------
 export const WALL_D = 150; // Vorgabe Wanddicke in mm
-export const MATS = [["beton", "Beton"], ["mauer", "Mauerwerk"], ["leicht", "Leichtbau/Gips"]]; // beton = Kreuzschraffur, mauer = Schraffur /, leicht = nur Umriss
+export const MATS = [["beton", "Beton"], ["mauer", "Mauerwerk"], ["leicht", "Leichtbau/Gips"], ["doppel", "Doppelschale (Stein, Isolation, Stein)"]]; // beton = Kreuzschraffur, mauer = Schraffur /, leicht = nur Umriss, doppel = zwei Schalen Schraffur / mit Isolation dazwischen
+// Doppelschalenmauerwerk (CJ 26.10.2026): Stein st je Schale und Isolation iso in mm, Dicke d = 2 × st + iso (Vorgabe 12 + 8 + 12 = 32 cm)
+export const DOPPEL = { st: 120, iso: 80 };
+export const doppelD = (st, iso) => 2 * st + iso;
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
 export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line"]);
@@ -108,7 +111,9 @@ export function setCol(it, col) { if (!hasCol(it)) return; const c = String(col 
 export function cleanPlanObj(it, id) {
   if (it.type === "wall") {
     if (!isPt(it.a) || !isPt(it.b) || !isNum(it.d) || it.d <= 0 || Math.hypot(it.b[0] - it.a[0], it.b[1] - it.a[1]) < EPS) return null;
-    return { id, type: "wall", layer: String(it.layer ?? ""), a: [it.a[0], it.a[1]], b: [it.b[0], it.b[1]], d: it.d, mat: MATS.some(([k]) => k === it.mat) ? it.mat : "mauer" };
+    const o = { id, type: "wall", layer: String(it.layer ?? ""), a: [it.a[0], it.a[1]], b: [it.b[0], it.b[1]], d: it.d, mat: MATS.some(([k]) => k === it.mat) ? it.mat : "mauer" };
+    if (o.mat === "doppel") { o.st = isNum(it.st) && it.st > 0 ? it.st : DOPPEL.st; o.iso = isNum(it.iso) && it.iso >= 0 ? it.iso : DOPPEL.iso; o.d = doppelD(o.st, o.iso); } // Dicke folgt den Schichten
+    return o;
   }
   if (it.type === "opening") {
     if (!isNum(it.wall) || !isNum(it.t) || !isNum(it.w) || it.w <= 0 || !OPENINGS.some(([k]) => k === it.kind)) return null;
@@ -130,11 +135,14 @@ export function cleanPlanObj(it, id) {
     const def = SYM_BY_KEY.get(it.key);
     if (!def || !isPt(it.at)) return null;
     const o = { id, type: "sym", layer: String(it.layer ?? ""), key: it.key, at: [it.at[0], it.at[1]], r: isNum(it.r) ? ((Math.round(it.r) % 360) + 360) % 360 : 0 };
-    if (isNum(it.h) && it.h >= 0) o.h = it.h;
+    if (isNum(it.h) && it.h >= 0 && it.h !== def.h) o.h = it.h; // nur abweichend von der Standardhöhe gespeichert (CJ 26.10.2026)
     const str = (v, n) => String(v ?? "").trim().slice(0, n);
     if (str(it.txt, 60)) o.txt = str(it.txt, 60);
     if (def.ap && it.ap === true) o.ap = true;
-    if (def.ref) { if (str(it.fu, 12)) o.fu = str(it.fu, 12); if (str(it.nr, 12)) o.nr = str(it.nr, 12); }
+    if (def.ref) { if (str(it.fu, 20)) o.fu = str(it.fu, 20); if (str(it.nr, 20)) o.nr = str(it.nr, 20); }
+    const lo = cleanLo(it.lo); if (lo) o.lo = lo;
+    const z = sizeOf(it.key); if (z) for (const f of ["w", "t"]) if (z[f] !== undefined && isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && Math.round(it[f]) !== z[f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
+    if (def.num !== undefined && str(it.num, 6) && str(it.num, 6) !== def.num) o.num = str(it.num, 6); // Zahl der Mehrfachsteckdose (CJ 26.10.2026)
     setCol(o, it.col);
     return o;
   }
@@ -151,12 +159,22 @@ export function cleanPlanObj(it, id) {
 
 // Blattfelder und Objekte aus der Datei. Bereinigung: Objekte auf unbekannter Ebene → aktive Ebene, Öffnung ohne Wand fällt weg,
 // Öffnung in die Wand geklemmt, Mass mit fehlender Wand verliert den Bezug. Gibt die höchste id zurück.
-export function cleanPlanSheet(rs, m, maxId) {
+// Dateiversion 24 (Plan Schritt 5, CJ 26.10.2026): ältere Stände kennen diese Felder nicht
+const OLD_KEYS = new Set(["SCH0", "SCH0_2", "SCH3", "SCH6", "TASTER", "DIMMER", "STOREN", "SCH_LAMPE", "STD", "STD3", "STD_T15", "STD_USB", "STD_BODEN", "KOMBI", "LEUCHTE", "LEUCHTE_EB", "LEUCHTE_W", "LEUCHTE_WEB", "LED", "LED_EB", "LED_W", "BWM", "PIR", "GERAET", "HERD", "BACKOFEN", "MIKRO", "GSP", "KUEHL", "VENT", "BOILER", "DOSE", "EINLASS", "VERTEILER", "ANSCHLUSS", "STEIG_AUF", "STEIG_AB", "STEIG_DURCH", "VERWEIS"]); // Symbole bis Dateiversion 23
+export const V24_SYMS = { has: (k) => !!k && !OLD_KEYS.has(k) }; // Symbole, die ältere Stände nicht kennen
+export const planV24 = (sh) => sh.items.some((i) => i.lo || i.num !== undefined || (i.type === "sym" && (i.w !== undefined || i.t !== undefined)) || i.mat === "doppel" || V24_SYMS.has(i.key) || (i.ap && !SYM_BY_KEY.get(i.key)?.group?.startsWith("Schalter")));
+const VERSION_NOW = 24;
+export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
+// ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
+const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
+export function cleanPlanSheet(rs, m, maxId, ver = VERSION_NOW) {
   m.paper = cleanPlanPaper(rs.paper);
   m.layers = cleanPlanLayers(rs.layers);
   m.alay = layerById(m, rs.alay) ? rs.alay : m.layers[0].id;
   const pm = cleanPmid(rs.pmid); if (pm) m.pmid = pm; // Druckmitte frei gewählt (wie Stringplan 5ao)
   if (rs.bom === false) m.bom = false; // Stückliste nicht drucken (Schritt 4, fehlt = drucken)
+  if (rs.bgOff === true) m.bgOff = true; // PDF-Plan ausgeblendet, unabhängig von den Ebenen (CJ 26.10.2026)
+  if (isNum(rs.bgOp) && rs.bgOp >= 10 && rs.bgOp <= 100 && Math.round(rs.bgOp) !== BG_OP) m.bgOp = Math.round(rs.bgOp); // Deckkraft in %, fehlt = BG_OP
   if (isNum(rs.sid) && rs.sid > 0) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); }
   for (const it of Array.isArray(rs.items) ? rs.items : []) {
     const id = isNum(it?.id) ? it.id : ++maxId;
@@ -164,6 +182,7 @@ export function cleanPlanSheet(rs, m, maxId) {
     const o = it && PLAN_ITEMS.has(it.type) ? cleanPlanObj(it, id) : null;
     if (!o) throw new Error("Ein Plan enthält ein unbekanntes oder defektes Objekt (id " + id + ").");
     if (o.type !== "opening" && !layerById(m, o.layer)) o.layer = m.alay;
+    if (ver < 24 && o.type === "sym" && o.h !== undefined && o.h === OLD_H[o.key]) delete o.h;
     m.items.push(o);
   }
   const walls = new Map(m.items.filter((i) => i.type === "wall").map((w) => [w.id, w]));
@@ -297,7 +316,8 @@ export function wallShapes(walls, openings = []) {
     const poly = [a.R, b.R, b.L, a.L];
     const cuts = [-Infinity, ...ops.flat().sort((x, y) => x - y), Infinity], fills = [];
     for (let i = 0; i < cuts.length; i += 2) { const f = clipBand(poly, w.a, u, cuts[i], cuts[i + 1]); if (f.length >= 3) fills.push(f); }
-    return { id: w.id, poly, fills, lines: lin.map(([p, q]) => [p.map(r3), q.map(r3)]) };
+    const iso = w.mat === "doppel" && w.iso > 0 ? fills.map((f) => clipBand(f, w.a, nl, -w.iso / 2, w.iso / 2)).filter((f) => f.length >= 3) : []; // Isolation mittig, Ecken auf Gehrung wie die Wand
+    return { id: w.id, poly, fills, iso, lines: lin.map(([p, q]) => [p.map(r3), q.map(r3)]) };
   });
 }
 
@@ -456,7 +476,7 @@ export function dimLine(d) { // Masslinie: a, b um off nach links (von a nach b)
 }
 export function hitPlan(sh, items, p, tol) {
   const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w])), k = paperOf(sh).den;
-  for (const it of [...items].reverse()) if (it.type === "sym") { const def = SYM_BY_KEY.get(it.key); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
+  for (const it of [...items].reverse()) if (it.type === "sym") { const def = symDef(it, k); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
   for (const it of [...items].reverse()) if (it.type === "line") { const q = linePts(it); if (q.some((x, i) => i && distSeg(p, q[i - 1], x) <= tol)) return it; }
   for (const o of items) {
     if (o.type !== "opening") continue;
@@ -499,24 +519,70 @@ export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, 
 }
 // Symbol: Mitte in der Welt (Papier-mm × Massstab k, gedreht um r)
 export function symCenter(it, k) {
-  const c = SYM_BY_KEY.get(it.key).c, a = (it.r * Math.PI) / 180;
+  const c = symDef(it, k).c, a = (it.r * Math.PI) / 180;
   return [it.at[0] + k * (c[0] * Math.cos(a) - c[1] * Math.sin(a)), it.at[1] + k * (c[0] * Math.sin(a) + c[1] * Math.cos(a))];
 }
 // Text lesbar halten: Winkel 0–359 → (-90, 90], flip = um 180° gekippt (sonst stünde er auf dem Kopf)
 export function readable(ang) { const a = ((ang % 360) + 360) % 360, flip = a > 90 && a <= 270; return { a: flip ? a - 180 : a > 270 ? a - 360 : a, flip }; }
+// Versatz der Beschriftung (CJ 26.10.2026): [x, y] in Papier-mm im System des Symbols (dreht mit R), 0,1 mm genau, höchstens 60 mm; [0, 0] = Standardlage
+export function cleanLo(v) {
+  if (!Array.isArray(v) || v.length !== 2 || !v.every(isNum)) return null;
+  const q = v.map((n) => Math.round(Math.max(-60, Math.min(60, n)) * 10) / 10 + 0);
+  return q[0] || q[1] ? q : null;
+}
+// Verteilung (CJ 26.10.2026): Grösse in echten mm wie Wände und Türen, Breite w entlang der Wand, Tiefe t in den Raum; das Zeichen wächst mit
+// Gilt auch für Balkenleuchten (FL …), Vorgaben und Zeichnung in plansym.js (size)
+export const sizeOf = (key) => SYM_BY_KEY.get(key)?.size ?? null;
+export const symSize = (it) => { const z = sizeOf(it.key); return z ? { w: it.w ?? z.w, ...(z.t !== undefined ? { t: it.t ?? z.t } : {}) } : null; };
+// Symboldefinition für ein Objekt: bei Verteilungen Teile, Mitte und Radius aus w und t (Papier-mm = Welt-mm / k)
+export function symDef(it, k) {
+  const def = SYM_BY_KEY.get(it.key), z = symSize(it);
+  if (def.ref) return { ...def, parts: refParts(it) };
+  if (!z) return def;
+  const W = z.w / k, T = (z.t ?? 0) / k, r = (n) => Math.round(n * 1000) / 1000;
+  return { ...def, parts: def.size.parts(W, T), c: def.wall ? [0, r(T / 2)] : [0, 0], r: r(Math.max(1, Math.hypot(W / 2, def.wall ? T / 2 : T / 2))) };
+}
+// Hinweis (VERWEIS): Kasten um die Zeilen oben (fu), unten (nr) und Kabel (txt), Mitte = Vorgabe + Versatz lo (Papier-mm im System des Symbols)
+const REF_H = 2.2, REF_LH = REF_H * 1.45, REF_DEF = [-8, 4];
+export function refBox(it) {
+  const rows = [it.fu, it.nr, it.txt].filter(Boolean), lo = it.lo ?? [0, 0];
+  const w = Math.max(5, ...rows.map((s) => s.length * REF_H * 0.62)) + 2, h = Math.max(1, rows.length) * REF_LH + 0.6;
+  return { rows: rows.length ? rows : [], x: REF_DEF[0] + lo[0], y: REF_DEF[1] + lo[1], w, h };
+}
+function refParts(it) {
+  const b = refBox(it), r3 = (n) => Math.round(n * 1000) / 1000, x0 = b.x - b.w / 2, y0 = b.y - b.h / 2, R = 1, out = [];
+  out.push(["p", `M${r3(x0 + R)},${r3(y0)}h${r3(b.w - 2 * R)}a${R} ${R} 0 0 1 ${R},${R}v${r3(b.h - 2 * R)}a${R} ${R} 0 0 1 ${-R},${R}h${r3(-(b.w - 2 * R))}a${R} ${R} 0 0 1 ${-R},${-R}v${r3(-(b.h - 2 * R))}a${R} ${R} 0 0 1 ${R},${-R}Z`, false]);
+  for (let i = 1; i < b.rows.length; i++) { const y = b.y + ((b.rows.length - 1) / 2 - i + 0.5) * REF_LH; out.push(["l", r3(x0), r3(y), r3(x0 + b.w), r3(y)]); } // Trennstrich zwischen den Zeilen
+  // Linie vom Ziel (0|0) zum nächsten Punkt auf dem Kastenrand
+  const cx = Math.max(x0, Math.min(0, x0 + b.w)), cy = Math.max(y0, Math.min(0, y0 + b.h));
+  const inside = cx === 0 && cy === 0, ex = inside ? b.x : cx, ey = inside ? y0 : cy;
+  if (Math.hypot(ex, ey) > 0.3) out.push(["l", 0, 0, r3(ex), r3(ey)]);
+  return out;
+}
+// Höhe eines Symbols in cm: eingetragen oder Standardhöhe des Symbols (undefined = ohne)
+export const symH = (it) => it.h ?? SYM_BY_KEY.get(it.key)?.h;
 // Texte eines Symbols in der Welt (CJ 24.10.2026): drehen mit dem Symbol, stehen nie auf dem Kopf. Zusatztexte (T15, USB, 3, LED) und Verweis
 // mittig an ihrem Ort; Beschriftung und Höhe neben der Mitte in Richtung der x-Achse des Symbols (Wandsymbol: entlang der Wand), Zeilen untereinander.
 // Gibt [{ at, s, size, a, anchor }] (size und Abstände in Papier-mm × k).
 export function symTexts(it, k, fmtH = (h) => String(h)) {
-  const def = SYM_BY_KEY.get(it.key), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
+  const def = symDef(it, k), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
   const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)], out = [];
-  for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[4], size: q[3] * k, a, anchor: "middle" });
-  if (def.ref && (it.fu || it.nr)) out.push({ at: w(-4.9, 0), s: [it.fu, it.nr].filter(Boolean).join(" / "), size: 1.4 * k, a, anchor: "middle" });
+  for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[5] === "num" ? (it.num ?? q[4]) : q[4], size: q[3] * k, a, anchor: "middle" }); // num: Zahl am Symbol änderbar
+  if (def.ref) { const b = refBox(it); b.rows.forEach((s, i) => out.push({ at: w(b.x, b.y + ((b.rows.length - 1) / 2 - i) * REF_LH * (flip ? -1 : 1)), s, size: REF_H * k, a, anchor: "middle", label: true })); return out; } // Hinweis: Zeilen im Kasten, ziehbar wie eine Beschriftung
   // Abstand: hinter dem Symbol und hinter Zusatztexten rechts der Mitte (Breite ca. 0,6 × Höhe je Zeichen)
   const ext = Math.max(def.r, ...def.parts.filter((q) => q[0] === "t").map((q) => q[1] - def.c[0] + q[4].length * q[3] * 0.3));
-  const lines = [it.txt, it.h !== undefined ? fmtH(it.h) : ""].filter(Boolean), c = symCenter(it, k), d = (ext + 0.6) * k, sg = flip ? -1 : 1;
-  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * k * sg; out.push({ at: [c[0] + co * d - si * o, c[1] + si * d + co * o].map(r3), s, size: 1.8 * k, a, anchor: flip ? "end" : "start" }); });
+  const lines = [it.txt, it.h !== undefined && it.h !== def.h ? fmtH(it.h) : ""].filter(Boolean), c = symCenter(it, k), d = (ext + 0.6) * k, sg = flip ? -1 : 1;
+  const [lx, ly] = it.lo ?? [0, 0], ox = k * (lx * co - ly * si), oy = k * (lx * si + ly * co); // Versatz dreht mit dem Symbol
+  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * k * sg; out.push({ at: [c[0] + co * d - si * o + ox, c[1] + si * d + co * o + oy].map(r3), s, size: 1.8 * k, a, anchor: flip ? "end" : "start", label: true }); });
   return out;
+}
+// Trifft p die Beschriftung (Bezeichnung, Höhe) eines Symbols? Kasten je Zeile: Breite ca. 0,6 × Höhe je Zeichen, ab dem Ankerpunkt.
+export function labelHit(it, k, p, tol, fmtH) {
+  return symTexts(it, k, fmtH).some((t) => {
+    if (!t.label) return false;
+    const r = (t.a * Math.PI) / 180, dx = p[0] - t.at[0], dy = p[1] - t.at[1], u = dx * Math.cos(r) + dy * Math.sin(r), v = -dx * Math.sin(r) + dy * Math.cos(r), wd = t.s.length * t.size * 0.6;
+    return (t.anchor === "end" ? u >= -wd - tol && u <= tol : u >= -tol && u <= wd + tol) && Math.abs(v) <= t.size / 2 + tol;
+  });
 }
 // Stückliste (Schritt 4, CJ 24.10.2026): Anzahl je Symbol auf sichtbaren Ebenen, Reihenfolge wie die Palette. Leitungen zählen nicht.
 export function bomOf(sh) {
@@ -546,7 +612,7 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(SYM_BY_KEY.get(i.key), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(symDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }

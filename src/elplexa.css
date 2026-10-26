@@ -485,3 +485,4 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 
 /* Plan im Druck (Schritt 4, 24.10.2026): eigene Linienbreiten statt der festen 0,35 mm aus style.css (#printroot [stroke-width]) */
 #printroot .pl-print [stroke-width] { stroke-width: var(--plw) !important; }
+.pl-bgrow input[type="range"] { width: 76px; margin: 0 4px; }

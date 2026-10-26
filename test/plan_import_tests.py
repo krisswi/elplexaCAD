@@ -109,6 +109,25 @@ with sync_playwright() as p:
     check("Druck: PDF-Plan als Bild auf der Planseite", page.locator("#printroot image").count() >= 1, n)
     page.evaluate("document.querySelector('#printroot').innerHTML = ''")
 
+    # PDF-Plan eigener Umschalter (CJ 26.10.2026): Auge links und Taste P, unabhängig von den Ebenen; Deckkraft
+    check("Zeile PDF-Plan mit Auge und Deckkraft", page.locator(".pl-bgrow [data-plact='bgshow']").count() == 1 and page.locator(".pl-bgrow [data-plbgop]").count() == 1)
+    check("Deckkraft Vorgabe 60 %", page.get_attribute("#sheet .pl-bgimg", "opacity") == "0.6")
+    page.click('[data-plact="ladd"]'); page.wait_for_timeout(150); page.click(".modal [data-ok]"); page.wait_for_timeout(200)  # zweite Ebene, wird aktiv
+    check("Auge auch auf Ebene Elektro sichtbar", page.locator(".pl-bgrow [data-plact='bgshow']").count() == 1)
+    key("p")
+    check("Taste P blendet PDF-Plan aus, Ebene Hintergrund bleibt", M().get("bgOff") is True and page.locator("#sheet image").count() == 0 and all(l["show"] for l in M()["layers"]))
+    n = page.evaluate("window.__schemacad.buildPrint(null)")
+    check("Druck ohne ausgeblendeten PDF-Plan", page.locator("#printroot image").count() == 0, n)
+    page.evaluate("document.querySelector('#printroot').innerHTML = ''")
+    page.click(".pl-bgrow [data-plact='bgshow']"); page.wait_for_timeout(200)
+    check("Auge blendet wieder ein", "bgOff" not in M() and page.locator("#sheet image").count() == 1)
+    page.locator(".pl-bgrow [data-plbgop]").evaluate("(e) => { e.value = 30; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); }"); page.wait_for_timeout(200)
+    check("Deckkraft 30 % gespeichert und gezeichnet", M().get("bgOp") == 30 and page.get_attribute("#sheet .pl-bgimg", "opacity") == "0.3")
+    for _ in range(3): page.keyboard.press("Meta+z"); page.wait_for_timeout(100)
+    check("Rückgängig: Deckkraft und Auge zurück", "bgOp" not in M() and "bgOff" not in M())
+    for _ in range(2): page.keyboard.press("Meta+z"); page.wait_for_timeout(100)
+    check("Rückgängig: zweite Ebene weg, Hintergrund aktiv", len(M()["layers"]) == 1 and M()["alay"] == "bg")
+
     # Zweites Stockwerk aus derselben PDF: PDF nur einmal in der Datei
     page.click(".el-back"); page.wait_for_timeout(200)
     page.click("#el-addmod"); page.wait_for_timeout(200); page.locator('[data-elnew="plan"]').click(); page.wait_for_timeout(300)

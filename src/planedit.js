@@ -11,7 +11,6 @@ import { openPdf, pageSize, toBase64, imageFor, imageReady } from "./pdfbg.js";
 import { pageSVG } from "./pvprint.js";
 import * as R from "./render.js";
 
-const BG_OPACITY = 0.6; // PDF-Plan blass, damit der Elektroplan hervortritt (wie Stringplan)
 const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3", GUIDE = "#e08a00", FRAME = "#6b7785";
 const OPEN_W = { tuer: 900, fenster: 1200, durchgang: 900, schiebe: 900 }; // Vorgabe Breiten in mm (Annahme)
 const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe neuer Öffnungen in mm (CJ 23.10.2026)
@@ -39,7 +38,7 @@ export function makePlan(c) {
   const sh = () => S.model;
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
-  const opt = { d: P.WALL_D, mat: "mauer", side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: false, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: false, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
@@ -99,13 +98,20 @@ export function makePlan(c) {
   }
   // ---------- PDF-Plan (Hintergrund wie im Stringplan, pv.js) ----------
   const bgLayer = (S0) => P.layerById(S0, "bg");
-  const bgShown = (S0) => !!S0.bg?.asset && bgLayer(S0)?.show !== false; // liegt auf der Ebene Hintergrund (ohne sie immer sichtbar)
+  const bgShown = (S0) => !!S0.bg?.asset && !S0.bgOff; // eigener Umschalter (Auge, Taste P), unabhängig von den Ebenen (CJ 26.10.2026)
+  const bgOp = (S0) => (S0.bgOp ?? P.BG_OP) / 100;
+  function bgToggle() {
+    const S0 = sh();
+    if (!S0.bg?.asset) { toast("Kein PDF-Plan geladen. Links auf der Ebene Hintergrund «PDF-Plan laden»."); return; }
+    change(() => { if (S0.bgOff) delete S0.bgOff; else S0.bgOff = true; });
+    c.renderSheet(); renderLeft();
+  }
   // PDF-Seite als Bild in der Welt (Massstab, Fixpunkt, Drehung). Ohne Bild ein Platzhalter, bis es gerendert ist.
   function bgImg(S0, onReady) {
     if (!bgShown(S0)) return "";
     const b = S0.bg, url = imageFor(S.doc.assets, b.asset, b.page, (err) => { if (err) toast("Der PDF-Plan lässt sich nicht anzeigen: " + err, "error"); onReady(); });
     const k = mmPerPt(b), [fu, fv] = fixOf(b), tr = `${b.rot ? `rotate(${b.rot}) ` : ""}translate(${f(-fu * k)} ${f(fv * k)}) scale(${k} ${-k})`;
-    if (url) return `<g transform="${tr}" opacity="${BG_OPACITY}" pointer-events="none"><image href="${url}" x="0" y="0" width="${b.w}" height="${b.h}" preserveAspectRatio="none"/></g>`;
+    if (url) return `<g transform="${tr}" class="pl-bgimg" opacity="${bgOp(S0)}" pointer-events="none"><image href="${url}" x="0" y="0" width="${b.w}" height="${b.h}" preserveAspectRatio="none"/></g>`;
     return `<rect transform="${tr}" x="0" y="0" width="${b.w}" height="${b.h}" fill="#eef1f4" pointer-events="none"/>`;
   }
   function measureSVG(a, e, label, z) {
@@ -115,6 +121,7 @@ export function makePlan(c) {
       + (label ? txt(mx, my + h, label, h, 0, GUIDE) : "") + "</g>";
   }
   function bgFree() {
+    if (sh().bgOff) { toast("Der PDF-Plan ist ausgeblendet. Links unter «Ebenen» mit dem Auge oder Taste P einblenden.", "error"); return false; }
     const l = bgLayer(sh());
     if (!l || (l.show && !l.lock)) return true;
     toast(`Die Ebene „${l.name}“ ist ${l.lock ? "gesperrt" : "ausgeblendet"}. Links unter „Ebenen“ freigeben.`, "error");
@@ -259,7 +266,8 @@ export function makePlan(c) {
     const s = 1.5 * k, w = 0.13 * k, d = `M${-s / 2},${s / 2}L${s / 2},${1.5 * s}M0,0L${s},${s}M${s / 2},${-s / 2}L${1.5 * s},${s / 2}`;
     const e = `M${s / 2},${-s / 2}L${-s / 2},${s / 2}M${s},0L0,${s}M${1.5 * s},${s / 2}L${s / 2},${1.5 * s}`;
     const pat = (id, path) => `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${f(s)}" height="${f(s)}"><rect width="${f(s)}" height="${f(s)}" fill="#fff"/><path d="${path}" stroke="${INK}" stroke-width="${f(w)}" fill="none"/></pattern>`;
-    return `<defs>${pat("pl-mauer", d)}${pat("pl-beton", d + e)}</defs>`;
+    const iso = `<pattern id="pl-iso" patternUnits="userSpaceOnUse" width="${f(s)}" height="${f(s)}"><rect width="${f(s)}" height="${f(s)}" fill="#fff"/><path d="M0,${f(s / 2)}q${f(s / 4)},${f(-s / 2)} ${f(s / 2)},0t${f(s / 2)},0" stroke="${INK}" stroke-width="${f(w)}" fill="none"/></pattern>`; // Isolation: Wellen
+    return `<defs>${pat("pl-mauer", d)}${pat("pl-beton", d + e)}${iso}</defs>`;
   }
   // Öffnung: Linien und Bögen in Welt-mm. Tür: Flügel und Bogen auf der Seite side, Band bei hinge; Fenster: Doppellinie; Schiebetür: Flügel an der Fläche
   function openingSVG(w, o, k, stroke = INK) {
@@ -303,12 +311,12 @@ export function makePlan(c) {
   }
   // Symbol (plansym.js): Teile in Papier-mm, in der Welt × Massstab k, gedreht um r. Texte drehen mit und bleiben lesbar (P.symTexts).
   function symSVG(it, k, stroke = INK) {
-    const def = SYM_BY_KEY.get(it.key);
+    const def = P.symDef(it, k);
     let g = "";
     for (const q of it.ap && def.ap ? [...def.parts, def.ap] : def.parts) {
       if (q[0] === "l") g += `<line x1="${q[1]}" y1="${q[2]}" x2="${q[3]}" y2="${q[4]}"/>`;
       else if (q[0] === "c") g += `<circle cx="${q[1]}" cy="${q[2]}" r="${q[3]}"${q[4] ? ` fill="${stroke}"` : ""}/>`;
-      else if (q[0] === "p") g += `<path d="${q[1]}"${q[2] ? ` fill="${stroke}"` : ""}/>`;
+      else if (q[0] === "p") g += q[2] === "w" ? `<path d="${q[1]}" fill="#fff" stroke="none"/>` : q[2] === "wl" ? `<path d="${q[1]}" fill="none" stroke="#fff" stroke-width="${q[3] ?? 0.18}" stroke-linejoin="round"/>` : `<path d="${q[1]}"${q[2] ? ` fill="${stroke}"` : ""}/>`; // "w" weiss gefüllt, "wl" weisse Linie (EXIT)
     }
     const t = P.symTexts(it, k, fmtH).map((x) => txt(x.at[0], x.at[1], x.s, x.size, x.a, stroke, x.anchor)).join("");
     return `<g transform="translate(${f(it.at[0])} ${f(it.at[1])}) rotate(${it.r}) scale(${k})" fill="none" stroke="${stroke}" stroke-width="0.18" stroke-linecap="round">${g}</g>${t}`;
@@ -328,7 +336,8 @@ export function makePlan(c) {
     for (const l of S0.layers) {
       if (!l.show) continue;
       const ws = walls.filter((w) => w.layer === l.id);
-      for (const w of ws) for (const poly of shapes.get(w.id).fills) s += `<path d="M${poly.map(pt).join("L")}Z" fill="${w.mat === "leicht" ? "#fff" : `url(#pl-${w.mat})`}" stroke="none"/>`;
+      for (const w of ws) for (const poly of shapes.get(w.id).fills) s += `<path d="M${poly.map(pt).join("L")}Z" fill="${w.mat === "leicht" ? "#fff" : w.mat === "doppel" ? "url(#pl-mauer)" : `url(#pl-${w.mat})`}" stroke="none"/>`;
+      for (const w of ws) for (const poly of shapes.get(w.id).iso) s += `<path d="M${poly.map(pt).join("L")}Z" fill="url(#pl-iso)" stroke="${INK}" stroke-width="${f(0.18 * k)}"/>`; // Doppelschale: Isolation
       const segs = ws.flatMap((w) => shapes.get(w.id).lines);
       if (segs.length) s += `<path d="${segs.map(([a, b]) => `M${pt(a)}L${pt(b)}`).join("")}" fill="none" stroke="${INK}" stroke-width="${f(0.5 * k)}" stroke-linecap="round"/>`;
       for (const o of ops) if (byId.get(o.wall)?.layer === l.id) s += openingSVG(byId.get(o.wall), o, k);
@@ -369,7 +378,7 @@ export function makePlan(c) {
     if (draft && mouse) {
       const b = draftEnd();
       if (Math.hypot(b[0] - draft.a[0], b[1] - draft.a[1]) > 1) {
-        const side = wallSide(b), nw = { id: -1, ...P.innerWall(draft.a, b, opt.d, side), d: opt.d }, ws = [], items = sh().items;
+        const side = wallSide(b), nw = { id: -1, ...P.innerWall(draft.a, b, wallD(), side), d: wallD() }, ws = [], items = sh().items;
         const prev = items.find((i) => i.id === draft.prev), first = items.find((i) => i.id === draft.first);
         if (prev) { const pc = { ...prev }; if (side !== draft.side && draft.pts.length === 2) Object.assign(pc, P.innerWall(draft.pts[0], draft.pts[1], pc.d, side)); P.mitre(pc, nw); ws.push(pc); } // Ecke zur vorigen Wand schon in der Vorschau
         if (first && first !== prev && Math.hypot(b[0] - draft.start[0], b[1] - draft.start[1]) < 1e-6) { const fc = { ...first }; P.mitre(nw, fc); ws.push(fc); }
@@ -386,7 +395,7 @@ export function makePlan(c) {
     }
     if (bgDraft && mouse) s += measureSVG({ x: bgDraft[0], y: bgDraft[1] }, mouse, S.tool === "pl-rotate" ? "Kante" : "", z);
     if (S.tool === "pl-pmid" && mouse) { const { a, k: d, ox, oy } = pageAt([mouse.x, mouse.y]); s += `<rect x="${f(ox + a.x0 * d)}" y="${f(oy + a.y0 * d)}" width="${f((a.x1 - a.x0) * d)}" height="${f((a.y1 - a.y0) * d)}" fill="rgba(47,109,179,.06)" stroke="${DRAFT}" stroke-width="1.5" stroke-dasharray="6 4"/>`; } // Vorschau des Planfelds
-    if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r, h: SYM_BY_KEY.get(opt.sym).h }, k, DRAFT)}</g>`; }
+    if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r }, k, DRAFT)}</g>`; }
     if (S.tool === "pl-open" && raw) { const pv = openPreview(); if (pv) s += `<g class="pl-scale">${openingSVG(pv.w, pv.o, k, DRAFT)}</g>`; }
     if (mouse?.guides) s += mouse.guides.map(([q, r]) => `<path d="M${pt(q)}L${pt(r)}" stroke="${GUIDE}" stroke-width="1" stroke-dasharray="${px(6)} ${px(4)}" fill="none"/><circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${GUIDE}"/>`).join("");
     if (mouse && S.tool !== "select" && S.tool !== "hand" && S.tool !== "pl-sym") s += `<circle cx="${f(mouse.x)}" cy="${f(mouse.y)}" r="${px(mouse.snap && mouse.snap !== "grid" ? 5 : 3)}" fill="${mouse.snap === "end" ? "#f4c400" : mouse.snap === "align" ? GUIDE : "#fff"}" stroke="${DRAFT}" stroke-width="1.5"/>`;
@@ -465,7 +474,7 @@ export function makePlan(c) {
     if (T === "pl-sym") {
       if (!layerOk()) return;
       const q = symPlace(opt.sym, w, opt.symR), def = SYM_BY_KEY.get(opt.sym), id = nextId();
-      change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r, h: def.h }, id)));
+      change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r }, id)));
       return;
     }
     if (T === "pl-line") {
@@ -506,6 +515,13 @@ export function makePlan(c) {
       const wl = sh().items.find((i) => i.id === one.wall), g = wl && edgeGrips(wl, one).find((x) => near(x.p));
       if (g) { drag = { type: "edge", it: one, wall: wl, edge: g.edge, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; }
     }
+    const lab = !e.shiftKey && !opt.multi && labelAt(w, t);
+    if (lab) { // Beschriftung ziehen (CJ 26.10.2026): bleibt am Symbol, Versatz lo im System des Symbols; zweimal schnell = zurück in die Standardlage
+      const twice = lastLab && lastLab.id === lab.id && e.timeStamp - lastLab.t < 450; lastLab = twice ? null : { id: lab.id, t: e.timeStamp };
+      if (twice) { if (lab.lo) { change(() => { delete lab.lo; }); toast("Beschriftung in der Standardlage."); } return; }
+      S.sel = new Set([lab.id]); drag = { type: "label", it: lab, lo0: lab.lo ?? [0, 0], sx: w.x, sy: w.y, started: false, snap: snapshot() };
+      renderRight(); renderOverlay(); return;
+    }
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t), more = e.shiftKey || opt.multi;
     if (!hit) { if (!more) S.sel = new Set(); drag = { type: "box", sx: w.x, sy: w.y, ex: w.x, ey: w.y, add: more, started: false }; renderRight(); renderOverlay(); return; } // Rahmen ziehen
     if (more) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; renderRight(); renderOverlay(); return; } // Shift-Klick: dazu oder weg
@@ -523,6 +539,7 @@ export function makePlan(c) {
       if (d.started && d.type === "box") { d.ex = w.x; d.ey = w.y; renderOverlay(); return; }
       if (d.started) {
         if (d.type === "multi") { const g = S.grid.on && !S.alt ? S.grid.size : 1, tx = Math.round((w.x - d.sx) / g) * g, ty = Math.round((w.y - d.sy) / g) * g; P.moveItems(sh(), d.items, tx - d.dx, ty - d.dy); d.dx = tx; d.dy = ty; }
+        else if (d.type === "label") { const a = (d.it.r * Math.PI) / 180, dx = (w.x - d.sx) / den(), dy = (w.y - d.sy) / den(); const lo = P.cleanLo([d.lo0[0] + dx * Math.cos(a) + dy * Math.sin(a), d.lo0[1] - dx * Math.sin(a) + dy * Math.cos(a)]); if (lo) d.it.lo = lo; else delete d.it.lo; }
         else if (d.type === "lpt") { const o = d.it.pts[d.i > 0 ? d.i - 1 : 1], p = snapLine(w, o, d.it.id); mouse = p; d.it.pts[d.i] = [p.x, p.y]; }
         else if (d.type === "node") { const skip = new Set(d.ends.map((x) => x.it.id)), p = P.snapPlan(sh(), visible().filter((i) => !skip.has(i.id)), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? otherEnd(d) : undefined }); mouse = p; P.setEnds(sh(), d.ends, [p.x, p.y]); }
         else if (d.type === "edge") { P.setOpeningEdge(d.wall, d.it, d.edge, P.along(d.wall, [w.x, w.y]), S.alt ? 1 : 10); renderRight(); }
@@ -543,6 +560,12 @@ export function makePlan(c) {
     if (d?.type === "lpt" && d.started) { const q = d.it.pts.filter((p, i, a) => !i || !same(p, a[i - 1])); if (q.length >= 2) d.it.pts = q; }
     if (d?.started) { pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); }
   }
+  // Beschriftung unter dem Zeiger: zuerst am gewählten Symbol, sonst das zuletzt gesetzte
+  function labelAt(w, t) {
+    const ys = pickable().filter((i) => i.type === "sym"), k = den();
+    return [...ys.filter((i) => S.sel.has(i.id)), ...ys.reverse()].find((i) => P.labelHit(i, k, [w.x, w.y], t, fmtH)) ?? null;
+  }
+  let lastLab = null; // letzter Druck auf eine Beschriftung (Doppelklick, das dblclick-Ereignis kommt nach dem Neuzeichnen nicht an)
   function tap(w) {
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], 14 / S.view.z);
     if (opt.multi && hit) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; } else S.sel = hit ? new Set([hit.id]) : new Set();
@@ -557,7 +580,7 @@ export function makePlan(c) {
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) { if (close) cancel(); return; }
     const id = nextId(), d0 = draft, side = wallSide(b), resolved = d0.auto && Math.abs(turn(b)) > 1e-6, shut = Math.hypot(b[0] - d0.start[0], b[1] - d0.start[1]) < 1e-6 && d0.first !== undefined;
     change(() => {
-      const w = { id, type: "wall", layer: sh().alay, ...P.innerWall(a, b, opt.d, side), d: opt.d, mat: opt.mat }, items = sh().items;
+      const w = { id, type: "wall", layer: sh().alay, ...P.innerWall(a, b, wallD(), side), d: wallD(), mat: opt.mat, ...(opt.mat === "doppel" ? { st: opt.st, iso: opt.iso } : {}) }, items = sh().items;
       const prev = items.find((i) => i.id === d0.prev), first = items.find((i) => i.id === d0.first);
       if (resolved && side !== d0.side && first) Object.assign(first, P.innerWall(d0.pts[0], d0.pts[1], first.d, side)); // erste Wand auf die richtige Seite
       if (prev) P.mitre(prev, w);
@@ -636,6 +659,7 @@ export function makePlan(c) {
     if (dimDraft && k === "Escape") { dimDraft = null; renderOverlay(); updateHint(); return true; }
     if (k.toLowerCase() === "x" && S.tool === "pl-wall" && !e.altKey) { opt.side = -(draft?.side ?? (opt.side || 1)); if (draft) { draft.side = opt.side; draft.auto = false; } renderRight(); renderOverlay(); updateHint(); return true; } // Wandseite wechseln
     if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Links die Ebene wechseln."); return true; } setTool(t); return true; }
+    if (k.toLowerCase() === "p" && !e.altKey) { bgToggle(); return true; } // PDF-Plan ein/aus (Tastenkürzel-Index)
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
       const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym");
       if (S.tool === "pl-sym") { opt.symR = (opt.symR + step) % 360; renderOverlay(); return true; }
@@ -664,7 +688,10 @@ export function makePlan(c) {
         + (S0.bg ? `<p class="note">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "")
         + `</section><section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
       + `<section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "L")
-      + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`;
+      + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`
+      + (S0.bg?.asset ? `<div class="layer-row pl-bgrow${S0.bgOff ? " off" : ""}"><span class="layer-name">PDF-Plan</span>`
+        + `<input type="range" min="10" max="100" step="10" value="${S0.bgOp ?? P.BG_OP}" data-plbgop aria-label="Deckkraft PDF-Plan in %" title="Deckkraft ${S0.bgOp ?? P.BG_OP} %"${S0.bgOff ? " disabled" : ""}>`
+        + `<button class="layer-btn" data-plact="bgshow" data-key="show" aria-pressed="${!S0.bgOff}" title="${S0.bgOff ? "Einblenden" : "Ausblenden"} (Taste P)" aria-label="PDF-Plan: ${S0.bgOff ? "Einblenden" : "Ausblenden"}">${S0.bgOff ? ICON.eyeOff : ICON.eye}</button></div>` : "");
     for (const l of [...S0.layers].reverse()) { // oben = zuletzt gezeichnet
       const btn = (k, on, icon, label) => `<button class="layer-btn" data-plact="${k}" data-layer="${l.id}" data-key="${k}" aria-pressed="${on}" title="${label}" aria-label="${R.esc(l.name)}: ${label}">${icon}</button>`;
       h += `<div class="layer-row${l.show ? "" : " off"}${l.id === S0.alay ? " active" : ""}"><button class="layer-name" data-plact="alay" data-layer="${l.id}" aria-pressed="${l.id === S0.alay}" title="Aktive Ebene: neue Objekte landen hier">${R.esc(l.name)}</button>`
@@ -690,6 +717,7 @@ export function makePlan(c) {
   async function leftAct(b) {
     const S0 = sh(), id = b.dataset.layer, a = b.dataset.plact;
     if (a === "pdf") { loadPdf(); return; }
+    if (a === "bgshow") { bgToggle(); return; }
     if (a === "scale") { enterScale(); return; }
     if (a === "free") { opt.free = !opt.free; S.alt = opt.free; renderLeft(); mod(); updateHint(); return; }
     if (a === "multi") { opt.multi = !opt.multi; if (S.tool !== "select") setTool("select"); renderLeft(); updateHint(); return; }
@@ -721,7 +749,7 @@ export function makePlan(c) {
   const copyRow = () => `<div class="row"><button class="btn outline small" data-plact="copy">Kopieren</button><button class="btn outline small" data-plact="dup">Duplizieren</button>${clip?.length ? `<button class="btn outline small" data-plact="paste">Einfügen</button>` : ""}</div>`;
   function panelHTML(sel0, { head }) {
     const it = sel0.length === 1 ? sel0[0] : null, note = (t) => `<p class="note">${t}</p>`;
-    if (it?.type === "wall") return head("Wand", P.MATS.find(([k]) => k === it.mat)[1]) + inp("len", "Länge Mittellinie in mm", P.fmtLen(P.wallLen(it))) + inp("d", "Dicke in mm", P.fmtLen(it.d))
+    if (it?.type === "wall") return head("Wand", P.MATS.find(([k]) => k === it.mat)[1]) + inp("len", "Länge Mittellinie in mm", P.fmtLen(P.wallLen(it))) + thickFields(it, "data-plf")
       + sel1("mat", P.MATS, it.mat, "Material") + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Länge ändern verschiebt das Ende (Griff am Ende), angeschlossene Ecken folgen. Ecken ziehen: Griff an den Enden.") + copyRow() + del1();
     if (it?.type === "opening") {
       const w = sh().items.find((i) => i.id === it.wall);
@@ -741,10 +769,11 @@ export function makePlan(c) {
     }
     if (it?.type === "sym") {
       const def = SYM_BY_KEY.get(it.key), tin = (k, label, v) => `<div class="field"><label>${label}</label><input type="text" data-plf="${k}" value="${R.esc(v ?? "")}" autocomplete="off" spellcheck="false"></div>`;
-      return head(def.label, def.group) + (def.ref ? tin("fu", "Sicherung (z. B. F3)", it.fu) + tin("nr", "Nummer (Stromkreis)", it.nr) : "") + tin("txt", "Beschriftung", it.txt)
-        + inp("sh", "Höhe in cm (leer = ohne)", it.h === undefined ? "" : fmtH(it.h)) + inp("rot", "Drehung in Grad", String(it.r))
+      return head(def.label, def.group) + (def.ref ? tin("fu", "Oben (z. B. UV EG)", it.fu) + tin("nr", "Unten (z. B. 11X4)", it.nr) + tin("txt", "Kabel (z. B. 5×2,5)", it.txt) : "") + (def.num !== undefined ? tin("num", "Anzahl (Zahl am Strich)", it.num ?? def.num) : "") + (P.sizeOf(it.key) ? inp("vw", def.wall ? "Breite in mm (entlang der Wand)" : "Länge in mm", P.fmtLen(P.symSize(it).w)) + (P.symSize(it).t !== undefined ? inp("vt", def.wall ? "Tiefe in mm" : "Breite in mm", P.fmtLen(P.symSize(it).t)) : "") : "") + (def.ref ? "" : tin("txt", "Beschriftung", it.txt))
+        + (def.ref ? "" : `<div class="field"><label>Höhe in cm${def.h !== undefined ? " (nur wenn abweichend)" : ""}</label><input type="text" inputmode="decimal" data-plf="sh" value="${it.h === undefined ? "" : fmtH(it.h)}" placeholder="${def.h !== undefined ? `leer = Standard ${def.h} cm` : "leer = ohne"}" autocomplete="off"></div>`) + inp("rot", "Drehung in Grad", String(it.r))
         + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
-        + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben.`) + copyRow() + del1();
+        + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben. Die Beschriftung lässt sich für sich ziehen, Doppelklick setzt sie zurück.`)
+        + (it.lo ? `<div class="row"><button class="btn outline small" data-plact="lores">Beschriftung zurücksetzen</button></div>` : "") + copyRow() + del1();
     }
     if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + sel1("lc", LINE_FORMS, it.curve ? "1" : "0", "Form") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
       + note(`${it.pts.length} Punkte. Griffe an den Punkten ziehen (Fang an Symbolmitten und Leitungspunkten, Shift 0/45/90°), Ziehen an der Linie verschiebt sie.`) + copyRow() + del1();
@@ -757,11 +786,11 @@ export function makePlan(c) {
         + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. Shift-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
     }
     let h = "";
-    if (S.tool === "pl-wall") h += head("Neue Wand", "Klick Start, Länge tippen, Enter") + inp("d", "Dicke in mm", P.fmtLen(opt.d), "data-plo") + sel1("mat", P.MATS, opt.mat, "Material").replace("data-plf", "data-plo")
+    if (S.tool === "pl-wall") h += head("Neue Wand", "Klick Start, Länge tippen, Enter") + thickFields(opt, "data-plo") + sel1("mat", P.MATS, opt.mat, "Material").replace("data-plf", "data-plo")
       + sel1("side", [["0", "automatisch (nach der ersten Kurve)"], ["1", "links der Zeichenrichtung"], ["-1", "rechts der Zeichenrichtung"]], opt.side, "Wand liegt").replace("data-plf", "data-plo")
       + note("Gezeichnet wird die Innenkante, die Wand wächst nach aussen (automatisch nach der ersten Kurve, Taste X wechselt die Seite). Eingetippte Länge = lichte Länge. Gespeichert wird die Mittellinie. Orange Hilfslinien: Ausrichtung an Anfang, Ecken und letztem Punkt (Alt ohne Fang).");
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
-    else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Vorgabe Höhe: ${def.h !== undefined ? `${def.h} cm` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`); }
+    else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
       + note("Fang an Symbolmitten, Leitungspunkten und Wandecken, Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen: die Kurve läuft durch alle Punkte, mit zwei Punkten entsteht ein Bogen (Mittelpunkt danach ziehbar). Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
@@ -772,11 +801,15 @@ export function makePlan(c) {
     return h;
   }
   // Eingaben rechts: Wert übernehmen beim Verlassen des Felds oder Enter (change)
+  const wallD = () => (opt.mat === "doppel" ? P.doppelD(opt.st, opt.iso) : opt.d); // Dicke neuer Wände
+  // Felder Dicke bzw. Stein und Isolation (Doppelschale), für das Werkzeug (data-plo) oder die gewählte Wand
+  const thickFields = (o, attr) => (o.mat === "doppel" ? inp("st", "Stein je Schale in mm", P.fmtLen(o.st), attr) + inp("iso", "Isolation in mm", P.fmtLen(o.iso), attr) + `<p class="note">Gesamtdicke ${P.fmtLen(P.doppelD(o.st, o.iso))} mm (Stein + Isolation + Stein).</p>` : inp("d", "Dicke in mm", P.fmtLen(o.d), attr));
   function panelChange(t) {
     const S0 = sh(), it = sel()[0];
     if (t.dataset.plo !== undefined) {
       const k = t.dataset.plo;
       if (k === "d") { const v = P.parseLen(t.value); if (v > 0) opt.d = v; else toast("Dicke nicht verstanden.", "error"); }
+      else if (k === "st" || k === "iso") { const v = P.parseLen(t.value); if (v > 0 || (k === "iso" && v === 0)) opt[k] = v; else toast(`${k === "st" ? "Stein" : "Isolation"} nicht verstanden.`, "error"); }
       else if (k === "ow") { const v = P.parseLen(t.value); if (v > 0) opt.ow[opt.okind] = v; }
       else if (k === "ctrl") opt.ctrl = t.checked;
       else if (k === "lkind") { opt.lkind = t.value; updateHint(); }
@@ -801,16 +834,20 @@ export function makePlan(c) {
     if (k === "soll") { const s = v.trim() ? L : undefined; if (v.trim() && !(L > 0)) return bad(), true; change(() => { if (s) it.soll = s; else delete it.soll; }); return true; }
     if (k === "off") { const o = Number(v.trim().replace(",", ".").replace("−", "-")); if (!Number.isFinite(o)) return bad(), true; change(() => { it.off = o; }); return true; }
     if (k === "d") { if (!(L > 0)) return bad(), true; change(() => { it.d = L; opt.d = L; }); return true; }
+    if (k === "st" || k === "iso") { if (!(L > 0 || (k === "iso" && L === 0))) return bad(), true; change(() => { it[k] = L; opt[k] = L; it.d = P.doppelD(it.st, it.iso); }); return true; }
+    if (k === "mat" && it.type === "wall") { change(() => { it.mat = v; if (v === "doppel") { it.st = opt.st; it.iso = opt.iso; it.d = P.doppelD(it.st, it.iso); } else { delete it.st; delete it.iso; } }); return true; }
     if (k === "w" || k === "t" || k === "br" || k === "h") {
       const x = (k === "br" || k === "h") && !v.trim() ? undefined : k === "t" && /^\s*0\s*$/.test(v) ? 0 : L;
       if (x !== undefined && !(x >= 0)) return bad(), true;
       change(() => { if (x === undefined) delete it[k]; else it[k] = x; if (k === "w" || k === "t") P.clampOpening(S0.items.find((i) => i.id === it.wall), it); }); return true;
     }
     if (it.type === "sym") {
-      if (k === "txt" || k === "fu" || k === "nr") { change(() => { const t0 = v.trim().slice(0, k === "txt" ? 60 : 12); if (t0) it[k] = t0; else delete it[k]; }); return true; }
+      if (k === "vw" || k === "vt") { const f = k === "vw" ? "w" : "t", n2 = P.parseLen(v); if (!(n2 >= 10 && n2 <= 20000)) return bad(), true; change(() => { if (Math.round(n2) === P.sizeOf(it.key)[f]) delete it[f]; else it[f] = Math.round(n2); }); return true; }
+      if (k === "num") { change(() => { const t0 = v.trim().slice(0, 6); if (t0 && t0 !== SYM_BY_KEY.get(it.key).num) it.num = t0; else delete it.num; }); return true; }
+      if (k === "txt" || k === "fu" || k === "nr") { change(() => { const t0 = v.trim().slice(0, k === "txt" ? 60 : 20); if (t0) it[k] = t0; else delete it[k]; }); return true; }
       if (k === "ap") { change(() => { if (t.checked) it.ap = true; else delete it.ap; }); return true; }
       const n = Number(v.trim().replace(",", ".").replace("−", "-"));
-      if (k === "sh") { if (v.trim() && !(n >= 0)) return bad(), true; change(() => { if (v.trim()) it.h = n; else delete it.h; }); return true; }
+      if (k === "sh") { if (v.trim() && !(n >= 0)) return bad(), true; const d = SYM_BY_KEY.get(it.key).h; change(() => { if (v.trim() && n !== d) it.h = n; else delete it.h; }); return true; } // leer oder Standard = Standardhöhe
       if (k === "rot") { if (!Number.isFinite(n)) return bad(), true; change(() => { it.r = ((Math.round(n) % 360) + 360) % 360; }); return true; }
     }
     if (k === "kind") { change(() => { const o = P.cleanPlanObj({ ...it, kind: v }, it.id); S0.items[S0.items.indexOf(it)] = o; }); return true; }
@@ -855,6 +892,16 @@ export function makePlan(c) {
     if (y) { opt.sym = y.dataset.plsym; opt.symR = 0; setTool("pl-sym"); renderLeft(); return; }
     const b = e.target.closest("[data-plact]"); if (b) leftAct(b);
   });
+  c.leftEl.addEventListener("input", (e) => { // Deckkraft PDF-Plan: Vorschau beim Ziehen, gespeichert beim Loslassen (change)
+    if (sh().kind !== "plan" || e.target.dataset.plbgop === undefined) return;
+    const g = document.querySelector(".pl-bgimg"); if (g) g.setAttribute("opacity", e.target.value / 100);
+  });
+  c.leftEl.addEventListener("change", (e) => {
+    if (sh().kind !== "plan" || e.target.dataset.plbgop === undefined) return;
+    const v = Number(e.target.value), S0 = sh();
+    change(() => { if (v === P.BG_OP) delete S0.bgOp; else S0.bgOp = v; });
+    c.renderSheet(); renderLeft();
+  });
   c.popEl.addEventListener("click", (e) => {
     const b = e.target.closest("[data-plact]");
     if (!b || sh().kind !== "plan") return;
@@ -868,6 +915,7 @@ export function makePlan(c) {
     if (sw) { change(() => { for (const it of sel()) P.setCol(it, sw.dataset.plcol); }); return; }
     const a = e.target.closest("[data-plact]")?.dataset.plact;
     if (a === "coldef") change(() => { for (const it of sel()) P.setCol(it, ""); });
+    else if (a === "lores") change(() => { for (const it of sel()) delete it.lo; });
     else if (a === "copy") copySel(); else if (a === "paste") paste(); else if (a === "dup") dup(); else if (a === "all") selAll();
   });
   for (const el of [c.rightEl, c.popEl]) el.addEventListener("change", (e) => { if (sh().kind === "plan" && (e.target.dataset.plf !== undefined || e.target.dataset.plo !== undefined || e.target.dataset.plp !== undefined)) panelChange(e.target); });

@@ -1603,7 +1603,7 @@ stage.addEventListener("pointercancel", (e) => { if (!touch.up(e)) endDrag(e); }
 stage.addEventListener("pointerleave", () => { if (!S.drag) { S.mouse = null; renderOverlay(); } });
 stage.addEventListener("contextmenu", (e) => e.preventDefault());
 stage.addEventListener("dblclick", (e) => {
-  if (ELPLEXA && S.shared) return;
+  if (ELPLEXA && (S.shared || isPlan())) return; // Plan: Doppelklick erkennt planedit.js selbst (Leitung beenden, Beschriftung zurück)
   if (S.tool !== "select" || e.target.closest("#zoombar, #sheetbar")) return;
   const { sx, sy } = pointerPos(e); const w = toWorld(sx, sy);
   const m = massAt(w.x, w.y);

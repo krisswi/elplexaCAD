@@ -21,18 +21,18 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
 
 // ---------- Gast: nur im Browser ----------
 assert.strictEqual(A.load("profil"), null, "leer am Anfang");
-assert.deepStrictEqual(P.loadProfil(), { FIRMA: "", FIRMA_ADR: "", MAIL: "", TEL: "" }, "leeres Profil");
+assert.deepStrictEqual(P.loadProfil(), { FIRMA: "", FIRMA_ADR: "", MAIL: "", TEL: "", MWST: "" }, "leeres Profil");
 assert.strictEqual(T.loadFirm(), null, "ohne Profil keine Firma für neue Titelseiten");
 mem.set("schemacad.firma.v1", JSON.stringify({ FIRMA: "Alt AG", FIRMA_ADR: "Weg 1", logo: "data:image/png;base64,AAAA" }));
-assert.deepStrictEqual(P.loadProfil(), { FIRMA: "Alt AG", FIRMA_ADR: "Weg 1", MAIL: "", TEL: "", logo: "data:image/png;base64,AAAA" }, "alte Firmendaten werden übernommen");
-assert.strictEqual(await P.saveProfil({ FIRMA: "Muster Elektro", FIRMA_ADR: "Gasse 2\n3000 Bern", MAIL: "info@muster.test", TEL: "031 000 00 00", x: 1, logo: "javascript:1" }), "lokal");
-assert.deepStrictEqual(P.loadProfil(), { FIRMA: "Muster Elektro", FIRMA_ADR: "Gasse 2\n3000 Bern", MAIL: "info@muster.test", TEL: "031 000 00 00" }, "gespeichert, fremde Felder und falsches Logo fallen weg");
-assert.deepStrictEqual(P.profilLines(P.loadProfil()), ["Muster Elektro", "Gasse 2", "3000 Bern", "info@muster.test", "031 000 00 00"]);
+assert.deepStrictEqual(P.loadProfil(), { FIRMA: "Alt AG", FIRMA_ADR: "Weg 1", MAIL: "", TEL: "", MWST: "", logo: "data:image/png;base64,AAAA" }, "alte Firmendaten werden übernommen");
+assert.strictEqual(await P.saveProfil({ FIRMA: "Muster Elektro", FIRMA_ADR: "Gasse 2\n3000 Bern", MAIL: "info@muster.test", TEL: "031 000 00 00", MWST: "CHE-000.000.000 MWST", x: 1, logo: "javascript:1" }), "lokal");
+assert.deepStrictEqual(P.loadProfil(), { FIRMA: "Muster Elektro", FIRMA_ADR: "Gasse 2\n3000 Bern", MAIL: "info@muster.test", TEL: "031 000 00 00", MWST: "CHE-000.000.000 MWST" }, "gespeichert, fremde Felder und falsches Logo fallen weg");
+assert.deepStrictEqual(P.profilLines(P.loadProfil()), ["Muster Elektro", "Gasse 2", "3000 Bern", "info@muster.test", "031 000 00 00", "MwSt-Nr. CHE-000.000.000 MWST"]);
 assert.strictEqual(saves, 0, "Gast: nichts online");
 
 // Titelseite: Firma ändern geht ins Profil, Mail und Telefon bleiben
 T.saveFirm({ FIRMA: "Muster Elektro GmbH", FIRMA_ADR: "Gasse 2\n3000 Bern" });
-assert.deepStrictEqual(P.loadProfil(), { FIRMA: "Muster Elektro GmbH", FIRMA_ADR: "Gasse 2\n3000 Bern", MAIL: "info@muster.test", TEL: "031 000 00 00" });
+assert.deepStrictEqual(P.loadProfil(), { FIRMA: "Muster Elektro GmbH", FIRMA_ADR: "Gasse 2\n3000 Bern", MAIL: "info@muster.test", TEL: "031 000 00 00", MWST: "CHE-000.000.000 MWST" });
 assert.deepStrictEqual(T.loadFirm(), { FIRMA: "Muster Elektro GmbH", FIRMA_ADR: "Gasse 2\n3000 Bern" }, "neue Titelseiten übernehmen Firma und Adresse");
 
 // ---------- Anmelden: Gast-Stand geht online und gehört dem Benutzer ----------

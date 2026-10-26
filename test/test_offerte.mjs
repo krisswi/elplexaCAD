@@ -135,6 +135,18 @@ if (fs.existsSync(xlsx)) {
   assert.ok(!/EK|Faktor/.test(F.panelHTML(so)), "geteilt: rechts kein EK und kein Faktor");
   F.setMode({}); assert.ok(F.viewHTML(so).includes("<input"), "eigene Offerte: bearbeitbar");
 }
+// MwSt ein/aus (CJ 26.10.2026): nur am Schluss aufs Total, aus = Satz 0 (ältere Stände rechnen gleich), wieder ein = letzter Satz oder 8.1
+{
+  const F = await import("../src/offedit.js"); F.setMode({});
+  const mo = O.newOfferte(), mk = O.addKapitel(mo, "232"); O.addPosition(mo, mk.grp[0], { titel: "A", menge: 1, preis: 100 });
+  const box = (on) => F.apply(mo, { dataset: { of: "o.mwstan" }, type: "checkbox", checked: on });
+  assert.strictEqual(O.totals(mo).total, 108.1);
+  box(false); assert.strictEqual(mo.mwst, 0); assert.strictEqual(O.totals(mo).total, 100, "ohne MwSt");
+  assert.ok(F.viewHTML(mo).includes("Total ohne MwSt") && !/MwSt 0 %/.test(F.viewHTML(mo)) && !F.panelHTML(mo).includes('data-of="o.mwst"'), "aus: keine MwSt-Zeile, kein Satzfeld");
+  box(true); assert.strictEqual(mo.mwst, 8.1, "wieder ein: 8.1 %");
+  mo.mwst = 7.7; box(true); assert.strictEqual(mo.mwst, 7.7, "eigener Satz bleibt");
+  assert.strictEqual(O.cleanOfferte(JSON.parse(JSON.stringify({ ...mo, mwst: 0 }))).mwst, 0, "aus bleibt nach Speichern/Laden aus");
+}
 // Fenster «Link teilen» (elplexaCAD): Offerte angekreuzt → Häkchen «mit Preisen»; Linkzeile nennt Preise; ganzes Projekt ohne Offerte.
 // Zuletzt, weil ELPLEXA ab hier gesetzt ist (model.js prüft es beim Aufruf).
 {

@@ -160,7 +160,8 @@ export function cleanOfferte(o) {
   for (const x of late) x.id = of.nid++;
   return of;
 }
-function cleanPos(r, id) {
+// Position prüfen und säubern (auch für die Positionsdatenbank, positionen.js). id(v) gibt die gültige ID zurück, 0 = neue Nummer.
+export function cleanPos(r, id) {
   const p = { id: id(r.id) };
   for (const k of ["titel", "eh", "npk", "bkp", "her", "enr", "ic"]) put(p, k, str(r[k], 200));
   put(p, "text", str(r.text));

@@ -9,6 +9,7 @@ export const PROFIL_FIELDS = [
   { key: "FIRMA_ADR", label: "Adresse", multi: true },
   { key: "MAIL", label: "E-Mail" },
   { key: "TEL", label: "Telefon" },
+  { key: "MWST", label: "MwSt-Nr." }, // CJ 26.10.2026, steht im Absender der Offerte
 ];
 export const MAX_LOGO = 300 * 1024; // Bytes der Bilddatei, wie die Titelseite
 const LOGO = /^data:image\/(png|jpeg|svg\+xml);base64,/;
@@ -28,7 +29,7 @@ export const saveProfil = (p, opt) => A.save("profil", cleanProfil(p), opt);
 export const syncProfil = () => A.sync("profil");
 
 // Absender in einer Zeile je Angabe (Offerte, Profil-Reiter)
-export const profilLines = (p) => [p.FIRMA, ...String(p.FIRMA_ADR || "").split("\n"), p.MAIL, p.TEL].map((s) => String(s ?? "").trim()).filter(Boolean);
+export const profilLines = (p) => [p.FIRMA, ...String(p.FIRMA_ADR || "").split("\n"), p.MAIL, p.TEL, p.MWST && `MwSt-Nr. ${String(p.MWST).trim().replace(/^MwSt-Nr\.?\s*/i, "")}`].map((s) => String(s ?? "").trim()).filter(Boolean);
 
 // Fenster «Firmenprofil» (beide Stände). openModal und toast aus dialogs.js. Gibt das gespeicherte Profil zurück oder null (abgebrochen).
 export function profilDialog({ openModal, toast }, { online = false } = {}) {

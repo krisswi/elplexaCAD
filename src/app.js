@@ -33,7 +33,7 @@ import { startDialog } from "./start.js";
 import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel, varOf, newVar } from "./pv.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
-import { userStore, cloudMenu, cloudUser, cloudSignIn, cloudOnSession, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, projTimeAdd, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen, shareNotes, shareNoteAdd, shareNoteDelete } from "./cloud.js";
+import { userStore, posStore, cloudMenu, cloudUser, cloudSignIn, cloudOnSession, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, projTimeAdd, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen, shareNotes, shareNoteAdd, shareNoteDelete } from "./cloud.js";
 import * as N from "./notizen.js";
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
@@ -43,6 +43,7 @@ import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandle
 import { fetchGwr, searchAdr, adrText } from "./gwr.js";
 import * as PZ from "./prinzip.js";
 import { setRemote } from "./ablage.js";
+import * as PD from "./positionen.js";
 import { loadProfil, syncProfil, profilDialog } from "./profil.js";
 import { PRINZIP_GROUPS, PRINZIP_FAMILIES, PZ_ABGANG, PZ_POL, polNext, sichName, kabelN } from "./prinzipsym.js";
 
@@ -1972,6 +1973,7 @@ async function profSync() {
   if (u === profUser) return;
   profUser = u;
   try { if (await syncProfil()) profShown(); } catch { /* online nicht erreichbar: Stand im Browser gilt */ }
+  try { if (await PD.sync() && isOff()) renderLeftBody(); } catch { /* Positionsdatenbank: Stand im Browser gilt */ }
 }
 function profShown() { if (isOff()) renderRight(); if (ELPLEXA && EL_S.hub && !EL_S.hub.hidden && EL_S.tab === "profil") elHub(true, { keepFocus: true }); }
 async function firmProfil() { if (await profilDialog({ openModal, toast }, { online: !!cloudUser() })) profShown(); }
@@ -1990,13 +1992,30 @@ function ofClick(e) {
   const b = e.target.closest?.("[data-ofact]");
   if (!isOff() || !b) return;
   if (b.dataset.ofact === "profil") { firmProfil(); return; }
+  if (b.dataset.ofact === "dbsave") { ofDbSave(Number(b.dataset.p)); return; }
+  if (b.dataset.ofact === "dbdel") { ofDbDel(b.dataset.db); return; }
   const r = OF.action(S.model.of, b); if (!r) return;
   if (r.ui) renderItems(); else change(r.fn);
   ofRefocus(r.focus ? `[data-of="${r.focus()}"]` : r.keep);
 }
 for (const el of [ofView, leftEl, rightEl]) { el.addEventListener("change", ofChange); el.addEventListener("click", ofClick); }
 for (const el of [ofView, rightEl]) el.addEventListener("keydown", (e) => { const t = e.target; if (isOff() && e.key === "Enter" && t.matches?.("input[type=text][data-of]")) { e.preventDefault(); const k = t.dataset.of; t.blur(); ofRefocus(`[data-of="${k}"]`); } }); // Enter übernimmt
-leftEl.addEventListener("input", (e) => { if (!isOff() || e.target.id !== "of-bkpfind") return; OF.setBkpFind(e.target.value); renderLeftBody(); const f = $("#of-bkpfind"); f.focus(); f.setSelectionRange(f.value.length, f.value.length); });
+leftEl.addEventListener("input", (e) => { const id = e.target.id; if (!isOff() || (id !== "of-bkpfind" && id !== "of-posfind")) return; (id === "of-bkpfind" ? OF.setBkpFind : OF.setPosFind)(e.target.value); renderLeftBody(); const f = $(`#${id}`); f.focus(); f.setSelectionRange(f.value.length, f.value.length); });
+ofView.addEventListener("focusin", (e) => { if (isOff()) OF.noteTarget(S.model.of, e.target.dataset?.of); }); // Treffer der Positionsdatenbank kommen in diese Gruppe
+// Positionsdatenbank (positionen.js, Offerte Schritt 3): Position speichern oder Eintrag löschen. Ändert die Offerte nicht.
+async function ofDbSave(pid) {
+  const p = O_findPos(pid); if (!p) return;
+  const r = await PD.save(p);
+  if (!r) { toast("Ohne Text gibt es nichts zu speichern.", "error"); return; }
+  toast(`${r.neu ? "In der Datenbank gespeichert" : "Eintrag in der Datenbank ersetzt"}${r.wo === "lokal" && cloudUser() ? " (vorerst nur im Browser)" : ""}.`);
+  renderLeftBody();
+}
+const O_findPos = (pid) => { for (const k of S.model.of.kap) for (const g of k.grp) { const p = g.pos.find((x) => x.id === pid); if (p) return p; } return null; };
+async function ofDbDel(id) {
+  const e = PD.list().find((x) => x.id === id); if (!e) return;
+  if (!(await confirmDialog("Aus der Datenbank löschen?", `«${e.titel || e.text}» wird aus deiner Positionsdatenbank gelöscht. Offerten, die die Position schon enthalten, bleiben gleich.`, "Löschen"))) return;
+  await PD.remove(id); renderLeftBody();
+}
 sheetMenu = makeMenu($("#sheet-menu"), { up: true, beforeShow: () => closeEditor(true), onOpen: () => { $("#sheet-find").value = ""; renderSheetList(); $("#sheet-find").focus(); $("#sheet-menu .mi.on")?.scrollIntoView({ block: "nearest" }); } });
 $("#sheet-find").addEventListener("input", renderSheetList);
 // Blattmenü (CJ 18.10.2026): Rechtsklick oder gedrückt halten auf dem Blattnamen, einer Zeile der Blattliste oder (elplexaCAD) einer
@@ -3275,7 +3294,7 @@ function init() {
   $("#btn-left").innerHTML = R.icons.panelL; $("#btn-right").innerHTML = R.icons.panelR;
   $("#zoom-in").innerHTML = R.icons.plus; $("#zoom-out").innerHTML = R.icons.minus;
   LIBS.load(); renderLeft();
-  setRemote(userStore); cloudOnSession(profSync); profSync();
+  setRemote(userStore); PD.setRemote(posStore); cloudOnSession(profSync); profSync();
   try {
     const raw = ELPLEXA && elShareStart() ? null : localStorage.getItem(AUTOSAVE_KEY); // geteilte Ansicht: eigene Sicherung nicht laden
     if (raw) { const o = JSON.parse(raw); const m = parseModel(o.text); if (m.sheets.some((sh) => sh.items.length)) { S.doc = m; S.active = m.active; setFileName(o.name || "Unbenannt"); markDirty(); toast("Letzte Sitzung wiederhergestellt. Mit „Neu“ beginnst du ein leeres Blatt."); } }

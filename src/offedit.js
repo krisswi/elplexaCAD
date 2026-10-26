@@ -4,12 +4,13 @@
 import { esc } from "./render.js";
 import * as O from "./offerte.js";
 import { profilLines } from "./profil.js";
+import * as PD from "./positionen.js";
 
 // Teilen-Link (CJ 26.10.2026): ro = nur lesen (Felder als Text, keine Knöpfe), prices = Preise freigegeben. EK, Faktor und Zeit kommen nie an (share_open).
 let mode = { ro: false, prices: true };
 export const setMode = (m) => { mode = { ro: false, prices: true, ...m }; };
 const open = new Set(); // Positionen mit aufgeklappten Angaben (nur Anzeige, nicht in der Datei)
-let bkpFind = "";
+let bkpFind = "", posFind = "", lastGrp = 0; // lastGrp: Gruppe, in die ein Treffer der Positionsdatenbank kommt (zuletzt bearbeitet)
 const val = (v) => (v === undefined || v === null ? "" : esc(String(v)));
 const opts = (set, cur, empty) => (empty !== undefined ? `<option value="">${esc(empty)}</option>` : "") + Object.entries(set).map(([k, l]) => `<option value="${k}"${k === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
 const inp = (key, v, { cls = "", ph = "", num = false, lab = "" } = {}) => mode.ro ? `<span class="of-ro ${cls}">${val(v)}</span>` : `<input type="text"${num ? ' inputmode="decimal"' : ""} class="${cls}" data-of="${key}" value="${val(v)}"${ph ? ` placeholder="${esc(ph)}"` : ""}${lab ? ` aria-label="${esc(lab)}"` : ""} autocomplete="off" spellcheck="false">`;
@@ -55,10 +56,12 @@ function posRow(of, t, p, no) {
     h += `<tr class="of-det"><td></td><td colspan="8"><div class="of-dgrid">${f("NPK-Nr.", "npk", p.npk, { ph: "X XX.XXX.XXX.XXX.XX" })}${f("BKP", "bkp", p.bkp)}${s("Typ", "typ", O.TYPEN, p.typ || "lp")}${s("Form", "form", O.FORMEN, p.form || "r")}`
       + `${f("Hersteller", "her", p.her)}${f("E-Nr.", "enr", p.enr)}${f("EK-Preis", "ek", p.ek, { num: true })}${f("Faktor", "fak", p.fak, { num: true, ph: O.fmtNum(of.fak) })}${f("Zeit h je EH", "std", p.std, { num: true })}`
       + Object.entries(O.GLIEDERUNG).map(([gk, gl]) => `<label class="of-df"><span>${esc(gl)}</span>${inp(`${k("gl")}.${gk}`, p.gl?.[gk], { lab: gl })}</label>`).join("")
-      + `</div></td></tr>`;
+      + `</div><div class="row">${btn("dbsave", `data-p="${id}"`, "Position in der eigenen Positionsdatenbank speichern (gleicher Titel, Hersteller und E-Nr. wird ersetzt)", "In Datenbank speichern", "btn outline small")}</div></td></tr>`;
   }
   return h;
 }
+// MwSt nur am Schluss aufs Total, ein- und ausschaltbar (CJ 26.10.2026). Aus = Satz 0, damit ältere Stände gleich rechnen.
+const totLabel = (of) => (of.mwst ? "Total inkl. MwSt" : "Total ohne MwSt");
 function summaryHTML(of, t) {
   if (!of.kap.length) return "";
   const row = (a, b, cls = "") => `<tr${cls ? ` class="${cls}"` : ""}><td>${a}</td><td class="c-n">${b}</td></tr>`;
@@ -67,10 +70,10 @@ function summaryHTML(of, t) {
   h += row("Zwischensumme", O.fmtChf(t.zwischensumme), "of-strong");
   for (const r of t.rabatt) h += row(`Rabatt${r.kz || r.name ? ` ${esc([r.kz, r.name].filter(Boolean).join(" "))}` : ""} ${O.fmtNum(r.satz)} % auf ${O.fmtChf(r.basis)}`, `− ${O.fmtChf(r.betrag)}`);
   if (t.rabatt.length) h += row("Total nach Rabatt", O.fmtChf(t.netto));
-  h += row(`MwSt ${O.fmtNum(of.mwst)} %`, O.fmtChf(t.mwst));
+  if (of.mwst) h += row(`MwSt ${O.fmtNum(of.mwst)} %`, O.fmtChf(t.mwst));
   const c = (x) => Math.round(x * 100), rd = c(t.total) - c(t.netto) - c(t.mwst); // Rundung auf 5 Rappen, damit die Zeilen sichtbar aufgehen
   if (rd) h += row("Rundung", `${rd < 0 ? "− " : ""}${O.fmtChf(Math.abs(rd) / 100)}`);
-  h += row("Total inkl. MwSt", O.fmtChf(t.total), "of-total");
+  h += row(totLabel(of), O.fmtChf(t.total), "of-total");
   h += `</tbody></table>`;
   if (t.skonto) h += `<p class="of-note">Skonto ${O.fmtNum(t.skonto.satz)} %${t.skonto.tage ? ` bei Zahlung innert ${t.skonto.tage} Tagen` : ""}: CHF ${O.fmtChf(t.skonto.betrag)}</p>`;
   if (t.optionen) h += `<p class="of-note">Optionen (nicht in der Angebotssumme): CHF ${O.fmtChf(t.optionen)}</p>`;
@@ -81,12 +84,37 @@ function summaryHTML(of, t) {
 export function leftHTML() {
   if (mode.ro) return `<section class="section"><h2 class="section-title">Offerte</h2><p class="note">Geteilte Ansicht, nur zum Ansehen.</p></section>`;
   const q = bkpFind.trim().toLowerCase(), list = O.BKP.filter(([n, l]) => !q || n.startsWith(q) || l.toLowerCase().includes(q));
-  return `<section class="section"><h2 class="section-title">Kapitel nach BKP</h2><p class="note">Klick legt das Kapitel in der Offerte an.</p>`
+  return dbHTML() + `<section class="section"><h2 class="section-title">Kapitel nach BKP</h2><p class="note">Klick legt das Kapitel in der Offerte an.</p>`
     + `<div class="field"><input type="text" id="of-bkpfind" value="${val(bkpFind)}" placeholder="BKP suchen: Nummer oder Text" aria-label="BKP suchen" autocomplete="off" spellcheck="false"></div>`
     + `<div class="of-bkplist" role="list">${list.map(([n, l]) => `<button type="button" class="of-bkpi lv${n.split(".")[1]?.length || (n.length > 2 ? 0 : -1)}" role="listitem" data-ofact="addkap" data-bkp="${n}"><b>${n}</b><span>${esc(l)}</span></button>`).join("") || `<p class="note">Kein Treffer.</p>`}</div>`
     + `<button type="button" class="btn outline small" data-ofact="addkap" data-bkp="">Eigenes Kapitel</button></section>`;
 }
 export const setBkpFind = (s) => { bkpFind = s; };
+
+// Positionsdatenbank (Schritt 3): Suche über Titel, Text, E-Nr., Hersteller, NPK-Nr. Klick kopiert den Treffer in die zuletzt bearbeitete Gruppe.
+function dbHTML() {
+  const n = PD.count(), hits = PD.search(posFind);
+  const hit = (e) => `<div class="of-dbi"><button type="button" class="of-dbadd" data-ofact="dbadd" data-db="${esc(e.id)}" title="In die Offerte kopieren"><b>${esc(e.titel || e.text)}</b><span>${esc([e.her, e.enr && `E-Nr. ${e.enr}`, e.npk && `NPK ${e.npk}`].filter(Boolean).join(" · "))}</span></button>`
+    + `<button type="button" class="btn icon small danger" data-ofact="dbdel" data-db="${esc(e.id)}" title="Aus der Datenbank löschen" aria-label="Aus der Datenbank löschen">×</button></div>`;
+  return `<section class="section"><h2 class="section-title">Positionen aus der Datenbank</h2>`
+    + `<div class="field"><input type="text" id="of-posfind" value="${val(posFind)}" placeholder="Titel, Text, E-Nr., Hersteller, NPK" aria-label="Positionen suchen" autocomplete="off" spellcheck="false"></div>`
+    + (posFind.trim() ? `<div class="of-dblist" role="list">${hits.map(hit).join("") || `<p class="note">Kein Treffer.</p>`}</div>` : `<p class="note">${n ? `${n} Position${n === 1 ? "" : "en"} in deiner Datenbank. Klick auf einen Treffer kopiert ihn in die Offerte.` : "Noch keine Position. Unter ⋯ einer Position: «In Datenbank speichern»."}</p>`)
+    + `</section>`;
+}
+export const setPosFind = (s) => { posFind = s; };
+// zuletzt bearbeitete Gruppe aus dem Feld (data-of="g12.titel" oder einer Position darin)
+export function noteTarget(of, key) {
+  const m = /^([gp])(\d+)\./.exec(key || ""); if (!m) return;
+  const id = Number(m[2]), g = m[1] === "g" ? O.findGrp(of, id)?.g : O.findPos(of, id)?.g;
+  if (g) lastGrp = g.id;
+}
+// Treffer in die Offerte kopieren: neue feste ID, danach frei änderbar. Ohne Kapitel entsteht eines (BKP des Eintrags).
+function dbCopy(of, e) {
+  let g = lastGrp && O.findGrp(of, lastGrp)?.g;
+  if (!g) { const k = of.kap.at(-1) || O.addKapitel(of, e.bkp ? O.bkpMain(e.bkp) : ""); g = k.grp.at(-1) || O.addGruppe(of, k); }
+  lastGrp = g.id;
+  return O.addPosition(of, g, PD.cleanEntry(e));
+}
 
 // ---------- Rechts: Kopf und Rechenwerte ----------
 // profil = Firmenprofil des Benutzers (profil.js), Absender der Offerte
@@ -94,15 +122,15 @@ export function panelHTML(of, profil = null) {
   const t = O.totals(of);
   if (mode.ro) return `<div class="prop-head"><h2>Offerte${of.nr ? ` ${esc(of.nr)}` : ""}</h2><p>Geteilte Ansicht${mode.prices ? "" : ", ohne Preise"}.</p></div>`
     + `<section class="section">${[["Version", of.ver], ["Datum", of.datum], ["Gültig bis", of.gueltig], ["Abrechnungsart", O.ARTEN[of.art]], ["Bauart", O.BAUARTEN[of.bau]]].filter(([, v]) => v).map(([l, v]) => `<p class="of-psum">${esc(l)}<b>${esc(v)}</b></p>`).join("")}`
-    + (mode.prices ? `<p class="of-psum">Total inkl. MwSt <b>CHF ${O.fmtChf(t.total)}</b></p>` : "") + `</section>`;
+    + (mode.prices ? `<p class="of-psum">${totLabel(of)} <b>CHF ${O.fmtChf(t.total)}</b></p>` : "") + `</section>`;
   return `<div class="prop-head"><h2>Offerte</h2><p>Pflicht sind nur Text, Menge und Preis.</p></div>`
     + senderHTML(profil)
     + `<section class="section"><h2 class="section-title">Kopf</h2>${fld("Offertnummer", "o.nr", of.nr)}${fld("Version (Revision, Nachtrag)", "o.ver", of.ver)}${fld("Datum", "o.datum", of.datum)}${fld("Gültig bis", "o.gueltig", of.gueltig, { ph: "z. B. 3 Monate" })}`
     + `${sel("Abrechnungsart", "o.art", O.ARTEN, of.art, "–")}${sel("Bauart", "o.bau", O.BAUARTEN, of.bau, "–")}</section>`
     + `<section class="section"><h2 class="section-title">Rechenwerte</h2>${fld("Materialfaktor", "o.fak", of.fak, { num: true })}${fld("Stundenansatz CHF", "o.ansatz", of.ansatz, { num: true })}${fld("Gesamtrabatt %", "o.rabatt", of.rabatt, { num: true })}`
-    + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div>${fld("MwSt %", "o.mwst", of.mwst, { num: true })}</section>`
+    + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div><label class="of-chk"><input type="checkbox" data-of="o.mwstan"${of.mwst ? " checked" : ""}> MwSt aufrechnen</label>${of.mwst ? fld("MwSt %", "o.mwst", of.mwst, { num: true }) : ""}</section>`
     + rgHTML(of)
-    + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">Total inkl. MwSt <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
+    + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">${totLabel(of)} <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
 }
 
 // Absender aus dem Firmenprofil (Schritt 2): nur Anzeige, geändert wird im Fenster «Firmenprofil» (gilt für alle Offerten und Module)
@@ -157,6 +185,7 @@ export function apply(of, el) {
     return true;
   }
   if (obj === of && (f === "art" || f === "bau")) { of[f] = v; return true; }
+  if (obj === of && f === "mwstan") { of.mwst = v ? of.mwst || O.DEF.mwst : 0; return true; }
   const s = f === "text" ? String(v) : String(v).trim();
   if (obj === of || "grp" in obj || "pos" in obj || of.rg.includes(obj)) obj[f] = s; // Kopf, Kapitel, Gruppe: Feld bleibt (leer erlaubt)
   else if (s) obj[f] = s; else delete obj[f];
@@ -167,11 +196,12 @@ export function action(of, b) {
   const a = b.dataset.ofact, pid = Number(b.dataset.p), gid = Number(b.dataset.g), kid = Number(b.dataset.k);
   const move = (arr, i, d) => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; };
   if (a === "det") { if (open.has(pid)) open.delete(pid); else open.add(pid); return { ui: true, focus: null, keep: `[data-ofact="det"][data-p="${pid}"]` }; }
+  if (a === "dbadd") { const e = PD.list().find((x) => x.id === b.dataset.db); if (!e) return null; let p; return { fn: () => { p = dbCopy(of, e); }, focus: () => `p${p.id}.menge` }; }
   if (a === "addrg") { let r; return { fn: () => { r = O.addRabattgruppe(of); }, focus: () => `r${r.id}.kz` }; }
   if (a === "delrg") return { fn: () => { O.delRabattgruppe(of, Number(b.dataset.r)); } };
   if (a === "addkap") { let k; return { fn: () => { k = O.addKapitel(of, b.dataset.bkp); }, focus: () => (b.dataset.bkp ? `g${k.grp[0].id}.titel` : `k${k.id}.bkp`) }; }
   if (a === "addgrp") { let g; return { fn: () => { g = O.addGruppe(of, of.kap.find((k) => k.id === kid)); }, focus: () => `g${g.id}.titel` }; }
-  if (a === "addpos") { let p; return { fn: () => { p = O.addPosition(of, O.findGrp(of, gid).g, {}); }, focus: () => `p${p.id}.titel` }; }
+  if (a === "addpos") { let p; return { fn: () => { p = O.addPosition(of, O.findGrp(of, gid).g, {}); lastGrp = gid; }, focus: () => `p${p.id}.titel` }; }
   if (a === "cpos") { let p; return { fn: () => { const f = O.findPos(of, pid); p = O.copyPosition(of, f.g, f.p, f.i + 1); }, focus: () => `p${p.id}.titel` }; }
   if (a === "delpos") return { fn: () => { const f = O.findPos(of, pid); f.g.pos.splice(f.i, 1); open.delete(pid); } };
   if (a === "delgrp") return { fn: () => { const f = O.findGrp(of, gid); f.k.grp.splice(f.i, 1); } };

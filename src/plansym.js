@@ -152,8 +152,8 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("STEIG_AUF", "Leitung nach oben", "leitung", "Allgemein", [C(0, 0, 0.4), seg45(0.4, 4.2), ...half(3.2, 4.2)], { r: 2.4, c: [1.5, 1.5] }),
   S("STEIG_AB", "Leitung nach unten", "leitung", "Allgemein", [C(0, 0, 0.4), seg45(-4.2, -0.4), ...half(-1.5, -0.5)], { r: 2.4, c: [-1.5, -1.5] }),
   S("STEIG_DURCH", "Leitung durchgehend", "leitung", "Allgemein", [C(0, 0, 0.4), seg45(-4.2, -0.4), seg45(0.4, 4.2), ...half(-1.5, -0.5), ...half(3.2, 4.2)], { r: 3.2 }),
-  // Hinweis (CJ 26.10.2026, Vorlage aus CJs Plan): runder Kasten mit Zeilen (oben, unten, Kabel), dünne Linie zum Ziel; Kasten ziehbar (lo). Zeichnung in plan.js refParts
-  S("VERWEIS", "Hinweis (Kasten mit Linie)", "allg", "Allgemein", [["p", "M-11,1.6h6.4a1 1 0 0 1 1,1v3.6a1 1 0 0 1 -1,1h-6.4a1 1 0 0 1 -1,-1v-3.6a1 1 0 0 1 1,-1Z", false], L(-11.4, 4.4, -3.6, 4.4), L(-3.6, 1.6, 0, 0)], { c: [0, 0], r: 1.2, ref: true }),
+  // Verweis (CJ 26.10.2026, Vorlage aus CJs Plan): runder Kasten mit ein bis drei Zeilen, Zeiger (dünne Linie) zum Ziel; Kasten frei ziehbar (lo), Farbe wählbar. Zeichnung in plan.js refParts
+  S("VERWEIS", "Verweis (Kasten mit Zeiger)", "allg", "Allgemein", [["p", "M-11,1.6h6.4a1 1 0 0 1 1,1v3.6a1 1 0 0 1 -1,1h-6.4a1 1 0 0 1 -1,-1v-3.6a1 1 0 0 1 1,-1Z", false], L(-11.4, 4.4, -3.6, 4.4), L(-3.6, 1.6, 0, 0)], { c: [0, 0], r: 1.2, ref: true }),
 ])();
 export const SYM_BY_KEY = /* @__PURE__ */ (() => new Map(PLAN_SYMS.map((s) => [s.key, s])))();
 export const SYM_GROUPS = /* @__PURE__ */ (() => [...new Set(PLAN_SYMS.map((s) => s.group))])();

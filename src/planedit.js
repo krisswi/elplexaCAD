@@ -39,7 +39,7 @@ export function makePlan(c) {
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
   const grpOpen = new Set(); // aufgeklappte Symbolgruppen links, nur für die Sitzung (Start immer zu)
-  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, multi: false, free: false, ap: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, multi: false, free: false, ap: false, refCol: null }; // refCol = Farbe des nächsten Verweises (null = Vorgabe); sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
@@ -493,7 +493,8 @@ export function makePlan(c) {
     if (T === "pl-sym") {
       if (!layerOk()) return;
       const q = symPlace(opt.sym, w, opt.symR), def = SYM_BY_KEY.get(opt.sym), id = nextId();
-      change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r, ap: opt.ap }, id))); // ap fällt bei Symbolen ohne Aufputz-Variante weg
+      change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r, ap: opt.ap, ...(def.ref && opt.refCol ? { col: opt.refCol } : {}) }, id))); // ap fällt bei Symbolen ohne Aufputz-Variante weg
+      if (def.ref) { setTool("select"); S.sel = new Set([id]); renderRight(); renderOverlay(); updateHint(); setTimeout(() => c.rightEl.querySelector('[data-plf="fu"]')?.focus(), 0); } // nach dem Klick, der sonst die Zeichenfläche fokussiert // Verweis: gleich beschriften
       return;
     }
     if (T === "pl-line") {
@@ -795,7 +796,7 @@ export function makePlan(c) {
     }
     if (it?.type === "sym") {
       const def = SYM_BY_KEY.get(it.key), tin = (k, label, v) => `<div class="field"><label>${label}</label><input type="text" data-plf="${k}" value="${R.esc(v ?? "")}" autocomplete="off" spellcheck="false"></div>`;
-      return head(def.label, def.group) + (def.ref ? tin("fu", "Oben (z. B. UV EG)", it.fu) + tin("nr", "Unten (z. B. 11X4)", it.nr) + tin("txt", "Kabel (z. B. 5×2,5)", it.txt) : "") + (def.num !== undefined ? tin("num", "Anzahl (Zahl am Strich)", it.num ?? def.num) : "") + (P.sizeOf(it.key) ? inp("vw", def.wall ? "Breite in mm (entlang der Wand)" : "Länge in mm", P.fmtLen(P.symSize(it).w)) + (P.symSize(it).t !== undefined ? inp("vt", def.wall ? "Tiefe in mm" : "Breite in mm", P.fmtLen(P.symSize(it).t)) : "") : "") + (def.ref ? "" : tin("txt", "Beschriftung", it.txt))
+      return head(def.label, def.group) + (def.ref ? tin("fu", "Zeile 1 (z. B. UV EG)", it.fu) + tin("nr", "Zeile 2 (z. B. 11X4)", it.nr) + tin("txt", "Zeile 3 (z. B. Kabel 5×2,5)", it.txt) : "") + (def.num !== undefined ? tin("num", "Anzahl (Zahl am Strich)", it.num ?? def.num) : "") + (P.sizeOf(it.key) ? inp("vw", def.wall ? "Breite in mm (entlang der Wand)" : "Länge in mm", P.fmtLen(P.symSize(it).w)) + (P.symSize(it).t !== undefined ? inp("vt", def.wall ? "Tiefe in mm" : "Breite in mm", P.fmtLen(P.symSize(it).t)) : "") : "") + (def.ref ? "" : tin("txt", "Beschriftung", it.txt))
         + (def.ref ? "" : `<div class="field"><label>Höhe in cm${def.h !== undefined ? " (nur wenn abweichend)" : ""}</label><input type="text" inputmode="decimal" data-plf="sh" value="${it.h === undefined ? "" : fmtH(it.h)}" placeholder="${def.h !== undefined ? `leer = Standard ${def.h} cm` : "leer = ohne"}" autocomplete="off"></div>`) + inp("rot", "Drehung in Grad", String(it.r))
         + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
         + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben. Die Beschriftung lässt sich für sich ziehen, Doppelklick setzt sie zurück.`)
@@ -816,7 +817,8 @@ export function makePlan(c) {
       + sel1("side", [["0", "automatisch (nach der ersten Kurve)"], ["1", "links der Zeichenrichtung"], ["-1", "rechts der Zeichenrichtung"]], opt.side, "Wand liegt").replace("data-plf", "data-plo")
       + note("Gezeichnet wird die Innenkante, die Wand wächst nach aussen (automatisch nach der ersten Kurve, Taste X wechselt die Seite). Eingetippte Länge = lichte Länge. Gespeichert wird die Mittellinie. Orange Hilfslinien: Ausrichtung an Anfang, Ecken und letztem Punkt (Alt ohne Fang).");
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
-    else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`) + (def.ap ? `<label class="check"><input type="checkbox" data-plo="ap"${opt.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : ""); }
+    else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`) + (def.ap ? `<label class="check"><input type="checkbox" data-plo="ap"${opt.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : "")
+      + (def.ref ? colField([{ type: "sym", key: opt.sym, ...(opt.refCol ? { col: opt.refCol } : {}) }]).replaceAll("data-plcol", "data-plnewcol") + note("Nach dem Klick die Zeilen rechts eintippen. Den Kasten danach frei ziehen, der Zeiger bleibt am Ziel.") : ""); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
       + note("Fang an den Anschlusspunkten der Symbole und am Raster (nicht an Wänden und anderen Leitungen), Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
@@ -941,6 +943,8 @@ export function makePlan(c) {
     if (sh().kind !== "plan") return;
     const sw = e.target.closest("[data-plcol]");
     if (sw) { change(() => { for (const it of sel()) P.setCol(it, sw.dataset.plcol); }); return; }
+    const nc = e.target.closest("[data-plnewcol]"); // Farbe des nächsten Verweises
+    if (nc) { opt.refCol = nc.dataset.plnewcol === P.LINE_COL ? null : nc.dataset.plnewcol; renderRight(); return; }
     const a = e.target.closest("[data-plact]")?.dataset.plact;
     if (a === "coldef") change(() => { for (const it of sel()) P.setCol(it, ""); });
     else if (a === "lores") change(() => { for (const it of sel()) delete it.lo; });

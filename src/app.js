@@ -1641,6 +1641,7 @@ stage.addEventListener("dblclick", (e) => {
   else if (hit.type === "device") { const i = rightEl.querySelector('input[data-dp="bmk"]'); if (i) { i.focus(); i.select(); } }
 });
 stage.addEventListener("wheel", (e) => {
+  if (isOff()) return; // Offerte: Tabelle scrollt normal (#of-view), kein Verschieben der Zeichenfläche
   e.preventDefault();
   const { sx, sy } = pointerPos(e);
   if (e.ctrlKey || e.metaKey) zoomAt(sx, sy, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.004)));

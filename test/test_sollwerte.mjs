@@ -1,7 +1,7 @@
 // Offerte Schritt 4 (CJ 26.10.2026): Sollwert-Einstellungen und IC-Zeiten beim Benutzer (sollwerte.js). Ohne Browser, ohne Netz:
 // localStorage und der Online-Adapter sind Attrappen, alle Werte erfunden. Prüft Säubern (leere Felder fallen weg), was eine neue Offerte
 // übernimmt, die IC-Tabelle, die vorbelegte Zeit der Position (überschreibbar) und Speichern/Abgleich unter eigenen Namen.
-// Die Rechnung der Preisbasis (Zeilenfolge, Prüfwerte der Zusammenfassung Final) kommt nach der Rückmeldung von CJ dazu.
+// Dazu die Rechnung der Preisbasis mit den Prüfwerten der Zusammenfassung Final.
 import assert from "node:assert";
 const mem = new Map();
 globalThis.localStorage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
@@ -25,6 +25,23 @@ assert.strictEqual(S.rolle(S.cleanSollwerte({ modus: "erweitert" }), "eli"), nul
 assert.ok(S.offerDefaults(S.cleanSollwerte({ modus: "erweitert", lohn: { eli: 40 } })).ansatz === 40, "nur Lohn: übrige Felder leer = 0");
 const of = O.newOfferte(); Object.assign(of, S.offerDefaults(S.cleanSollwerte({ ansatz: 95, fak: 1.3 })));
 of.ansatz = 100; assert.deepStrictEqual([of.ansatz, of.fak], [100, 1.3], "in der Offerte änderbar");
+
+// ---------- Rechnung der Preisbasis: Prüfwerte der Zusammenfassung Final (Lehrbeispiel, keine Firmenwerte), Lesart bestätigt von CJ 26.10.2026 ----------
+// Jede Zeile auf den Rappen gerundet, Summen aus den gerundeten Zeilen. VVGK und SoKo von den Herstellkosten, R+G von den Selbstkosten, Regie ohne SoKo.
+{
+  const s = S.cleanSollwerte({ modus: "erweitert", lohn: { eli: 28.85 }, pzk: 50.1, ugk: 7.31, vvgk: 15.7, soko: 2.9, rg: 10, tbcSatz: 154.6, tbcRegie: 0.18, tbc: { e: 0.13, n: 0.194, a: 0.238, s: 0.168 }, art: "n" });
+  assert.deepStrictEqual(S.regie(s, "eli"), { lohn: 28.85, pzk: 14.45, ugk: 7.31, hk: 50.61, vvgk: 7.95, soko: 1.47, sk: 60.03, rg: 6, soll: 66.03, skRegie: 58.56, rgRegie: 5.86, regieOhne: 64.42, tbc: 27.83, regie: 92.25 });
+  assert.strictEqual(S.ansatzErweitert(s, "eli", "n"), 96.02, "Ansatz normal: 66.03 + 0.194 × 154.60");
+  assert.strictEqual(S.ansatzErweitert({ ...s, art: undefined }, "eli"), 66.03, "ohne Installationsart ohne TB-C");
+  assert.deepStrictEqual(S.offerDefaults(s), { ansatz: 96.02 }, "neue Offerte: Ansatz aus der Rechnung, Faktor Standard");
+  // nur auf den Rappen gerundete Zeilen ergeben 65.26 statt 65.27 (ungerundet durchgerechnet)
+  assert.strictEqual(S.rolle({ ...s, lohn: { eli: 33.33 }, ugk: 0 }, "eli").soll, 65.26);
+  // TB-C-Satz leer: Sollerlös Projektleiter/TB-C
+  const s2 = S.cleanSollwerte({ ...s, tbcSatz: undefined, lohn: { eli: 28.85, pl: 40 } });
+  assert.strictEqual(S.tbcSatz(s2), S.rolle(s2, "pl").soll);
+  // Materialfaktor aus den Zuschlägen (erfundene Sätze): (1 + 0.75 × 4 % + 0.25 × 35 %) × 1.12 × 1.10 = 1.3768 → 1.38
+  assert.strictEqual(S.fakErweitert({ mat: { gkA: 4, gkL: 35, lager: 25, vvgk: 12, rg: 10 } }), 1.38);
+}
 
 // ---------- IC-Tabelle: Code ohne Leerzeichen, doppelte fallen weg, Zeit darf fehlen ----------
 assert.deepStrictEqual(S.cleanIcZeiten({ rows: [{ ic: " 2 2", std: 0.5, text: " Dose " }, { ic: "22", std: 9 }, { ic: "", std: 1 }, { ic: "31" }, { ic: "13", std: -1 }, null] }),

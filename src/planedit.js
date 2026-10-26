@@ -1,7 +1,7 @@
 // Modul «Plan» (CJ 23.10.2026, nur elplexaCAD), Schritt 1: Bedienung. Zeichenfläche mit Nullpunkt, Raster und Papierrahmen, Ebenenliste,
 // Werkzeuge Wand (W), Öffnung (O), Mass (B), Auswahl (V) mit Verschieben und Eckpunkte ziehen, Fenster Druck mit Massstab.
 // Rückmeldungen 24.10.2026: freier Grund (Papier, Raster, Plankopf erst im Druck), Wand = Innenlinie, Ausrichtungsfang, Grundriss-Werkzeuge nur auf der Ebene Hintergrund.
-// Schritt 3 (CJ 24.10.2026): Leitung (K, auch L), Farben nach 5.100, Mehrfachwahl (Rahmen, Shift-Klick oder Knopf «Mehrfachwahl»), ⌘A/⌘C/⌘V/⌘D.
+// Schritt 3 (CJ 24.10.2026): Leitung (K, auch L), Farben nach 5.100, Mehrfachwahl (Rahmen, ⌘-Klick, sonst Ctrl-Klick, oder Knopf «Mehrfachwahl»; seit 27.10.2026 nicht mehr Shift), ⌘A/⌘C/⌘V/⌘D.
 // CJ 24.10.2026: Leitung geschwungen (Form), PDF-Plan einlesen wie im Stringplan (Massstab eingeben oder messen, Fixpunkt = Nullpunkt, Plan drehen).
 // Daten und Geometrie in plan.js. Im SchemaCAD-Bau ersetzt build.mjs diese Datei durch einen Platzhalter.
 import * as P from "./plan.js";
@@ -535,16 +535,17 @@ export function makePlan(c) {
       const wl = sh().items.find((i) => i.id === one.wall), g = wl && edgeGrips(wl, one).find((x) => near(x.p));
       if (g) { drag = { type: "edge", it: one, wall: wl, edge: g.edge, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; }
     }
-    const lab = !e.shiftKey && !opt.multi && labelAt(w, t);
+    const add = e.metaKey || e.ctrlKey; // ⌘-Klick ergänzt die Wahl oder nimmt weg (CJ 27.10.2026, wie im Schema); Shift bleibt für 0/45/90° und Drehschritte
+    const lab = !add && !opt.multi && labelAt(w, t);
     if (lab) { // Beschriftung ziehen (CJ 26.10.2026): bleibt am Symbol, Versatz lo im System des Symbols; zweimal schnell = zurück in die Standardlage
       const twice = lastLab && lastLab.id === lab.id && e.timeStamp - lastLab.t < 450; lastLab = twice ? null : { id: lab.id, t: e.timeStamp };
       if (twice) { if (lab.lo) { change(() => { delete lab.lo; }); toast("Beschriftung in der Standardlage."); } return; }
       S.sel = new Set([lab.id]); drag = { type: "label", it: lab, lo0: lab.lo ?? [0, 0], sx: w.x, sy: w.y, started: false, snap: snapshot() };
       renderRight(); renderOverlay(); return;
     }
-    const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t), more = e.shiftKey || opt.multi;
+    const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t), more = add || opt.multi;
     if (!hit) { if (!more) S.sel = new Set(); drag = { type: "box", sx: w.x, sy: w.y, ex: w.x, ey: w.y, add: more, started: false }; renderRight(); renderOverlay(); return; } // Rahmen ziehen
-    if (more) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; renderRight(); renderOverlay(); return; } // Shift-Klick: dazu oder weg
+    if (more) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; renderRight(); renderOverlay(); return; } // ⌘-Klick: dazu oder weg
     if ((S.sel.has(hit.id) && S.sel.size > 1) || hit.type === "line") { if (!S.sel.has(hit.id)) S.sel = new Set([hit.id]); drag = { type: "multi", items: sel(), sx: w.x, sy: w.y, dx: 0, dy: 0, started: false, snap: snapshot() }; renderRight(); renderOverlay(); return; }
     S.sel = new Set([hit.id]);
     drag = { type: "move", it: hit, sx: w.x, sy: w.y, started: false, snap: snapshot(), ...(hit.type === "wall" ? { ea: P.nodeEnds(sh(), hit.a), eb: P.nodeEnds(sh(), hit.b), a0: [...hit.a], b0: [...hit.b] } : hit.type === "opening" ? { t0: hit.t } : hit.type === "sym" ? { at0: [...hit.at], r0: hit.r } : { off0: hit.off }) };
@@ -707,7 +708,7 @@ export function makePlan(c) {
   function leftHTML() {
     const S0 = sh();
     let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>` + toolBtn("select", R.icons.select, "Auswählen", "V") + toolBtn("hand", R.icons.hand, "Ansicht schieben", "H")
-      + `<button class="tool" data-plact="multi" aria-pressed="${opt.multi}" title="Mehrfachwahl: Klick fügt hinzu oder nimmt weg (wie Shift-Klick)">${ICON.multi}<span>Mehrfachwahl</span><span class="key">⇧</span></button>`
+      + `<button class="tool" data-plact="multi" aria-pressed="${opt.multi}" title="Mehrfachwahl: Klick fügt hinzu oder nimmt weg (wie ⌘-Klick)">${ICON.multi}<span>Mehrfachwahl</span><span class="key">⌘</span></button>`
       + `<button class="tool" data-plact="free" aria-pressed="${opt.free}" title="Fang aus: frei setzen ohne Raster, Ecken und Ausrichtung (wie Alt gedrückt halten)">${ICON.free}<span>Fang aus</span><span class="key">⌥</span></button>`
       + `</section>` + (grundOn() ? `<section class="section"><h2 class="section-title">Plan (PDF)</h2><button class="tool" data-plact="pdf">${ICON.pdf}<span>${S0.bg?.asset ? "Neuer Planstand" : "PDF-Plan laden"}</span></button>`
         + (S0.bg?.asset ? `<button class="tool" data-plact="scale">${ICON.scale}<span>Massstab eingeben</span></button>` + bgTool("pl-measure", ICON.measure, "Massstab messen") + bgTool("pl-fix", ICON.fix, "Fixpunkt setzen") + bgTool("pl-rotate", ICON.rotate, "Plan drehen") : "")
@@ -810,7 +811,7 @@ export function makePlan(c) {
       const cols = sel0.filter(P.hasCol), lays = new Set(sel0.filter((i) => i.type !== "opening").map((i) => i.layer));
       return head(`${sel0.length} Objekte`, parts.join(", ")) + (cols.length ? colField(cols) : note("Farbe nur für Leitungen und Symbole; Mauern, Öffnungen und Masse bleiben schwarz."))
         + (lays.size ? sel1("mlayer", lays.size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], lays.size === 1 ? [...lays][0] : "", "Ebene") : "")
-        + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. Shift-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
+        + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. ⌘-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
     }
     let h = "";
     if (S.tool === "pl-wall") h += head("Neue Wand", "Klick Start, Länge tippen, Enter") + thickFields(opt, "data-plo") + sel1("mat", P.MATS, opt.mat, "Material").replace("data-plf", "data-plo")
@@ -910,7 +911,7 @@ export function makePlan(c) {
     if (S.tool === "pl-fix") return "Fixpunkt: Punkt auf dem PDF-Plan klicken, der in allen Stockwerken gleich liegt (z. B. Ecke Treppenhaus). Er wird zum Nullpunkt.";
     if (S.tool === "pl-pmid") return "Druckmitte: in den Plan klicken, dort liegt die Mitte des Planfelds (Rahmen zeigt den Druckbereich). Esc bricht ab.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
-    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "Shift-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, K Leitung, R dreht Symbole, A Aufputz/Unterputz.`;
+    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "⌘-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, K Leitung, R dreht Symbole, A Aufputz/Unterputz.`;
   }
 
   // Bedienung der Leisten (eigene Datenattribute, app.js kennt sie nicht)

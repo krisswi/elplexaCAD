@@ -117,6 +117,20 @@ with sync_playwright() as p:
     check("Roter Verweis: Text rot", red == ["#ed3f2a"], red)
     key("Escape"); key("f"); page.mouse.move(5, 5); page.evaluate("document.querySelector('#toasts').innerHTML = ''"); page.wait_for_timeout(150)
     page.locator("#stage").screenshot(path=str(OUT / "plan_verweis.png"))
+
+    # ---------- Mehrfachwahl per ⌘-Klick, Shift wählt nicht mehr dazu (CJ 27.10.2026) ----------
+    so = [item(v1), item(v3)]  # zwei Verweise weit auseinander
+    pick = lambda y: click(*y["at"])
+    key("Escape"); pick(so[0])
+    page.keyboard.down("Shift"); pick(so[1]); page.keyboard.up("Shift")
+    check("Shift-Klick ersetzt die Wahl (kein Dazuwählen)", page.evaluate("window.__schemacad.sel") == [so[1]["id"]], page.evaluate("window.__schemacad.sel"))
+    page.keyboard.down("Meta"); pick(so[0]); page.keyboard.up("Meta")
+    check("⌘-Klick wählt dazu", sorted(page.evaluate("window.__schemacad.sel")) == sorted(y["id"] for y in so), page.evaluate("window.__schemacad.sel"))
+    page.keyboard.down("Meta"); pick(so[1]); page.keyboard.up("Meta")
+    check("⌘-Klick nimmt wieder weg", page.evaluate("window.__schemacad.sel") == [so[0]["id"]], page.evaluate("window.__schemacad.sel"))
+    page.keyboard.down("Control"); pick(so[1]); page.keyboard.up("Control")
+    check("Ctrl-Klick wie ⌘ (Windows)", len(page.evaluate("window.__schemacad.sel")) == 2)
+    check("Knopf Mehrfachwahl zeigt ⌘", "⌘" in page.inner_text('[data-plact="multi"]') and "⌘-Klick" in page.inner_text("#hint"), page.inner_text("#hint"))
     print("Bild:", OUT / "plan_verweis.png")
     check("keine Fehler in der Konsole", not errors, errors)
     b.close()

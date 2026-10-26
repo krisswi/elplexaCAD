@@ -32,7 +32,7 @@ export function viewHTML(of) {
         + (mode.ro ? "" : `<label class="of-rab"><span>Rabatt</span><select data-of="g${g.id}.rg" aria-label="Rabattgruppe"><option value="">Gesamtrabatt</option>${of.rg.map((r) => `<option value="${r.id}"${g.rg === r.id ? " selected" : ""}>${esc([r.kz, r.name].filter(Boolean).join(" – ") || "Rabattgruppe")}</option>`).join("")}</select></label>`)
         + `<span class="of-acts">${btn("gup", `data-g="${g.id}"`, "Gruppe nach oben", "↑")}${btn("gdown", `data-g="${g.id}"`, "Gruppe nach unten", "↓")}${btn("delgrp", `data-g="${g.id}"`, "Gruppe löschen", "×", "btn icon small danger")}</span></div>`;
       h += `<table class="of-tab"><thead><tr><th class="c-pos">Pos</th><th class="c-txt">Text</th><th class="c-ic">IC</th><th class="c-n">Menge</th><th class="c-eh">EH</th>${mode.prices ? `<th class="c-n">Preis</th><th class="c-n">Betrag</th>` : ""}<th class="c-opt" title="Optionale Position">Opt.</th><th class="c-act"><span class="sr">Aktionen</span></th></tr></thead><tbody>`;
-      g.pos.forEach((p, pi) => { h += posRow(of, t, p, `${ki + 1}.${gi + 1}.${pi + 1}`); });
+      g.pos.forEach((p, pi) => { h += posRow(of, t, p, O.posNo(p, ki, gi, pi)); });
       if (!mode.ro || mode.prices) h += `</tbody><tfoot><tr><td colspan="${mode.prices ? 6 : 5}">${btn("addpos", `data-g="${g.id}"`, "Position hinzufügen", "+ Position", "btn outline small")}</td>${mode.prices ? `<td class="c-n of-sum">${O.fmtChf(t.grp.get(g.id) || 0)}</td>` : ""}<td colspan="2"></td></tr></tfoot>`;
       else h += `</tbody>`;
       h += `</table></div>`;
@@ -44,7 +44,7 @@ export function viewHTML(of) {
 }
 function posRow(of, t, p, no) {
   const id = p.id, k = (f) => `p${id}.${f}`, ep = O.unitPrice(p, of), det = open.has(id), off = p.opt && !p.an;
-  let h = `<tr class="of-pos${off ? " off" : ""}" data-pid="${id}"><td class="c-pos">${esc(p.npk || no)}</td>`
+  let h = `<tr class="of-pos${off ? " off" : ""}" data-pid="${id}"><td class="c-pos">${esc(no)}</td>`
     + `<td class="c-txt">${inp(k("titel"), p.titel, { cls: "of-pt", ph: "Text", lab: "Text der Position" })}${mode.ro ? (p.text ? `<span class="of-ro of-rtext">${val(p.text)}</span>` : "") : `<textarea data-of="${k("text")}" rows="1" placeholder="Beschreibung" aria-label="Beschreibung">${val(p.text)}</textarea>`}</td>`
     + `<td class="c-ic">${inp(k("ic"), p.ic, { lab: "IC-Code" })}</td><td class="c-n">${inp(k("menge"), p.menge, { num: true, lab: "Menge" })}</td><td class="c-eh">${inp(k("eh"), p.eh, { ph: "Stk", lab: "Einheit" })}</td>`
     + (mode.prices ? `<td class="c-n">${mode.ro ? `<span class="of-ro">${O.fmtChf(ep)}</span>` : inp(k("preis"), p.preis, { num: true, ph: ep ? O.fmtChf(ep) : "", lab: "Einheitspreis (leer = aus EK und Zeit)" })}</td>`
@@ -61,24 +61,14 @@ function posRow(of, t, p, no) {
   }
   return h;
 }
-// MwSt nur am Schluss aufs Total, ein- und ausschaltbar (CJ 26.10.2026). Aus = Satz 0, damit ältere Stände gleich rechnen.
-const totLabel = (of) => (of.mwst ? "Total inkl. MwSt" : "Total ohne MwSt");
+const totLabel = O.totalLabel;
 function summaryHTML(of, t) {
   if (!of.kap.length) return "";
-  const row = (a, b, cls = "") => `<tr${cls ? ` class="${cls}"` : ""}><td>${a}</td><td class="c-n">${b}</td></tr>`;
+  const cls = { zs: "of-strong", total: "of-total" }, { rows, notes } = O.summaryRows(of, t);
   let h = `<section class="of-end" aria-label="Schlusszusammenstellung"><h2>Schlusszusammenstellung</h2><table class="of-stab"><tbody>`;
-  for (const k of t.kap) h += row(`BKP ${esc(k.bkp)} ${esc(k.titel)}`, O.fmtChf(k.summe));
-  h += row("Zwischensumme", O.fmtChf(t.zwischensumme), "of-strong");
-  for (const r of t.rabatt) h += row(`Rabatt${r.kz || r.name ? ` ${esc([r.kz, r.name].filter(Boolean).join(" "))}` : ""} ${O.fmtNum(r.satz)} % auf ${O.fmtChf(r.basis)}`, `− ${O.fmtChf(r.betrag)}`);
-  if (t.rabatt.length) h += row("Total nach Rabatt", O.fmtChf(t.netto));
-  if (of.mwst) h += row(`MwSt ${O.fmtNum(of.mwst)} %`, O.fmtChf(t.mwst));
-  const c = (x) => Math.round(x * 100), rd = c(t.total) - c(t.netto) - c(t.mwst); // Rundung auf 5 Rappen, damit die Zeilen sichtbar aufgehen
-  if (rd) h += row("Rundung", `${rd < 0 ? "− " : ""}${O.fmtChf(Math.abs(rd) / 100)}`);
-  h += row(totLabel(of), O.fmtChf(t.total), "of-total");
+  for (const r of rows) h += `<tr${cls[r.art] ? ` class="${cls[r.art]}"` : ""}><td>${esc(r.text)}</td><td class="c-n">${O.fmtSigned(r.betrag)}</td></tr>`;
   h += `</tbody></table>`;
-  if (t.skonto) h += `<p class="of-note">Skonto ${O.fmtNum(t.skonto.satz)} %${t.skonto.tage ? ` bei Zahlung innert ${t.skonto.tage} Tagen` : ""}: CHF ${O.fmtChf(t.skonto.betrag)}</p>`;
-  if (t.optionen) h += `<p class="of-note">Optionen (nicht in der Angebotssumme): CHF ${O.fmtChf(t.optionen)}</p>`;
-  return h + `</section>`;
+  return h + notes.map((n) => `<p class="of-note">${esc(n)}</p>`).join("") + `</section>`;
 }
 
 // ---------- Links: BKP-Katalog ----------
@@ -134,8 +124,13 @@ export function panelHTML(of, profil = null) {
     + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div><label class="of-chk"><input type="checkbox" data-of="o.mwstan"${of.mwst ? " checked" : ""}> MwSt aufrechnen</label>${of.mwst ? fld("MwSt %", "o.mwst", of.mwst, { num: true }) : ""}`
     + `<div class="row"><button type="button" class="btn outline small" data-ofact="sollwerte" title="Ansatz und Faktor für neue Offerten, Rechnung der Preisbasis, IC-Zeiten (gilt für dein Konto, nicht nur diese Offerte)">Kalkulation Firmenwerte …</button></div></section>`
     + rgHTML(of)
+    + outHTML()
     + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">${totLabel(of)} <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
 }
+
+// Ausgabe (Schritt 5): PDF und Excel, je mit oder ohne Preise. EK, Faktor, Zeit, Zeitfaktor und Ansatz kommen nie hinein.
+const outHTML = () => `<section class="section"><h2 class="section-title">Ausgabe</h2><p class="note">Ohne EK, Faktor, Zeit und Ansatz.</p><div class="of-two">`
+  + [["pdf", 1, "PDF mit Preisen"], ["pdf", 0, "PDF ohne Preise"], ["xlsx", 1, "Excel mit Preisen"], ["xlsx", 0, "Excel ohne Preise"]].map(([k, p, l]) => `<button type="button" class="btn outline small" data-ofact="out" data-kind="${k}" data-prices="${p}">${l}</button>`).join("") + `</div></section>`;
 
 // Absender aus dem Firmenprofil (Schritt 2): nur Anzeige, geändert wird im Fenster «Firmenprofil» (gilt für alle Offerten und Module)
 function senderHTML(p) {

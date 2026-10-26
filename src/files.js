@@ -10,9 +10,11 @@ import * as PZ from "./prinzip.js";
 import { zipFiles } from "./zip.js";
 import { openModal } from "./dialogs.js";
 import { showPdf } from "./pdfout.js";
+import * as OP from "./offprint.js";
+import { offerteXlsx } from "./offxlsx.js";
 
 export function makeFiles(c) {
-  const { S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv, sheetLabel } = c;
+  const { S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv, sheetLabel, offCtx } = c;
   const hasFS = "showSaveFilePicker" in window && "showOpenFilePicker" in window;
   const safeName = (s) => s.replace(/[\\/:*?"<>|]+/g, "-").trim();
   function baseName() {
@@ -78,7 +80,7 @@ export function makeFiles(c) {
     if (S.model.kind === "pv" || S.model.kind === "pvtab") { toast("DXF für Stringpläne kommt später."); return; }
     if (ELPLEXA && S.model.kind === "plan") { toast("DXF für den Plan kommt später."); return; }
     if (S.model.kind === "prinzip") { toast("DXF fürs Prinzipschema kommt später. PDF: Exportieren → PDF."); return; }
-    if (S.model.kind === "offerte") { toast("Eine Offerte hat kein DXF. PDF und Excel der Offerte kommen in einem späteren Schritt."); return; }
+    if (S.model.kind === "offerte") { toast("Eine Offerte hat kein DXF. PDF und Excel stehen rechts unter «Ausgabe»."); return; }
     if (T.isDeck(S.model)) { toast("DXF für Titelseite und Inhaltsverzeichnis kommt später. Sie sind im PDF enthalten."); return; }
     let text;
     try { text = exportDxf(S.model); } catch (err) { toast("Der DXF-Export ist fehlgeschlagen: " + (err.message || err) + ". Speichere das Blatt als JSON und melde den Fehler.", "error"); return; }
@@ -91,6 +93,7 @@ export function makeFiles(c) {
     } catch (err) { if (err && err.name === "AbortError") return; toast("DXF-Export hat nicht geklappt: " + (err.message || err), "error"); }
   }
 
+  let offPrices = true; // Offerte im Druck mit oder ohne Preise (Knöpfe der Offerte)
   // Druckseiten in #printroot: eine Seite pro Blatt (Stringübersicht und Legende auch mehrere). Gibt die Anzahl Seiten zurück.
   // Stringplan: eigenes Papier und Massstab, Stringübersicht: eigenes Papier (PV-Strings Schritt 7, pvprint.js).
   // only: null = alle Blätter, ein Blatt oder eine Liste von Blättern (Reihenfolge immer wie in der Datei)
@@ -98,7 +101,7 @@ export function makeFiles(c) {
     closeEditor(true);
     const pick = only === null ? null : new Set(Array.isArray(only) ? only : [only]);
     const pages = S.doc.sheets.map((sh, i) => [sh, i]).filter(([sh]) => !pick || pick.has(sh)).flatMap(([sh, i]) => {
-      if (sh.kind === "offerte") return []; // Offerte: PDF kommt mit Schritt 5
+      if (sh.kind === "offerte") return OP.printPages(sh.of, { ...offCtx(), prices: offPrices }); // A4 hoch (offprint.js, Schritt 5), im Blätter-PDF mit Preisen
       if (sh.kind === "pv" || sh.kind === "pvtab") return pv.printPages(sh, i);
       if (sh.kind === "legend") return L.printPages(S.doc, sh); // A4 hoch
       if (ELPLEXA && sh.kind === "plan") return S.planPages(sh, i); // Plan und Stückliste (planedit.js, Schritt 4)
@@ -116,7 +119,7 @@ export function makeFiles(c) {
   }
   // Papier eines Blatts im Druck: Stringplan und Stringübersicht ihr eigenes, Legende A4 hoch, alles andere A4 quer
   function sheetPaper(sh) {
-    const p = sh.kind === "pv" || sh.kind === "pvtab" ? pv.paperOf(sh) : sh.kind === "prinzip" ? PZ.paperOf(sh) : ELPLEXA && sh.kind === "plan" ? { size: "A3", quer: true, ...sh.paper } : { size: "A4", quer: sh.kind !== "legend" };
+    const p = sh.kind === "pv" || sh.kind === "pvtab" ? pv.paperOf(sh) : sh.kind === "prinzip" ? PZ.paperOf(sh) : ELPLEXA && sh.kind === "plan" ? { size: "A3", quer: true, ...sh.paper } : { size: "A4", quer: sh.kind !== "legend" && sh.kind !== "offerte" };
     return { key: p.size + (p.quer ? "q" : "h"), label: `${p.size} ${p.quer ? "quer" : "hoch"}` };
   }
   // Ein Druck für alle Blätter, jede Seite in ihrem Papier (benannte @page in style.css und pvprint.js). Nachweis 18.10.2026 im echten
@@ -185,6 +188,16 @@ export function makeFiles(c) {
     download(name, zipFiles(files), "application/zip");
     toast(`${files.length} DXF-Dateien als ZIP in den Download-Ordner geladen: ${name}`);
   }
+  // Offerte als PDF oder Excel, mit oder ohne Preise (Schritt 5, CJ 26.10.2026). EK, Faktor, Zeit und Ansatz kommen nie in die Ausgabe.
+  async function offerteOut(sh, kind, prices) {
+    closeEditor(true);
+    const suffix = `_Offerte${sh.of.nr ? `-${safeName(sh.of.nr)}` : ""}${prices ? "" : "_ohne-Preise"}`;
+    if (kind === "pdf") { offPrices = prices; try { await printPdf([sh], suffix); } finally { offPrices = true; } return; }
+    if (ELPLEXA && !(await S.elUnlock())) return;
+    const name = baseName() + suffix + ".xlsx";
+    try { download(name, offerteXlsx(sh.of, { ...offCtx(), prices }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); toast("Excel in den Download-Ordner geladen: " + name); }
+    catch (err) { toast("Der Excel-Export ist fehlgeschlagen: " + (err.message || err), "error"); }
+  }
   const printLegend = () => { const l = S.doc.sheets.find((sh) => sh.kind === "legend"); if (l) printPdf(l); else toast("Diese Datei hat keine Legende."); };
-  return { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend };
+  return { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend, offerteOut };
 }

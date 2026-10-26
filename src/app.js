@@ -2000,6 +2000,7 @@ function ofClick(e) {
   if (b.dataset.ofact === "profil") { firmProfil(); return; }
   if (b.dataset.ofact === "sollwerte") { kalkFirma(); return; }
   if (b.dataset.ofact === "dbsave") { ofDbSave(Number(b.dataset.p)); return; }
+  if (b.dataset.ofact === "out") { offerteOut(S.model, b.dataset.kind, b.dataset.prices === "1"); return; } // PDF oder Excel (Schritt 5)
   if (b.dataset.ofact === "dbdel") { ofDbDel(b.dataset.db); return; }
   const r = OF.action(S.model.of, b); if (!r) return;
   if (r.ui) renderItems(); else change(r.fn);
@@ -2257,7 +2258,9 @@ window.addEventListener("resize", () => { applyView(); });
 window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 // ---------- Dateien (Code in files.js) ----------
-const { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend } = makeFiles({ S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv: PV, sheetLabel });
+// Offerte im PDF und Excel (Schritt 5): Absender aus dem Firmenprofil, Kunde aus den Projektfeldern Bauherr, Projektname
+const offCtx = () => ({ profil: loadProfil(), kunde: E.bauherrInfo(S.doc) || {}, projekt: (ELPLEXA && S.doc.project?.name) || S.doc.sheets.find((sh) => sh.kind === "title")?.meta?.OBJEKT || "" });
+const { hasFS, safeName, baseName, download, saveJson, loadText, openJson, saveDxf, saveDxfAll, buildPrint, printPdf, printLegend, offerteOut } = makeFiles({ S, $, adoptDeck, markDirty, docText, toast, confirmDialog, closeEditor, setFileName, markClean, updateUndoButtons, setTool, renderSheetBar, renderSheet, renderItems, renderOverlay, renderRight, afterSheetChange, pv: PV, sheetLabel, offCtx });
 
 // Titelseite: Änderung eintragen oder löschen, Logo laden (PNG, JPEG, SVG bis MAX_LOGO) oder entfernen
 function deckAction(b) {

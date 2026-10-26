@@ -126,6 +126,28 @@ export function totals(of) {
     skonto: of.skonto ? { satz: of.skonto, tage: of.skTage || 0, betrag: total * of.skonto / 100 } : null }; // Skonto nur als Hinweis
 }
 
+// Schlusszusammenstellung als Zeilen (Editor, PDF und Excel, Schritt 5): { text, betrag, art } mit art = kap, zs, rab, netto, mwst, rund, total.
+// betrag in Franken (Rabatt negativ). notes: Skonto-Hinweis und Optionen (nicht in der Angebotssumme).
+export const totalLabel = (of) => (of.mwst ? "Total inkl. MwSt" : "Total ohne MwSt"); // MwSt nur am Schluss, aus = Satz 0
+export function summaryRows(of, t = totals(of)) {
+  const rows = t.kap.map((k) => ({ art: "kap", text: `BKP ${k.bkp} ${k.titel}`.trim(), betrag: k.summe }));
+  rows.push({ art: "zs", text: "Zwischensumme", betrag: t.zwischensumme });
+  for (const r of t.rabatt) rows.push({ art: "rab", text: `Rabatt${r.kz || r.name ? ` ${[r.kz, r.name].filter(Boolean).join(" ")}` : ""} ${fmtNum(r.satz)} % auf ${fmtChf(r.basis)}`, betrag: -r.betrag, satz: r.satz, basis: r.basis });
+  if (t.rabatt.length) rows.push({ art: "netto", text: "Total nach Rabatt", betrag: t.netto });
+  if (of.mwst) rows.push({ art: "mwst", text: `MwSt ${fmtNum(of.mwst)} %`, betrag: t.mwst });
+  const c = (x) => Math.round(x * 100), rd = c(t.total) - c(t.netto) - c(t.mwst); // Rundung auf 5 Rappen, damit die Zeilen sichtbar aufgehen
+  if (rd) rows.push({ art: "rund", text: "Rundung", betrag: rd / 100 });
+  rows.push({ art: "total", text: totalLabel(of), betrag: t.total });
+  const notes = [];
+  if (t.skonto) notes.push(`Skonto ${fmtNum(t.skonto.satz)} %${t.skonto.tage ? ` bei Zahlung innert ${t.skonto.tage} Tagen` : ""}: CHF ${fmtChf(t.skonto.betrag)}`);
+  if (t.optionen) notes.push(`Optionen (nicht in der Angebotssumme): CHF ${fmtChf(t.optionen)}`);
+  return { rows, notes };
+}
+// Betrag mit Vorzeichen für die Anzeige: − 12.50
+export const fmtSigned = (x) => (Math.round(x * 100) < 0 ? `− ${fmtChf(-x)}` : fmtChf(x));
+// Positionsnummer wie im Editor: NPK-Nr. oder Kapitel.Gruppe.Position
+export const posNo = (p, ki, gi, pi) => p.npk || `${ki + 1}.${gi + 1}.${pi + 1}`;
+
 // Laden: prüft und säubert die Offerte aus der Datei. Unbekannte Felder fallen weg, fehlende bleiben leer. IDs bleiben, doppelte bekommen eine neue.
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const str = (v, n = 4000) => (typeof v === "string" ? v.slice(0, n) : "");

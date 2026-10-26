@@ -1,5 +1,6 @@
 # UI-Tests für das Modul Offerte (Schritt 1, CJ 26.10.2026) in SchemaCAD v3 und elplexaCAD. Aufruf: python3 test/offerte_tests.py [Ausgabeordner]
 # Kapitel aus dem BKP-Katalog, Position per Tastatur (Tab), Summen mit Rundung, Option, Rabatt, Rückgängig, Datei Version 25, Absender aus dem Firmenprofil (Schritt 2).
+# Schritt 5: PDF mit und ohne Preise (v3 Druckseiten, elplexaCAD echtes PDF), Excel-Download mit Formeln, ohne EK und Zeit.
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -65,6 +66,29 @@ def flow(page, tag):
     check(f"{tag}: Treffer in die zuletzt bearbeitete Gruppe kopiert, ohne Menge", cp.get("titel") == "Steckdose T13" and cp.get("enr") == "111 222 333" and "menge" not in cp and cp.get("id") != pos.get("id"), g)
     page.keyboard.type("4"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
     check(f"{tag}: Kopie frei änderbar, Fokus auf Menge", off(D())["of"]["kap"][0]["grp"][1]["pos"][0].get("menge") == 4)
+    # Schritt 5: PDF und Excel, mit und ohne Preise. EK, Faktor, Zeit und Ansatz nie in der Ausgabe (EK 9.99 und Zeit 0.77 als Merkmal).
+    page.fill('[data-of$=".ek"] >> nth=0', "9.99"); page.keyboard.press("Tab"); page.wait_for_timeout(50)
+    page.fill('[data-of$=".std"] >> nth=0', "0.77"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
+    page.evaluate("""() => { window.__cap = []; window.print = () => { window.__cap.push(document.querySelector('#printroot').innerHTML); setTimeout(() => dispatchEvent(new Event('afterprint')), 10); };
+      window.open = (u) => { window.__cap.push(u); return {}; }; }""")
+    for prices in ["1", "0"]:
+        page.click(f'[data-ofact="out"][data-kind="pdf"][data-prices="{prices}"]'); page.wait_for_timeout(3000 if tag == "elplexa" else 400)
+    cap = page.evaluate("window.__cap")
+    if tag == "v3":
+        strip = lambda s: __import__("re").sub(r"<[^>]+>", " ", s)
+        a, b = (strip(x) for x in cap) if len(cap) == 2 else ("", "")
+        check(f"{tag}: PDF mit Preisen: Kopf, Kapitelsumme, Schluss, Firma", all(x in a for x in ["Offerte", "Muster Elektro", "Total Lichtinstallationen allgemein BKP 232", "Schlusszusammenstellung", "Seite 1 von 1"]), a[:300])
+        check(f"{tag}: PDF ohne Preise ohne Beträge", "(ohne Preise)" in b and "Betrag" not in b and "175.41" not in b and "Schlusszusammenstellung" not in b, b[:300])
+        check(f"{tag}: PDF ohne EK und Zeit", not any(x in a + b for x in ["9.99", "0.77"]))
+    else:
+        pdfs = [page.evaluate("async (u) => { const b = new Uint8Array(await (await fetch(u)).arrayBuffer()); let s = ''; for (const c of b) s += String.fromCharCode(c); return btoa(s); }", u) for u in cap]
+        for i, b64 in enumerate(pdfs): (OUT / f"offerte_{'mit' if i == 0 else 'ohne'}_preise.pdf").write_bytes(__import__("base64").b64decode(b64))
+        check(f"{tag}: zwei PDF erstellt (mit und ohne Preise), A4 hoch", len(pdfs) == 2 and all(b"/MediaBox [0 0 595.27" in __import__("base64").b64decode(x) for x in pdfs), len(pdfs))
+    with page.expect_download() as dl: page.click('[data-ofact="out"][data-kind="xlsx"][data-prices="1"]')
+    x = OUT / f"{tag}_offerte.xlsx"; dl.value.save_as(x)
+    import zipfile
+    sh = zipfile.ZipFile(x).read("xl/worksheets/sheet1.xml").decode()
+    check(f"{tag}: Excel mit Formeln, ohne EK und Zeit", dl.value.suggested_filename.endswith("_Offerte.xlsx") and "<f>SUMIFS(" in sh and "Muster Elektro" in sh and "9.99" not in sh and "0.77" not in sh, dl.value.suggested_filename)
     page.screenshot(path=str(OUT / f"{tag}.png"))
 
 with sync_playwright() as p:

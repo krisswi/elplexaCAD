@@ -74,8 +74,10 @@ const half = (t0, t1) => { const a = at45(t0), b = at45(t1), q = [a[0] - 0.75 * 
 const seg45 = (t0, t1) => L(...at45(t0), ...at45(t1));
 
 // size: Grösse in echten mm (w Breite/Länge, t Tiefe), parts(W, T) zeichnet in Papier-mm; parts der Tabelle = Vorgabe bei 1:50 (Palette)
+// pin = [cx, cy, r]: vier Fangpunkte für Leitungen oben, rechts, unten, links am Rand (Schalter: Kreis, Steckdosen: Bogen; CJ 26.10.2026).
+// edge = [x0, y0, x1, y1]: Fang auf allen Seiten des Kastens (Abzweigdose). Ohne beides fängt die Leitung an der Mitte c.
 // c = Mitte (Treffer, Fang); Schalter: Mitte des Kreises (CJ 26.10.2026: vorher [0, 2], Leitung rastete 0,2 mm Papier unter dem Kreis ein)
-const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (group === "Schalter" ? [0, o.cy ?? SC[1]] : o.wall ? [0, 2] : [0, 0]), r: o.r ?? 2.6, ref: !!o.ref });
+const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (group === "Schalter" ? [0, o.cy ?? SC[1]] : o.wall ? [0, 2] : [0, 0]), pin: o.pin ?? (group === "Schalter" ? [0, o.cy ?? SC[1], SR] : group === "Steckdosen" ? [0, 3.9, 1.5] : null), edge: o.edge ?? null, r: o.r ?? 2.6, ref: !!o.ref });
 // Tabellen als /* @__PURE__ */-Aufrufe: so fallen sie im SchemaCAD-Bau ganz weg (v3 byte-gleich), obwohl plan.js sie importiert
 export const PLAN_SYMS = /* @__PURE__ */ (() => [
   // Schalter (Unterputz; Aufputz über Feld)
@@ -94,9 +96,9 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("STD_T15", "Steckdose T15", "kraft", "Steckdosen", [...SOCK(), T(2.9, 1.0, 1.4, "T15")], { wall: true, h: 30, ap: apSock() }),
   // T13 mit USB wie Quelle: T13 über dem Bogen, USB-Zeichen im Bogen, Schrägstrich zur Anzahl (änderbar)
   S("STD_USB", "Steckdose T13 mit USB", "kraft", "Steckdosen", [...SOCK(), ...multi("2"), T(0, 5.1, 1.1, "T13"), L(-0.85, 3.35, 0.75, 3.35), C(-0.85, 3.35, 0.18, true), tri([0.75, 3.12], [1.1, 3.35], [0.75, 3.58], true), L(-0.35, 3.35, -0.1, 3.7), L(-0.1, 3.7, 0.3, 3.7), L(0.05, 3.35, 0.3, 3.05), L(0.3, 3.05, 0.55, 3.05)], { wall: true, h: 30, ap: apSock() }),
-  S("STD_BODEN", "Bodensteckdose", "kraft", "Steckdosen", [...box(-1.8, -1.8, 1.8, 1.8), ...SOCK(0.75, -1.4625)], {}), // Steckdose mittig im Kasten (CJ 26.10.2026)
+  S("STD_BODEN", "Bodensteckdose", "kraft", "Steckdosen", [...box(-1.8, -1.8, 1.8, 1.8), ...SOCK(0.75, -1.4625)], { pin: [0, 0, 1.8] }), // Steckdose mittig im Kasten (CJ 26.10.2026)
   // KOMBI wie Quelle: Schalterkreis an der Wand, kurzer Stiel (halb so lang) zur Steckdose, Hebel waagrecht mit Querstrich zum Raum
-  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [C(0, 1.2, SR), L(0, 2.2, 0, 3.4), L(-1.5, 3.4, 1.5, 3.4), ["p", "M-1.5,4.9A1.5 1.5 0 0 1 1.5,4.9", false], L(0.95, 1.5, 2.6, 1.5), L(2.6, 1.5, 2.6, 2.3)], { wall: true, h: 110, ap: apHalf(1.2), c: [0, 2.6], r: 3 }),
+  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [C(0, 1.2, SR), L(0, 2.2, 0, 3.4), L(-1.5, 3.4, 1.5, 3.4), ["p", "M-1.5,4.9A1.5 1.5 0 0 1 1.5,4.9", false], L(0.95, 1.5, 2.6, 1.5), L(2.6, 1.5, 2.6, 2.3)], { pin: [0, 4.9, 1.5], wall: true, h: 110, ap: apHalf(1.2), c: [0, 2.6], r: 3 }),
   // Leuchten
   S("LEUCHTE", "Leuchte an Decke", "licht", "Leuchten", X(0, 0, 1.4), { r: 2 }),
   S("LEUCHTE_EB", "Einbauleuchte an Decke", "licht", "Leuchten", [C(0, 0, 1.7), ...X(0, 0, 1.2)], { r: 2 }),

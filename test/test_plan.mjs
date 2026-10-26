@@ -444,5 +444,15 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
     assert.deepStrictEqual(d.c, [circ[1], circ[2]], `${key}: Mitte = Kreismitte`);
   }
   near(P.symCenter({ key: "SCH0", at: [1000, 0], r: 90 }, 50), [1000 - 2.2 * 50, 0], "Schalter gedreht: Mitte mitgedreht");
+  // Schalter und Steckdosen: vier Fangpunkte oben, rechts, unten, links am Rand (Kreis bzw. Bogen), drehen mit R
+  const sw = P.symSnaps({ key: "SCH0", at: [1000, 0], r: 0 }, 50);
+  assert.deepStrictEqual(sw, { pts: [[1000, 160], [1050, 110], [1000, 60], [950, 110]], segs: [] }, "Schalter: vier Punkte am Kreis (r 1 mm × 50)");
+  const sw90 = P.symSnaps({ key: "SCH0", at: [1000, 0], r: 90 }, 50);
+  sw90.pts.forEach((q, i) => near(q, [1000 - (sw.pts[i][1] - 0), sw.pts[i][0] - 1000], `Schalter um 90° gedreht, Punkt ${i}`));
+  const so = P.symSnaps({ key: "STD", at: [0, 0], r: 0 }, 50);
+  assert.deepStrictEqual(so.pts, [[0, 270], [75, 195], [0, 120], [-75, 195]], "Steckdose: Scheitel, Bogenenden, Querstrich");
+  for (const d of S2.PLAN_SYMS.filter((x) => ["Schalter", "Steckdosen"].includes(x.group))) assert.strictEqual(P.symSnaps({ key: d.key, at: [0, 0], r: 0 }, 50).pts.length, 4, `${d.key}: vier Fangpunkte`);
+  assert.deepStrictEqual(P.symSnaps({ key: "LEUCHTE", at: [500, 500], r: 30 }, 50), { pts: [[500, 500]], segs: [] }, "Leuchte: Fang an der Mitte");
+  assert.deepStrictEqual(P.snapPlan({}, [], [1008, 150], { grid: 10, tol: 20, extra: sw.pts }), { x: 1000, y: 160, snap: "end" }, "Leitung rastet am oberen Fangpunkt des Schalters");
 }
 console.log("test_plan: alles ok");

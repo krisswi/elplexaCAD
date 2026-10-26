@@ -11,7 +11,7 @@ import { openPdf, pageSize, toBase64, imageFor, imageReady } from "./pdfbg.js";
 import { pageSVG } from "./pvprint.js";
 import * as R from "./render.js";
 
-const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3", GUIDE = "#e08a00", FRAME = "#6b7785";
+const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3", GUIDE = "#e08a00", FRAME = "#6b7785", PIN = "#f4c400"; // PIN: Fangpunkte der Symbole (Farbe wie der Fang an Punkten)
 const OPEN_W = { tuer: 900, fenster: 1200, durchgang: 900, schiebe: 900 }; // Vorgabe Breiten in mm (Annahme)
 const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe neuer Öffnungen in mm (CJ 23.10.2026)
 const ICON = {
@@ -70,10 +70,20 @@ export function makePlan(c) {
   // Wand zeichnen: gezeichnet wird die Innenlinie. Fang an Ecken und Flächen der Wände, Ausrichtungsfang an Anfang, letztem Punkt und Ecken (Rechteck schliessen).
   const snapWall = (w, ortho) => { const fg = faces(); return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: fg, extra: draft?.pts ?? [], align: { refs: [...(draft?.pts ?? []), ...fg.corners], dirs: alignDirs(draft?.u) } }); }; // extra: Anfang und Punkte der Kette (Klick auf den Anfang schliesst)
   const snapDim = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: faces().corners });
-  // Leitung (CJ 26.10.2026): Fang nur an den Anschlusspunkten der Symbole, den eigenen Punkten (Klick auf den letzten beendet) und am Raster.
+  // Leitung (CJ 26.10.2026): Fang nur an den Anschlusspunkten der Symbole (P.symSnaps: Schalter und Steckdosen vier Punkte am Rand, Abzweigdose alle Seiten), den eigenen Punkten (Klick auf den letzten beendet) und am Raster.
   // Kein Fang an Wänden, Massen oder anderen Leitungen, keine Ausrichtungslinien.
-  const lineSnaps = () => visible().flatMap((i) => (i.type === "sym" ? [P.symCenter(i, den())] : []));
-  const snapLine = (w, ortho) => P.snapPlan(sh(), [], [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: [...lineSnaps(), ...(lineDraft?.pts ?? [])] });
+  const lineSnaps = () => { const o = visible().filter((i) => i.type === "sym").map((i) => P.symSnaps(i, den())); return { pts: o.flatMap((x) => x.pts), segs: o.flatMap((x) => x.segs) }; };
+  const snapLine = (w, ortho) => { const sn = lineSnaps(); return P.snapPlan(sh(), [], [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: [...sn.pts, ...(lineDraft?.pts ?? [])], segs: sn.segs }); };
+  // Fangpunkte der Symbole nahe am Zeiger zeigen (Leitung zeichnen oder Punkt ziehen, nicht bei Fang aus)
+  const pinsSVG = (z) => {
+    if (!raw || S.alt || !(S.tool === "pl-line" || drag?.type === "lpt")) return "";
+    const k = den(), r = (n) => f(n / z);
+    return visible().filter((i) => i.type === "sym" && Math.hypot(...P.symCenter(i, k).map((v, j) => v - [raw.x, raw.y][j])) <= P.symDef(i, k).r * k + 25 / z).map((i) => {
+      const sn = P.symSnaps(i, k);
+      return sn.segs.map(([a, b]) => `<path d="M${pt(a)}L${pt(b)}" stroke="${PIN}" stroke-width="2" fill="none" opacity=".8"/>`).join("")
+        + sn.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${r(3)}" fill="#fff" stroke="${PIN}" stroke-width="1.5"/>`).join("");
+    }).join("");
+  };
 
   // ---------- Darstellung ----------
   // Druckmitte: gesetzt (sheet.pmid, Werkzeug «Druckmitte setzen» im Fenster Druck), sonst Mitte des Inhalts (auf 10 mm), ohne Inhalt der Nullpunkt
@@ -404,6 +414,7 @@ export function makePlan(c) {
     if (S.tool === "pl-pmid" && mouse) { const { a, k: d, ox, oy } = pageAt([mouse.x, mouse.y]); s += `<rect x="${f(ox + a.x0 * d)}" y="${f(oy + a.y0 * d)}" width="${f((a.x1 - a.x0) * d)}" height="${f((a.y1 - a.y0) * d)}" fill="rgba(47,109,179,.06)" stroke="${DRAFT}" stroke-width="1.5" stroke-dasharray="6 4"/>`; } // Vorschau des Planfelds
     if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r }, k, DRAFT)}</g>`; }
     if (S.tool === "pl-open" && raw) { const pv = openPreview(); if (pv) s += `<g class="pl-scale">${openingSVG(pv.w, pv.o, k, DRAFT)}</g>`; }
+    s += pinsSVG(z);
     if (mouse?.guides) s += mouse.guides.map(([q, r]) => `<path d="M${pt(q)}L${pt(r)}" stroke="${GUIDE}" stroke-width="1" stroke-dasharray="${px(6)} ${px(4)}" fill="none"/><circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${GUIDE}"/>`).join("");
     if (mouse && S.tool !== "select" && S.tool !== "hand" && S.tool !== "pl-sym") s += `<circle cx="${f(mouse.x)}" cy="${f(mouse.y)}" r="${px(mouse.snap && mouse.snap !== "grid" ? 5 : 3)}" fill="${mouse.snap === "end" ? "#f4c400" : mouse.snap === "align" ? GUIDE : "#fff"}" stroke="${DRAFT}" stroke-width="1.5"/>`;
     return s;

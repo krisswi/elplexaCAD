@@ -502,16 +502,18 @@ export function alignSnap(m, refs, dirs, tol) {
 }
 // Fang: Wand- und Massenden (auch gesperrte Ebenen), Mitte der Wand, Punkt auf der Mittellinie, Raster ab Nullpunkt. ortho = Bezugspunkt für
 // Shift (0/45/90°). Rückgabe { x, y, snap, guides? }. faces = faceGeom() (Wand zeichnen, Mass): statt der Mittellinie fangen Ecken und Linien der Wandflächen
-// (nur Wandenden der Liste ends: false). align = { refs, dirs }: Ausrichtungsfang vor Fläche und Raster.
-export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, extra = [], faces, align } = {}) {
+// (nur Wandenden der Liste ends: false). align = { refs, dirs }: Ausrichtungsfang vor Fläche und Raster. segs = Strecken [[a, b]] (nach den Punkten).
+export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, extra = [], segs = [], faces, align } = {}) {
   const on = (q) => (ortho ? orthoPt(ortho, q) : q.map(r3));
   const m = on(p);
   if (alt) return { x: m[0], y: m[1] };
   const walls = items.filter((i) => i.type === "wall");
   const best = (cands, kind) => { let hit = null, bd = tol; for (const c of cands) { const d = len(sub(c, m)); if (d <= bd) { bd = d; const q = on(c); hit = { x: q[0], y: q[1], snap: kind }; } } return hit; };
-  const onFace = () => { let hit = null, bd = tol; for (const [a, b] of faces.edges) { const v = sub(b, a), l2 = dot(v, v), t = l2 ? Math.max(0, Math.min(1, dot(sub(m, a), v) / l2)) : 0, c = add(a, v, t), d = len(sub(c, m)); if (d <= bd) { bd = d; hit = { x: r3(c[0]), y: r3(c[1]), snap: "edge" }; } } return hit; };
+  const onSegs = (list) => { let hit = null, bd = tol; for (const [a, b] of list) { const v = sub(b, a), l2 = dot(v, v), t = l2 ? Math.max(0, Math.min(1, dot(sub(m, a), v) / l2)) : 0, c = add(a, v, t), d = len(sub(c, m)); if (d <= bd) { bd = d; hit = { x: r3(c[0]), y: r3(c[1]), snap: "edge" }; } } return hit; };
+  const onFace = () => onSegs(faces.edges);
   const al = !ortho && align ? alignSnap(m, align.refs, align.dirs, tol) : null;
   return best([...(faces ? faces.corners : walls.flatMap((w) => [w.a, w.b])), ...items.filter((i) => i.type === "dim").flatMap((d) => [d.a, d.b]), ...extra], "end")
+    || (segs.length ? onSegs(segs) : null)
     || (al && { x: al.x, y: al.y, snap: "align", guides: al.guides })
     || (faces ? onFace() : best(walls.map((w) => [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2]), "mid"))
     || (!faces && !ortho && best(walls.map((w) => { const u = wallDir(w), t = Math.max(0, Math.min(wallLen(w), dot(sub(m, w.a), u))); return add(w.a, u, t); }), "edge"))
@@ -521,6 +523,15 @@ export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, 
 export function symCenter(it, k) {
   const c = symDef(it, k).c, a = (it.r * Math.PI) / 180;
   return [it.at[0] + k * (c[0] * Math.cos(a) - c[1] * Math.sin(a)), it.at[1] + k * (c[0] * Math.sin(a) + c[1] * Math.cos(a))];
+}
+// Fang einer Leitung am Symbol (CJ 26.10.2026), in der Welt, dreht mit r: { pts, segs }. pin: vier Punkte oben, rechts, unten, links am Rand;
+// edge: alle Seiten des Kastens (Abzweigdose); sonst die Mitte.
+export function symSnaps(it, k) {
+  const def = symDef(it, k), a = (it.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
+  const w = ([x, y]) => [r3(it.at[0] + k * (x * co - y * si)), r3(it.at[1] + k * (x * si + y * co))];
+  if (def.edge) { const [x0, y0, x1, y1] = def.edge, c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(w); return { pts: [], segs: c.map((p, i) => [p, c[(i + 1) % 4]]) }; }
+  if (def.pin) { const [cx, cy, r] = def.pin; return { pts: [[cx, cy + r], [cx + r, cy], [cx, cy - r], [cx - r, cy]].map(w), segs: [] }; }
+  return { pts: [symCenter(it, k)], segs: [] };
 }
 // Text lesbar halten: Winkel 0–359 → (-90, 90], flip = um 180° gekippt (sonst stünde er auf dem Kopf)
 export function readable(ang) { const a = ((ang % 360) + 360) % 360, flip = a > 90 && a <= 270; return { a: flip ? a - 180 : a > 270 ? a - 360 : a, flip }; }

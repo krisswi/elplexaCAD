@@ -886,7 +886,7 @@ function toggleDims() {
 // Rasterweite, Schalter und Knöpfe an den Typ des angezeigten Blatts anpassen
 function syncKind() {
   S.grid.size = S.gridSize[kindKey()];
-  if (ELPLEXA && isPlan()) S.grid.size = PL.grid(); // Raster wie im Stringplan, Vorgabe 100 mm
+  if (ELPLEXA && isPlan()) S.grid.size = PL.grid(); // Raster Plan: Vorgabe 10 mm (CJ 26.10.2026)
   const opts = isPv() || ELPLEXA && isPlan() ? PV_GRID : isDispo() ? [[1, "1 mm"], [5, "5 mm"], [10, "10 mm"], [25, "25 mm"], [50, "50 mm"]] : [[1, "1 mm"], [2.5, "2,5 mm"], [5, "5 mm"]];
   $("#grid-size").innerHTML = opts.map(([v, l]) => `<option value="${v}"${v === S.grid.size ? " selected" : ""}>${l}</option>`).join("");
   $("#mag-on").closest("label").style.display = isDispo() || isPv() || isDeck() || isPrinzip() || ELPLEXA && isPlan() ? "none" : ""; // Feldmitte: nur Schema (Spalten im Rahmen)

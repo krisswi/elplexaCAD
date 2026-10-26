@@ -56,7 +56,7 @@ export function makePlan(c) {
     toast(`Die aktive Ebene „${l?.name ?? ""}“ ist ${l?.lock ? "gesperrt" : "ausgeblendet"}. Andere Ebene wählen oder entsperren.`, "error");
     return false;
   }
-  const grid = () => (S.gridSize.plan ??= 100);
+  const grid = () => (S.gridSize.plan ??= 10); // Vorgabe 10 mm (CJ 26.10.2026)
   const snapAt = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined });
   const faces = () => P.faceGeom(visible().filter((i) => i.type === "wall"));
   const AXES = [[1, 0], [0, 1]];

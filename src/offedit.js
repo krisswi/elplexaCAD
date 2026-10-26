@@ -63,6 +63,8 @@ function summaryHTML(of, t) {
   for (const r of t.rabatt) h += row(`Rabatt ${O.fmtNum(r.satz)} % auf ${O.fmtChf(r.basis)}`, `− ${O.fmtChf(r.betrag)}`);
   if (t.rabatt.length) h += row("Total nach Rabatt", O.fmtChf(t.netto));
   h += row(`MwSt ${O.fmtNum(of.mwst)} %`, O.fmtChf(t.mwst));
+  const c = (x) => Math.round(x * 100), rd = c(t.total) - c(t.netto) - c(t.mwst); // Rundung auf 5 Rappen, damit die Zeilen sichtbar aufgehen
+  if (rd) h += row("Rundung", `${rd < 0 ? "− " : ""}${O.fmtChf(Math.abs(rd) / 100)}`);
   h += row("Total inkl. MwSt", O.fmtChf(t.total), "of-total");
   h += `</tbody></table>`;
   if (t.skonto) h += `<p class="of-note">Skonto ${O.fmtNum(t.skonto.satz)} %${t.skonto.tage ? ` bei Zahlung innert ${t.skonto.tage} Tagen` : ""}: CHF ${O.fmtChf(t.skonto.betrag)}</p>`;

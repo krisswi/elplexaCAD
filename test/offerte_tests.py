@@ -24,8 +24,8 @@ def flow(page, tag):
     off = lambda d: next(s for s in d["sheets"] if s.get("kind") == "offerte")  # elplexaCAD: Projekt kann weitere Module haben
     pos = off(D())["of"]["kap"][0]["grp"][0]["pos"][0]
     check(f"{tag}: Tab füllt die Position", [pos.get(k) for k in ["titel", "text", "ic", "menge", "eh", "preis"]] == ["Steckdose T13", "UP", "22", 3, "Stk", 58.47], pos)
-    check(f"{tag}: Betrag auf 5 Rappen (3 × 58.47 = 175.41)", txt(".of-amt") == "175.40", txt(".of-amt"))
-    check(f"{tag}: Total inkl. MwSt 8.1 %", txt(".of-total") .endswith("189.60"), txt(".of-total"))
+    check(f"{tag}: Betrag ungerundet wie im Excel (3 × 58.47 = 175.41)", txt(".of-amt") == "175.41", txt(".of-amt"))
+    check(f"{tag}: nur Total auf 5 Rappen (175.41 + 8.1 % = 189.62 → 189.60), Rundung als Zeile", txt(".of-total").endswith("189.60") and "Rundung" in page.inner_text(".of-end"), txt(".of-total"))
     page.click('[data-ofact="addpos"]'); page.keyboard.type("Option"); page.keyboard.press("Tab")
     page.fill('.of-pos >> nth=1 >> [data-of$=".menge"]', "1"); page.keyboard.press("Tab")
     page.fill('.of-pos >> nth=1 >> [data-of$=".preis"]', "80"); page.keyboard.press("Tab")
@@ -33,7 +33,7 @@ def flow(page, tag):
     check(f"{tag}: Option zählt nicht, eigene Summe", txt(".of-total").endswith("189.60") and "80.00" in page.inner_text(".of-end"))
     page.fill('[data-of="o.rabatt"]', "5"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
     end = page.inner_text(".of-end")
-    check(f"{tag}: Rabatt 5 % = 8.75, Total 180.15", "8.75" in end and txt(".of-total").endswith("180.15"), end)
+    check(f"{tag}: Rabatt 5 % = 8.77, Total 180.15", "8.77" in end and txt(".of-total").endswith("180.15"), end)
     page.click("#btn-undo"); page.wait_for_timeout(100)
     check(f"{tag}: Rückgängig nimmt den Rabatt zurück", txt(".of-total").endswith("189.60"), txt(".of-total"))
     d = D()

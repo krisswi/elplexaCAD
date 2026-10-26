@@ -12,7 +12,8 @@ import { newDoc, newSheet, parseModel, serializeModel, modOf, modName, VERSION }
 assert.deepStrictEqual([0.02, 0.025, 0.03, 0.074, 0.075, 1.005, 259.308, 347.844].map(O.round05), [0, 0.05, 0.05, 0.05, 0.1, 1, 259.3, 347.85]);
 assert.strictEqual(O.fmtChf(4981.85), "4'981.85"); assert.strictEqual(O.fmtChf(1234567.5), "1'234'567.50"); assert.strictEqual(O.fmtChf(0), "0.00");
 
-// ---------- Preis einer Position ----------
+// ---------- Preis einer Position (ungerundet wie im Excel, CJ 26.10.2026) ----------
+const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} statt ${b}`);
 const of = O.newOfferte("26.10.2026");
 assert.deepStrictEqual([of.fak, of.mwst, of.rabatt, of.kap.length], [1.4, 8.1, 0, 0], "Standard: Faktor 1.40, MwSt 8.1 %");
 of.ansatz = 89;
@@ -20,22 +21,22 @@ const k = O.addKapitel(of, "232.51");
 assert.strictEqual(k.titel, "Lichtinstallationen allgemein", "BKP-Titel vorbelegt");
 assert.strictEqual(k.grp.length, 1, "neues Kapitel mit einer Gruppe");
 const g1 = k.grp[0];
-const p1 = O.addPosition(of, g1, { titel: "Steckdose T13", menge: 3, ek: 10, std: 0.5 }); // 10 × 1.4 + 0.5 × 89 = 58.50
-const p2 = O.addPosition(of, g1, { titel: "Pauschal", menge: 1, preis: 100.02 }); // Preis von Hand → 100.00
+const p1 = O.addPosition(of, g1, { titel: "Steckdose T13", menge: 3, ek: 10.01, std: 0.5 }); // 10.01 × 1.4 + 0.5 × 89 = 58.514
+const p2 = O.addPosition(of, g1, { titel: "Pauschal", menge: 1, preis: 100.02 }); // Preis von Hand
 const p3 = O.addPosition(of, g1, { titel: "Demontage", typ: "regie", menge: 2, ek: 50, std: 1 }); // Regie: nur Zeit × Ansatz = 89
 const p4 = O.addPosition(of, g1, { titel: "Option Dimmer", menge: 1, preis: 80, opt: true });
-assert.deepStrictEqual([O.unitPrice(p1, of), O.unitPrice(p2, of), O.unitPrice(p3, of)], [58.5, 100.02, 89]);
-assert.deepStrictEqual([O.posAmount(p1, of), O.posAmount(p2, of), O.posAmount(p3, of)], [175.5, 100, 178], "Betrag auf 5 Rappen");
+near(O.unitPrice(p1, of), 58.514, "Einheitspreis ungerundet"); near(O.unitPrice(p2, of), 100.02, "Preis von Hand"); near(O.unitPrice(p3, of), 89, "Regie");
+near(O.posAmount(p1, of), 175.542, "Betrag ungerundet (3 × 58.514)"); near(O.posAmount(p3, of), 178, "Regie 2 × 89");
 assert.strictEqual(O.unitPrice({ ek: 10, fak: 2 }, of), 20, "Faktor der Position vor dem der Offerte");
 assert.strictEqual(O.posAmount({ titel: "nur Text" }, of), 0, "Position ohne Menge und Preis: 0");
 assert.deepStrictEqual(new Set([p1.id, p2.id, p3.id, p4.id, k.id, g1.id]).size, 6, "IDs eindeutig");
 
-// ---------- Optionen, Rabatt je Gruppe, MwSt ----------
+// ---------- Optionen, Rabatt je Gruppe, MwSt, nur Total auf 5 Rappen ----------
 let t = O.totals(of);
-assert.strictEqual(t.zwischensumme, 453.5, "Option zählt nicht");
+near(t.zwischensumme, 453.562, "Option zählt nicht");
 assert.strictEqual(t.optionen, 80, "eigene Summe Optionen");
 p4.an = true; t = O.totals(of);
-assert.deepStrictEqual([t.zwischensumme, t.optionen], [533.5, 0], "aktivierte Option zählt zur Angebotssumme");
+near(t.zwischensumme, 533.562, "aktivierte Option zählt zur Angebotssumme"); assert.strictEqual(t.optionen, 0);
 delete p4.an;
 // zweite Gruppe ohne Rabatt, dritte mit eigenem Satz, Gesamtrabatt 5 %
 const g2 = O.addGruppe(of, k, "Wohnung 2"); g2.rab = false;
@@ -44,20 +45,20 @@ const k2 = O.addKapitel(of, "238", "Provisorische Installationen"), g3 = k2.grp[
 O.addPosition(of, g3, { titel: "Baustrom", menge: 1, preis: 300 });
 of.rabatt = 5;
 t = O.totals(of);
-assert.deepStrictEqual(t.kap.map((x) => [x.bkp, x.summe]), [["232.51", 653.5], ["238", 300]], "Kapitelsummen");
-assert.deepStrictEqual([t.grp.get(g1.id), t.grp.get(g2.id), t.grp.get(g3.id)], [453.5, 200, 300], "Gruppensummen");
-assert.strictEqual(t.zwischensumme, 953.5);
-assert.deepStrictEqual(t.rabatt, [{ satz: 5, basis: 453.5, betrag: 22.7 }, { satz: 10, basis: 300, betrag: 30 }], "Rabatt nur über Gruppen, für die er gilt (453.5 × 5 % = 22.675 → 22.70)");
-assert.strictEqual(t.rabattTotal, 52.7);
-assert.strictEqual(t.netto, 900.8);
-assert.strictEqual(t.mwst, 72.95, "MwSt 8.1 % von 900.80 = 72.96 → 72.95");
-assert.strictEqual(t.total, 973.75, "Total inkl. MwSt");
-for (const x of [t.zwischensumme, t.rabattTotal, t.netto, t.mwst, t.total]) assert.strictEqual(Math.round(x * 20) / 20, x, `${x} auf 5 Rappen`);
+near(t.kap[0].summe, 653.562, "Kapitelsumme 232.51"); assert.deepStrictEqual(t.kap.map((x) => [x.bkp, x.summe]).slice(1), [["238", 300]], "Kapitelsumme 238");
+near(t.grp.get(g1.id), 453.562, "Gruppe 1"); assert.deepStrictEqual([t.grp.get(g2.id), t.grp.get(g3.id)], [200, 300], "Gruppensummen");
+near(t.zwischensumme, 953.562, "Zwischensumme");
+assert.deepStrictEqual(t.rabatt.map((r) => r.satz), [5, 10], "Rabatt nur über Gruppen, für die er gilt");
+near(t.rabatt[0].basis, 453.562, "Basis 5 %"); near(t.rabatt[0].betrag, 22.6781, "5 % von 453.562"); near(t.rabatt[1].betrag, 30, "10 % von 300");
+near(t.netto, 900.8839, "nach Rabatt");
+near(t.mwst, 72.97159590, "MwSt 8.1 % ungerundet");
+assert.strictEqual(t.total, 973.85, "Total inkl. MwSt: 973.8555 → 973.85 (nur hier auf 5 Rappen)");
 assert.strictEqual(t.skonto, null, "ohne Skonto kein Hinweis");
 of.skonto = 2; of.skTage = 10;
-assert.deepStrictEqual(O.totals(of).skonto, { satz: 2, tage: 10, betrag: 19.5 }, "Skonto nur als Hinweis (973.75 × 2 % = 19.475 → 19.50), Total bleibt");
-assert.strictEqual(O.totals(of).total, 973.75);
-of.mwst = 0; assert.strictEqual(O.totals(of).total, 900.8, "MwSt einstellbar"); of.mwst = 8.1;
+const sk = O.totals(of).skonto;
+assert.deepStrictEqual([sk.satz, sk.tage], [2, 10]); near(sk.betrag, 19.477, "Skonto 2 % vom Total, nur als Hinweis");
+assert.strictEqual(O.totals(of).total, 973.85, "Total bleibt mit Skonto");
+of.mwst = 0; assert.strictEqual(O.totals(of).total, 900.9, "MwSt einstellbar (900.8839 → 900.90)"); of.mwst = 8.1;
 
 // ---------- Kopie bekommt neue ID, findPos ----------
 const c = O.copyPosition(of, g1, p1, 1);
@@ -105,10 +106,9 @@ if (fs.existsSync(xlsx)) {
     if (x.F !== undefined) O.addPosition(ex, g, { titel: x.B || "", her: x.C, enr: x.E, ek: Number(x.F), menge: Number(x.H || 0) });
   }
   const tx = O.totals(ex);
-  assert.strictEqual(Math.round(tx.roh * 100) / 100, Math.round(soll * 100) / 100, "ungerundet wie Excel");
-  assert.strictEqual(Math.round(tx.roh * 100) / 100, 4981.87, "Zwischensumme 4'981.87");
-  assert.ok(Math.abs(tx.zwischensumme - 4981.87) < 0.05 * kx.grp.reduce((n, gg) => n + gg.pos.length, 0), `gerundet nahe bei Excel (${tx.zwischensumme})`);
-  console.log(`Excel-Beispiel: roh ${tx.roh.toFixed(2)}, mit Rundung ${O.fmtChf(tx.zwischensumme)}`);
+  near(tx.zwischensumme, soll, "Zwischensumme ungerundet wie Excel");
+  assert.strictEqual(O.fmtChf(tx.zwischensumme), "4'981.87", "Zwischensumme 4'981.87");
+  console.log(`Excel-Beispiel: Zwischensumme ${O.fmtChf(tx.zwischensumme)}`);
 } else console.log("Excel-Beispiel übersprungen (Offerte.xlsx fehlt)");
 
 console.log("Offerten: alle Tests grün.");

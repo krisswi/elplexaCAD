@@ -54,9 +54,8 @@ export const FORMEN = { g: "geschlossen", o: "offen", r: "Reserveposition" }; //
 export const GLIEDERUNG = { ogl: "Objekt", psl: "Lage/Geschoss", rgl: "Raum", ngl: "Nutzung", et: "Einrichtungstyp" }; // NPK-Gliederung, für IfA 18
 export const DEF = { fak: 1.4, ansatz: 0, mwst: 8.1, rabatt: 0, skonto: 0 }; // Standardwerte der Offerte (Materialfaktor 1.40, MwSt 8.1 %)
 
-// Rundung: Einheitspreis auf den Rappen, Positionsbetrag und Total auf 5 Rappen (Annahme Prompt, damit PDF und Excel gleich aufgehen).
-// Gerechnet wird in ganzen Rappen, damit Summen keine Gleitkommareste tragen. toFixed glättet Binärreste wie 1.005.
-const rp = (x) => Math.round(Number((x * 100).toFixed(6))); // Franken → Rappen
+// Rundung (CJ 26.10.2026): Positionen und Zwischensummen ungerundet wie im Excel (Anzeige auf den Rappen), nur das Total inkl. MwSt auf 5 Rappen.
+// toFixed glättet Binärreste wie 1.005.
 const rp05 = (x) => Math.round(Number((x * 20).toFixed(6))) * 5; // Franken → Rappen, auf 5 Rappen gerundet
 export const round05 = (x) => rp05(x) / 100;
 export const isNumber = (v) => typeof v === "number" && Number.isFinite(v);
@@ -77,46 +76,43 @@ export const copyPosition = (of, grp, p, at = grp.pos.length) => { const n = { .
 export const findPos = (of, id) => { for (const k of of.kap) for (const g of k.grp) { const i = g.pos.findIndex((p) => p.id === id); if (i >= 0) return { k, g, p: g.pos[i], i }; } return null; };
 export const findGrp = (of, id) => { for (const k of of.kap) { const i = k.grp.findIndex((g) => g.id === id); if (i >= 0) return { k, g: k.grp[i], i }; } return null; };
 
-// Einheitspreis einer Position (Franken, ungerundet). Von Hand gesetzt gilt der Preis. Sonst Material: EK × Faktor (der Position, sonst der Offerte),
+// Einheitspreis einer Position (Franken, ungerundet wie im Excel). Von Hand gesetzt gilt der Preis. Sonst Material: EK × Faktor (der Position, sonst der Offerte),
 // Arbeit: Zeit × Ansatz. Regie rechnet nur Zeit × Ansatz.
 export function unitRaw(p, of) {
   if (isNum(p.preis)) return p.preis;
   const t = (p.std || 0) * (of.ansatz || 0);
   return p.typ === "regie" ? t : (p.ek || 0) * (isNum(p.fak) ? p.fak : of.fak ?? DEF.fak) + t;
 }
-export const unitPrice = (p, of) => rp(unitRaw(p, of)) / 100; // auf den Rappen
-// Positionsbetrag auf 5 Rappen: Menge × gerundeter Einheitspreis
-export const posAmount = (p, of) => rp05((p.menge || 0) * unitPrice(p, of)) / 100;
+export const unitPrice = unitRaw;
+// Positionsbetrag: Menge × Einheitspreis, ungerundet
+export const posAmount = (p, of) => (p.menge || 0) * unitPrice(p, of);
 // zählt die Position zur Angebotssumme? Optionen erst nach Aktivierung
 export const counts = (p) => !p.opt || p.an === true;
 // Rabattsatz einer Gruppe: eigener Satz, kein Rabatt (false) oder Gesamtrabatt der Offerte
 export const groupRate = (g, of) => (g.rab === false ? 0 : isNum(g.rab) ? g.rab : of.rabatt || 0);
 
-// Alle Summen der Offerte. Beträge in Franken, je auf 5 Rappen; die Summen rechnen mit den gerundeten Beträgen.
-// roh = ungerundete Summe (Menge × EK × Faktor …), nur zum Vergleich mit Excel.
+// Alle Summen der Offerte in Franken. Alles ungerundet bis auf total (5 Rappen); die Anzeige rundet auf den Rappen.
 export function totals(of) {
-  let zs = 0, opt = 0, roh = 0;
+  let zs = 0, opt = 0;
   const rab = new Map(), kap = [], grp = new Map(), pos = new Map();
   for (const k of of.kap) {
     let ks = 0;
     for (const g of k.grp) {
       let gs = 0;
       for (const p of g.pos) {
-        const b = rp05((p.menge || 0) * unitPrice(p, of)); pos.set(p.id, b / 100);
-        if (!counts(p)) { opt += b; continue; }
-        gs += b; roh += (p.menge || 0) * unitRaw(p, of);
+        const b = posAmount(p, of); pos.set(p.id, b);
+        if (counts(p)) gs += b; else opt += b;
       }
-      grp.set(g.id, gs / 100); ks += gs;
+      grp.set(g.id, gs); ks += gs;
       const r = groupRate(g, of);
       if (r && gs) { const e = rab.get(r) || { satz: r, basis: 0 }; e.basis += gs; rab.set(r, e); }
     }
-    kap.push({ id: k.id, bkp: k.bkp, titel: k.titel, summe: ks / 100 }); zs += ks;
+    kap.push({ id: k.id, bkp: k.bkp, titel: k.titel, summe: ks }); zs += ks;
   }
-  const rabatt = [...rab.values()].sort((a, b) => a.satz - b.satz).map((e) => ({ satz: e.satz, basis: e.basis / 100, betrag: rp05(e.basis / 100 * e.satz / 100) / 100 }));
-  const rabSum = rabatt.reduce((s, e) => s + rp(e.betrag), 0), netto = zs - rabSum;
-  const mwst = rp05(netto / 100 * (of.mwst ?? DEF.mwst) / 100);
-  return { pos, grp, kap, zwischensumme: zs / 100, rabatt, rabattTotal: rabSum / 100, netto: netto / 100, mwst: mwst / 100, total: (netto + mwst) / 100, optionen: opt / 100, roh,
-    skonto: of.skonto ? { satz: of.skonto, tage: of.skTage || 0, betrag: rp05((netto + mwst) / 100 * of.skonto / 100) / 100 } : null }; // Skonto nur als Hinweis
+  const rabatt = [...rab.values()].sort((a, b) => a.satz - b.satz).map((e) => ({ satz: e.satz, basis: e.basis, betrag: e.basis * e.satz / 100 }));
+  const rabSum = rabatt.reduce((s, e) => s + e.betrag, 0), netto = zs - rabSum, mwst = netto * (of.mwst ?? DEF.mwst) / 100, total = round05(netto + mwst);
+  return { pos, grp, kap, zwischensumme: zs, rabatt, rabattTotal: rabSum, netto, mwst, total, optionen: opt,
+    skonto: of.skonto ? { satz: of.skonto, tage: of.skTage || 0, betrag: total * of.skonto / 100 } : null }; // Skonto nur als Hinweis
 }
 
 // Laden: prüft und säubert die Offerte aus der Datei. Unbekannte Felder fallen weg, fehlende bleiben leer. IDs bleiben, doppelte bekommen eine neue.

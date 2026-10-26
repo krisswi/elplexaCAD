@@ -144,7 +144,7 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("VENT", "Ventilator (Dampfabzug)", "kraft", "Geräte", [...box(-2, -2, 2, 2), C(-0.65, 0, 0.65), C(0.65, 0, 0.65)]),
   S("BOILER", "Wassererwärmer", "kraft", "Geräte", [C(0, 0, 2), ...[-1.2, -0.6, 0, 0.6, 1.2].map((x) => { const y = Math.sqrt(4 - x * x); return L(x, -y, x, y); })]),
   // Allgemein 5.110
-  S("DOSE", "Abzweigdose", "allg", "Allgemein", [...box(-1.5, -1.5, 1.5, 1.5), C(0, 0, 0.4, true)], { r: 1.8 }),
+  S("DOSE", "Abzweigdose", "allg", "Allgemein", [...box(-1.5, -1.5, 1.5, 1.5), C(0, 0, 0.4, true)], { r: 1.8, edge: [-1.5, -1.5, 1.5, 1.5] }),
   S("EINLASS", "Einlasskasten Gr. 1", "allg", "Allgemein", [C(0, 0, 1.5), ["p", "M0,0L1.5,0A1.5 1.5 0 0 0 0,-1.5Z", true]], { r: 1.8 }),
   S("VERTEILER", "Verteiler (Schaltgerätekombination)", "kraft", "Allgemein", [], { wall: true, c: [0, 1.2], r: 3, size: { w: 600, t: 200, parts: (W, T) => [...box(-W / 2, 0, W / 2, T), ["p", `M${r3(-W / 2)},0L${r3(W / 2)},${r3(T)}L${r3(W / 2)},0Z`, true]] } }),
   S("ANSCHLUSS", "Anschluss Elektro", "kraft", "Allgemein", [C(-1.4, -1.4, 0.4), ["p", "M-1.1,-1.1L0.4,0.4L-0.2,0.7L1.4,1.9", false], L(-1.1, -1.1, -0.45, -0.95), L(-1.1, -1.1, -0.95, -0.45)], { r: 2.1 }),

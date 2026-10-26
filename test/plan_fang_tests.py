@@ -46,12 +46,15 @@ with sync_playwright() as p:
     check("Fern: keine Fangpunkte", pins() == 0, pins())
     move(1000, 400)
     check("Nah am Schalter: vier Fangpunkte", pins() == 4, pins())
+    move(2000, 1500 + 90)
+    check("Nah an der Dose: Seiten markiert", page.locator('#overlay path[stroke="#f4c400"]').count() == 4)
 
     # Leitung: oben am Schalter (Kreis 225 + 2,2 × 50 = 335, oben 385), Punkt über der Dose, an der Dosenseite oben
     cx, cy = sw["at"][0], sw["at"][1] + 110
     click(cx + 0.4 * t, cy + 50 + 0.4 * t); click(1600, 1300); click(1993 + 0.3 * t, 1575 + 0.4 * t); key("Enter")
     ln = of("line")[-1]
     check("Leitung beginnt am oberen Fangpunkt des Schalters", near(ln["pts"][0], [cx, cy + 50]), ln["pts"])
+    check("Leitung endet auf der oberen Seite der Dose, frei entlang der Seite", abs(ln["pts"][-1][1] - 1575) < 1e-6 and abs(ln["pts"][-1][0] - (1993 + 0.3 * t)) < 2, ln["pts"])
     check("Mittelpunkt auf dem 10-mm-Raster", ln["pts"][1] == [1600, 1300], ln["pts"])
     check("Neue Leitung geschwungen (Vorgabe)", ln.get("curve") is True and len(ln["pts"]) == 3)
     d = page.get_attribute("#items .pl-items path[stroke='#3fbbeb']", "d")
@@ -61,6 +64,7 @@ with sync_playwright() as p:
     check("Leitung: keine orangen Ausrichtungslinien", page.locator('#overlay path[stroke="#e08a00"]').count() == 0)
     click(2600, 1000); key("Enter")
     l2 = of("line")[-1]
+    check("Rechte Seite der Dose fängt", abs(l2["pts"][0][0] - 2075) < 1e-6 and abs(l2["pts"][0][1] - 1460) < 2, l2["pts"])
 
     # Schalter mit R drehen: Fangpunkte drehen mit
     key("v"); page.mouse.click(*at(cx, cy)); page.wait_for_timeout(80); key("r"); page.wait_for_timeout(100)

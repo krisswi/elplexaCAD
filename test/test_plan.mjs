@@ -453,6 +453,12 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(so.pts, [[0, 270], [75, 195], [0, 120], [-75, 195]], "Steckdose: Scheitel, Bogenenden, Querstrich");
   for (const d of S2.PLAN_SYMS.filter((x) => ["Schalter", "Steckdosen"].includes(x.group))) assert.strictEqual(P.symSnaps({ key: d.key, at: [0, 0], r: 0 }, 50).pts.length, 4, `${d.key}: vier Fangpunkte`);
   assert.deepStrictEqual(P.symSnaps({ key: "LEUCHTE", at: [500, 500], r: 30 }, 50), { pts: [[500, 500]], segs: [] }, "Leuchte: Fang an der Mitte");
+  // Abzweigdose: alle Seiten fangen
+  const ab = P.symSnaps({ key: "DOSE", at: [0, 0], r: 0 }, 50);
+  assert.deepStrictEqual(ab, { pts: [], segs: [[[-75, -75], [75, -75]], [[75, -75], [75, 75]], [[75, 75], [-75, 75]], [[-75, 75], [-75, -75]]] }, "Abzweigdose: vier Seiten");
+  assert.deepStrictEqual(P.snapPlan({}, [], [30, 80], { grid: 10, tol: 20, segs: ab.segs }), { x: 30, y: 75, snap: "edge" }, "Leitung rastet auf der oberen Seite");
+  assert.deepStrictEqual(P.snapPlan({}, [], [-90, -20], { grid: 10, tol: 20, segs: ab.segs }), { x: -75, y: -20, snap: "edge" }, "… und auf der linken");
+  assert.deepStrictEqual(P.snapPlan({}, [], [0, 0], { grid: 10, tol: 20, segs: ab.segs }), { x: 0, y: 0, snap: "grid" }, "Mitte der Dose: Raster");
   assert.deepStrictEqual(P.snapPlan({}, [], [1008, 150], { grid: 10, tol: 20, extra: sw.pts }), { x: 1000, y: 160, snap: "end" }, "Leitung rastet am oberen Fangpunkt des Schalters");
 }
 console.log("test_plan: alles ok");

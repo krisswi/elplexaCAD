@@ -33,7 +33,7 @@ import { startDialog } from "./start.js";
 import { PV_GRID, PV_TEXT_H, DRAW_LAYERS, pruneStrings, pointLabel, varOf, newVar } from "./pv.js";
 import * as T from "./titel.js";
 import * as L from "./legende.js";
-import { cloudMenu, cloudUser, cloudSignIn, cloudOnSession, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, projTimeAdd, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen, shareNotes, shareNoteAdd, shareNoteDelete } from "./cloud.js";
+import { userStore, cloudMenu, cloudUser, cloudSignIn, cloudOnSession, cloudLogin, cloudLogout, projList, projSave, projSaved, projOpen, projDelete, projTimeAdd, feedbackSend, shareUrl, shareList, shareCreate, shareRevoke, shareOpen, shareNotes, shareNoteAdd, shareNoteDelete } from "./cloud.js";
 import * as N from "./notizen.js";
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
@@ -42,6 +42,8 @@ import { makePdf } from "./pdfout.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
 import { fetchGwr, searchAdr, adrText } from "./gwr.js";
 import * as PZ from "./prinzip.js";
+import { setRemote } from "./ablage.js";
+import { loadProfil, syncProfil, profilDialog } from "./profil.js";
 import { PRINZIP_GROUPS, PRINZIP_FAMILIES, PZ_ABGANG, PZ_POL, polNext, sichName, kabelN } from "./prinzipsym.js";
 
 
@@ -661,7 +663,7 @@ function renderRightPanel() {
   renderPvBar();
   const sel = selectedItems();
   if (isDeck()) { rightEl.innerHTML = S.model.kind === "legend" ? L.panelHTML(S.doc, S.model, S.legSel, { head, fieldHTML }) : T.deckPanelHTML(S.doc, S.model, { head, fieldHTML }); return; }
-  if (isOff()) { rightEl.innerHTML = OF.panelHTML(S.model.of); return; }
+  if (isOff()) { rightEl.innerHTML = OF.panelHTML(S.model.of, loadProfil()); return; }
   if (ELPLEXA && isPlan()) { rightEl.innerHTML = PL.panelHTML(sel, { head }); return; }
   const special = dispoPanel(sel);
   if (special !== null) { rightEl.innerHTML = special; return; }
@@ -1962,6 +1964,18 @@ $("#sheetbar").addEventListener("contextmenu", (e) => { const b = e.target.close
 $("#sheetbar").addEventListener("keydown", (e) => { const b = e.target.closest("#sheet-add"); if (b && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); addMenu.show(b); } });
 const addMenu = makeMenu($("#add-menu"), { up: true, beforeShow: () => { closeEditor(true); $("#add-menu [data-new=deck]").hidden = !(S.doc.sheets.some((sh) => !sh.kind) && (S.doc.noTitle || S.doc.noToc)); if (ELPLEXA) elAddFilter(); } });
 $("#add-menu").addEventListener("click", (e) => { const b = e.target.closest("[data-new]"); if (b) ({ dispo: addDispo, pv: addPv, pvtab: addPvTab, prinzip: addPrinzip, offerte: addOfferte, deck: addDeck }[b.dataset.new] || addSheet)(); });
+// ---------- Firmenprofil beim Benutzer (profil.js, Offerte Schritt 2) ----------
+// Abgleich mit online beim Start und wenn ein anderer Benutzer sich anmeldet (nicht bei jeder Erneuerung der Anmeldung)
+let profUser = null;
+async function profSync() {
+  const u = cloudUser();
+  if (u === profUser) return;
+  profUser = u;
+  try { if (await syncProfil()) profShown(); } catch { /* online nicht erreichbar: Stand im Browser gilt */ }
+}
+function profShown() { if (isOff()) renderRight(); if (ELPLEXA && EL_S.hub && !EL_S.hub.hidden && EL_S.tab === "profil") elHub(true, { keepFocus: true }); }
+async function firmProfil() { if (await profilDialog({ openModal, toast }, { online: !!cloudUser() })) profShown(); }
+
 // ---------- Offerte (offedit.js, CJ 26.10.2026) ----------
 // Feld übernehmen: an einer Kopie prüfen, damit ungültige oder gleiche Werte keinen Schritt im Rückgängig anlegen (Feld zeigt dann den alten Wert)
 function ofRefocus(sel) { const el = sel && document.querySelector(sel); if (!el) return; el.focus(); if (el.matches("input[type=text]")) el.select(); }
@@ -1975,6 +1989,7 @@ function ofChange(e) {
 function ofClick(e) {
   const b = e.target.closest?.("[data-ofact]");
   if (!isOff() || !b) return;
+  if (b.dataset.ofact === "profil") { firmProfil(); return; }
   const r = OF.action(S.model.of, b); if (!r) return;
   if (r.ui) renderItems(); else change(r.fn);
   ofRefocus(r.focus ? `[data-of="${r.focus()}"]` : r.keep);
@@ -2508,7 +2523,7 @@ function elInit() {
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
     else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, openfile: () => openJson(), csv: elCsv, zeitcsv: elZeitCsv, projview: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { if (!EL_S.hub.hidden && EL_S.tab === "zeit") { $("#el-zh")?.focus(); return; } EL_S.tab = "projekte"; EL_S.pview = true; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
-      hand: elHand, gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, feedback: elFeedback }[b.dataset.elact] || (() => {}))();
+      hand: elHand, gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, feedback: elFeedback, firmprof: firmProfil }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("keydown", (e) => { // Reiter mit Pfeiltasten (Roving-Tabindex)
     const t = e.target.closest?.(".el-tab"); if (!t || e.altKey || e.metaKey || e.ctrlKey) return;
@@ -2594,7 +2609,7 @@ function elSetProject(k, v) {
     if (k === "name") p.name = v;
     else if (k === "status") p.status = v;
     else if (k.startsWith("adr:")) { const a = (p.adr ||= {}); if (v) a[k.slice(4)] = v; else delete a[k.slice(4)]; if (!Object.keys(a).length) delete p.adr; }
-    else if (k === "BAUHERR") { const info = E.bauherrInfo(S.doc) || (S.doc.info = cleanInfo({})); info.BAUHERR = v; }
+    else if (k.startsWith("BAUHERR")) { const info = E.bauherrInfo(S.doc) || (S.doc.info = cleanInfo({})); info[k] = v; } // Bauherr, E-Mail, Telefon
     else { (p.meta ||= {})[k] = v; for (const sh of S.doc.sheets) sh.meta[k] = v; }
   }, { panel: false });
   setProjectMeta(S.doc.project?.meta);
@@ -3260,6 +3275,7 @@ function init() {
   $("#btn-left").innerHTML = R.icons.panelL; $("#btn-right").innerHTML = R.icons.panelR;
   $("#zoom-in").innerHTML = R.icons.plus; $("#zoom-out").innerHTML = R.icons.minus;
   LIBS.load(); renderLeft();
+  setRemote(userStore); cloudOnSession(profSync); profSync();
   try {
     const raw = ELPLEXA && elShareStart() ? null : localStorage.getItem(AUTOSAVE_KEY); // geteilte Ansicht: eigene Sicherung nicht laden
     if (raw) { const o = JSON.parse(raw); const m = parseModel(o.text); if (m.sheets.some((sh) => sh.items.length)) { S.doc = m; S.active = m.active; setFileName(o.name || "Unbenannt"); markDirty(); toast("Letzte Sitzung wiederhergestellt. Mit „Neu“ beginnst du ein leeres Blatt."); } }

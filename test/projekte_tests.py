@@ -35,6 +35,7 @@ def fake(route):
             for part in k.split("->")[1:]: v = v.get(part) if isinstance(v, dict) else None
             return v
         J([{k.split(":")[0]: col(r, k.split(":")[-1]) for k in q["select"].split(",")} for r in sorted(rows, key=lambda r: r["updated_at"], reverse=True)]); return
+    if path == "/rest/v1/user_settings": route.fulfill(status=200 if route.request.method == "GET" else 201, content_type="application/json", body="[]" if route.request.method == "GET" else ""); return  # Firmenprofil (Offerte Schritt 2): leer
     J({"message": "nicht gefunden"}, 404)
 with sync_playwright() as p:
     b = p.chromium.launch()

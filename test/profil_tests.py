@@ -2,7 +2,7 @@
 # Aufruf: python3 test/profil_tests.py [Ausgabeordner]
 import sys, tempfile, json, base64
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
@@ -15,6 +15,7 @@ def check(name, cond, info=""):
 UID = "11111111-1111-1111-1111-111111111111"
 jwt = "x." + base64.urlsafe_b64encode(json.dumps({"sub": UID}).encode()).decode().rstrip("=") + ".y"
 srv = {"mode": "ok"}
+store = {}  # user_settings der Attrappe (Offerte Schritt 2): name → { data, updated_at }
 def fake(route):
     u = urlparse(route.request.url); path = u.path
     if srv["mode"] == "offline": route.abort(); return
@@ -25,6 +26,9 @@ def fake(route):
         J({"access_token": jwt, "refresh_token": "r", "expires_at": 4102444800, "user": {"email": "test@beispiel.ch"}}); return
     if path == "/auth/v1/logout": route.fulfill(status=204, body=""); return
     if path == "/rest/v1/projects": J([]); return
+    if path == "/rest/v1/user_settings":
+        if route.request.method == "POST": r = json.loads(route.request.post_data); store[r["name"]] = {"data": r["data"], "updated_at": r["updated_at"]}; route.fulfill(status=201, body=""); return
+        name = parse_qs(u.query).get("name", [""])[0].removeprefix("eq."); J([store[name]] if name in store else []); return
     J({"message": "nicht gefunden"}, 404)
 with sync_playwright() as p:
     b = p.chromium.launch()
@@ -50,7 +54,15 @@ with sync_playwright() as p:
     page.click("#el-acct"); page.wait_for_timeout(200)
     check("Konto-Kreis zeigt «Gast» und führt zum Profil", vis(".el-profile") and "Gast" in page.inner_text("#el-acct"))
     t = page.inner_text(".el-profile")
-    check("Profil: Gast-Hinweis, Anmeldung, Firma (noch nicht möglich), Tipp-Zeile", "Gast" in t and vis("#el-pf-form") and page.is_disabled(".el-profile select") and "Firma" in t and vis("[data-eltip]"))
+    check("Profil: Gast-Hinweis, Anmeldung, Firmenprofil, Tipp-Zeile", "Gast" in t and vis("#el-pf-form") and vis("#el-pf-firm") and "Noch keine Firmendaten" in t and vis("[data-eltip]"))
+    # Firmenprofil (Offerte Schritt 2): als Gast nur im Browser
+    page.click("#el-pf-firm"); page.wait_for_timeout(200)
+    check("Fenster Firmenprofil: Firma, Adresse, E-Mail, Telefon, Logo", all(vis(f'.modal [data-pf="{k}"]') for k in ["FIRMA", "FIRMA_ADR", "MAIL", "TEL"]) and vis('.modal [data-pfl="load"]'))
+    page.fill('.modal [data-pf="FIRMA"]', "Muster Elektro"); page.fill('.modal [data-pf="FIRMA_ADR"]', "Gasse 2\n3000 Bern"); page.fill('.modal [data-pf="MAIL"]', "info@muster.test"); page.fill('.modal [data-pf="TEL"]', "031 000 00 00")
+    page.click(".modal [data-ok]"); page.wait_for_timeout(250)
+    t = page.inner_text(".el-profile")
+    check("Profil zeigt die Firmendaten", all(x in t for x in ["Muster Elektro", "3000 Bern", "info@muster.test", "031 000 00 00"]), t[:300])
+    check("Als Gast nichts online", not store)
     check("Altes Anmeldefeld ist weg: kein Anmelden im Bereich Online, kein Konto-Menü", not vis('[data-elact="login"]') and page.locator("#el-acctmenu").count() == 0)
     page.screenshot(path=str(OUT / "pr_gast.png"))
     page.uncheck("[data-eltip]"); page.wait_for_timeout(200)
@@ -76,6 +88,7 @@ with sync_playwright() as p:
     page.fill("#el-pf-mail", "test@beispiel.ch"); page.fill("#el-pf-pw", "attrappe"); page.click('#el-pf-form [type="submit"]'); page.wait_for_timeout(500)
     check("Angemeldet: Profil zeigt E-Mail und Abmelden, Konto-Kreis den Namen", "test@beispiel.ch" in page.inner_text(".el-profile") and vis("#el-pf-logout") and not vis("#el-pf-form") and "test" in page.inner_text("#el-acct"), page.inner_text(".el-profile")[:200])
     page.screenshot(path=str(OUT / "pr_angemeldet.png"))
+    check("Nach dem Anmelden: Firmenprofil online beim Benutzer", store.get("profil", {}).get("data", {}).get("MAIL") == "info@muster.test", str(store)[:200])
     page.click("#el-pf-logout"); page.wait_for_timeout(400)
     check("Abmelden: wieder Gast mit Anmeldeformular", vis("#el-pf-form") and "Gast" in page.inner_text("#el-acct"))
     # Reiter: Barrierefreiheit, Pfeiltasten, Tasten 1 bis 9 nur bei Modulkacheln

@@ -3,6 +3,7 @@
 // Felder tragen data-of="<Ziel>.<Feld>" (o = Offerte, k/g/p + ID), Knöpfe data-ofact. apply() und action() ändern nur die Daten, die App zeichnet neu (change).
 import { esc } from "./render.js";
 import * as O from "./offerte.js";
+import { profilLines } from "./profil.js";
 
 // Teilen-Link (CJ 26.10.2026): ro = nur lesen (Felder als Text, keine Knöpfe), prices = Preise freigegeben. EK, Faktor und Zeit kommen nie an (share_open).
 let mode = { ro: false, prices: true };
@@ -88,18 +89,27 @@ export function leftHTML() {
 export const setBkpFind = (s) => { bkpFind = s; };
 
 // ---------- Rechts: Kopf und Rechenwerte ----------
-export function panelHTML(of) {
+// profil = Firmenprofil des Benutzers (profil.js), Absender der Offerte
+export function panelHTML(of, profil = null) {
   const t = O.totals(of);
   if (mode.ro) return `<div class="prop-head"><h2>Offerte${of.nr ? ` ${esc(of.nr)}` : ""}</h2><p>Geteilte Ansicht${mode.prices ? "" : ", ohne Preise"}.</p></div>`
     + `<section class="section">${[["Version", of.ver], ["Datum", of.datum], ["Gültig bis", of.gueltig], ["Abrechnungsart", O.ARTEN[of.art]], ["Bauart", O.BAUARTEN[of.bau]]].filter(([, v]) => v).map(([l, v]) => `<p class="of-psum">${esc(l)}<b>${esc(v)}</b></p>`).join("")}`
     + (mode.prices ? `<p class="of-psum">Total inkl. MwSt <b>CHF ${O.fmtChf(t.total)}</b></p>` : "") + `</section>`;
   return `<div class="prop-head"><h2>Offerte</h2><p>Pflicht sind nur Text, Menge und Preis.</p></div>`
+    + senderHTML(profil)
     + `<section class="section"><h2 class="section-title">Kopf</h2>${fld("Offertnummer", "o.nr", of.nr)}${fld("Version (Revision, Nachtrag)", "o.ver", of.ver)}${fld("Datum", "o.datum", of.datum)}${fld("Gültig bis", "o.gueltig", of.gueltig, { ph: "z. B. 3 Monate" })}`
     + `${sel("Abrechnungsart", "o.art", O.ARTEN, of.art, "–")}${sel("Bauart", "o.bau", O.BAUARTEN, of.bau, "–")}</section>`
     + `<section class="section"><h2 class="section-title">Rechenwerte</h2>${fld("Materialfaktor", "o.fak", of.fak, { num: true })}${fld("Stundenansatz CHF", "o.ansatz", of.ansatz, { num: true })}${fld("Gesamtrabatt %", "o.rabatt", of.rabatt, { num: true })}`
     + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div>${fld("MwSt %", "o.mwst", of.mwst, { num: true })}</section>`
     + rgHTML(of)
     + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">Total inkl. MwSt <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
+}
+
+// Absender aus dem Firmenprofil (Schritt 2): nur Anzeige, geändert wird im Fenster «Firmenprofil» (gilt für alle Offerten und Module)
+function senderHTML(p) {
+  const lines = p ? profilLines(p) : [];
+  return `<section class="section"><h2 class="section-title">Absender</h2>${lines.length ? `<p class="of-sender">${p.logo ? `<img src="${p.logo}" alt="Logo" class="of-logo"><br>` : ""}${lines.map(esc).join("<br>")}</p>` : `<p class="note">Noch kein Firmenprofil.</p>`}`
+    + `<div class="row"><button type="button" class="btn outline small" data-ofact="profil">Firmenprofil …</button></div></section>`;
 }
 
 // Rabattgruppen (CJ 26.10.2026): selbst angelegt mit Buchstabe und Bezeichnung, Regel Gesamtrabatt / kein Rabatt / eigener Satz. Die Gruppe in der Tabelle wählt sie.

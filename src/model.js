@@ -189,7 +189,7 @@ export function cleanProject(o) {
 }
 
 // Titelseite (titel.js): Bauherr, Firma, Logo (Bild als data-URL), Änderungsindex
-export const INFO_KEYS = ["BAUHERR", "BAUHERR_ADR", "FIRMA", "FIRMA_ADR"];
+export const INFO_KEYS = ["BAUHERR", "BAUHERR_ADR", "BAUHERR_MAIL", "BAUHERR_TEL", "FIRMA", "FIRMA_ADR"]; // Mail und Telefon seit Offerte Schritt 2 (ältere Stände vergessen sie)
 export function cleanInfo(o) {
   const info = { revs: [] };
   for (const k of INFO_KEYS) info[k] = String(o?.[k] ?? "");

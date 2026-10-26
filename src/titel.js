@@ -6,6 +6,7 @@ import { W, H, M_OUT, M_IN, TB_H } from "./frame.js";
 import * as R from "./render.js";
 import { cleanInfo, LEGEND_DEFAULT } from "./model.js";
 import { adrText } from "./gwr.js";
+import { loadProfil, saveProfil, hasProfil } from "./profil.js";
 
 export { cleanInfo };
 
@@ -15,10 +16,12 @@ export const PROJECT_FIELDS = ["OBJEKT", "AUFTRAG", "SCHEMA", "GEZEICHNET", "DAT
 export const INFO_FIELDS = [ // nur Titelseite. Firma merkt sich die App (CJ 14.10.)
   { key: "BAUHERR", label: "Bauherr" },
   { key: "BAUHERR_ADR", label: typeof ELPLEXA !== "undefined" && ELPLEXA ? "Adresse Bauherr" : "Adresse Bauherr / Objekt", multi: true }, // elplexaCAD: Objektadresse aus der Projektübersicht
+  { key: "BAUHERR_MAIL", label: "E-Mail Bauherr" }, // Offerte Schritt 2 (CJ 26.10.2026), für den Offertkopf
+  { key: "BAUHERR_TEL", label: "Telefon Bauherr" },
   { key: "FIRMA", label: "Firma", firm: true },
   { key: "FIRMA_ADR", label: "Adresse Firma", multi: true, firm: true },
 ];
-export const MAX_LOGO = 300 * 1024; // Bytes der Bilddatei (Annahme Claude)
+export { MAX_LOGO } from "./profil.js"; // Bytes der Bilddatei (Annahme Claude)
 const KIND_LABEL = { title: "Titelseite", toc: "Inhaltsverzeichnis", legend: "Sicherungslegende", dispo: "Disposition", pv: "Stringplan", pvtab: "Stringübersicht", prinzip: "Prinzipschema", offerte: "Offerte" };
 export const kindLabel = (sh) => KIND_LABEL[sh.kind] || "Schema";
 
@@ -114,12 +117,13 @@ export function syncDeck(doc) {
 }
 export const titleOf = (doc) => doc.sheets.find((s) => s.kind === "title");
 
-// Firma und Logo in der App merken (localStorage), neue Dateien übernehmen sie. Fehler: ohne Speicher weiter.
-const FIRM_KEY = "schemacad.firma.v1";
-export function loadFirm() { try { return JSON.parse(localStorage.getItem(FIRM_KEY) || "null"); } catch { return null; } }
+// Firma und Logo kommen aus dem Firmenprofil beim Benutzer (profil.js, Offerte Schritt 2): neue Titelseiten übernehmen sie,
+// Änderungen an der Titelseite gehen ins Profil zurück (Mail und Telefon bleiben). Die Titelseite behält ihre Kopie in der Datei.
+export function loadFirm() { const p = loadProfil(); return hasProfil(p) ? { FIRMA: p.FIRMA, FIRMA_ADR: p.FIRMA_ADR, ...(p.logo ? { logo: p.logo } : {}) } : null; }
 export function saveFirm(info) {
-  const o = { FIRMA: info.FIRMA, FIRMA_ADR: info.FIRMA_ADR, ...(info.logo ? { logo: info.logo } : {}) };
-  try { localStorage.setItem(FIRM_KEY, JSON.stringify(o)); } catch { /* ohne Speicher weiter */ }
+  const p = loadProfil(); p.FIRMA = info.FIRMA; p.FIRMA_ADR = info.FIRMA_ADR;
+  if (info.logo) p.logo = info.logo; else delete p.logo;
+  saveProfil(p, { wait: 1500 }); // Feld der Titelseite speichert bei jedem Tastendruck
 }
 
 // Nächster Index für das Änderungsverzeichnis: A, B, … Z, dann leer
@@ -253,7 +257,7 @@ export function deckPanelHTML(doc, sheet, { head, fieldHTML }) {
   h += fieldHTML("Index der Titelseite", 'data-meta="INDEX"', m.INDEX ?? "");
   h += head("Bauherr");
   for (const f of INFO_FIELDS.filter((x) => !x.firm)) h += f.multi ? area(f.label, `data-info="${f.key}"`, info[f.key]) : fieldHTML(f.label, `data-info="${f.key}"`, info[f.key]);
-  h += head("Firma", "Die App merkt sich Firma und Logo für neue Dateien");
+  h += head("Firma", "Aus dem Firmenprofil, Änderungen gehen dorthin zurück");
   for (const f of INFO_FIELDS.filter((x) => x.firm)) h += f.multi ? area(f.label, `data-info="${f.key}"`, info[f.key]) : fieldHTML(f.label, `data-info="${f.key}"`, info[f.key]);
   h += `<div class="row"><button class="btn outline small" data-deck="logo">${info.logo ? "Logo ersetzen" : "Logo laden"}</button>${info.logo ? '<button class="btn outline small danger" data-deck="nologo">Logo entfernen</button>' : ""}</div>`;
   h += head("Änderungsindex", info.revs.length ? `${info.revs.length} ${info.revs.length === 1 ? "Eintrag" : "Einträge"}` : "Noch keine Änderung");

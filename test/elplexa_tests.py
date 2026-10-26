@@ -285,6 +285,7 @@ with sync_playwright() as p:
             from datetime import datetime, timezone
             srv["files"][m.group(2)] = req.post_data_buffer; srv["ftime"][m.group(2)] = datetime.now(timezone.utc).isoformat(); srv["uploads"] += 1; J({"Key": m.group(2)}); return
         if m and req.method == "GET" and m.group(2) in srv["files"]: route.fulfill(status=200, content_type="application/pdf", body=srv["files"][m.group(2)]); return
+        if path == "/rest/v1/user_settings": route.fulfill(status=200 if route.request.method == "GET" else 201, content_type="application/json", body="[]" if route.request.method == "GET" else ""); return  # Firmenprofil (Offerte Schritt 2): leer
         J({"message": "nicht gefunden"}, 404)
     b = p.chromium.launch()
     TMP = Path(tempfile.mkdtemp(prefix="elplexa_on_"))

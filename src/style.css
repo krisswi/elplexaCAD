@@ -481,6 +481,7 @@ body.is-offerte #svg, body.is-offerte #zoombar { display: none; }
 .of-bkpi.lv1 { padding-left: 16px; } .of-bkpi.lv2 { padding-left: 26px; color: var(--muted); }
 .of-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .of-psum { margin: 0; } .of-psum b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.of-sender { margin: 0 0 8px; font-size: 13px; line-height: 1.45; } .of-logo { max-height: 32px; max-width: 140px; margin-bottom: 4px; }
 .of-tab .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .of-rg { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; font-size: 13px; color: var(--muted); }
 .of-rg input, .of-rg select { height: 30px; min-width: 0; padding: 0 6px; border: 1px solid var(--panel-line); border-radius: 6px; background: #fff; color: var(--ink); }

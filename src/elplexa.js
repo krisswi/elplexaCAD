@@ -4,6 +4,7 @@ import { esc } from "./render.js";
 import { cell } from "./auswertung.js";
 import { modOf, modVar, modName, MOD_STATUS, projectStatus } from "./model.js";
 import { adrHTML, gwrHTML } from "./gwr.js";
+import { loadProfil, profilLines } from "./profil.js";
 
 export const MODULES = [
   { id: "schema", label: "Schema", sub: "Stromlaufschema mit Grundverkabelung", color: "#2f6db3" },
@@ -53,7 +54,7 @@ export const bauherrInfo = (doc) => doc.sheets.find((sh) => sh.kind === "title")
 const objOf = (pm, w) => pm?.OBJEKT ?? w?.OBJEKT ?? ""; // eine Regel für lokal und online: Projektdaten vor Schriftfeld des Arbeitsblatts
 export function projectData(doc) {
   const pm = doc.project?.meta || {}, w = workSheet(doc)?.meta || {};
-  return { OBJEKT: objOf(pm, w), AUFTRAG: pm.AUFTRAG ?? w.AUFTRAG ?? "", BAUHERR: bauherrInfo(doc)?.BAUHERR ?? "", INDEX: pm.INDEX ?? w.INDEX ?? "" };
+  return { OBJEKT: objOf(pm, w), AUFTRAG: pm.AUFTRAG ?? w.AUFTRAG ?? "", BAUHERR: bauherrInfo(doc)?.BAUHERR ?? "", BAUHERR_MAIL: bauherrInfo(doc)?.BAUHERR_MAIL ?? "", BAUHERR_TEL: bauherrInfo(doc)?.BAUHERR_TEL ?? "", INDEX: pm.INDEX ?? w.INDEX ?? "" };
 }
 export const statusOf = (doc) => doc.project?.status || "In Arbeit"; // Annahme: ohne Angabe „In Arbeit“
 const STATUS_IDS = () => ({ "Offerte": "of", "In Arbeit": "ia", "Abgegeben": "ab", "Abgeschlossen": "ag" });
@@ -134,9 +135,9 @@ export function hubHTML(doc, o) {
   return `${sub}<div class="el-hubin"${ro ? "" : ` ${pan}`}><div class="el-col">
     <section class="el-proj" aria-label="Projekt"><div class="el-eyerow"><span class="el-eye">Projekt</span>${ro ? statusPill(st) : `<label class="el-stsel">${statusPill(st)}<select data-elp="status" aria-label="Projektstatus">${opts}</select></label>`}</div>
       <input class="el-name" data-elp="name" value="${esc(o.name)}"${ro ? ` aria-label="Projektname" readonly` : ` aria-label="Projektname (klicken zum Umbenennen)" title="Klicken zum Umbenennen"`} spellcheck="false">${fileHint}
-      ${fld("OBJEKT", "Objekt")}${fld("AUFTRAG", "Auftrag")}${fld("BAUHERR", "Bauherr")}${fld("INDEX", "Index")}
+      ${fld("OBJEKT", "Objekt")}${fld("AUFTRAG", "Auftrag")}${fld("BAUHERR", "Bauherr")}${fld("BAUHERR_MAIL", "E-Mail Bauherr")}${fld("BAUHERR_TEL", "Telefon Bauherr")}${fld("INDEX", "Index")}
       ${adrHTML(doc.project?.adr, ro)}${gwrHTML(doc.project?.gwr, { open: o.gwrOpen, busy: o.gwrBusy, ro })}
-      ${ro ? "" : `<p class="el-note">Objekt, Auftrag und Index gelten für die Schriftfelder aller Blätter und Module, Bauherr auch für die Titelseite. Einzelne Blätter lassen sich im Schriftfeld weiter ändern.</p>
+      ${ro ? "" : `<p class="el-note">Objekt, Auftrag und Index gelten für die Schriftfelder aller Blätter und Module, Bauherr mit E-Mail und Telefon auch für Titelseite und Offerte. Einzelne Blätter lassen sich im Schriftfeld weiter ändern.</p>
       <div class="el-acts"><button class="btn primary" data-elact="pdf"><span class="ic" data-ic="pdf"></span><span>Plansatz-PDF …</span></button></div>`}</section>
     ${ro ? sharedHTML(o.shared) : o.projs?.user ? `<section class="el-projs" aria-label="Online"><div id="el-online" class="el-online"></div></section>` : ""}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
@@ -252,14 +253,16 @@ export function timeTabHTML(o) {
 // Reiter „Profil“ (Etappe 6, CJ 20.10.2026): Anmeldung mit E-Mail und Passwort (vorher Fenster und Konto-Menü), Abmelden, Gast-Hinweis, Firma, Tipp-Zeile
 // o = { user, busy, msg (Fehlertext der Anmeldung), mail, pw (Eingaben bleiben beim Neuzeichnen und nach einem Fehler, das Passwort nur bis zum Fehler), tip, locked }
 export function profileHTML(o) {
+  const firm = profilLines(loadProfil());
   const login = o.user ? `<p class="el-prow">Angemeldet als <b>${esc(o.user)}</b></p><div class="el-acts"><button class="btn outline" id="el-pf-logout" data-elact="logout"${o.busy ? " disabled" : ""}>Abmelden</button></div>`
     : `<p class="el-note">Gast: Ohne Anmeldung arbeitest du mit Dateien auf diesem Rechner${o.locked ? "; im Netz lässt sich dann nur als DXF speichern" : ""}. Anmelden für Projektdatei, PDF, Listen und Online-Projekte.</p>
       <form class="el-pform" id="el-pf-form" autocomplete="on" novalidate><label class="el-row"><span>E-Mail</span><input id="el-pf-mail" type="email" autocomplete="username" spellcheck="false" value="${esc(o.mail || "")}"></label>
       <label class="el-row"><span>Passwort</span><input id="el-pf-pw" type="password" autocomplete="current-password" value="${esc(o.pw || "")}"></label>
       ${o.msg ? `<p class="el-perr" role="alert"><span>${esc(o.msg)}</span></p>` : ""}<div class="el-acts"><button class="btn primary" type="submit"${o.busy ? " disabled" : ""}>${o.busy ? "Anmelden …" : "Anmelden"}</button></div></form>`;
   return `<section class="el-projs el-pwrap el-profile" aria-label="Profil"><div class="el-eyerow"><span class="el-eye">Anmeldung</span></div>${login}
-    <div class="el-eyerow"><span class="el-eye">Firma</span></div><label class="el-row"><span>Firma</span><select disabled aria-label="Firma wechseln"><option>–</option></select></label>
-    <p class="el-note">Firma wechseln gibt es noch nicht: die App kennt noch keine Firmendaten (Mandanten-Verwaltung folgt).</p>
+    <div class="el-eyerow"><span class="el-eye">Firmenprofil</span></div>${firm.length ? `<p class="el-prow el-firm">${firm.map(esc).join("<br>")}</p>` : `<p class="el-note">Noch keine Firmendaten. Sie gelten für alle Module: neue Titelseiten, Absender der Offerte.</p>`}
+    <div class="el-acts"><button class="btn outline" id="el-pf-firm" data-elact="firmprof">Firmenprofil bearbeiten …</button></div>
+    <p class="el-note">${o.user ? "Liegt online bei deinem Konto und in diesem Browser." : "Ohne Anmeldung nur in diesem Browser; nach dem Anmelden online bei deinem Konto."}</p>
     <div class="el-eyerow"><span class="el-eye">Anzeige</span></div><label class="chk"><input type="checkbox" data-eltip${o.tip ? " checked" : ""}> <span>Tipp-Zeile unten zeigen</span></label></section>`;
 }
 

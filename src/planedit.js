@@ -70,9 +70,10 @@ export function makePlan(c) {
   // Wand zeichnen: gezeichnet wird die Innenlinie. Fang an Ecken und Flächen der Wände, Ausrichtungsfang an Anfang, letztem Punkt und Ecken (Rechteck schliessen).
   const snapWall = (w, ortho) => { const fg = faces(); return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: fg, extra: draft?.pts ?? [], align: { refs: [...(draft?.pts ?? []), ...fg.corners], dirs: alignDirs(draft?.u) } }); }; // extra: Anfang und Punkte der Kette (Klick auf den Anfang schliesst)
   const snapDim = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: faces().corners });
-  // Leitung: zusätzlich Fang an Symbolmitten und Leitungspunkten (ohne die Leitung skip), Ausrichtung an den Punkten der Leitung und den Fangpunkten
-  const lineSnaps = (skip) => visible().flatMap((i) => (i.type === "sym" ? [P.symCenter(i, den())] : i.type === "line" && i.id !== skip ? i.pts : []));
-  const snapLine = (w, ortho, skip) => { const fg = faces(), sn = lineSnaps(skip); return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: [...sn, ...fg.corners], align: { refs: [...(lineDraft?.pts ?? []), ...sn, ...fg.corners], dirs: AXES } }); };
+  // Leitung (CJ 26.10.2026): Fang nur an den Anschlusspunkten der Symbole, den eigenen Punkten (Klick auf den letzten beendet) und am Raster.
+  // Kein Fang an Wänden, Massen oder anderen Leitungen, keine Ausrichtungslinien.
+  const lineSnaps = () => visible().flatMap((i) => (i.type === "sym" ? [P.symCenter(i, den())] : []));
+  const snapLine = (w, ortho) => P.snapPlan(sh(), [], [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: [...lineSnaps(), ...(lineDraft?.pts ?? [])] });
 
   // ---------- Darstellung ----------
   // Druckmitte: gesetzt (sheet.pmid, Werkzeug «Druckmitte setzen» im Fenster Druck), sonst Mitte des Inhalts (auf 10 mm), ohne Inhalt der Nullpunkt
@@ -546,7 +547,7 @@ export function makePlan(c) {
       if (d.started) {
         if (d.type === "multi") { const g = S.grid.on && !S.alt ? S.grid.size : 1, tx = Math.round((w.x - d.sx) / g) * g, ty = Math.round((w.y - d.sy) / g) * g; P.moveItems(sh(), d.items, tx - d.dx, ty - d.dy); d.dx = tx; d.dy = ty; }
         else if (d.type === "label") { const a = (d.it.r * Math.PI) / 180, dx = (w.x - d.sx) / den(), dy = (w.y - d.sy) / den(); const lo = P.cleanLo([d.lo0[0] + dx * Math.cos(a) + dy * Math.sin(a), d.lo0[1] - dx * Math.sin(a) + dy * Math.cos(a)]); if (lo) d.it.lo = lo; else delete d.it.lo; }
-        else if (d.type === "lpt") { const o = d.it.pts[d.i > 0 ? d.i - 1 : 1], p = snapLine(w, o, d.it.id); mouse = p; d.it.pts[d.i] = [p.x, p.y]; }
+        else if (d.type === "lpt") { const o = d.it.pts[d.i > 0 ? d.i - 1 : 1], p = snapLine(w, o); mouse = p; d.it.pts[d.i] = [p.x, p.y]; }
         else if (d.type === "node") { const skip = new Set(d.ends.map((x) => x.it.id)), p = P.snapPlan(sh(), visible().filter((i) => !skip.has(i.id)), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? otherEnd(d) : undefined }); mouse = p; P.setEnds(sh(), d.ends, [p.x, p.y]); }
         else if (d.type === "edge") { P.setOpeningEdge(d.wall, d.it, d.edge, P.along(d.wall, [w.x, w.y]), S.alt ? 1 : 10); renderRight(); }
         else if (d.it.type === "wall") { const g = S.grid.on && !S.alt ? S.grid.size : 1, dx = Math.round((w.x - d.sx) / g) * g, dy = Math.round((w.y - d.sy) / g) * g; P.setEnds(sh(), d.ea, [d.a0[0] + dx, d.a0[1] + dy]); P.setEnds(sh(), d.eb, [d.b0[0] + dx, d.b0[1] + dy]); }
@@ -781,7 +782,7 @@ export function makePlan(c) {
         + (it.lo ? `<div class="row"><button class="btn outline small" data-plact="lores">Beschriftung zurücksetzen</button></div>` : "") + copyRow() + del1();
     }
     if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + sel1("lc", LINE_FORMS, it.curve ? "1" : "0", "Form") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
-      + note(`${it.pts.length} Punkte. Griffe an den Punkten ziehen (Fang an Symbolmitten und Leitungspunkten, Shift 0/45/90°), Ziehen an der Linie verschiebt sie.`) + copyRow() + del1();
+      + note(`${it.pts.length} Punkte. Griffe an den Punkten ziehen (Fang an den Anschlusspunkten der Symbole und am Raster, Shift 0/45/90°), Ziehen an der Linie verschiebt sie.`) + copyRow() + del1();
     if (it) return head(it.type) + copyRow() + del1();
     if (sel0.length > 1) {
       const n = (t) => sel0.filter((i) => i.type === t).length, parts = [["wall", "Wände"], ["opening", "Öffnungen"], ["dim", "Masse"], ["sym", "Symbole"], ["line", "Leitungen"]].filter(([t]) => n(t)).map(([t, l]) => `${n(t)} ${l}`);
@@ -797,7 +798,7 @@ export function makePlan(c) {
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
     else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
-      + note("Fang an Symbolmitten, Leitungspunkten und Wandecken, Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
+      + note("Fang an den Anschlusspunkten der Symbole und am Raster (nicht an Wänden und anderen Leitungen), Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
     if (S.tool === "select" && clip?.length) h += `<div class="row"><button class="btn outline small" data-plact="paste">Einfügen (${clip.filter((i) => i.type !== "opening").length})</button><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
     else if (S.tool === "select") h += `<div class="row"><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;

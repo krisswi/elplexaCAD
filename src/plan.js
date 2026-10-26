@@ -135,6 +135,7 @@ export function cleanPlanObj(it, id) {
     if (str(it.txt, 60)) o.txt = str(it.txt, 60);
     if (def.ap && it.ap === true) o.ap = true;
     if (def.ref) { if (str(it.fu, 12)) o.fu = str(it.fu, 12); if (str(it.nr, 12)) o.nr = str(it.nr, 12); }
+    const lo = cleanLo(it.lo); if (lo) o.lo = lo;
     setCol(o, it.col);
     return o;
   }
@@ -151,6 +152,8 @@ export function cleanPlanObj(it, id) {
 
 // Blattfelder und Objekte aus der Datei. Bereinigung: Objekte auf unbekannter Ebene → aktive Ebene, Öffnung ohne Wand fällt weg,
 // Öffnung in die Wand geklemmt, Mass mit fehlender Wand verliert den Bezug. Gibt die höchste id zurück.
+// Dateiversion 24 (Plan Schritt 5, CJ 26.10.2026): ältere Stände kennen diese Felder nicht
+export const planV24 = (sh) => sh.items.some((i) => i.lo);
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 export function cleanPlanSheet(rs, m, maxId) {
   m.paper = cleanPlanPaper(rs.paper);
@@ -507,6 +510,12 @@ export function symCenter(it, k) {
 }
 // Text lesbar halten: Winkel 0–359 → (-90, 90], flip = um 180° gekippt (sonst stünde er auf dem Kopf)
 export function readable(ang) { const a = ((ang % 360) + 360) % 360, flip = a > 90 && a <= 270; return { a: flip ? a - 180 : a > 270 ? a - 360 : a, flip }; }
+// Versatz der Beschriftung (CJ 26.10.2026): [x, y] in Papier-mm im System des Symbols (dreht mit R), 0,1 mm genau, höchstens 60 mm; [0, 0] = Standardlage
+export function cleanLo(v) {
+  if (!Array.isArray(v) || v.length !== 2 || !v.every(isNum)) return null;
+  const q = v.map((n) => Math.round(Math.max(-60, Math.min(60, n)) * 10) / 10 + 0);
+  return q[0] || q[1] ? q : null;
+}
 // Höhe eines Symbols in cm: eingetragen oder Standardhöhe des Symbols (undefined = ohne)
 export const symH = (it) => it.h ?? SYM_BY_KEY.get(it.key)?.h;
 // Texte eines Symbols in der Welt (CJ 24.10.2026): drehen mit dem Symbol, stehen nie auf dem Kopf. Zusatztexte (T15, USB, 3, LED) und Verweis
@@ -520,8 +529,17 @@ export function symTexts(it, k, fmtH = (h) => String(h)) {
   // Abstand: hinter dem Symbol und hinter Zusatztexten rechts der Mitte (Breite ca. 0,6 × Höhe je Zeichen)
   const ext = Math.max(def.r, ...def.parts.filter((q) => q[0] === "t").map((q) => q[1] - def.c[0] + q[4].length * q[3] * 0.3));
   const lines = [it.txt, it.h !== undefined && it.h !== def.h ? fmtH(it.h) : ""].filter(Boolean), c = symCenter(it, k), d = (ext + 0.6) * k, sg = flip ? -1 : 1;
-  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * k * sg; out.push({ at: [c[0] + co * d - si * o, c[1] + si * d + co * o].map(r3), s, size: 1.8 * k, a, anchor: flip ? "end" : "start" }); });
+  const [lx, ly] = it.lo ?? [0, 0], ox = k * (lx * co - ly * si), oy = k * (lx * si + ly * co); // Versatz dreht mit dem Symbol
+  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * k * sg; out.push({ at: [c[0] + co * d - si * o + ox, c[1] + si * d + co * o + oy].map(r3), s, size: 1.8 * k, a, anchor: flip ? "end" : "start", label: true }); });
   return out;
+}
+// Trifft p die Beschriftung (Bezeichnung, Höhe) eines Symbols? Kasten je Zeile: Breite ca. 0,6 × Höhe je Zeichen, ab dem Ankerpunkt.
+export function labelHit(it, k, p, tol, fmtH) {
+  return symTexts(it, k, fmtH).some((t) => {
+    if (!t.label) return false;
+    const r = (t.a * Math.PI) / 180, dx = p[0] - t.at[0], dy = p[1] - t.at[1], u = dx * Math.cos(r) + dy * Math.sin(r), v = -dx * Math.sin(r) + dy * Math.cos(r), wd = t.s.length * t.size * 0.6;
+    return (t.anchor === "end" ? u >= -wd - tol && u <= tol : u >= -tol && u <= wd + tol) && Math.abs(v) <= t.size / 2 + tol;
+  });
 }
 // Stückliste (Schritt 4, CJ 24.10.2026): Anzahl je Symbol auf sichtbaren Ebenen, Reihenfolge wie die Palette. Leitungen zählen nicht.
 export function bomOf(sh) {

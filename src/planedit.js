@@ -513,6 +513,13 @@ export function makePlan(c) {
       const wl = sh().items.find((i) => i.id === one.wall), g = wl && edgeGrips(wl, one).find((x) => near(x.p));
       if (g) { drag = { type: "edge", it: one, wall: wl, edge: g.edge, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; }
     }
+    const lab = !e.shiftKey && !opt.multi && labelAt(w, t);
+    if (lab) { // Beschriftung ziehen (CJ 26.10.2026): bleibt am Symbol, Versatz lo im System des Symbols; zweimal schnell = zurück in die Standardlage
+      const twice = lastLab && lastLab.id === lab.id && e.timeStamp - lastLab.t < 450; lastLab = twice ? null : { id: lab.id, t: e.timeStamp };
+      if (twice) { if (lab.lo) { change(() => { delete lab.lo; }); toast("Beschriftung in der Standardlage."); } return; }
+      S.sel = new Set([lab.id]); drag = { type: "label", it: lab, lo0: lab.lo ?? [0, 0], sx: w.x, sy: w.y, started: false, snap: snapshot() };
+      renderRight(); renderOverlay(); return;
+    }
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t), more = e.shiftKey || opt.multi;
     if (!hit) { if (!more) S.sel = new Set(); drag = { type: "box", sx: w.x, sy: w.y, ex: w.x, ey: w.y, add: more, started: false }; renderRight(); renderOverlay(); return; } // Rahmen ziehen
     if (more) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; renderRight(); renderOverlay(); return; } // Shift-Klick: dazu oder weg
@@ -530,6 +537,7 @@ export function makePlan(c) {
       if (d.started && d.type === "box") { d.ex = w.x; d.ey = w.y; renderOverlay(); return; }
       if (d.started) {
         if (d.type === "multi") { const g = S.grid.on && !S.alt ? S.grid.size : 1, tx = Math.round((w.x - d.sx) / g) * g, ty = Math.round((w.y - d.sy) / g) * g; P.moveItems(sh(), d.items, tx - d.dx, ty - d.dy); d.dx = tx; d.dy = ty; }
+        else if (d.type === "label") { const a = (d.it.r * Math.PI) / 180, dx = (w.x - d.sx) / den(), dy = (w.y - d.sy) / den(); const lo = P.cleanLo([d.lo0[0] + dx * Math.cos(a) + dy * Math.sin(a), d.lo0[1] - dx * Math.sin(a) + dy * Math.cos(a)]); if (lo) d.it.lo = lo; else delete d.it.lo; }
         else if (d.type === "lpt") { const o = d.it.pts[d.i > 0 ? d.i - 1 : 1], p = snapLine(w, o, d.it.id); mouse = p; d.it.pts[d.i] = [p.x, p.y]; }
         else if (d.type === "node") { const skip = new Set(d.ends.map((x) => x.it.id)), p = P.snapPlan(sh(), visible().filter((i) => !skip.has(i.id)), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? otherEnd(d) : undefined }); mouse = p; P.setEnds(sh(), d.ends, [p.x, p.y]); }
         else if (d.type === "edge") { P.setOpeningEdge(d.wall, d.it, d.edge, P.along(d.wall, [w.x, w.y]), S.alt ? 1 : 10); renderRight(); }
@@ -550,6 +558,12 @@ export function makePlan(c) {
     if (d?.type === "lpt" && d.started) { const q = d.it.pts.filter((p, i, a) => !i || !same(p, a[i - 1])); if (q.length >= 2) d.it.pts = q; }
     if (d?.started) { pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); }
   }
+  // Beschriftung unter dem Zeiger: zuerst am gewählten Symbol, sonst das zuletzt gesetzte
+  function labelAt(w, t) {
+    const ys = pickable().filter((i) => i.type === "sym"), k = den();
+    return [...ys.filter((i) => S.sel.has(i.id)), ...ys.reverse()].find((i) => P.labelHit(i, k, [w.x, w.y], t, fmtH)) ?? null;
+  }
+  let lastLab = null; // letzter Druck auf eine Beschriftung (Doppelklick, das dblclick-Ereignis kommt nach dem Neuzeichnen nicht an)
   function tap(w) {
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], 14 / S.view.z);
     if (opt.multi && hit) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; } else S.sel = hit ? new Set([hit.id]) : new Set();
@@ -756,7 +770,8 @@ export function makePlan(c) {
       return head(def.label, def.group) + (def.ref ? tin("fu", "Sicherung (z. B. F3)", it.fu) + tin("nr", "Nummer (Stromkreis)", it.nr) : "") + tin("txt", "Beschriftung", it.txt)
         + inp("sh", def.h !== undefined ? `Höhe in cm (Standard ${def.h}, steht nur abweichend im Plan)` : "Höhe in cm (leer = ohne)", P.symH(it) === undefined ? "" : fmtH(P.symH(it))) + inp("rot", "Drehung in Grad", String(it.r))
         + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
-        + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben.`) + copyRow() + del1();
+        + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben. Die Beschriftung lässt sich für sich ziehen, Doppelklick setzt sie zurück.`)
+        + (it.lo ? `<div class="row"><button class="btn outline small" data-plact="lores">Beschriftung zurücksetzen</button></div>` : "") + copyRow() + del1();
     }
     if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + sel1("lc", LINE_FORMS, it.curve ? "1" : "0", "Form") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
       + note(`${it.pts.length} Punkte. Griffe an den Punkten ziehen (Fang an Symbolmitten und Leitungspunkten, Shift 0/45/90°), Ziehen an der Linie verschiebt sie.`) + copyRow() + del1();
@@ -890,6 +905,7 @@ export function makePlan(c) {
     if (sw) { change(() => { for (const it of sel()) P.setCol(it, sw.dataset.plcol); }); return; }
     const a = e.target.closest("[data-plact]")?.dataset.plact;
     if (a === "coldef") change(() => { for (const it of sel()) P.setCol(it, ""); });
+    else if (a === "lores") change(() => { for (const it of sel()) delete it.lo; });
     else if (a === "copy") copySel(); else if (a === "paste") paste(); else if (a === "dup") dup(); else if (a === "all") selAll();
   });
   for (const el of [c.rightEl, c.popEl]) el.addEventListener("change", (e) => { if (sh().kind === "plan" && (e.target.dataset.plf !== undefined || e.target.dataset.plo !== undefined || e.target.dataset.plp !== undefined)) panelChange(e.target); });

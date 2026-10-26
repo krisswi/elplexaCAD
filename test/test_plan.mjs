@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 23, "elplexa liest Version 23 (Plan mit PDF-Hintergrund, geschwungene Leitung)");
+assert.strictEqual(M.VERSION, 24, "elplexa liest Version 24 (Plan Schritt 5: Versatz der Beschriftung …)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -237,8 +237,18 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(["STD", "STD3", "SCH0", "SCH3", "LEUCHTE_W", "LED_W"].map((k) => P.symH({ key: k })), [30, 30, 110, 110, undefined, undefined], "Standardhöhen");
   assert.ok(!("h" in c({ key: "SCH0", h: 110 })) && !("h" in c({ key: "STD", h: 30 })), "Standardhöhe nicht gespeichert");
   assert.deepStrictEqual([c({ key: "STD", h: 110 }).h, P.symH(c({ key: "STD", h: 110 }))], [110, 110], "abweichende Höhe bleibt (alte Pläne: Steckdose 110)");
+  const v24 = JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 40, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, txt: "A", lo: [3, 1] }])], 24))));
+  assert.deepStrictEqual([v24.version, v24.sheets[0].items[0].lo], [24, [3, 1]], "Versatz der Beschriftung: Version 24");
   const hTxt = (o) => P.symTexts({ at: [0, 0], r: 0, ...o }, 50).map((x) => x.s);
   assert.deepStrictEqual([hTxt({ key: "STD" }), hTxt({ key: "STD", h: 30 }), hTxt({ key: "STD", h: 110 }), hTxt({ key: "SCH0", h: 110 })], [[], [], ["110"], []], "Höhe nur abweichend beschriftet");
+  // Beschriftung verschiebbar (CJ 26.10.2026): Versatz lo in Papier-mm im System des Symbols, dreht mit, [0, 0] wird nicht gespeichert
+  assert.deepStrictEqual([c({ key: "STD", lo: [2.04, -1] }).lo, c({ key: "STD", lo: [0, 0] }).lo, c({ key: "STD", lo: [99, "x"] }).lo, c({ key: "STD", lo: [99, -99] }).lo], [[2, -1], undefined, undefined, [60, -60]], "lo bereinigt");
+  const at = (o) => P.symTexts({ at: [0, 0], key: "STD", txt: "A", ...o }, 50).find((x) => x.label).at;
+  near(at({ r: 0, lo: [2, 1] }), [at({ r: 0 })[0] + 100, at({ r: 0 })[1] + 50], "Versatz r 0");
+  near(at({ r: 90, lo: [2, 1] }), [at({ r: 90 })[0] - 50, at({ r: 90 })[1] + 100], "Versatz dreht mit (r 90)");
+  const la = at({ r: 0 });
+  assert.ok(P.labelHit({ at: [0, 0], key: "STD", txt: "A", r: 0 }, 50, [la[0] + 20, la[1]], 10) && !P.labelHit({ at: [0, 0], key: "STD", txt: "A", r: 0 }, 50, [la[0] - 300, la[1]], 10), "Beschriftung treffen");
+  assert.ok(!P.labelHit({ at: [0, 0], key: "STD", r: 0 }, 50, [la[0] + 20, la[1]], 10), "ohne Beschriftung kein Treffer");
   // Wand einrasten: nächste Fläche, Symbol zeigt in den Raum
   const walls = kueche().filter((i) => i.type === "wall");
   assert.deepStrictEqual(P.wallSnap(walls, [3700, 400], 600), { at: [3925, 400], r: 90, wall: 2 }, "rechte Wand innen: Symbol nach links (r 90)");
@@ -287,7 +297,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 24)), /neueren Version/, "Version 24 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 25)), /neueren Version/, "Version 25 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#3FBBEB" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");

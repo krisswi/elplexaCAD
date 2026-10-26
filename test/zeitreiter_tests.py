@@ -43,7 +43,7 @@ def fake(route):
         if srv["mode"] == "conflict" or q.get("updated_at") != "eq." + r["updated_at"]: J([]); return
         body = json.loads(req.post_data); r["data"] = body["data"]; r["updated_at"] = body["updated_at"]
         J([{"updated_at": r["updated_at"]}]); return
-    if path == "/rest/v1/user_settings": route.fulfill(status=200 if route.request.method == "GET" else 201, content_type="application/json", body="[]" if route.request.method == "GET" else ""); return  # Firmenprofil (Offerte Schritt 2): leer
+    if path in ("/rest/v1/user_settings", "/rest/v1/user_positions"): route.fulfill(status=200 if route.request.method == "GET" else 201, content_type="application/json", body="[]" if route.request.method == "GET" else ""); return  # Firmenprofil und Positionsdatenbank (Offerte Schritt 2, 3): leer
     J({"message": "nicht gefunden"}, 404)
 def weeks_back(today, target):  # Schritte «‹» von der heutigen Woche bis zur Zielwoche (negativ = vor)
     mon = lambda d: d - datetime.timedelta(days=d.weekday())

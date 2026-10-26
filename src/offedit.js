@@ -60,6 +60,8 @@ function posRow(of, t, p, no) {
   }
   return h;
 }
+// MwSt nur am Schluss aufs Total, ein- und ausschaltbar (CJ 26.10.2026). Aus = Satz 0, damit ältere Stände gleich rechnen.
+const totLabel = (of) => (of.mwst ? "Total inkl. MwSt" : "Total ohne MwSt");
 function summaryHTML(of, t) {
   if (!of.kap.length) return "";
   const row = (a, b, cls = "") => `<tr${cls ? ` class="${cls}"` : ""}><td>${a}</td><td class="c-n">${b}</td></tr>`;
@@ -68,10 +70,10 @@ function summaryHTML(of, t) {
   h += row("Zwischensumme", O.fmtChf(t.zwischensumme), "of-strong");
   for (const r of t.rabatt) h += row(`Rabatt${r.kz || r.name ? ` ${esc([r.kz, r.name].filter(Boolean).join(" "))}` : ""} ${O.fmtNum(r.satz)} % auf ${O.fmtChf(r.basis)}`, `− ${O.fmtChf(r.betrag)}`);
   if (t.rabatt.length) h += row("Total nach Rabatt", O.fmtChf(t.netto));
-  h += row(`MwSt ${O.fmtNum(of.mwst)} %`, O.fmtChf(t.mwst));
+  if (of.mwst) h += row(`MwSt ${O.fmtNum(of.mwst)} %`, O.fmtChf(t.mwst));
   const c = (x) => Math.round(x * 100), rd = c(t.total) - c(t.netto) - c(t.mwst); // Rundung auf 5 Rappen, damit die Zeilen sichtbar aufgehen
   if (rd) h += row("Rundung", `${rd < 0 ? "− " : ""}${O.fmtChf(Math.abs(rd) / 100)}`);
-  h += row("Total inkl. MwSt", O.fmtChf(t.total), "of-total");
+  h += row(totLabel(of), O.fmtChf(t.total), "of-total");
   h += `</tbody></table>`;
   if (t.skonto) h += `<p class="of-note">Skonto ${O.fmtNum(t.skonto.satz)} %${t.skonto.tage ? ` bei Zahlung innert ${t.skonto.tage} Tagen` : ""}: CHF ${O.fmtChf(t.skonto.betrag)}</p>`;
   if (t.optionen) h += `<p class="of-note">Optionen (nicht in der Angebotssumme): CHF ${O.fmtChf(t.optionen)}</p>`;
@@ -120,15 +122,15 @@ export function panelHTML(of, profil = null) {
   const t = O.totals(of);
   if (mode.ro) return `<div class="prop-head"><h2>Offerte${of.nr ? ` ${esc(of.nr)}` : ""}</h2><p>Geteilte Ansicht${mode.prices ? "" : ", ohne Preise"}.</p></div>`
     + `<section class="section">${[["Version", of.ver], ["Datum", of.datum], ["Gültig bis", of.gueltig], ["Abrechnungsart", O.ARTEN[of.art]], ["Bauart", O.BAUARTEN[of.bau]]].filter(([, v]) => v).map(([l, v]) => `<p class="of-psum">${esc(l)}<b>${esc(v)}</b></p>`).join("")}`
-    + (mode.prices ? `<p class="of-psum">Total inkl. MwSt <b>CHF ${O.fmtChf(t.total)}</b></p>` : "") + `</section>`;
+    + (mode.prices ? `<p class="of-psum">${totLabel(of)} <b>CHF ${O.fmtChf(t.total)}</b></p>` : "") + `</section>`;
   return `<div class="prop-head"><h2>Offerte</h2><p>Pflicht sind nur Text, Menge und Preis.</p></div>`
     + senderHTML(profil)
     + `<section class="section"><h2 class="section-title">Kopf</h2>${fld("Offertnummer", "o.nr", of.nr)}${fld("Version (Revision, Nachtrag)", "o.ver", of.ver)}${fld("Datum", "o.datum", of.datum)}${fld("Gültig bis", "o.gueltig", of.gueltig, { ph: "z. B. 3 Monate" })}`
     + `${sel("Abrechnungsart", "o.art", O.ARTEN, of.art, "–")}${sel("Bauart", "o.bau", O.BAUARTEN, of.bau, "–")}</section>`
     + `<section class="section"><h2 class="section-title">Rechenwerte</h2>${fld("Materialfaktor", "o.fak", of.fak, { num: true })}${fld("Stundenansatz CHF", "o.ansatz", of.ansatz, { num: true })}${fld("Gesamtrabatt %", "o.rabatt", of.rabatt, { num: true })}`
-    + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div>${fld("MwSt %", "o.mwst", of.mwst, { num: true })}</section>`
+    + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div><label class="of-chk"><input type="checkbox" data-of="o.mwstan"${of.mwst ? " checked" : ""}> MwSt aufrechnen</label>${of.mwst ? fld("MwSt %", "o.mwst", of.mwst, { num: true }) : ""}</section>`
     + rgHTML(of)
-    + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">Total inkl. MwSt <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
+    + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">${totLabel(of)} <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
 }
 
 // Absender aus dem Firmenprofil (Schritt 2): nur Anzeige, geändert wird im Fenster «Firmenprofil» (gilt für alle Offerten und Module)
@@ -183,6 +185,7 @@ export function apply(of, el) {
     return true;
   }
   if (obj === of && (f === "art" || f === "bau")) { of[f] = v; return true; }
+  if (obj === of && f === "mwstan") { of.mwst = v ? of.mwst || O.DEF.mwst : 0; return true; }
   const s = f === "text" ? String(v) : String(v).trim();
   if (obj === of || "grp" in obj || "pos" in obj || of.rg.includes(obj)) obj[f] = s; // Kopf, Kapitel, Gruppe: Feld bleibt (leer erlaubt)
   else if (s) obj[f] = s; else delete obj[f];

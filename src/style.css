@@ -495,3 +495,4 @@ body.is-offerte #svg, body.is-offerte #zoombar { display: none; }
 .of-dbadd:hover { background: var(--hover); }
 .of-dbadd b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .of-dbadd span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.of-chk { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 4px 0 8px; }

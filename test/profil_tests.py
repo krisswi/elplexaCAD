@@ -29,6 +29,7 @@ def fake(route):
     if path == "/rest/v1/user_settings":
         if route.request.method == "POST": r = json.loads(route.request.post_data); store[r["name"]] = {"data": r["data"], "updated_at": r["updated_at"]}; route.fulfill(status=201, body=""); return
         name = parse_qs(u.query).get("name", [""])[0].removeprefix("eq."); J([store[name]] if name in store else []); return
+    if path == "/rest/v1/user_positions": route.fulfill(status=200 if route.request.method == "GET" else 201, content_type="application/json", body="[]" if route.request.method == "GET" else ""); return  # Positionsdatenbank (Schritt 3): leer
     J({"message": "nicht gefunden"}, 404)
 with sync_playwright() as p:
     b = p.chromium.launch()

@@ -3076,6 +3076,7 @@ async function elShareLoad() {
     if (r.grund) EL_S.shareFail = { grund: r.grund };
     else {
       EL_S.fromOnline = true;
+      OF.setMode({ ro: true, prices: r.prices }); // Offerte im Link: nur lesen, Preise nur wenn freigegeben
       try { await loadText(JSON.stringify(r.doc), r.name || "Geteiltes Projekt", null); } finally { EL_S.fromOnline = false; }
       EL_S.shareInfo = { at: r.at, ablauf: r.ablauf, mods: r.modules ? E.modIds(S.doc).filter((id) => !E.modById(id)?.auto).map((id) => modName(S.doc, id)) : null };
       setTool("hand"); document.body.classList.remove("el-sharewait");
@@ -3214,7 +3215,7 @@ function elNoteGo(id) { // zum Blatt springen, Notiz in die Mitte
 // Ist es das offene Projekt, wählen Häkchen die Module (CJ 18.10.2026); only = Vorwahl ein Modul (Exportieren › Modul teilen). Alle Häkchen = ganzes Projekt.
 async function elShareDialog(id, only = null) {
   const name = EL_S.onlist?.find((x) => x.id === id)?.name || elName(), mine = S.doc.project?.online?.id === id;
-  const ids = mine ? E.modIds(S.doc).filter((m) => !E.modById(m)?.auto && E.baseOf(m) !== "plan" && E.baseOf(m) !== "offerte") : [], pick = mine ? { ids, on: new Set(only ? [only] : ids) } : null, nm = (m) => modName(mine ? S.doc : {}, m);
+  const ids = mine ? E.modIds(S.doc).filter((m) => !E.modById(m)?.auto) : [], pick = mine ? { ids, on: new Set(only ? [only] : ids), prices: false } : null, nm = (m) => modName(mine ? S.doc : {}, m);
   let links = null;
   const draw = () => { const m = $("#modal-root .modal"); if (m) m.querySelector(".el-shbody").innerHTML = E.shareDialogHTML(name, links, shareUrl, pick, nm); };
   const load = async (fn) => { try { const l = await fn(); if (l) links = l; } catch (err) { toast(err.message || String(err), "error"); } draw(); };
@@ -3223,14 +3224,15 @@ async function elShareDialog(id, only = null) {
     try { await navigator.clipboard.writeText(url); toast("Link kopiert. Gültig 30 Tage, nur zum Ansehen."); }
     catch { const i = [...document.querySelectorAll("#modal-root .el-shurl")].find((x) => x.value === url); i?.select(); toast("Kopieren ging nicht automatisch: Link ist markiert, mit ⌘C kopieren."); }
   };
-  const tick = (e) => { const b = e.target.closest("[data-shmod]"); if (!b || !pick) return; if (b.checked) pick.on.add(b.dataset.shmod); else pick.on.delete(b.dataset.shmod); draw(); };
+  const tick = (e) => { if (pick && e.target.matches?.("[data-shprices]")) { pick.prices = e.target.checked; return; } const b = e.target.closest("[data-shmod]"); if (!b || !pick) return; if (b.checked) pick.on.add(b.dataset.shmod); else pick.on.delete(b.dataset.shmod); draw(); };
   const shown = openModal("Link teilen", `<div class="el-shbody">${E.shareDialogHTML(name, null, shareUrl, pick, nm)}</div>`, async (b, done) => {
     if (b.dataset.c !== undefined) done(null);
     else if (b.dataset.shnew !== undefined) {
-      if (S.doc.sheets.some((sh) => sh.kind === "offerte")) { toast("Projekte mit Offerte lassen sich noch nicht teilen: die Datenbank blendet Offerten und EK-Preise noch nicht aus.", "error"); return; } // bis zur Migration share_offerte (CJ 26.10.2026)
       b.disabled = true; let n = null;
-      const mods = pick && pick.on.size < ids.length ? ids.filter((m) => pick.on.has(m)) : null;
-      await load(async () => { n = await shareCreate(id, mods); return n ? [n, ...links] : null; }); if (n) copy(n.token);
+      // Mit Offerte immer als Liste: «ganzes Projekt» (ohne Liste) zeigt die Datenbank ohne Offerte (Migration 20261026_share_offerte)
+      const mods = pick && (pick.on.size < ids.length || ids.some((m) => E.baseOf(m) === "offerte")) ? ids.filter((m) => pick.on.has(m)) : null;
+      const prices = !!(pick?.prices && mods?.some((m) => E.baseOf(m) === "offerte"));
+      await load(async () => { n = await shareCreate(id, mods, prices); return n ? [n, ...links] : null; }); if (n) copy(n.token);
     }
     else if (b.dataset.shcopy) copy(b.dataset.shcopy);
     else if (b.dataset.shrev) { b.disabled = true; const n0 = links.length; await load(async () => ((await shareRevoke(b.dataset.shrev))?.length ? links.filter((l) => l.id !== b.dataset.shrev) : null)); if (links.length < n0) toast("Link widerrufen. Wer ihn öffnet, sieht nur noch einen Hinweis."); }
@@ -3242,8 +3244,6 @@ async function elShareDialog(id, only = null) {
 // Exportieren › Modul teilen (CJ 18.10.2026): Link nur für das offene Modul. Geteilt wird der Online-Stand, darum vorher online speichern.
 async function elShareModule() {
   if (S.shared) return;
-  if (E.baseOf(elMod() || "") === "offerte") { toast("Eine Offerte einzeln zu teilen geht noch nicht (Teilen-Link kennt das Modul nicht)."); return; } // Annahme: Offerten gehen nicht an Dritte per Link, Schritt 2 klärt die Speicherschicht
-  if (E.baseOf(elMod() || "") === "plan") { toast("Einen Plan einzeln zu teilen geht noch nicht. Das ganze Projekt teilen geht (Bereich Online in der Übersicht)."); return; } // share_mod_of in Supabase kennt „plan“ nicht (nicht geprüft)
   if (!cloudUser() && !(await elLogin())) return;
   if (!S.doc.project?.online || S.dirty) {
     if (!(await confirmDialog("Zuerst online speichern", "Geteilt wird der online gespeicherte Stand. Jetzt online speichern und dann den Link erstellen?", "Online speichern"))) return;

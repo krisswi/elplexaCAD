@@ -122,6 +122,29 @@ if (fs.existsSync(xlsx)) {
   console.log(`Excel-Beispiel: Zwischensumme ${O.fmtChf(tx.zwischensumme)}`);
 } else console.log("Excel-Beispiel übersprungen (Offerte.xlsx fehlt)");
 
+// ---------- Teilen-Link: nur lesen, mit oder ohne Preise (CJ 26.10.2026) ----------
+// Die Datenbank (share_open, Migration 20261026_share_offerte) entfernt EK, Faktor und Zeit und setzt mit Preisen den Verkaufspreis als preis.
+{
+  const F = await import("../src/offedit.js");
+  const so = O.newOfferte(), sk = O.addKapitel(so, "232"); O.addPosition(so, sk.grp[0], { titel: "A", text: "UP", menge: 2, preis: 58.5, opt: true });
+  F.setMode({ ro: true, prices: false }); const h = F.viewHTML(so);
+  assert.ok(!/<input|<button|<select|<textarea/.test(h), "geteilt: keine Felder und Knöpfe");
+  assert.ok(!/58|117|Total|Preis|Schlusszusammenstellung/.test(h) && h.includes("Option"), "ohne Preise: keine Preise, Beträge, Summen");
+  F.setMode({ ro: true, prices: true }); const h2 = F.viewHTML(so);
+  assert.ok(!/<input|<button/.test(h2) && h2.includes("58.50") && h2.includes("117.00"), "mit Preisen: Verkaufspreis und Betrag");
+  assert.ok(!/EK|Faktor/.test(F.panelHTML(so)), "geteilt: rechts kein EK und kein Faktor");
+  F.setMode({}); assert.ok(F.viewHTML(so).includes("<input"), "eigene Offerte: bearbeitbar");
+}
+// Fenster «Link teilen» (elplexaCAD): Offerte angekreuzt → Häkchen «mit Preisen»; Linkzeile nennt Preise; ganzes Projekt ohne Offerte.
+// Zuletzt, weil ELPLEXA ab hier gesetzt ist (model.js prüft es beim Aufruf).
+{
+  globalThis.ELPLEXA = true; const E = await import("../src/elplexa.js");
+  const pick = { ids: ["schema", "offerte"], on: new Set(["schema", "offerte"]), prices: false };
+  const h = E.shareDialogHTML("P", [{ token: "t", id: "1", expires_at: "2026-11-25", modules: ["offerte"], prices: true }, { token: "u", id: "2", expires_at: "2026-11-25", modules: null }], (x) => x, pick, (m) => m);
+  assert.ok(h.includes("data-shprices") && h.includes("offerte (mit Preisen)") && h.includes("Ganzes Projekt ohne Offerte"), "Teilen: Häkchen Preise, Linkzeilen");
+  pick.on.delete("offerte"); assert.ok(!E.shareDialogHTML("P", [], (x) => x, pick, (m) => m).includes("data-shprices"), "ohne Offerte kein Häkchen Preise");
+}
+
 console.log("Offerten: alle Tests grün.");
 
 // Kleiner xlsx-Leser: ZIP (deflate) entpacken, gemeinsame Texte einsetzen. Gibt Map Zeile → { Spalte: Wert } zurück.

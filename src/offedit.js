@@ -4,14 +4,17 @@
 import { esc } from "./render.js";
 import * as O from "./offerte.js";
 
+// Teilen-Link (CJ 26.10.2026): ro = nur lesen (Felder als Text, keine Knöpfe), prices = Preise freigegeben. EK, Faktor und Zeit kommen nie an (share_open).
+let mode = { ro: false, prices: true };
+export const setMode = (m) => { mode = { ro: false, prices: true, ...m }; };
 const open = new Set(); // Positionen mit aufgeklappten Angaben (nur Anzeige, nicht in der Datei)
 let bkpFind = "";
 const val = (v) => (v === undefined || v === null ? "" : esc(String(v)));
 const opts = (set, cur, empty) => (empty !== undefined ? `<option value="">${esc(empty)}</option>` : "") + Object.entries(set).map(([k, l]) => `<option value="${k}"${k === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
-const inp = (key, v, { cls = "", ph = "", num = false, lab = "" } = {}) => `<input type="text"${num ? ' inputmode="decimal"' : ""} class="${cls}" data-of="${key}" value="${val(v)}"${ph ? ` placeholder="${esc(ph)}"` : ""}${lab ? ` aria-label="${esc(lab)}"` : ""} autocomplete="off" spellcheck="false">`;
+const inp = (key, v, { cls = "", ph = "", num = false, lab = "" } = {}) => mode.ro ? `<span class="of-ro ${cls}">${val(v)}</span>` : `<input type="text"${num ? ' inputmode="decimal"' : ""} class="${cls}" data-of="${key}" value="${val(v)}"${ph ? ` placeholder="${esc(ph)}"` : ""}${lab ? ` aria-label="${esc(lab)}"` : ""} autocomplete="off" spellcheck="false">`;
 const fld = (label, key, v, o = {}) => `<div class="field"><label for="of-${key}">${esc(label)}</label>${inp(key, v, o).replace("<input ", `<input id="of-${key}" `)}</div>`;
 const sel = (label, key, set, cur, empty) => `<div class="field"><label for="of-${key}">${esc(label)}</label><select id="of-${key}" data-of="${key}">${opts(set, cur, empty)}</select></div>`;
-const btn = (act, attrs, label, txt, cls = "btn icon small") => `<button type="button" class="${cls}" data-ofact="${act}" ${attrs} title="${esc(label)}" aria-label="${esc(label)}">${txt}</button>`;
+const btn = (act, attrs, label, txt, cls = "btn icon small") => mode.ro ? "" : `<button type="button" class="${cls}" data-ofact="${act}" ${attrs} title="${esc(label)}" aria-label="${esc(label)}">${txt}</button>`;
 
 // ---------- Mitte: Gliederung und Positionen ----------
 export function viewHTML(of) {
@@ -23,27 +26,29 @@ export function viewHTML(of) {
       + `<span class="of-acts">${btn("kup", `data-k="${k.id}"`, "Kapitel nach oben", "↑")}${btn("kdown", `data-k="${k.id}"`, "Kapitel nach unten", "↓")}${btn("addgrp", `data-k="${k.id}"`, "Gruppe hinzufügen (z. B. Raum, Wohnung)", "+ Gruppe", "btn outline small")}${btn("delkap", `data-k="${k.id}"`, "Kapitel löschen", "×", "btn icon small danger")}</span></div>`;
     k.grp.forEach((g, gi) => {
       h += `<div class="of-grp"><div class="of-gh">${inp(`g${g.id}.titel`, g.titel, { cls: "of-gt", ph: k.grp.length > 1 ? "Gruppe (z. B. Raum, Wohnung)" : "Gruppe ohne Titel (z. B. Raum, Wohnung)", lab: "Titel der Gruppe" })}`
-        + `<label class="of-rab"><span>Rabatt</span><select data-of="g${g.id}.rg" aria-label="Rabattgruppe"><option value="">Gesamtrabatt</option>${of.rg.map((r) => `<option value="${r.id}"${g.rg === r.id ? " selected" : ""}>${esc([r.kz, r.name].filter(Boolean).join(" – ") || "Rabattgruppe")}</option>`).join("")}</select></label>`
+        + (mode.ro ? "" : `<label class="of-rab"><span>Rabatt</span><select data-of="g${g.id}.rg" aria-label="Rabattgruppe"><option value="">Gesamtrabatt</option>${of.rg.map((r) => `<option value="${r.id}"${g.rg === r.id ? " selected" : ""}>${esc([r.kz, r.name].filter(Boolean).join(" – ") || "Rabattgruppe")}</option>`).join("")}</select></label>`)
         + `<span class="of-acts">${btn("gup", `data-g="${g.id}"`, "Gruppe nach oben", "↑")}${btn("gdown", `data-g="${g.id}"`, "Gruppe nach unten", "↓")}${btn("delgrp", `data-g="${g.id}"`, "Gruppe löschen", "×", "btn icon small danger")}</span></div>`;
-      h += `<table class="of-tab"><thead><tr><th class="c-pos">Pos</th><th class="c-txt">Text</th><th class="c-ic">IC</th><th class="c-n">Menge</th><th class="c-eh">EH</th><th class="c-n">Preis</th><th class="c-n">Betrag</th><th class="c-opt" title="Optionale Position">Opt.</th><th class="c-act"><span class="sr">Aktionen</span></th></tr></thead><tbody>`;
+      h += `<table class="of-tab"><thead><tr><th class="c-pos">Pos</th><th class="c-txt">Text</th><th class="c-ic">IC</th><th class="c-n">Menge</th><th class="c-eh">EH</th>${mode.prices ? `<th class="c-n">Preis</th><th class="c-n">Betrag</th>` : ""}<th class="c-opt" title="Optionale Position">Opt.</th><th class="c-act"><span class="sr">Aktionen</span></th></tr></thead><tbody>`;
       g.pos.forEach((p, pi) => { h += posRow(of, t, p, `${ki + 1}.${gi + 1}.${pi + 1}`); });
-      h += `</tbody><tfoot><tr><td colspan="6">${btn("addpos", `data-g="${g.id}"`, "Position hinzufügen", "+ Position", "btn outline small")}</td><td class="c-n of-sum">${O.fmtChf(t.grp.get(g.id) || 0)}</td><td colspan="2"></td></tr></tfoot></table></div>`;
+      if (!mode.ro || mode.prices) h += `</tbody><tfoot><tr><td colspan="${mode.prices ? 6 : 5}">${btn("addpos", `data-g="${g.id}"`, "Position hinzufügen", "+ Position", "btn outline small")}</td>${mode.prices ? `<td class="c-n of-sum">${O.fmtChf(t.grp.get(g.id) || 0)}</td>` : ""}<td colspan="2"></td></tr></tfoot>`;
+      else h += `</tbody>`;
+      h += `</table></div>`;
     });
     const ks = t.kap[ki];
-    h += `<div class="of-ksum"><span>Total ${esc(k.titel || "")} BKP ${esc(O.bkpMain(k.bkp) || k.bkp)}</span><b>${O.fmtChf(ks.summe)}</b></div></section>`;
+    h += (mode.prices ? `<div class="of-ksum"><span>Total ${esc(k.titel || "")} BKP ${esc(O.bkpMain(k.bkp) || k.bkp)}</span><b>${O.fmtChf(ks.summe)}</b></div>` : "") + `</section>`;
   });
-  return h + summaryHTML(of, t) + `</div>`;
+  return h + (mode.prices ? summaryHTML(of, t) : "") + `</div>`;
 }
 function posRow(of, t, p, no) {
   const id = p.id, k = (f) => `p${id}.${f}`, ep = O.unitPrice(p, of), det = open.has(id), off = p.opt && !p.an;
   let h = `<tr class="of-pos${off ? " off" : ""}" data-pid="${id}"><td class="c-pos">${esc(p.npk || no)}</td>`
-    + `<td class="c-txt">${inp(k("titel"), p.titel, { cls: "of-pt", ph: "Text", lab: "Text der Position" })}<textarea data-of="${k("text")}" rows="1" placeholder="Beschreibung" aria-label="Beschreibung">${val(p.text)}</textarea></td>`
+    + `<td class="c-txt">${inp(k("titel"), p.titel, { cls: "of-pt", ph: "Text", lab: "Text der Position" })}${mode.ro ? (p.text ? `<span class="of-ro of-rtext">${val(p.text)}</span>` : "") : `<textarea data-of="${k("text")}" rows="1" placeholder="Beschreibung" aria-label="Beschreibung">${val(p.text)}</textarea>`}</td>`
     + `<td class="c-ic">${inp(k("ic"), p.ic, { lab: "IC-Code" })}</td><td class="c-n">${inp(k("menge"), p.menge, { num: true, lab: "Menge" })}</td><td class="c-eh">${inp(k("eh"), p.eh, { ph: "Stk", lab: "Einheit" })}</td>`
-    + `<td class="c-n">${inp(k("preis"), p.preis, { num: true, ph: ep ? O.fmtChf(ep) : "", lab: "Einheitspreis (leer = aus EK und Zeit)" })}</td>`
-    + `<td class="c-n of-amt">${O.fmtChf(t.pos.get(id) || 0)}</td>`
-    + `<td class="c-opt"><input type="checkbox" data-of="${k("opt")}"${p.opt ? " checked" : ""} aria-label="Optionale Position" title="Optionale Position">${p.opt ? `<label class="of-an" title="Option in die Angebotssumme nehmen"><input type="checkbox" data-of="${k("an")}"${p.an ? " checked" : ""}><span>aktiv</span></label>` : ""}</td>`
+    + (mode.prices ? `<td class="c-n">${mode.ro ? `<span class="of-ro">${O.fmtChf(ep)}</span>` : inp(k("preis"), p.preis, { num: true, ph: ep ? O.fmtChf(ep) : "", lab: "Einheitspreis (leer = aus EK und Zeit)" })}</td>`
+    + `<td class="c-n of-amt">${O.fmtChf(t.pos.get(id) || 0)}</td>` : "")
+    + `<td class="c-opt">${mode.ro ? (p.opt ? `<span class="of-ro">${p.an ? "Option, aktiv" : "Option"}</span>` : "") : `<input type="checkbox" data-of="${k("opt")}"${p.opt ? " checked" : ""} aria-label="Optionale Position" title="Optionale Position">${p.opt ? `<label class="of-an" title="Option in die Angebotssumme nehmen"><input type="checkbox" data-of="${k("an")}"${p.an ? " checked" : ""}><span>aktiv</span></label>` : ""}`}</td>`
     + `<td class="c-act">${btn("det", `data-p="${id}" aria-expanded="${det}"`, det ? "Angaben zuklappen" : "Weitere Angaben: NPK, Typ, Form, EK, Zeit, Gliederung", "⋯")}${btn("pup", `data-p="${id}"`, "Position nach oben", "↑")}${btn("pdown", `data-p="${id}"`, "Position nach unten", "↓")}${btn("cpos", `data-p="${id}"`, "Position kopieren", "⧉")}${btn("delpos", `data-p="${id}"`, "Position löschen", "×", "btn icon small danger")}</td></tr>`;
-  if (det) {
+  if (det && !mode.ro) {
     const f = (label, key, v, o = {}) => `<label class="of-df"><span>${esc(label)}</span>${inp(k(key), v, { ...o, lab: label })}</label>`;
     const s = (label, key, set, cur, empty) => `<label class="of-df"><span>${esc(label)}</span><select data-of="${k(key)}" aria-label="${esc(label)}">${opts(set, cur, empty)}</select></label>`;
     h += `<tr class="of-det"><td></td><td colspan="8"><div class="of-dgrid">${f("NPK-Nr.", "npk", p.npk, { ph: "X XX.XXX.XXX.XXX.XX" })}${f("BKP", "bkp", p.bkp)}${s("Typ", "typ", O.TYPEN, p.typ || "lp")}${s("Form", "form", O.FORMEN, p.form || "r")}`
@@ -73,6 +78,7 @@ function summaryHTML(of, t) {
 
 // ---------- Links: BKP-Katalog ----------
 export function leftHTML() {
+  if (mode.ro) return `<section class="section"><h2 class="section-title">Offerte</h2><p class="note">Geteilte Ansicht, nur zum Ansehen.</p></section>`;
   const q = bkpFind.trim().toLowerCase(), list = O.BKP.filter(([n, l]) => !q || n.startsWith(q) || l.toLowerCase().includes(q));
   return `<section class="section"><h2 class="section-title">Kapitel nach BKP</h2><p class="note">Klick legt das Kapitel in der Offerte an.</p>`
     + `<div class="field"><input type="text" id="of-bkpfind" value="${val(bkpFind)}" placeholder="BKP suchen: Nummer oder Text" aria-label="BKP suchen" autocomplete="off" spellcheck="false"></div>`
@@ -84,6 +90,9 @@ export const setBkpFind = (s) => { bkpFind = s; };
 // ---------- Rechts: Kopf und Rechenwerte ----------
 export function panelHTML(of) {
   const t = O.totals(of);
+  if (mode.ro) return `<div class="prop-head"><h2>Offerte${of.nr ? ` ${esc(of.nr)}` : ""}</h2><p>Geteilte Ansicht${mode.prices ? "" : ", ohne Preise"}.</p></div>`
+    + `<section class="section">${[["Version", of.ver], ["Datum", of.datum], ["Gültig bis", of.gueltig], ["Abrechnungsart", O.ARTEN[of.art]], ["Bauart", O.BAUARTEN[of.bau]]].filter(([, v]) => v).map(([l, v]) => `<p class="of-psum">${esc(l)}<b>${esc(v)}</b></p>`).join("")}`
+    + (mode.prices ? `<p class="of-psum">Total inkl. MwSt <b>CHF ${O.fmtChf(t.total)}</b></p>` : "") + `</section>`;
   return `<div class="prop-head"><h2>Offerte</h2><p>Pflicht sind nur Text, Menge und Preis.</p></div>`
     + `<section class="section"><h2 class="section-title">Kopf</h2>${fld("Offertnummer", "o.nr", of.nr)}${fld("Version (Revision, Nachtrag)", "o.ver", of.ver)}${fld("Datum", "o.datum", of.datum)}${fld("Gültig bis", "o.gueltig", of.gueltig, { ph: "z. B. 3 Monate" })}`
     + `${sel("Abrechnungsart", "o.art", O.ARTEN, of.art, "–")}${sel("Bauart", "o.bau", O.BAUARTEN, of.bau, "–")}</section>`

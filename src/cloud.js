@@ -237,10 +237,11 @@ export async function feedbackSend({ shot, ...f }) {
 export const SHARE_ONLINE = "https://krisswi.github.io/elplexaCAD/"; // als lokale Datei (file:) zeigt der Link auf die Online-Adresse
 export const shareUrl = (token) => `${window.location.protocol.startsWith("http") ? window.location.origin + window.location.pathname : SHARE_ONLINE}?teilen=${token}`;
 // gültige Links eines eigenen Online-Projekts, neueste zuerst. null = Anmeldung abgebrochen.
-export const shareList = (projectId) => rest(`project_shares?project_id=eq.${encodeURIComponent(projectId)}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,token,expires_at,modules&order=created_at.desc`);
+export const shareList = (projectId) => rest(`project_shares?project_id=eq.${encodeURIComponent(projectId)}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,token,expires_at,modules,prices&order=created_at.desc`);
 // modules: null = ganzes Projekt, sonst Modul-Kennungen (model.js modOf). Was nicht freigegeben ist, filtert share_open in der Datenbank weg.
-export async function shareCreate(projectId, modules = null) {
-  const r = await rest("project_shares?select=id,token,expires_at,modules", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ project_id: projectId, ...(modules ? { modules } : {}) }) });
+// prices (CJ 26.10.2026): Offerte mit Preisen. EK, Faktor und Zeit entfernt share_open immer (Migration 20261026_share_offerte); ganzes Projekt ohne modules = ohne Offerte.
+export async function shareCreate(projectId, modules = null, prices = false) {
+  const r = await rest("project_shares?select=id,token,expires_at,modules,prices", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ project_id: projectId, ...(modules ? { modules } : {}), ...(prices ? { prices: true } : {}) }) });
   return r?.[0] || null;
 }
 export const shareRevoke = (id) => rest(`project_shares?id=eq.${encodeURIComponent(id)}&select=id`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ revoked_at: new Date().toISOString() }) });
@@ -259,7 +260,7 @@ export async function shareOpen(token) {
       assets[aid] = { name: a.name, type: a.type, data: toBase64(new Uint8Array(await res.arrayBuffer())) };
     }
   }
-  return { doc: { ...r.data, ...(refs.length ? { assets } : {}) }, name: r.name, at: r.updated_at, ablauf: r.ablauf, modules: r.modules || null };
+  return { doc: { ...r.data, ...(refs.length ? { assets } : {}) }, name: r.name, at: r.updated_at, ablauf: r.ablauf, modules: r.modules || null, prices: r.prices === true };
 }
 // Notizen und Markierungen (Meilenstein 2, Schritt 2, 20.10.2026): Tabelle `project_notes`, Empfänger nur über Funktionen mit Schlüssel.
 // guest = Zufallskennung des Browsers (nur «eigene löschen», nie ausgeliefert). Grenzen prüft die Datenbank (Länge, 300 je Link, 30 in 10 min).

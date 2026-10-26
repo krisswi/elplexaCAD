@@ -355,11 +355,14 @@ export function shareFailHTML(grund, msg) {
 // Fenster „Link teilen“ beim Ersteller: gültige Links mit Umfang, Kopieren und Widerrufen, neuer Link. links = [{ id, token, expires_at, modules }] oder null (lädt).
 // pick = null (nur ganzes Projekt, z. B. ein anderes Online-Projekt als das offene) oder { ids, on: Set } = Häkchen je Modul (CJ 18.10.2026). nm(id) = Modulname.
 export function shareDialogHTML(name, links, url, pick, nm) {
-  const scope = (l) => (l.modules ? l.modules.map(nm).join(", ") : "Ganzes Projekt");
+  const scope = (l) => (l.modules ? l.modules.map(nm).join(", ") + (l.modules.some((m) => baseOf(m) === "offerte") ? (l.prices ? " (mit Preisen)" : " (ohne Preise)") : "") : "Ganzes Projekt ohne Offerte");
   const rows = links === null ? `<p class="el-note">Lädt …</p>` : links.length ? links.map((l) => `<div class="el-shrow"><input class="el-shurl" readonly value="${esc(url(l.token))}" aria-label="Link für ${esc(scope(l))}, gültig bis ${fmtDay(l.expires_at)}"><span class="el-shexp">${esc(scope(l))} · bis ${fmtDay(l.expires_at)}</span><button class="btn outline small" data-shcopy="${esc(l.token)}">Kopieren</button><button class="btn outline small el-danger" data-shrev="${esc(l.id)}">Widerrufen</button></div>`).join("")
     : `<p class="el-note">Noch kein gültiger Link.</p>`;
   const boxes = pick && pick.ids.length > 1 ? `<fieldset class="el-shpick"><legend>Neuer Link zeigt</legend>${pick.ids.map((id) => `<label class="chk"><input type="checkbox" data-shmod="${esc(id)}"${pick.on.has(id) ? " checked" : ""}> <span>${esc(nm(id))}</span></label>`).join("")}</fieldset>` : "";
+  // Offerte (CJ 26.10.2026): zusätzlich mit oder ohne Preise; EK, Faktor und Zeit gehen nie mit
+  const offOn = pick && pick.ids.some((id) => baseOf(id) === "offerte" && pick.on.has(id));
+  const prices = offOn ? `<fieldset class="el-shpick"><legend>Offerte</legend><label class="chk"><input type="checkbox" data-shprices${pick.prices ? " checked" : ""}> <span>mit Preisen</span></label><span class="el-note">EK-Preise und Faktor gehen nie mit.</span></fieldset>` : "";
   return `<p>Wer den Link hat, sieht „${esc(name)}“ ohne Login, nur zum Ansehen und für Notizen: den zuletzt online gespeicherten Stand, ohne Zeiterfassung. Ein Link gilt 30 Tage und lässt sich jederzeit widerrufen.</p>
-    <div class="el-shlinks">${rows}</div>${boxes}<div class="actions"><button class="btn outline" data-c>Schliessen</button><button class="btn primary" data-shnew${links === null || (pick && !pick.on.size) ? " disabled" : ""}>Neuen Link erstellen</button></div>`;
+    <div class="el-shlinks">${rows}</div>${boxes}${prices}<div class="actions"><button class="btn outline" data-c>Schliessen</button><button class="btn primary" data-shnew${links === null || (pick && !pick.on.size) ? " disabled" : ""}>Neuen Link erstellen</button></div>`;
 }
 export const shareLoadHTML = () => `<div class="el-hubin el-sharefail"><section class="el-proj" role="status"><span class="el-eye">Geteilte Ansicht</span><p>Das geteilte Projekt wird geladen …</p></section></div>`;

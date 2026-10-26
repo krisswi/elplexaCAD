@@ -1,9 +1,10 @@
--- ENTWURF, nicht angewendet: wartet auf das OK von CJ (Supabase nur nach Rückfrage).
+-- Angewendet am 26.10.2026 mit OK von CJ.
 -- Teilen mit Offerte (CJ 26.10.2026): jedes Modul wird beim Teilen angekreuzt, die Offerte zusätzlich «mit Preisen» oder «ohne Preise».
 -- EK, Faktor, Zeit und Ansatz verlassen die Datenbank nie: share_open entfernt sie, mit Preisen steht nur der Verkaufspreis (EK × Faktor + Zeit × Ansatz) als preis.
 -- Nebenbei: share_mod_of kennt jetzt prinzip, plan und offerte (vorher landeten diese Blätter unter «schema»).
 
 alter table public.project_shares add column if not exists prices boolean not null default false;
+grant insert (prices), select (prices) on public.project_shares to authenticated; -- Rechte sind je Spalte vergeben
 
 create or replace function public.share_mod_of(sh jsonb)
  returns text language sql immutable set search_path to ''
@@ -16,20 +17,39 @@ $function$;
 
 -- Offerte für den Teilen-Link: ohne EK, Faktor, Zeit, Ansatz; ohne Preise auch ohne Preise, Rabatte und MwSt
 create or replace function public.share_offer_strip(sh jsonb, prices boolean)
- returns jsonb language sql immutable set search_path to ''
+ returns jsonb language plpgsql immutable set search_path to ''
 as $function$
-  select case when sh->>'kind' is distinct from 'offerte' or jsonb_typeof(sh->'of') <> 'object' then sh else
-    jsonb_set(sh, '{of}', ((sh->'of') - array['fak', 'ansatz'] - case when prices then array[]::text[] else array['rabatt', 'skonto', 'skTage', 'mwst', 'rg'] end)
-      || jsonb_build_object('kap', (select coalesce(jsonb_agg(k || jsonb_build_object('grp', (select coalesce(jsonb_agg(g || jsonb_build_object('pos', (select coalesce(jsonb_agg(
-           case when prices then (p - array['ek', 'fak', 'std']) || jsonb_build_object('preis', coalesce((p->>'preis')::numeric,
-                  case when p->>'typ' = 'regie' then 0 else coalesce((p->>'ek')::numeric, 0) * coalesce((p->>'fak')::numeric, (sh->'of'->>'fak')::numeric, 1.4) end
-                  + coalesce((p->>'std')::numeric, 0) * coalesce((sh->'of'->>'ansatz')::numeric, 0)))
-                else p - array['ek', 'fak', 'std', 'preis'] end order by pi), '[]'::jsonb)
-           from jsonb_array_elements(coalesce(g->'pos', '[]'::jsonb)) with ordinality as pp(p, pi)))) order by gi), '[]'::jsonb)
-           from jsonb_array_elements(coalesce(k->'grp', '[]'::jsonb)) with ordinality as gg(g, gi)))) order by ki), '[]'::jsonb)
-           from jsonb_array_elements(coalesce(sh->'of'->'kap', '[]'::jsonb)) with ordinality as kk(k, ki))))
-  end
+declare
+  o jsonb; kap jsonb := '[]'; k jsonb; grp jsonb; g jsonb; pos jsonb; p jsonb; ep numeric;
+begin
+  if sh->>'kind' is distinct from 'offerte' or jsonb_typeof(sh->'of') is distinct from 'object' then return sh; end if;
+  o := sh->'of';
+  for k in select value from jsonb_array_elements(case when jsonb_typeof(o->'kap') = 'array' then o->'kap' else '[]' end) where jsonb_typeof(value) = 'object' loop
+    grp := '[]';
+    for g in select value from jsonb_array_elements(case when jsonb_typeof(k->'grp') = 'array' then k->'grp' else '[]' end) where jsonb_typeof(value) = 'object' loop
+      pos := '[]';
+      for p in select value from jsonb_array_elements(case when jsonb_typeof(g->'pos') = 'array' then g->'pos' else '[]' end) where jsonb_typeof(value) = 'object' loop
+        if prices then -- Verkaufspreis wie in der App (offerte.js unitRaw): Preis von Hand, sonst EK × Faktor + Zeit × Ansatz, Regie nur Zeit × Ansatz
+          ep := case when jsonb_typeof(p->'preis') = 'number' then (p->>'preis')::numeric else
+                  (case when p->>'typ' = 'regie' then 0 else (case when jsonb_typeof(p->'ek') = 'number' then (p->>'ek')::numeric else 0 end)
+                     * coalesce(case when jsonb_typeof(p->'fak') = 'number' then (p->>'fak')::numeric end, case when jsonb_typeof(o->'fak') = 'number' then (o->>'fak')::numeric end, 1.4) end)
+                  + (case when jsonb_typeof(p->'std') = 'number' then (p->>'std')::numeric else 0 end) * (case when jsonb_typeof(o->'ansatz') = 'number' then (o->>'ansatz')::numeric else 0 end) end;
+          p := (p - array['ek', 'fak', 'std']) || jsonb_build_object('preis', ep);
+        else
+          p := p - array['ek', 'fak', 'std', 'preis'];
+        end if;
+        pos := pos || jsonb_build_array(p);
+      end loop;
+      grp := grp || jsonb_build_array(g || jsonb_build_object('pos', pos));
+    end loop;
+    kap := kap || jsonb_build_array(k || jsonb_build_object('grp', grp));
+  end loop;
+  o := o - array['fak', 'ansatz'] - (case when prices then array[]::text[] else array['rabatt', 'skonto', 'skTage', 'mwst', 'rg'] end);
+  return sh || jsonb_build_object('of', o || jsonb_build_object('kap', kap));
+end;
 $function$;
+
+revoke execute on function public.share_offer_strip(jsonb, boolean) from public, anon, authenticated; -- nur für share_open (security definer)
 
 -- share_open wie bisher, dazu: Offerte nur, wenn angekreuzt (ganzes Projekt = ohne Offerte), immer durch share_offer_strip; Rückgabe prices
 create or replace function public.share_open(p_token text)

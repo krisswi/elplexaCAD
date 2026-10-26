@@ -15,17 +15,19 @@ const X = (cx, cy, s) => [L(cx - s, cy - s, cx + s, cy + s), L(cx - s, cy + s, c
 
 // ---------- Schalter 5.140: Kreis, Hebel nach rechts oben, Querstrich(e) am Ende ----------
 // Kreis über der Wand (Höhe cy); Sch. 3 und 6 höher, damit die Hebel nach unten nicht in die Wand ragen
-const SC = [0, 2.2], SR = 1, CY3 = 2.5, CY6 = 3.1;
+// CJ 27.10.2026: Schalter wirkten kleiner als Steckdosen. Kreis neu so breit wie der Bogen der Steckdose (r 1,5 statt 1), Hebel 2,2 mm über den Kreis
+// hinaus wie bisher; Abstand des Kreises zur Wand 0,7 mm (Mitte gleich), Sch. 3 und 6 entsprechend höher.
+const SC = [0, 2.2], SR = 1.5, LEV = 3.7, CY3 = 2.9, CY6 = 3.5; // LEV = SR + 2.2 (als Zahl, sonst bleibt die Rechnung im v3-Bau)
 const dir = (deg) => [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
 // out: Querstrich waagrecht nach aussen statt quer zum Hebel (Sch. 6, CJ 26.10.2026: gespiegelt wie die Quelle, nicht im Kreis gedreht)
-function lever(deg = 45, ticks = 1, cy = SC[1], len = 3.2, out0 = false) {
+function lever(deg = 45, ticks = 1, cy = SC[1], len = LEV, out0 = false) {
   const u = dir(deg), t = out0 ? [Math.sign(u[0]), 0] : dir(deg - 90), out = [L(u[0] * SR, cy + u[1] * SR, u[0] * len, cy + u[1] * len)];
   for (let i = 0; i < ticks; i++) { const s = len - i * 0.55, p = [u[0] * s, cy + u[1] * s]; out.push(L(p[0], p[1], p[0] + t[0] * 0.9, p[1] + t[1] * 0.9)); }
   return out;
 }
 const sw = (extra = [], cy = SC[1]) => [C(SC[0], cy, SR), ...extra];
 // Aufputz: rechte Hälfte des Kreises gefüllt wie die Quelle (CJ 26.10.2026; Feld «Aufputz»)
-const apHalf = (cy) => ["p", `M0,${cy + SR}A1 1 0 0 0 0,${cy - SR}Z`, true];
+const apHalf = (cy, r = SR) => ["p", `M0,${cy + r}A${r} ${r} 0 0 0 0,${cy - r}Z`, true];
 const lpt = (deg, t, cy) => { const u = dir(deg); return [u[0] * t, cy + u[1] * t]; };
 const tri = (a, b, c, fill = false) => ["p", `M${[a, b, c].map((p) => p.map(r3).join(",")).join("L")}Z`, fill];
 const add2 = (p, x, y) => [p[0] + x, p[1] + y];
@@ -77,18 +79,18 @@ const seg45 = (t0, t1) => L(...at45(t0), ...at45(t1));
 // pin = [cx, cy, r]: vier Fangpunkte für Leitungen oben, rechts, unten, links am Rand (Schalter: Kreis, Steckdosen: Bogen; CJ 26.10.2026).
 // edge = [x0, y0, x1, y1]: Fang auf allen Seiten des Kastens (Abzweigdose). Ohne beides fängt die Leitung an der Mitte c.
 // c = Mitte (Treffer, Fang); Schalter: Mitte des Kreises (CJ 26.10.2026: vorher [0, 2], Leitung rastete 0,2 mm Papier unter dem Kreis ein)
-const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (group === "Schalter" ? [0, o.cy ?? SC[1]] : o.wall ? [0, 2] : [0, 0]), pin: o.pin ?? (group === "Schalter" ? [0, o.cy ?? SC[1], SR] : group === "Steckdosen" ? [0, 3.9, 1.5] : null), edge: o.edge ?? null, r: o.r ?? 2.6, ref: !!o.ref });
+const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (group === "Schalter" ? [0, o.cy ?? SC[1]] : o.wall ? [0, 2] : [0, 0]), pin: o.pin ?? (group === "Schalter" ? [0, o.cy ?? SC[1], SR] : group === "Steckdosen" ? [0, 3.9, 1.5] : null), edge: o.edge ?? null, r: o.r ?? (group === "Schalter" ? 3 : 2.6), ref: !!o.ref });
 // Tabellen als /* @__PURE__ */-Aufrufe: so fallen sie im SchemaCAD-Bau ganz weg (v3 byte-gleich), obwohl plan.js sie importiert
 export const PLAN_SYMS = /* @__PURE__ */ (() => [
   // Schalter (Unterputz; Aufputz über Feld)
   S("SCH0", "Schalter Sch. 0, 1-polig", "licht", "Schalter", sw(lever()), { wall: true, h: 110, ap: true }),
   S("SCH0_2", "Schalter Sch. 0, 2-polig", "licht", "Schalter", sw(lever(45, 2)), { wall: true, h: 110, ap: true }),
-  S("SCH3", "Schalter Sch. 3 (Wechsel)", "licht", "Schalter", sw([...lever(45, 1, CY3), ...lever(225, 1, CY3)], CY3), { wall: true, h: 110, ap: true, cy: CY3, c: [0, CY3], r: 3 }),
-  S("SCH6", "Schalter Sch. 6 (Kreuz)", "licht", "Schalter", sw([45, 135, 225, 315].flatMap((d) => lever(d, 1, CY6, 3.2, true)), CY6), { wall: true, h: 110, ap: true, cy: CY6, c: [0, CY6], r: 3.3 }),
-  S("TASTER", "Drucktaster", "licht", "Schalter", sw([L(0.71, 2.91, 2.4, 4.6), L(1.8, 5.2, 3, 4)]), { wall: true, h: 110, ap: true }),
-  S("DIMMER", "Lichtregler (Dimmer)", "licht", "Schalter", sw([...lever(45, 0), (() => { const a = lpt(45, 1.7, SC[1]); return tri(a, add2(a, 1.6, 0.8), add2(a, 1.6, 0)); })()]), { wall: true, h: 110, ap: true }),
-  S("STOREN", "Storenschalter", "kraft", "Schalter", sw([...lever(45, 0), ...(() => { const e = lpt(45, 3.2, SC[1]); return [tri(add2(e, -0.65, 0.95), add2(e, 0.35, 0.95), add2(e, -0.15, 0.15)), tri(add2(e, 0.35, -0.45), add2(e, 1.35, -0.45), add2(e, 0.85, 0.35))]; })()]), { wall: true, h: 110, ap: true }),
-  S("SCH_LAMPE", "Schalter mit Signallampe", "licht", "Schalter", sw([...X(SC[0], SC[1], 0.7), ...lever()]), { wall: true, h: 110 }),
+  S("SCH3", "Schalter Sch. 3 (Wechsel)", "licht", "Schalter", sw([...lever(45, 1, CY3), ...lever(225, 1, CY3)], CY3), { wall: true, h: 110, ap: true, cy: CY3, c: [0, CY3], r: 3.6 }),
+  S("SCH6", "Schalter Sch. 6 (Kreuz)", "licht", "Schalter", sw([45, 135, 225, 315].flatMap((d) => lever(d, 1, CY6, LEV, true)), CY6), { wall: true, h: 110, ap: true, cy: CY6, c: [0, CY6], r: 3.9 }),
+  S("TASTER", "Drucktaster", "licht", "Schalter", sw((() => { const a = lpt(45, SR, SC[1]), e = lpt(45, SR + 2.4, SC[1]); return [L(...a, ...e), L(e[0] - 0.6, e[1] + 0.6, e[0] + 0.6, e[1] - 0.6)]; })()), { wall: true, h: 110, ap: true }),
+  S("DIMMER", "Lichtregler (Dimmer)", "licht", "Schalter", sw([...lever(45, 0), (() => { const a = lpt(45, SR + 0.7, SC[1]); return tri(a, add2(a, 1.6, 0.8), add2(a, 1.6, 0)); })()]), { wall: true, h: 110, ap: true }),
+  S("STOREN", "Storenschalter", "kraft", "Schalter", sw([...lever(45, 0), ...(() => { const e = lpt(45, LEV, SC[1]); return [tri(add2(e, -0.65, 0.95), add2(e, 0.35, 0.95), add2(e, -0.15, 0.15)), tri(add2(e, 0.35, -0.45), add2(e, 1.35, -0.45), add2(e, 0.85, 0.35))]; })()]), { wall: true, h: 110, ap: true }),
+  S("SCH_LAMPE", "Schalter mit Signallampe", "licht", "Schalter", sw([...X(SC[0], SC[1], SR * 0.7), ...lever()]), { wall: true, h: 110 }),
   // Steckdosen
   S("STD", "Steckdose T13 (Schutzkontakt)", "kraft", "Steckdosen", SOCK(), { wall: true, h: 30, ap: apSock() }),
   S("STD2", "Steckdose 2-fach", "kraft", "Steckdosen", [...SOCK(), ...multi("2")], { wall: true, h: 30, ap: apSock() }),
@@ -98,7 +100,7 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("STD_USB", "Steckdose T13 mit USB", "kraft", "Steckdosen", [...SOCK(), ...multi("2"), T(0, 5.1, 1.1, "T13"), L(-0.85, 3.35, 0.75, 3.35), C(-0.85, 3.35, 0.18, true), tri([0.75, 3.12], [1.1, 3.35], [0.75, 3.58], true), L(-0.35, 3.35, -0.1, 3.7), L(-0.1, 3.7, 0.3, 3.7), L(0.05, 3.35, 0.3, 3.05), L(0.3, 3.05, 0.55, 3.05)], { wall: true, h: 30, ap: apSock() }),
   S("STD_BODEN", "Bodensteckdose", "kraft", "Steckdosen", [...box(-1.8, -1.8, 1.8, 1.8), ...SOCK(0.75, -1.4625)], { pin: [0, 0, 1.8] }), // Steckdose mittig im Kasten (CJ 26.10.2026)
   // KOMBI wie Quelle: Schalterkreis an der Wand, kurzer Stiel (halb so lang) zur Steckdose, Hebel waagrecht mit Querstrich zum Raum
-  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [C(0, 1.2, SR), L(0, 2.2, 0, 3.4), L(-1.5, 3.4, 1.5, 3.4), ["p", "M-1.5,4.9A1.5 1.5 0 0 1 1.5,4.9", false], L(0.95, 1.5, 2.6, 1.5), L(2.6, 1.5, 2.6, 2.3)], { pin: [0, 4.9, 1.5], wall: true, h: 110, ap: apHalf(1.2), c: [0, 2.6], r: 3 }),
+  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [C(0, 1.2, 1), L(0, 2.2, 0, 3.4), L(-1.5, 3.4, 1.5, 3.4), ["p", "M-1.5,4.9A1.5 1.5 0 0 1 1.5,4.9", false], L(0.95, 1.5, 2.6, 1.5), L(2.6, 1.5, 2.6, 2.3)], { pin: [0, 4.9, 1.5], wall: true, h: 110, ap: apHalf(1.2, 1), c: [0, 2.6], r: 3 }),
   // Leuchten
   S("LEUCHTE", "Leuchte an Decke", "licht", "Leuchten", X(0, 0, 1.4), { r: 2 }),
   S("LEUCHTE_EB", "Einbauleuchte an Decke", "licht", "Leuchten", [C(0, 0, 1.7), ...X(0, 0, 1.2)], { r: 2 }),

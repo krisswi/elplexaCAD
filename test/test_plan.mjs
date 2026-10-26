@@ -320,7 +320,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.strictEqual(tx({ key: "VERWEIS", r: 180, fu: "F3", nr: "2" })[0].a, 0, "Verweis F3 / 2 nie auf dem Kopf");
   // Schalterhebel ragen nicht in die Wand (y ≥ 0), Aufputz-Halbkreis passt zum Kreis
   for (const d of S2.PLAN_SYMS.filter((x) => x.wall)) assert.ok(d.parts.filter((q) => q[0] === "l").every((q) => q[2] >= -1e-9 && q[4] >= -1e-9), `${d.key}: nichts unter der Wandfläche`);
-  for (const k of ["SCH3", "SCH6"]) { const d = S2.SYM_BY_KEY.get(k), c = d.parts.find((q) => q[0] === "c"); assert.ok(d.ap[1] === `M0,${c[2] + 1}A1 1 0 0 0 0,${c[2] - 1}Z` && d.c[1] === c[2], `${k}: Aufputz (rechte Hälfte) und Mitte am Kreis`); }
+  for (const k of ["SCH3", "SCH6"]) { const d = S2.SYM_BY_KEY.get(k), c = d.parts.find((q) => q[0] === "c"); assert.ok(d.ap[1] === `M0,${c[2] + c[3]}A${c[3]} ${c[3]} 0 0 0 0,${c[2] - c[3]}Z` && d.c[1] === c[2], `${k}: Aufputz (rechte Hälfte) und Mitte am Kreis`); }
 }
 
 // ---------- Schritt 3: Leitungen, Farben, Mehrfachwahl (CJ 24.10.2026) ----------
@@ -454,7 +454,10 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   near(P.symCenter({ key: "SCH0", at: [1000, 0], r: 90 }, 50), [1000 - 2.2 * 50, 0], "Schalter gedreht: Mitte mitgedreht");
   // Schalter und Steckdosen: vier Fangpunkte oben, rechts, unten, links am Rand (Kreis bzw. Bogen), drehen mit R
   const sw = P.symSnaps({ key: "SCH0", at: [1000, 0], r: 0 }, 50);
-  assert.deepStrictEqual(sw, { pts: [[1000, 160], [1050, 110], [1000, 60], [950, 110]], segs: [] }, "Schalter: vier Punkte am Kreis (r 1 mm × 50)");
+  assert.deepStrictEqual(sw, { pts: [[1000, 185], [1075, 110], [1000, 35], [925, 110]], segs: [] }, "Schalter: vier Punkte am Kreis (r 1,5 mm × 50, CJ 27.10.2026)");
+  // Schalter so gross wie Steckdosen (CJ 27.10.2026): Kreis so breit wie der Bogen, alle Schalter-Varianten gleich, KOMBI bleibt
+  for (const d of S2.PLAN_SYMS.filter((x) => x.group === "Schalter")) { const c = d.parts.find((q) => q[0] === "c"); assert.ok(c[3] === 1.5 && d.pin[2] === 1.5 && (!d.ap || d.ap[1].includes("A1.5 1.5")), `${d.key}: Kreis, Fang und Aufputz r 1,5`); }
+  assert.strictEqual(S2.SYM_BY_KEY.get("KOMBI").parts.find((q) => q[0] === "c")[3], 1, "KOMBI (Steckdosen) unverändert");
   const sw90 = P.symSnaps({ key: "SCH0", at: [1000, 0], r: 90 }, 50);
   sw90.pts.forEach((q, i) => near(q, [1000 - (sw.pts[i][1] - 0), sw.pts[i][0] - 1000], `Schalter um 90° gedreht, Punkt ${i}`));
   const so = P.symSnaps({ key: "STD", at: [0, 0], r: 0 }, 50);
@@ -467,7 +470,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(P.snapPlan({}, [], [30, 80], { grid: 10, tol: 20, segs: ab.segs }), { x: 30, y: 75, snap: "edge" }, "Leitung rastet auf der oberen Seite");
   assert.deepStrictEqual(P.snapPlan({}, [], [-90, -20], { grid: 10, tol: 20, segs: ab.segs }), { x: -75, y: -20, snap: "edge" }, "… und auf der linken");
   assert.deepStrictEqual(P.snapPlan({}, [], [0, 0], { grid: 10, tol: 20, segs: ab.segs }), { x: 0, y: 0, snap: "grid" }, "Mitte der Dose: Raster");
-  assert.deepStrictEqual(P.snapPlan({}, [], [1008, 150], { grid: 10, tol: 20, extra: sw.pts }), { x: 1000, y: 160, snap: "end" }, "Leitung rastet am oberen Fangpunkt des Schalters");
+  assert.deepStrictEqual(P.snapPlan({}, [], [1008, 175], { grid: 10, tol: 20, extra: sw.pts }), { x: 1000, y: 185, snap: "end" }, "Leitung rastet am oberen Fangpunkt des Schalters");
 }
 // ---------- Textgrösse gesamt und einzeln (CJ 27.10.2026) ----------
 {

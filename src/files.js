@@ -78,6 +78,7 @@ export function makeFiles(c) {
     if (S.model.kind === "pv" || S.model.kind === "pvtab") { toast("DXF für Stringpläne kommt später."); return; }
     if (ELPLEXA && S.model.kind === "plan") { toast("DXF für den Plan kommt später."); return; }
     if (S.model.kind === "prinzip") { toast("DXF fürs Prinzipschema kommt später. PDF: Exportieren → PDF."); return; }
+    if (S.model.kind === "offerte") { toast("Eine Offerte hat kein DXF. PDF und Excel der Offerte kommen in einem späteren Schritt."); return; }
     if (T.isDeck(S.model)) { toast("DXF für Titelseite und Inhaltsverzeichnis kommt später. Sie sind im PDF enthalten."); return; }
     let text;
     try { text = exportDxf(S.model); } catch (err) { toast("Der DXF-Export ist fehlgeschlagen: " + (err.message || err) + ". Speichere das Blatt als JSON und melde den Fehler.", "error"); return; }
@@ -97,6 +98,7 @@ export function makeFiles(c) {
     closeEditor(true);
     const pick = only === null ? null : new Set(Array.isArray(only) ? only : [only]);
     const pages = S.doc.sheets.map((sh, i) => [sh, i]).filter(([sh]) => !pick || pick.has(sh)).flatMap(([sh, i]) => {
+      if (sh.kind === "offerte") return []; // Offerte: PDF kommt mit Schritt 5
       if (sh.kind === "pv" || sh.kind === "pvtab") return pv.printPages(sh, i);
       if (sh.kind === "legend") return L.printPages(S.doc, sh); // A4 hoch
       if (ELPLEXA && sh.kind === "plan") return S.planPages(sh, i); // Plan und Stückliste (planedit.js, Schritt 4)
@@ -161,7 +163,7 @@ export function makeFiles(c) {
     closeEditor(true);
     const files = [];
     try {
-      S.doc.sheets.forEach((sh, i) => (!ELPLEXA || sh.kind !== "plan") && sh.kind !== "pv" && sh.kind !== "pvtab" && sh.kind !== "prinzip" && !T.isDeck(sh) && files.push([`${baseName()}_${sh.kind === "dispo" ? "Dispo" : "Blatt"}-${safeName(String(sh.meta.BLATT || i + 1))}.dxf`, exportDxf(sh)]));
+      S.doc.sheets.forEach((sh, i) => (!ELPLEXA || sh.kind !== "plan") && sh.kind !== "pv" && sh.kind !== "pvtab" && sh.kind !== "prinzip" && sh.kind !== "offerte" && !T.isDeck(sh) && files.push([`${baseName()}_${sh.kind === "dispo" ? "Dispo" : "Blatt"}-${safeName(String(sh.meta.BLATT || i + 1))}.dxf`, exportDxf(sh)]));
     } catch (err) { toast("Der DXF-Export ist fehlgeschlagen: " + (err.message || err), "error"); return; }
     // Ordner wählen. Chrome sperrt in der Ordnerwahl Systemordner (z. B. ~/Library und damit iCloud Drive) und meldet
     // „Dieser Ordner kann nicht geöffnet werden“; die App erfährt nur „abgebrochen“. Darum danach immer die ZIP anbieten.

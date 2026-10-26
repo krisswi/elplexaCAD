@@ -11,6 +11,7 @@ export const MODULES = [
   { id: "pv", label: "PV-Stringplan", short: "PV", sub: "Strangplan auf dem Dachplan", color: "#d4a900" },
   { id: "plan", label: "Plan", sub: "Installationsplan auf dem Grundriss", color: "#b45309", later: true },
   { id: "prinzip", label: "Prinzipschema", sub: "Einpolig: Verteilungen, Abgänge, Erdung", color: "#7a4fb0" }, // seit 21.10.2026 (prinzip.js)
+  { id: "offerte", label: "Offerte", sub: "Positionen nach BKP, Schlusssumme mit MwSt", color: "#0f766e" }, // seit 26.10.2026 (offerte.js, offedit.js)
   // Legende (CJ 21.10.2026): eigenes Modul, entsteht mit dem Schema, nicht anlegen, kopieren oder löschen; im PDF nur beim Gesamt-PDF aller Blätter
   { id: "legende", label: "Legende", sub: "Sicherungslegende aus den Schemablättern", color: "#5b6b7c", auto: true },
 ];
@@ -42,7 +43,7 @@ export function modStatusMenuHTML(doc, id) {
 export const tileId = (id) => `el-tile-${String(id).replace(":", "-")}`;
 export const modIdx = (doc, id) => doc.sheets.map((sh, i) => (moduleOf(sh) === id ? i : -1)).filter((i) => i >= 0);
 // Neues Blatt im Modul: welche Einträge des Plus-Menüs (data-new) dazugehören
-export const ADD_KINDS = { schema: ["sheet", "deck"], dispo: ["dispo"], pv: ["pv", "pvtab"], prinzip: ["prinzip"], legende: ["sheet"] }; // Legende: Plus gibt ein Schemablatt
+export const ADD_KINDS = { schema: ["sheet", "deck"], dispo: ["dispo"], pv: ["pv", "pvtab"], prinzip: ["prinzip"], offerte: ["offerte"], legende: ["sheet"] }; // Legende: Plus gibt ein Schemablatt
 
 const dot = (m) => `<span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>`;
 
@@ -121,7 +122,7 @@ export function hubHTML(doc, o) {
   const fileHint = o.file && o.suggest !== o.file ? `<p class="el-note">Datei: ${esc(o.file)}. Speichern unter (⇧⌘S) schlägt „${esc(o.suggest)}“ vor.</p>` : "";
   const tiles = modIds(doc).map((id, n) => { // Taste N = N-te Kachel (CJ 20.10.2026, nur in der Übersicht), bis 9
     const m = modById(id), idx = modIdx(doc, id);
-    return `<button class="el-tile" id="${tileId(id)}"${ro ? "" : ` draggable="true"`} data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${ro ? "" : modPill(doc, id, true)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
+    return `<button class="el-tile" id="${tileId(id)}"${ro ? "" : ` draggable="true"`} data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${ro ? "" : modPill(doc, id, true)}${ro || baseOf(id) === "offerte" ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
   }).join("");
   // Pfad, Reiter und Zeit-Chip stehen seit Paket C in der Kopfleiste (Zeile 1 Projekte und Zeit, Zeile 2 Tabs und «Heute X h»)
   const sub = "";
@@ -140,7 +141,7 @@ export function hubHTML(doc, o) {
     ${ro ? sharedHTML(o.shared) : o.projs?.user ? `<section class="el-projs" aria-label="Online"><div id="el-online" class="el-online"></div></section>` : ""}</div>
     <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
       ${ro || typeof ELPLEXA === "undefined" || !ELPLEXA ? "" : `<button class="el-tile el-hand" id="el-hand" data-elact="hand" title="Handschrift mit dem Apple Pencil. Privat auf diesem Gerät, nicht im Projekt und nicht im Teilen-Link"><span class="el-th"><span class="el-tn">Handnotizen</span></span><span class="el-ts">Mit dem Stift schreiben · PDF und Bilder importieren und exportieren</span></button>`}
-      ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">${typeof ELPLEXA !== "undefined" && ELPLEXA ? "Schema, Disposition, PV, Prinzipschema, Plan" : "Schema, Disposition, PV, Prinzipschema · Plan später"}</span></button>`}</div>
+      ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">${typeof ELPLEXA !== "undefined" && ELPLEXA ? "Schema, Disposition, PV, Prinzipschema, Plan, Offerte" : "Schema, Disposition, PV, Prinzipschema, Offerte · Plan später"}</span></button>`}</div>
       ${ro || o.tip === false ? `<p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p>` : ""}</section>
     ${ro ? "" : timeHTML(doc, o.today)}</div></div>${tip}`;
 }
@@ -354,11 +355,14 @@ export function shareFailHTML(grund, msg) {
 // Fenster „Link teilen“ beim Ersteller: gültige Links mit Umfang, Kopieren und Widerrufen, neuer Link. links = [{ id, token, expires_at, modules }] oder null (lädt).
 // pick = null (nur ganzes Projekt, z. B. ein anderes Online-Projekt als das offene) oder { ids, on: Set } = Häkchen je Modul (CJ 18.10.2026). nm(id) = Modulname.
 export function shareDialogHTML(name, links, url, pick, nm) {
-  const scope = (l) => (l.modules ? l.modules.map(nm).join(", ") : "Ganzes Projekt");
+  const scope = (l) => (l.modules ? l.modules.map(nm).join(", ") + (l.modules.some((m) => baseOf(m) === "offerte") ? (l.prices ? " (mit Preisen)" : " (ohne Preise)") : "") : "Ganzes Projekt ohne Offerte");
   const rows = links === null ? `<p class="el-note">Lädt …</p>` : links.length ? links.map((l) => `<div class="el-shrow"><input class="el-shurl" readonly value="${esc(url(l.token))}" aria-label="Link für ${esc(scope(l))}, gültig bis ${fmtDay(l.expires_at)}"><span class="el-shexp">${esc(scope(l))} · bis ${fmtDay(l.expires_at)}</span><button class="btn outline small" data-shcopy="${esc(l.token)}">Kopieren</button><button class="btn outline small el-danger" data-shrev="${esc(l.id)}">Widerrufen</button></div>`).join("")
     : `<p class="el-note">Noch kein gültiger Link.</p>`;
   const boxes = pick && pick.ids.length > 1 ? `<fieldset class="el-shpick"><legend>Neuer Link zeigt</legend>${pick.ids.map((id) => `<label class="chk"><input type="checkbox" data-shmod="${esc(id)}"${pick.on.has(id) ? " checked" : ""}> <span>${esc(nm(id))}</span></label>`).join("")}</fieldset>` : "";
+  // Offerte (CJ 26.10.2026): zusätzlich mit oder ohne Preise; EK, Faktor und Zeit gehen nie mit
+  const offOn = pick && pick.ids.some((id) => baseOf(id) === "offerte" && pick.on.has(id));
+  const prices = offOn ? `<fieldset class="el-shpick"><legend>Offerte</legend><label class="chk"><input type="checkbox" data-shprices${pick.prices ? " checked" : ""}> <span>mit Preisen</span></label><span class="el-note">EK-Preise und Faktor gehen nie mit.</span></fieldset>` : "";
   return `<p>Wer den Link hat, sieht „${esc(name)}“ ohne Login, nur zum Ansehen und für Notizen: den zuletzt online gespeicherten Stand, ohne Zeiterfassung. Ein Link gilt 30 Tage und lässt sich jederzeit widerrufen.</p>
-    <div class="el-shlinks">${rows}</div>${boxes}<div class="actions"><button class="btn outline" data-c>Schliessen</button><button class="btn primary" data-shnew${links === null || (pick && !pick.on.size) ? " disabled" : ""}>Neuen Link erstellen</button></div>`;
+    <div class="el-shlinks">${rows}</div>${boxes}${prices}<div class="actions"><button class="btn outline" data-c>Schliessen</button><button class="btn primary" data-shnew${links === null || (pick && !pick.on.size) ? " disabled" : ""}>Neuen Link erstellen</button></div>`;
 }
 export const shareLoadHTML = () => `<div class="el-hubin el-sharefail"><section class="el-proj" role="status"><span class="el-eye">Geteilte Ansicht</span><p>Das geteilte Projekt wird geladen …</p></section></div>`;

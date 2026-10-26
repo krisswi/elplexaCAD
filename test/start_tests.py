@@ -19,7 +19,7 @@ with sync_playwright() as p:
     D = lambda: page.evaluate("window.__schemacad.doc")
     kind = lambda: page.evaluate("window.__schemacad.kind")
     page.goto(URL); page.wait_for_timeout(300)
-    check("Startauswahl erscheint beim Öffnen", page.is_visible(".modal.start") and page.locator(".start-tile").count() == 3)
+    check("Startauswahl erscheint beim Öffnen", page.is_visible(".modal.start") and page.locator(".start-tile").count() == 4)  # Schema, Disposition, Stringplan, Offerte (26.10.2026)
     page.screenshot(path=str(OUT / "s1_start.png"))
     page.keyboard.press("Escape"); page.wait_for_timeout(100)
     check("Abbrechen lässt das leere Schemablatt stehen", kind() == "schema" and len(D()["sheets"]) == 4 and len(D()["sheets"][2]["items"]) > 0)

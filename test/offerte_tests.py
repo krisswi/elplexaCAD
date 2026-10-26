@@ -1,5 +1,5 @@
 # UI-Tests für das Modul Offerte (Schritt 1, CJ 26.10.2026) in SchemaCAD v3 und elplexaCAD. Aufruf: python3 test/offerte_tests.py [Ausgabeordner]
-# Kapitel aus dem BKP-Katalog, Position per Tastatur (Tab), Summen mit Rundung, Option, Rabatt, Rückgängig, Datei Version 25.
+# Kapitel aus dem BKP-Katalog, Position per Tastatur (Tab), Summen mit Rundung, Option, Rabatt, Rückgängig, Datei Version 25, Absender aus dem Firmenprofil (Schritt 2).
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -38,6 +38,12 @@ def flow(page, tag):
     check(f"{tag}: Rückgängig nimmt den Rabatt zurück", txt(".of-total").endswith("189.60"), txt(".of-total"))
     d = D()
     check(f"{tag}: Datei Version 25", d["version"] == 25 and off(d)["of"]["rabatt"] == 0, d["version"])
+    # Schritt 2: Absender aus dem Firmenprofil (gilt für alle Module, beide Stände)
+    check(f"{tag}: Absender ohne Profil", "Noch kein Firmenprofil" in page.inner_text("#right"))
+    page.click('[data-ofact="profil"]'); page.wait_for_timeout(150)
+    page.fill('.modal [data-pf="FIRMA"]', "Muster Elektro"); page.fill('.modal [data-pf="TEL"]', "031 000 00 00"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
+    check(f"{tag}: Absender zeigt das Profil", "Muster Elektro" in page.inner_text(".of-sender") and "031 000 00 00" in page.inner_text(".of-sender"))
+    check(f"{tag}: Profil im Browser gespeichert", page.evaluate("JSON.parse(localStorage.getItem('schemacad.user.profil.v1')).data.FIRMA") == "Muster Elektro")
     page.screenshot(path=str(OUT / f"{tag}.png"))
 
 with sync_playwright() as p:

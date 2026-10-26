@@ -53,7 +53,7 @@ with sync_playwright() as p:
     d = D()
     check("Projektangaben gelten für alle Blätter", all(s["meta"]["OBJEKT"] == "EFH Sonnenweg 3" and s["meta"]["AUFTRAG"] == "A-2026-17" for s in d["sheets"]))
     check("Bauherr und Firma auf der Titelseite", d["sheets"][0]["info"]["BAUHERR_ADR"] == "Sonnenweg 3\n3000 Bern" and "Familie Muster" in page.text_content("#sheet") and "Werkstrasse 1" in page.text_content("#sheet"))
-    check("Firma in der App gemerkt", json.loads(page.evaluate("localStorage.getItem('schemacad.firma.v1')"))["FIRMA"] == "Elektro CJ")
+    check("Firma im Firmenprofil gemerkt (Offerte Schritt 2)", json.loads(page.evaluate("localStorage.getItem('schemacad.user.profil.v1')"))["data"]["FIRMA"] == "Elektro CJ")
     # Änderungsindex
     page.click('[data-deck="addrev"]'); page.wait_for_timeout(80)
     fill('input[data-rev="0:t"]', "Erstausgabe")

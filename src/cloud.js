@@ -10,12 +10,12 @@ const SESSION_KEY = "schemacad.cloud.v1";
 
 let sess = null;
 try { sess = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { /* ohne Speicher: Anmeldung gilt nur bis zum Schliessen */ }
-let onSession = null; // elplexaCAD: Konto-Kreis neu zeichnen, wenn sich die Anmeldung ändert (Fenster, abgelaufen, Abmelden im Katalog)
-export const cloudOnSession = (fn) => { onSession = fn; };
+const onSession = []; // Anmeldung geändert (Fenster, abgelaufen, Abmelden im Katalog): elplexaCAD zeichnet den Konto-Kreis neu, beide Stände gleichen das Profil ab
+export const cloudOnSession = (fn) => { onSession.push(fn); };
 function keep(s) {
   sess = s;
   try { if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); } catch { /* ohne Speicher weiterarbeiten */ }
-  try { onSession?.(); } catch { /* Anzeige darf die Anmeldung nicht stören */ }
+  for (const fn of onSession) try { fn(); } catch { /* Anzeige darf die Anmeldung nicht stören */ }
 }
 
 async function call(path, opt = {}) {
@@ -97,6 +97,22 @@ export async function cloudMenu(table, what, items, merge) {
 // elplexaCAD (Schritt 3 „Online-Projekte“, CJ 17.10.2026): Projekte online speichern und öffnen, nur hinter ELPLEXA genutzt.
 // Tabelle `projects` (nur eigene Zeilen, RLS), PDF-Dachpläne im privaten Bucket `projekt-pdf` unter <Konto>/<SHA-256>.pdf.
 // Die Datei bleibt der Hauptweg: online steht eine Kopie, in der Zeile ohne PDF-Inhalt (assets → { name, type, sha }).
+// Daten beim Benutzer (Offerte Schritt 2, Tabelle user_settings): Adapter für die Speicherschicht (ablage.js).
+// Fragt nie nach der Anmeldung: ohne gültige Anmeldung wirft er, die Speicherschicht bleibt dann lokal.
+async function restQuiet(path, opt = {}) {
+  if (!sess) throw new Error("Nicht angemeldet.");
+  if (sess.expires_at <= Date.now() / 1000 + 60) await token("refresh_token", { refresh_token: sess.refresh_token });
+  return call("/rest/v1/" + path, { ...opt, headers: { Authorization: `Bearer ${sess.access_token}`, ...opt.headers } });
+}
+export const userStore = {
+  user: () => sess?.email || null,
+  async load(name) {
+    const r = await restQuiet(`user_settings?name=eq.${encodeURIComponent(name)}&select=data,updated_at`);
+    return r?.[0] ? { data: r[0].data, at: r[0].updated_at } : null;
+  },
+  save: (name, data, at) => restQuiet("user_settings?on_conflict=owner,name", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ name, data, updated_at: at }) }),
+};
+
 export const PROJ_MAX = 5_000_000; // Zeichen Projekt-JSON ohne PDF, gleiche Grenze in der Datenbank
 export const PDF_MAX = 52428800; // Bytes je PDF (50 MiB), Grenze des Buckets (Gratis-Plan)
 export const cloudUser = () => sess?.email || null;

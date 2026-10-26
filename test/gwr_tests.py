@@ -102,7 +102,8 @@ with sync_playwright() as p:
     act = lambda: page.evaluate("(() => { const a = document.activeElement; return a.dataset.elp || a.dataset.meta || a.dataset.pvopt || a.id || a.tagName; })()")
     page.click('#el-hub [data-elp="OBJEKT"]'); page.keyboard.type("EFH Test"); page.keyboard.press("Tab"); page.wait_for_timeout(150)
     check("Tab in der Übersicht: Objekt übernommen, weiter zu Auftrag", act() == "AUFTRAG" and P().get("meta", {}).get("OBJEKT") == "EFH Test", [act(), P().get("meta")])
-    page.keyboard.press("Tab"); page.keyboard.press("Tab"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
+    for _ in range(5): page.keyboard.press("Tab")  # Bauherr, E-Mail, Telefon (Offerte Schritt 2), Index, Strasse
+    page.wait_for_timeout(100)
     check("Tab weiter bis Strasse", act() == "adr:str", act())
     page.keyboard.press("Shift+Tab"); page.wait_for_timeout(100)
     check("Shift+Tab zurück zu Index", act() == "INDEX", act())

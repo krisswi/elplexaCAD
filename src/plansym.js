@@ -39,13 +39,31 @@ const SOCK = (s = 1, oy = 0, pe = true) => [["p", `M${-1.5 * s},${oy + 3.9 * s}A
 
 // ---------- Leuchten 5.190 ----------
 const halfC = (r) => ["p", `M${-r},0A${r} ${r} 0 0 0 ${r},0Z`, false];
+const arcW = (r) => ["p", `M${-r},0A${r} ${r} 0 0 0 ${r},0`, false]; // nur Bogen (Wand-Einbau: zweite Linie)
+const rect = (x0, y0, x1, y1) => box(x0, y0, x1, y1);
+// Spot mit Kennung (HV, LED, ELV) nach 5.190 (CJ 26.10.2026: alle Leuchten der Quelle): an/in Decke = Kreis/Doppelkreis, an/in Wand = Halbkreis/mit
+// zweitem Bogen, mit Trafo = schmales Rechteck an der Leuchte (Decke: oben am Kreis, Wand: entlang der Wand neben dem Halbkreis)
+function spot(lab, wall, inn, trafo) {
+  if (!wall) return [...(inn ? [C(0, 0, 2.1), C(0, 0, 1.7)] : [C(0, 0, 1.8)]), T(0, 0, inn ? 1.25 : 1.35, lab), ...(trafo ? rect(-0.45, inn ? 2.1 : 1.8, 0.45, (inn ? 2.1 : 1.8) + 2.2) : [])];
+  return [halfC(2), ...(inn ? [arcW(1.6)] : []), T(0, inn ? 0.7 : 0.85, inn ? 0.85 : 1.05, lab), ...(trafo ? rect(2, 0, 4.2, 0.9) : [])];
+}
+const spotO = (wall, trafo) => (wall ? { wall: true, c: trafo ? [1, 1] : [0, 1], r: trafo ? 3.4 : 2.4 } : { c: trafo ? [0, 1.1] : [0, 0], r: trafo ? 3.3 : 2.4 });
+// Notleuchte: Kreuz, die Felder zur Seite (Decke: links und rechts, Wand: entlang der Wand) gefüllt
+const sect = (r, a0, a1) => { const p = (a) => [r * Math.cos((a * Math.PI) / 180), r * Math.sin((a * Math.PI) / 180)].map(r3); return ["p", `M0,0L${p(a0)}A${r} ${r} 0 0 1 ${p(a1)}Z`, true]; };
+function notl(wall, inn, trafo) {
+  const r = 1.8, d = r * Math.SQRT1_2;
+  if (!wall) return [...(inn ? [C(0, 0, 2.2)] : []), C(0, 0, r), L(-d, -d, d, d), L(-d, d, d, -d), sect(r, 135, 225), sect(r, 315, 405), ...(trafo ? rect(-0.45, inn ? 2.2 : r, 0.45, (inn ? 2.2 : r) + 2.2) : [])];
+  return [halfC(2), ...(inn ? [arcW(2.4)] : []), L(0, 0, -1.414, 1.414), L(0, 0, 1.414, 1.414), sect(2, 0, 45), sect(2, 135, 180), ...(trafo ? rect(inn ? 2.4 : 2, 0, (inn ? 2.4 : 2) + 2.2, 0.9) : [])];
+}
+const wave = (x0, x1, y = 0) => { const n = 2, w = (x1 - x0) / n; let d = `M${x0},${y}`; for (let i = 0; i < n; i++) d += `q${w / 4},${-0.6} ${w / 2},0t${w / 2},0`; return ["p", d, false]; };
 
 // ---------- Steigleitungen 5.110: Punkt (Kreis), Linie unter 45°, halber Pfeil (offenes Dreieck links der Linie) ----------
 const DG = Math.SQRT1_2, at45 = (t) => [t * DG, t * DG];
 const half = (t0, t1) => { const a = at45(t0), b = at45(t1), q = [a[0] - 0.75 * DG, a[1] + 0.75 * DG]; return [L(a[0], a[1], b[0], b[1]), L(b[0], b[1], q[0], q[1]), L(q[0], q[1], a[0], a[1])]; }; // Spitze bei t1
 const seg45 = (t0, t1) => L(...at45(t0), ...at45(t1));
 
-const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (o.wall ? [0, 2] : [0, 0]), r: o.r ?? 2.6, ref: !!o.ref });
+// size: Grösse in echten mm (w Breite/Länge, t Tiefe), parts(W, T) zeichnet in Papier-mm; parts der Tabelle = Vorgabe bei 1:50 (Palette)
+const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (o.wall ? [0, 2] : [0, 0]), r: o.r ?? 2.6, ref: !!o.ref });
 // Tabellen als /* @__PURE__ */-Aufrufe: so fallen sie im SchemaCAD-Bau ganz weg (v3 byte-gleich), obwohl plan.js sie importiert
 export const PLAN_SYMS = /* @__PURE__ */ (() => [
   // Schalter (Unterputz; Aufputz über Feld)
@@ -72,9 +90,31 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("LEUCHTE_EB", "Einbauleuchte an Decke", "licht", "Leuchten", [C(0, 0, 1.7), ...X(0, 0, 1.2)], { r: 2 }),
   S("LEUCHTE_W", "Leuchte an Wand", "licht", "Leuchten", [L(-1.5, 0, 1.5, 0), ...X(0, 1.5, 1.5)], { wall: true, c: [0, 1.5] }),
   S("LEUCHTE_WEB", "Wand-Einbauleuchte", "licht", "Leuchten", [halfC(1.8), L(0, 0, -1.273, 1.273), L(0, 0, 1.273, 1.273)], { wall: true, c: [0, 1] }),
-  S("LED", "LED-Spot an Decke", "licht", "Leuchten", [C(0, 0, 1.8), T(0, 0, 1.35, "LED")], { r: 2.1 }),
-  S("LED_EB", "LED-Spot in Decke", "licht", "Leuchten", [C(0, 0, 2.1), C(0, 0, 1.7), T(0, 0, 1.25, "LED")], { r: 2.4 }),
-  S("LED_W", "LED-Spot an Wand", "licht", "Leuchten", [halfC(2), T(0, 0.85, 1.05, "LED")], { wall: true, c: [0, 1] }),
+  S("LED", "LED-Spot an Decke", "licht", "Spots", [C(0, 0, 1.8), T(0, 0, 1.35, "LED")], { r: 2.1 }),
+  S("LED_EB", "LED-Spot in Decke", "licht", "Spots", [C(0, 0, 2.1), C(0, 0, 1.7), T(0, 0, 1.25, "LED")], { r: 2.4 }),
+  S("LED_W", "LED-Spot an Wand", "licht", "Spots", [halfC(2), T(0, 0.85, 1.05, "LED")], { wall: true, c: [0, 1] }),
+  // Balkenleuchten und Rasterleuchten 5.190, Länge in echten mm (CJ 26.10.2026)
+  S("FL", "FL-Armatur (Balkenleuchte)", "licht", "Leuchten", [], { r: 3, size: { w: 1200, parts: (W) => [L(-W / 2, 0, W / 2, 0), L(-W / 2, -0.6, -W / 2, 0.6), L(W / 2, -0.6, W / 2, 0.6)] } }),
+  S("FL2", "FL-Armatur 2-flammig", "licht", "Leuchten", [], { r: 3, size: { w: 1200, parts: (W) => [L(-W / 2, -0.4, W / 2, -0.4), L(-W / 2, 0.4, W / 2, 0.4), L(-W / 2, -0.9, -W / 2, 0.9), L(W / 2, -0.9, W / 2, 0.9)] } }),
+  S("FL_R", "FL-Armatur mit Raster/Reflektor", "licht", "Leuchten", [], { r: 3, size: { w: 1200, t: 150, parts: (W, T) => box(-W / 2, -T / 2, W / 2, T / 2) } }),
+  S("RASTER", "Einbau-/Aufbauleuchte im Rastermass", "licht", "Leuchten", [], { r: 3, size: { w: 625, t: 625, parts: (W, T) => box(-W / 2, -T / 2, W / 2, T / 2) } }),
+  S("SPIEGEL", "Spiegelschrank mit Leuchte", "licht", "Leuchten", [], { wall: true, r: 3, size: { w: 800, t: 150, parts: (W, T) => [...box(-W / 2, 0, W / 2, T), ...box(-W / 2 + 0.25, 0.25, W / 2 - 0.25, Math.max(T - 0.25, 0.3))] } }),
+  S("SPOT", "Scheinwerfer, Spot", "licht", "Leuchten", [["p", "M-1.4,1.5A2 2 0 0 1 -1.4,-1.5", false], C(-0.4, 0, 0.75), ...X(-0.4, 0, 0.53), L(0.6, 0.45, 2.6, 0.45), L(0.6, -0.45, 2.6, -0.45), tri([2.2, 0.75], [2.7, 0.45], [2.2, 0.15], true), tri([2.2, -0.15], [2.7, -0.45], [2.2, -0.75], true)], { r: 2.8, c: [0.6, 0] }),
+  S("KANDELABER", "Kandelaberleuchte", "licht", "Leuchten", [...box(-2, -1.1, 2, 1.1), C(-1, 0, 0.35), C(0.9, -0.1, 0.5), ...X(0.9, -0.1, 0.35), ["p", "M0.15,-0.05A0.8 0.8 0 0 1 1.65,-0.05", false]], { r: 2.3 }),
+  S("STEHLEUCHTE", "Stehleuchte", "licht", "Leuchten", [...box(-0.9, -1, 2.9, 1), C(-0.2, 0, 0.35), L(0.6, 0, 2.2, 0), L(0.6, -0.5, 0.6, 0.5), L(2.2, -0.5, 2.2, 0.5), L(-1.7, 0, -0.9, 0), wave(-3.5, -1.7), ["p", "M-4.3,-0.3h0.8v0.6h-0.8Z", true]], { r: 3.7, c: [-0.7, 0] }),
+  S("WEGLEUCHTE", "Wegleuchte", "licht", "Leuchten", [...box(-2, -1.1, 2, 1.1), C(-1, 0, 0.35), ...X(0.9, 0, 0.55)], { r: 2.3 }),
+  // Spots 5.190: Hochvolt (HV), LED, Niedervolt (ELV), an/in Decke oder Wand, mit Trafo
+  ...[["HV", "Hochvoltspot"], ["LED", "LED-Spot"], ["ELV", "Niedervoltspot"]].flatMap(([lab, nm]) => [[false, false, false], [false, true, false], [true, false, false], [true, true, false], [false, false, true], [false, true, true], [true, false, true], [true, true, true]]
+    .filter(([w, i, t]) => !(lab === "LED" && !t && !(w && i)) && !(lab === "HV" && t)) // LED an/in Decke und an Wand gibt es schon (LED, LED_EB, LED_W); HV ohne Trafo
+    .map(([w, i, t]) => S(`${lab}${i ? "_EB" : ""}${w ? "_W" : ""}${t ? "_TR" : ""}`.replace("_EB_W", "_WEB"), `${nm} ${i ? "in" : "an"} ${w ? "Wand" : "Decke"}${t ? " mit Trafo" : ""}`, "licht", "Spots", spot(lab, w, i, t), spotO(w, t)))),
+  // Notlicht 5.190
+  S("NOTL", "Notleuchte", "licht", "Notlicht", [tri([-1.3, 0.8], [-1.3, -0.8], [0, 0], true), tri([1.3, 0.8], [1.3, -0.8], [0, 0], true)], { r: 1.6 }),
+  ...[[false, false, false], [false, true, false], [true, false, false], [true, true, false], [false, false, true], [false, true, true], [true, false, true], [true, true, true]]
+    .map(([w, i, t]) => S(`NOTL${i ? "_EB" : ""}${w ? "_W" : "_D"}${t ? "_TR" : ""}`.replace("_EB_W", "_WEB").replace("_EB_D", "_EB"), `Notleuchte ${i ? "in" : "an"} ${w ? "Wand" : "Decke"}${t ? " mit Trafo" : ""}`, "licht", "Notlicht", notl(w, i, t), spotO(w, t))),
+  S("NOTHAND", "Nothandleuchte", "licht", "Notlicht", [...X(-1.8, 0, 0.9), ["p", "M-1.3,0.9A1.3 1.3 0 0 1 -1.3,-0.9", false], wave(-0.6, 1.6), ["p", "M1.6,-0.3h0.8v0.6h-0.8Z", true]], { r: 2.8 }),
+  S("BEREIT", "Bereitschaftsschaltung", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), L(-1.2, -1.8, 1.2, 1.8), L(-1.2, 1.8, 1.2, -1.8)], { r: 2.2 }),
+  S("DAUER_S", "Dauerlicht geschaltet", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), L(-1.2, -1.8, 1.2, 1.8), L(-1.2, 1.8, 1.2, -1.8), tri([-1.2, -1.8], [1.2, -1.8], [0, 0], true)], { r: 2.2 }),
+  S("DAUER", "Dauerlicht", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), tri([-1.2, -1.8], [1.2, -1.8], [0, 0], true), tri([-1.2, 1.8], [1.2, 1.8], [0, 0], true)], { r: 2.2 }),
   // Melder
   S("BWM", "Bewegungsmelder an Decke, 360°", "licht", "Melder", [...X(0, 0, 0.5), ...[0, 45, 90, 135, 180, 225, 270, 315].map((d) => { const u = dir(d); return L(u[0] * 0.8, u[1] * 0.8, u[0] * 1.9, u[1] * 1.9); })], { r: 2.2 }),
   S("PIR", "PIR-Melder in Einlasskasten", "licht", "Melder", [C(0, 1.3, 1.2), ["p", "M-0.4,0.8A0.7 0.7 0 0 1 -0.4,1.8", false], L(0, 2.5, 0, 4.4), L(0, 2.5, -0.4, 3.2), L(0, 2.5, 0.4, 3.2)], { wall: true, h: 110 }),
@@ -90,7 +130,7 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   // Allgemein 5.110
   S("DOSE", "Abzweigdose", "allg", "Allgemein", [...box(-1.5, -1.5, 1.5, 1.5), C(0, 0, 0.4, true)], { r: 1.8 }),
   S("EINLASS", "Einlasskasten Gr. 1", "allg", "Allgemein", [C(0, 0, 1.5), ["p", "M0,0L1.5,0A1.5 1.5 0 0 0 0,-1.5Z", true]], { r: 1.8 }),
-  S("VERTEILER", "Verteiler (Schaltgerätekombination)", "kraft", "Allgemein", [...box(-2.8, 0, 2.8, 2.4), ["p", "M-2.8,0L2.8,2.4L2.8,0Z", true]], { wall: true, c: [0, 1.2], r: 3 }),
+  S("VERTEILER", "Verteiler (Schaltgerätekombination)", "kraft", "Allgemein", [], { wall: true, c: [0, 1.2], r: 3, size: { w: 600, t: 200, parts: (W, T) => [...box(-W / 2, 0, W / 2, T), ["p", `M${r3(-W / 2)},0L${r3(W / 2)},${r3(T)}L${r3(W / 2)},0Z`, true]] } }),
   S("ANSCHLUSS", "Anschluss Elektro", "kraft", "Allgemein", [C(-1.4, -1.4, 0.4), ["p", "M-1.1,-1.1L0.4,0.4L-0.2,0.7L1.4,1.9", false], L(-1.1, -1.1, -0.45, -0.95), L(-1.1, -1.1, -0.95, -0.45)], { r: 2.1 }),
   // Steigleitungen (Leitung nach oben, nach unten, durchgehend); cat leitung = Farbe der Leitungen
   S("STEIG_AUF", "Leitung nach oben", "leitung", "Allgemein", [C(0, 0, 0.4), seg45(0.4, 4.2), ...half(3.2, 4.2)], { r: 2.4, c: [1.5, 1.5] }),

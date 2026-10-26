@@ -141,7 +141,7 @@ export function cleanPlanObj(it, id) {
     if (def.ap && it.ap === true) o.ap = true;
     if (def.ref) { if (str(it.fu, 12)) o.fu = str(it.fu, 12); if (str(it.nr, 12)) o.nr = str(it.nr, 12); }
     const lo = cleanLo(it.lo); if (lo) o.lo = lo;
-    if (SIZED[it.key]) for (const f of ["w", "t"]) if (isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && it[f] !== SIZED[it.key][f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
+    const z = sizeOf(it.key); if (z) for (const f of ["w", "t"]) if (z[f] !== undefined && isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && Math.round(it[f]) !== z[f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
     if (def.num !== undefined && str(it.num, 6) && str(it.num, 6) !== def.num) o.num = str(it.num, 6); // Zahl der Mehrfachsteckdose (CJ 26.10.2026)
     setCol(o, it.col);
     return o;
@@ -160,7 +160,8 @@ export function cleanPlanObj(it, id) {
 // Blattfelder und Objekte aus der Datei. Bereinigung: Objekte auf unbekannter Ebene → aktive Ebene, Öffnung ohne Wand fällt weg,
 // Öffnung in die Wand geklemmt, Mass mit fehlender Wand verliert den Bezug. Gibt die höchste id zurück.
 // Dateiversion 24 (Plan Schritt 5, CJ 26.10.2026): ältere Stände kennen diese Felder nicht
-export const V24_SYMS = new Set(["STD2"]); // Symbole, die ältere Stände nicht kennen
+const OLD_KEYS = new Set(["SCH0", "SCH0_2", "SCH3", "SCH6", "TASTER", "DIMMER", "STOREN", "SCH_LAMPE", "STD", "STD3", "STD_T15", "STD_USB", "STD_BODEN", "KOMBI", "LEUCHTE", "LEUCHTE_EB", "LEUCHTE_W", "LEUCHTE_WEB", "LED", "LED_EB", "LED_W", "BWM", "PIR", "GERAET", "HERD", "BACKOFEN", "MIKRO", "GSP", "KUEHL", "VENT", "BOILER", "DOSE", "EINLASS", "VERTEILER", "ANSCHLUSS", "STEIG_AUF", "STEIG_AB", "STEIG_DURCH", "VERWEIS"]); // Symbole bis Dateiversion 23
+export const V24_SYMS = { has: (k) => !!k && !OLD_KEYS.has(k) }; // Symbole, die ältere Stände nicht kennen
 export const planV24 = (sh) => sh.items.some((i) => i.lo || i.num !== undefined || (i.type === "sym" && (i.w !== undefined || i.t !== undefined)) || i.mat === "doppel" || V24_SYMS.has(i.key) || (i.ap && !SYM_BY_KEY.get(i.key)?.group?.startsWith("Schalter")));
 const VERSION_NOW = 24;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
@@ -530,15 +531,15 @@ export function cleanLo(v) {
   return q[0] || q[1] ? q : null;
 }
 // Verteilung (CJ 26.10.2026): Grösse in echten mm wie Wände und Türen, Breite w entlang der Wand, Tiefe t in den Raum; das Zeichen wächst mit
-export const SIZED = { VERTEILER: { w: 600, t: 200 } }; // Vorgabe in mm (Annahme)
-export const symSize = (it) => { const z = SIZED[it.key]; return z ? { w: it.w ?? z.w, t: it.t ?? z.t } : null; };
+// Gilt auch für Balkenleuchten (FL …), Vorgaben und Zeichnung in plansym.js (size)
+export const sizeOf = (key) => SYM_BY_KEY.get(key)?.size ?? null;
+export const symSize = (it) => { const z = sizeOf(it.key); return z ? { w: it.w ?? z.w, ...(z.t !== undefined ? { t: it.t ?? z.t } : {}) } : null; };
 // Symboldefinition für ein Objekt: bei Verteilungen Teile, Mitte und Radius aus w und t (Papier-mm = Welt-mm / k)
 export function symDef(it, k) {
   const def = SYM_BY_KEY.get(it.key), z = symSize(it);
   if (!z) return def;
-  const W = z.w / k / 2, T = z.t / k, r = (n) => Math.round(n * 1000) / 1000;
-  const parts = [["l", -r(W), 0, r(W), 0], ["l", r(W), 0, r(W), r(T)], ["l", r(W), r(T), -r(W), r(T)], ["l", -r(W), r(T), -r(W), 0], ["p", `M${-r(W)},0L${r(W)},${r(T)}L${r(W)},0Z`, true]];
-  return { ...def, parts, c: [0, r(T / 2)], r: r(Math.hypot(W, T / 2)) };
+  const W = z.w / k, T = (z.t ?? 0) / k, r = (n) => Math.round(n * 1000) / 1000;
+  return { ...def, parts: def.size.parts(W, T), c: def.wall ? [0, r(T / 2)] : [0, 0], r: r(Math.max(1, Math.hypot(W / 2, def.wall ? T / 2 : T / 2))) };
 }
 // Höhe eines Symbols in cm: eingetragen oder Standardhöhe des Symbols (undefined = ohne)
 export const symH = (it) => it.h ?? SYM_BY_KEY.get(it.key)?.h;

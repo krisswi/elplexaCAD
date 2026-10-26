@@ -221,7 +221,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
 {
   const syms = [
     { id: 30, type: "sym", layer: "l1", key: "STD", at: [3925, 400], r: 90, h: 110, txt: "Kühlschrank" },
-    { id: 31, type: "sym", layer: "bg", key: "SCH0", at: [300, 75], r: 0, h: 110, ap: true },
+    { id: 31, type: "sym", layer: "bg", key: "SCH0", at: [300, 75], r: 0, h: 120, ap: true },
     { id: 32, type: "sym", layer: "bg", key: "LEUCHTE", at: [2000, 1500], r: 45 },
     { id: 33, type: "sym", layer: "bg", key: "VERWEIS", at: [1000, 1000], r: 180, fu: "F3", nr: "2" },
   ];
@@ -233,6 +233,12 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   const c = (o) => P.cleanPlanObj({ type: "sym", layer: "bg", at: [0, 0], ...o }, 1);
   assert.strictEqual(c({ key: "GIBTSNICHT" }), null, "unbekanntes Symbol abgelehnt");
   assert.deepStrictEqual(c({ key: "LEUCHTE", r: -90, ap: true, fu: "F1", txt: "  " }), { id: 1, type: "sym", layer: "bg", key: "LEUCHTE", at: [0, 0], r: 270 }, "Drehung 0–359, Aufputz nur Schalter, Sicherung nur Verweis, leere Texte weg");
+  // Standardhöhen (CJ 26.10.2026): Steckdose 30, Schalter 110, Leuchten ohne; gleich dem Standard wird nicht gespeichert und nicht beschriftet
+  assert.deepStrictEqual(["STD", "STD3", "SCH0", "SCH3", "LEUCHTE_W", "LED_W"].map((k) => P.symH({ key: k })), [30, 30, 110, 110, undefined, undefined], "Standardhöhen");
+  assert.ok(!("h" in c({ key: "SCH0", h: 110 })) && !("h" in c({ key: "STD", h: 30 })), "Standardhöhe nicht gespeichert");
+  assert.deepStrictEqual([c({ key: "STD", h: 110 }).h, P.symH(c({ key: "STD", h: 110 }))], [110, 110], "abweichende Höhe bleibt (alte Pläne: Steckdose 110)");
+  const hTxt = (o) => P.symTexts({ at: [0, 0], r: 0, ...o }, 50).map((x) => x.s);
+  assert.deepStrictEqual([hTxt({ key: "STD" }), hTxt({ key: "STD", h: 30 }), hTxt({ key: "STD", h: 110 }), hTxt({ key: "SCH0", h: 110 })], [[], [], ["110"], []], "Höhe nur abweichend beschriftet");
   // Wand einrasten: nächste Fläche, Symbol zeigt in den Raum
   const walls = kueche().filter((i) => i.type === "wall");
   assert.deepStrictEqual(P.wallSnap(walls, [3700, 400], 600), { at: [3925, 400], r: 90, wall: 2 }, "rechte Wand innen: Symbol nach links (r 90)");

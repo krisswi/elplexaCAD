@@ -3,7 +3,8 @@
 // Masse in Papier-mm (Symbol ca. 5 mm, fest auf dem Papier wie Texte; in der Welt × Massstab), y nach oben, Ursprung = Einsetzpunkt.
 // Wandsymbole (wall: true): Ursprung auf der Wandfläche, das Symbol steht nach +y in den Raum. Übrige: Ursprung = Mitte.
 // Teile: ["l", x1, y1, x2, y2] Linie, ["c", cx, cy, r, fill] Kreis, ["p", d, fill] Pfad (SVG, y nach oben: Bogen-Flag 1 = gegen den Uhrzeigersinn), ["t", x, y, h, s] Text (Mitte; dreht mit, steht nie auf dem Kopf).
-// ap = Aufputz-Teil (Halbkreis) oder false. cat = Kategorie für die Farben (Farbcodes 5.100, CAT_COL in plan.js): kraft, licht, kommunikation, schwach, allg, leitung (wie die Leitungen). h = Vorgabe Höhe in cm.
+// ap = Aufputz-Teil (Halbkreis) oder false. cat = Kategorie für die Farben (Farbcodes 5.100, CAT_COL in plan.js): kraft, licht, kommunikation, schwach, allg, leitung (wie die Leitungen).
+// h = Standardhöhe in cm (CJ 26.10.2026: Steckdose 30, Schalter 110, Leuchten ohne); im Plan beschriftet wird nur eine abweichende Höhe.
 
 const r3 = (n) => Math.round(n * 1000) / 1000 + 0;
 const L = (x1, y1, x2, y2) => ["l", r3(x1), r3(y1), r3(x2), r3(y2)];
@@ -49,20 +50,20 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("STOREN", "Storenschalter", "kraft", "Schalter", sw([...lever(), ["p", "M2.9,4.9L3.7,4.9L3.3,4.3Z", false], ["p", "M3.9,4.3L4.7,4.3L4.3,4.9Z", true]]), { wall: true, h: 110, ap: true }),
   S("SCH_LAMPE", "Schalter mit Signallampe", "licht", "Schalter", sw([...X(SC[0], SC[1], 0.7), ...lever()]), { wall: true, h: 110 }),
   // Steckdosen
-  S("STD", "Steckdose T13 (Schutzkontakt)", "kraft", "Steckdosen", SOCK(), { wall: true, h: 110 }),
-  S("STD3", "Steckdose 3-fach", "kraft", "Steckdosen", [...SOCK(), T(2.4, 3.6, 1.6, "3")], { wall: true, h: 110 }),
-  S("STD_T15", "Steckdose T15", "kraft", "Steckdosen", [...SOCK(), T(2.9, 1.0, 1.4, "T15")], { wall: true, h: 110 }),
-  S("STD_USB", "Steckdose T13 mit 2 × USB", "kraft", "Steckdosen", [...SOCK(), T(3.4, 1.0, 1.2, "2×USB")], { wall: true, h: 110 }),
+  S("STD", "Steckdose T13 (Schutzkontakt)", "kraft", "Steckdosen", SOCK(), { wall: true, h: 30 }),
+  S("STD3", "Steckdose 3-fach", "kraft", "Steckdosen", [...SOCK(), T(2.4, 3.6, 1.6, "3")], { wall: true, h: 30 }),
+  S("STD_T15", "Steckdose T15", "kraft", "Steckdosen", [...SOCK(), T(2.9, 1.0, 1.4, "T15")], { wall: true, h: 30 }),
+  S("STD_USB", "Steckdose T13 mit 2 × USB", "kraft", "Steckdosen", [...SOCK(), T(3.4, 1.0, 1.2, "2×USB")], { wall: true, h: 30 }),
   S("STD_BODEN", "Bodensteckdose", "kraft", "Steckdosen", [...box(-1.8, -1.8, 1.8, 1.8), ...SOCK(0.75, -1.3)], {}),
   S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [...SOCK(), C(0, 4.7, 0.8), L(0.57, 5.27, 1.6, 6.3), L(1.6, 6.3, 2.2, 5.7)], { wall: true, h: 110, c: [0, 3.2] }),
   // Leuchten
   S("LEUCHTE", "Leuchte an Decke", "licht", "Leuchten", X(0, 0, 1.4), { r: 2 }),
   S("LEUCHTE_EB", "Einbauleuchte an Decke", "licht", "Leuchten", [C(0, 0, 1.7), ...X(0, 0, 1.2)], { r: 2 }),
-  S("LEUCHTE_W", "Leuchte an Wand", "licht", "Leuchten", [L(-1.5, 0, 1.5, 0), ...X(0, 1.5, 1.5)], { wall: true, h: 200, c: [0, 1.5] }),
-  S("LEUCHTE_WEB", "Wand-Einbauleuchte", "licht", "Leuchten", [halfC(1.8), L(-1.1, 0.25, 1.1, 1.45), L(-1.1, 1.45, 1.1, 0.25)], { wall: true, h: 200, c: [0, 1] }),
+  S("LEUCHTE_W", "Leuchte an Wand", "licht", "Leuchten", [L(-1.5, 0, 1.5, 0), ...X(0, 1.5, 1.5)], { wall: true, c: [0, 1.5] }),
+  S("LEUCHTE_WEB", "Wand-Einbauleuchte", "licht", "Leuchten", [halfC(1.8), L(-1.1, 0.25, 1.1, 1.45), L(-1.1, 1.45, 1.1, 0.25)], { wall: true, c: [0, 1] }),
   S("LED", "LED-Spot an Decke", "licht", "Leuchten", [C(0, 0, 1.8), T(0, 0, 1.1, "LED")], { r: 2.1 }),
   S("LED_EB", "LED-Spot in Decke", "licht", "Leuchten", [C(0, 0, 2.1), C(0, 0, 1.7), T(0, 0, 1.0, "LED")], { r: 2.4 }),
-  S("LED_W", "LED-Spot an Wand", "licht", "Leuchten", [halfC(2), T(0, 0.85, 0.9, "LED")], { wall: true, h: 200, c: [0, 1] }),
+  S("LED_W", "LED-Spot an Wand", "licht", "Leuchten", [halfC(2), T(0, 0.85, 0.9, "LED")], { wall: true, c: [0, 1] }),
   // Melder
   S("BWM", "Bewegungsmelder an Decke, 360°", "licht", "Melder", [C(0, 0, 0.5), ...[0, 45, 90, 135, 180, 225, 270, 315].map((d) => { const u = dir(d); return L(u[0] * 0.8, u[1] * 0.8, u[0] * 1.9, u[1] * 1.9); })], { r: 2.2 }),
   S("PIR", "PIR-Melder in Einlasskasten", "licht", "Melder", [C(0, 1.3, 1.2), ["p", "M-0.4,0.8A0.7 0.7 0 0 1 -0.4,1.8", false], L(0, 2.5, 0, 4.4), L(0, 2.5, -0.4, 3.2), L(0, 2.5, 0.4, 3.2)], { wall: true, h: 110 }),

@@ -159,7 +159,7 @@ with sync_playwright() as p:
     check("Symbol gewählt: Werkzeug Symbol, Hinweis", "Steckdose T13" in page.inner_text("#hint") and page.get_attribute('[data-plsym="STD"]', "aria-pressed") == "true")
     click(3750, 600)  # nahe an der rechten Wand: rastet an der Innenfläche ein, zeigt in den Raum
     y = of("sym")[-1]; STD = y["id"]
-    check("Steckdose an der Wand: auf der Innenfläche (x 3925), Drehung 90, Höhe 110", near(y["at"], [3925, y["at"][1]]) and abs(y["at"][1] - 600) <= 10 and y["r"] == 90 and y.get("h") == 110 and y["layer"] == "bg", y)
+    check("Steckdose an der Wand: auf der Innenfläche (x 3925), Drehung 90, Standardhöhe (nicht gespeichert)", near(y["at"], [3925, y["at"][1]]) and abs(y["at"][1] - 600) <= 10 and y["r"] == 90 and "h" not in y and y["layer"] == "bg", y)
     page.click('[data-plsym="LEUCHTE"]'); key("r"); click(2000, 2000)
     y = of("sym")[-1]; LE = y["id"]
     check("Deckenleuchte frei, R dreht beim Setzen um 90°, ohne Höhe", y["key"] == "LEUCHTE" and y["r"] == 90 and "h" not in y and abs(y["at"][0] - 2000) <= 10, y)
@@ -170,9 +170,12 @@ with sync_playwright() as p:
     check("Schalter an der unteren Wand (y 75, r 0)", near(item(SW)["at"], [item(SW)["at"][0], 75]) and item(SW)["r"] == 0, item(SW))
     blur(); key("v"); c0 = page.evaluate(f"(() => {{ const i = window.__schemacad.model.items.find((x) => x.id === {STD}); return i.at; }})()")
     click(c0[0] - 100, c0[1])
-    check("Steckdose wählbar, rechts Beschriftung und Höhe", sel() == [STD] and "Beschriftung" in page.inner_text("#right") and page.input_value('[data-plf="sh"]') == "110", sel())
+    check("Steckdose wählbar, rechts Beschriftung und Höhe", sel() == [STD] and "Beschriftung" in page.inner_text("#right") and page.input_value('[data-plf="sh"]') == "30" and "Standard 30" in page.inner_text("#right"), sel())
     field('[data-plf="txt"]', "Kühlschrank"); field('[data-plf="sh"]', "40")
-    check("Beschriftung und Höhe gesetzt, im Plan sichtbar", item(STD).get("txt") == "Kühlschrank" and item(STD).get("h") == 40 and "Kühlschrank" in page.inner_html("#items"), item(STD))
+    check("Beschriftung und Höhe gesetzt, im Plan sichtbar", item(STD).get("txt") == "Kühlschrank" and item(STD).get("h") == 40 and "Kühlschrank" in page.inner_html("#items") and ">40<" in page.inner_html("#items"), item(STD))
+    field('[data-plf="sh"]', "30")
+    check("Standardhöhe eingetippt: Feld weg, keine Höhe im Plan", "h" not in item(STD) and ">30<" not in page.inner_html("#items"), item(STD))
+    field('[data-plf="sh"]', "40")
     blur(); drag(c0[0] - 100, c0[1], 3700, 1500)
     check("Wandsymbol ziehen: bleibt an der Wand", near(item(STD)["at"], [3925, item(STD)["at"][1]]) and abs(item(STD)["at"][1] - 1500) <= 10 and item(STD)["r"] == 90, item(STD))
     tk = lambda: page.evaluate("""(() => { const t = [...document.querySelectorAll('#items text')].find((x) => x.textContent === 'Kühlschrank'); return [t.getAttribute('transform').match(/rotate\\(([-\\d.]+)\\)/)[1], t.getAttribute('text-anchor')]; })()""")

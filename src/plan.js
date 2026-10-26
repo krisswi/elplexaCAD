@@ -139,7 +139,7 @@ export function cleanPlanObj(it, id) {
     const str = (v, n) => String(v ?? "").trim().slice(0, n);
     if (str(it.txt, 60)) o.txt = str(it.txt, 60);
     if (def.ap && it.ap === true) o.ap = true;
-    if (def.ref) { if (str(it.fu, 12)) o.fu = str(it.fu, 12); if (str(it.nr, 12)) o.nr = str(it.nr, 12); }
+    if (def.ref) { if (str(it.fu, 20)) o.fu = str(it.fu, 20); if (str(it.nr, 20)) o.nr = str(it.nr, 20); }
     const lo = cleanLo(it.lo); if (lo) o.lo = lo;
     const z = sizeOf(it.key); if (z) for (const f of ["w", "t"]) if (z[f] !== undefined && isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && Math.round(it[f]) !== z[f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
     if (def.num !== undefined && str(it.num, 6) && str(it.num, 6) !== def.num) o.num = str(it.num, 6); // Zahl der Mehrfachsteckdose (CJ 26.10.2026)
@@ -537,9 +537,27 @@ export const symSize = (it) => { const z = sizeOf(it.key); return z ? { w: it.w 
 // Symboldefinition für ein Objekt: bei Verteilungen Teile, Mitte und Radius aus w und t (Papier-mm = Welt-mm / k)
 export function symDef(it, k) {
   const def = SYM_BY_KEY.get(it.key), z = symSize(it);
+  if (def.ref) return { ...def, parts: refParts(it) };
   if (!z) return def;
   const W = z.w / k, T = (z.t ?? 0) / k, r = (n) => Math.round(n * 1000) / 1000;
   return { ...def, parts: def.size.parts(W, T), c: def.wall ? [0, r(T / 2)] : [0, 0], r: r(Math.max(1, Math.hypot(W / 2, def.wall ? T / 2 : T / 2))) };
+}
+// Hinweis (VERWEIS): Kasten um die Zeilen oben (fu), unten (nr) und Kabel (txt), Mitte = Vorgabe + Versatz lo (Papier-mm im System des Symbols)
+const REF_H = 2.2, REF_LH = REF_H * 1.45, REF_DEF = [-8, 4];
+export function refBox(it) {
+  const rows = [it.fu, it.nr, it.txt].filter(Boolean), lo = it.lo ?? [0, 0];
+  const w = Math.max(5, ...rows.map((s) => s.length * REF_H * 0.62)) + 2, h = Math.max(1, rows.length) * REF_LH + 0.6;
+  return { rows: rows.length ? rows : [], x: REF_DEF[0] + lo[0], y: REF_DEF[1] + lo[1], w, h };
+}
+function refParts(it) {
+  const b = refBox(it), r3 = (n) => Math.round(n * 1000) / 1000, x0 = b.x - b.w / 2, y0 = b.y - b.h / 2, R = 1, out = [];
+  out.push(["p", `M${r3(x0 + R)},${r3(y0)}h${r3(b.w - 2 * R)}a${R} ${R} 0 0 1 ${R},${R}v${r3(b.h - 2 * R)}a${R} ${R} 0 0 1 ${-R},${R}h${r3(-(b.w - 2 * R))}a${R} ${R} 0 0 1 ${-R},${-R}v${r3(-(b.h - 2 * R))}a${R} ${R} 0 0 1 ${R},${-R}Z`, false]);
+  for (let i = 1; i < b.rows.length; i++) { const y = b.y + ((b.rows.length - 1) / 2 - i + 0.5) * REF_LH; out.push(["l", r3(x0), r3(y), r3(x0 + b.w), r3(y)]); } // Trennstrich zwischen den Zeilen
+  // Linie vom Ziel (0|0) zum nächsten Punkt auf dem Kastenrand
+  const cx = Math.max(x0, Math.min(0, x0 + b.w)), cy = Math.max(y0, Math.min(0, y0 + b.h));
+  const inside = cx === 0 && cy === 0, ex = inside ? b.x : cx, ey = inside ? y0 : cy;
+  if (Math.hypot(ex, ey) > 0.3) out.push(["l", 0, 0, r3(ex), r3(ey)]);
+  return out;
 }
 // Höhe eines Symbols in cm: eingetragen oder Standardhöhe des Symbols (undefined = ohne)
 export const symH = (it) => it.h ?? SYM_BY_KEY.get(it.key)?.h;
@@ -550,7 +568,7 @@ export function symTexts(it, k, fmtH = (h) => String(h)) {
   const def = symDef(it, k), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
   const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)], out = [];
   for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[5] === "num" ? (it.num ?? q[4]) : q[4], size: q[3] * k, a, anchor: "middle" }); // num: Zahl am Symbol änderbar
-  if (def.ref && (it.fu || it.nr)) out.push({ at: w(-4.9, 0), s: [it.fu, it.nr].filter(Boolean).join(" / "), size: 1.4 * k, a, anchor: "middle" });
+  if (def.ref) { const b = refBox(it); b.rows.forEach((s, i) => out.push({ at: w(b.x, b.y + ((b.rows.length - 1) / 2 - i) * REF_LH * (flip ? -1 : 1)), s, size: REF_H * k, a, anchor: "middle", label: true })); return out; } // Hinweis: Zeilen im Kasten, ziehbar wie eine Beschriftung
   // Abstand: hinter dem Symbol und hinter Zusatztexten rechts der Mitte (Breite ca. 0,6 × Höhe je Zeichen)
   const ext = Math.max(def.r, ...def.parts.filter((q) => q[0] === "t").map((q) => q[1] - def.c[0] + q[4].length * q[3] * 0.3));
   const lines = [it.txt, it.h !== undefined && it.h !== def.h ? fmtH(it.h) : ""].filter(Boolean), c = symCenter(it, k), d = (ext + 0.6) * k, sg = flip ? -1 : 1;

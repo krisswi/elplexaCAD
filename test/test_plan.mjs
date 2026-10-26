@@ -308,6 +308,11 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual([c({ key: "FL", w: 1500 }).w, c({ key: "FL", t: 300 }).t, P.symDef({ key: "FL", w: 1500 }, 50).parts[0]], [1500, undefined, ["l", -15, 0, 15, 0]], "FL: Länge in mm, ohne Breite");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "NOTL", at: [0, 0], r: 0 }])], 24)))).version, 24, "Notleuchte: Version 24");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "LED", at: [0, 0], r: 0 }])], 21)))).version, 21, "alte LED bleibt Version 21");
+  // Hinweis (CJ 26.10.2026): Kasten mit Zeilen oben/unten/Kabel, oben bleibt oben auch gedreht, Linie zum Ziel
+  const hw = (o) => tx({ key: "VERWEIS", fu: "UV EG", nr: "11X4", ...o });
+  for (const r of [0, 180]) assert.ok(hw({ r })[0].s === "UV EG" && hw({ r })[0].at[1] > hw({ r })[1].at[1], `oben bleibt oben (r ${r})`);
+  const rp = P.symDef({ key: "VERWEIS", fu: "UV EG", nr: "11X4", r: 0 }, 50).parts;
+  assert.ok(rp.some((q) => q[0] === "l" && q[1] === 0 && q[2] === 0) && rp.filter((q) => q[0] === "l").length === 2, "Linie zum Ziel und Trennstrich");
   // alte Pläne (bis Version 23): vorausgefüllte Höhe 110 an Steckdosen und 200 an Wandleuchten fällt weg
   const old = M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 110 }, { id: 51, type: "sym", layer: "bg", key: "LED_W", at: [0, 0], r: 0, h: 200 }, { id: 52, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 120 }])], 23)).sheets[0].items;
   assert.deepStrictEqual(old.map((i) => i.h), [undefined, undefined, 120], "alte Vorgabehöhen weg, eigene bleibt");

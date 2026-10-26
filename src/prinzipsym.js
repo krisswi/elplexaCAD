@@ -24,9 +24,17 @@ const bimetall = () => [[0.57, 0], [0.57, 0.3], [0.86, 0.3], [0.86, 0.55], [0.56
 // Pfeil vom Schaltstück weg, Spitze gefüllt; mit Fehlerstromauslöser dahinter Querstrich und Leitung
 const pfeil = (u, rcd) => [bl([u, 0], [u, 0.81]), bl([u, 0.81], [u - 0.09, 0.59]), bl([u, 0.81], [u + 0.09, 0.59]), bl([u - 0.09, 0.59], [u + 0.09, 0.59]),
   bl([u - 0.045, 0.59], [u, 0.81]), bl([u + 0.045, 0.59], [u, 0.81]), ...(rcd ? [bl([u - 0.14, 0.94], [u + 0.14, 0.94]), bl([u, 0.94], [u, 1.2])] : [])];
-const ls = sym("PZ_LS", "Leitungsschutzschalter (LS)", [...pole(10), ...bimetall(), ...pfeil(0.25, false)], H(10), top3("LS C 13A"));
-const fi = sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [...pole(10), ...pfeil(0.65, true)], H(10), top3("FI 40A 30mA"));
-const fils = sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [...pole(17.5), ...bimetall(), ...pfeil(0.25, true)], H(17.5), top3("FI/LS B13A 30mA"));
+// Abgänge auf 75 % verkleinert (CJ 26.10.2026, Vorschlag A): Zeichen um die Mitte zwischen den Anschlüssen, Anschlüsse bleiben (alte Pläne bleiben
+// verbunden), Zuleitungen bis zu den Anschlüssen verlängert, Beschriftung rückt mit. Schmelzsicherung bleibt gleich gross.
+const ABG_S = 0.75;
+function small(o) {
+  const m = o.pins[1].x / 2, X = (x) => Math.round((m + (x - m) * ABG_S) * 1000) / 1000, Y = (y) => Math.round(y * ABG_S * 1000) / 1000;
+  const prims = [line(0, 0, X(0), 0), ...o.prims.map((p) => ({ ...p, x1: X(p.x1), y1: Y(p.y1), x2: X(p.x2), y2: Y(p.y2) })), line(X(o.pins[1].x), 0, o.pins[1].x, 0)];
+  return { ...o, prims, attrs: o.attrs.map((t) => ({ ...t, x: X(t.x), y: Y(t.y - 1) + 1 })) };
+}
+const ls = small(sym("PZ_LS", "Leitungsschutzschalter (LS)", [...pole(10), ...bimetall(), ...pfeil(0.25, false)], H(10), top3("LS C 13A")));
+const fi = small(sym("PZ_FI", "Fehlerstromschutzschalter (FI)", [...pole(10), ...pfeil(0.65, true)], H(10), top3("FI 40A 30mA")));
+const fils = small(sym("PZ_FILS", "FI/LS-Schalter (RCBO)", [...pole(17.5), ...bimetall(), ...pfeil(0.25, true)], H(17.5), top3("FI/LS B13A 30mA")));
 // Motorschutzschalter nach S. 31 rechts (CJ 23.10.2026): Bimetall weiter oben am Schaltstück, schräger Pfeil = einstellbar;
 // thermisch und magnetisch zusätzlich der Pfeil wie beim LS. Polzahl nicht als Zahl am Symbol, sondern in der Zeile POL.
 const bimetallMss = () => [[0.69, 0], [0.69, 0.33], [0.98, 0.33], [0.98, 0.6], [0.68, 0.6], [0.68, 0.93]].slice(1).map((p, i, a) => bl(i ? a[i - 1] : [0.69, 0], p));

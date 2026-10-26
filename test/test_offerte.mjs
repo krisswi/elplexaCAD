@@ -38,17 +38,21 @@ assert.strictEqual(t.optionen, 80, "eigene Summe Optionen");
 p4.an = true; t = O.totals(of);
 near(t.zwischensumme, 533.562, "aktivierte Option zählt zur Angebotssumme"); assert.strictEqual(t.optionen, 0);
 delete p4.an;
-// zweite Gruppe ohne Rabatt, dritte mit eigenem Satz, Gesamtrabatt 5 %
-const g2 = O.addGruppe(of, k, "Wohnung 2"); g2.rab = false;
+// eigene Rabattgruppen (CJ 26.10.2026): N ohne Rabatt, S mit eigenem Satz; erste Gruppe ohne Rabattgruppe = Gesamtrabatt 5 %
+assert.deepStrictEqual(of.rg, [], "neue Offerte ohne Rabattgruppen");
+const rN = O.addRabattgruppe(of, "N", "Netto"); rN.satz = 0;
+const rS = O.addRabattgruppe(of, "S", "Sonderrabatt"); rS.satz = 10;
+const g2 = O.addGruppe(of, k, "Wohnung 2"); g2.rg = rN.id;
 O.addPosition(of, g2, { titel: "Lampe", menge: 1, preis: 200 });
-const k2 = O.addKapitel(of, "238", "Provisorische Installationen"), g3 = k2.grp[0]; g3.rab = 10;
+const k2 = O.addKapitel(of, "238", "Provisorische Installationen"), g3 = k2.grp[0]; g3.rg = rS.id;
 O.addPosition(of, g3, { titel: "Baustrom", menge: 1, preis: 300 });
 of.rabatt = 5;
 t = O.totals(of);
 near(t.kap[0].summe, 653.562, "Kapitelsumme 232.51"); assert.deepStrictEqual(t.kap.map((x) => [x.bkp, x.summe]).slice(1), [["238", 300]], "Kapitelsumme 238");
 near(t.grp.get(g1.id), 453.562, "Gruppe 1"); assert.deepStrictEqual([t.grp.get(g2.id), t.grp.get(g3.id)], [200, 300], "Gruppensummen");
 near(t.zwischensumme, 953.562, "Zwischensumme");
-assert.deepStrictEqual(t.rabatt.map((r) => r.satz), [5, 10], "Rabatt nur über Gruppen, für die er gilt");
+assert.deepStrictEqual(t.rabatt.map((r) => [r.kz, r.satz]), [[undefined, 5], ["S", 10]], "Rabatt nur über Gruppen, für die er gilt: Gesamtrabatt, dann S; N ohne Zeile");
+assert.strictEqual(t.rabatt[1].name, "Sonderrabatt");
 near(t.rabatt[0].basis, 453.562, "Basis 5 %"); near(t.rabatt[0].betrag, 22.6781, "5 % von 453.562"); near(t.rabatt[1].betrag, 30, "10 % von 300");
 near(t.netto, 900.8839, "nach Rabatt");
 near(t.mwst, 72.97159590, "MwSt 8.1 % ungerundet");
@@ -59,6 +63,11 @@ const sk = O.totals(of).skonto;
 assert.deepStrictEqual([sk.satz, sk.tage], [2, 10]); near(sk.betrag, 19.477, "Skonto 2 % vom Total, nur als Hinweis");
 assert.strictEqual(O.totals(of).total, 973.85, "Total bleibt mit Skonto");
 of.mwst = 0; assert.strictEqual(O.totals(of).total, 900.9, "MwSt einstellbar (900.8839 → 900.90)"); of.mwst = 8.1;
+
+// Rabattgruppe löschen: Gruppe fällt auf den Gesamtrabatt zurück
+const tmp = structuredClone(of); O.delRabattgruppe(tmp, rN.id);
+assert.ok(tmp.rg.length === 1 && tmp.kap[0].grp[1].rg === undefined, "gelöschte Rabattgruppe: Gesamtrabatt");
+near(O.totals(tmp).rabatt[0].basis, 653.562, "Gruppe 2 jetzt mit Gesamtrabatt");
 
 // ---------- Kopie bekommt neue ID, findPos ----------
 const c = O.copyPosition(of, g1, p1, 1);
@@ -86,7 +95,9 @@ assert.deepStrictEqual([cl.nr, cl.art, cl.fak, cl.mwst], ["", "", 1.4, 8.1]);
 const ids = [cl.kap[0].id, cl.kap[0].grp[0].id, ...cl.kap[0].grp[0].pos.map((p) => p.id)];
 assert.strictEqual(new Set(ids).size, 4, "IDs eindeutig nach dem Laden"); assert.ok(cl.nid > Math.max(...ids));
 assert.deepStrictEqual(cl.kap[0].grp[0].pos[0], { id: cl.kap[0].grp[0].pos[0].id, titel: "A" }, "unbekannte und falsche Felder fallen weg");
-assert.strictEqual(cl.kap[0].grp[0].rab, undefined, "Rabatt ungültig: Gesamtrabatt gilt");
+assert.strictEqual(cl.kap[0].grp[0].rg, undefined, "Rabattgruppe fehlt: Gesamtrabatt gilt");
+assert.strictEqual(O.cleanOfferte({ rg: [{ id: 4, kz: "R", name: "Rabatt", satz: 3 }], kap: [{ id: 5, grp: [{ id: 6, rg: 9, pos: [] }, { id: 7, rg: 4, pos: [] }] }] }).kap[0].grp.map((g) => g.rg).join(), ",4", "Verweis auf fehlende Rabattgruppe fällt weg");
+assert.ok(O.BKP.some((b) => b[0] === "239.21") && O.bkpTitle("238") === "Provisorische Installationen", "BKP 237 bis 239 vorbelegt");
 assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 25, sheets: [{ kind: "offerte", meta: {}, items: [{ id: 1, type: "text", x: 0, y: 0, text: "x" }] }] })), /keine Zeichenobjekte/);
 assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 26, sheets: [{ meta: {}, items: [] }] })), /neueren Version/);
 // v3 (dieser Prozess ohne ELPLEXA) lehnt einen Plan am Blatt ab

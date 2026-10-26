@@ -33,7 +33,7 @@ def flow(page, tag):
     check(f"{tag}: Option zählt nicht, eigene Summe", txt(".of-total").endswith("189.60") and "80.00" in page.inner_text(".of-end"))
     page.fill('[data-of="o.rabatt"]', "5"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
     end = page.inner_text(".of-end")
-    check(f"{tag}: Rabatt 5 % = 8.77, Total 180.15", "8.77" in end and txt(".of-total").endswith("180.15"), end)
+    check(f"{tag}: Rabatt 5 % = 8.77, Total 180.15", "Rabatt 5 % auf 175.41" in end and "8.77" in end and txt(".of-total").endswith("180.15"), end)
     page.click("#btn-undo"); page.wait_for_timeout(100)
     check(f"{tag}: Rückgängig nimmt den Rabatt zurück", txt(".of-total").endswith("189.60"), txt(".of-total"))
     d = D()

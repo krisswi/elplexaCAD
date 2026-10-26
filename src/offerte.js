@@ -2,13 +2,14 @@
 // Eine Offerte ist ein Blatt (kind "offerte") mit den Daten in sh.of. Aufbau nach dem Messerli-Muster: BKP-Kapitel → Gruppen → Positionen.
 // Pflicht sind nur Text, Menge und Preis, alle übrigen Felder dürfen fehlen (Einmannbetrieb).
 // Datenformat (fehlende Felder = leer bzw. Standard):
-//   of = { nid, nr, ver, datum, gueltig, art, bau, fak, ansatz, rabatt, skonto, skTage, mwst, kap: [Kapitel] }
+//   of = { nid, nr, ver, datum, gueltig, art, bau, fak, ansatz, rabatt, skonto, skTage, mwst, rg: [Rabattgruppe], kap: [Kapitel] }
+//   Rabattgruppe = { id, kz, name, satz }   selbst angelegt (CJ 26.10.2026), kz = Buchstabe (z. B. R, N); satz fehlt = Gesamtrabatt, 0 = kein Rabatt, Zahl = eigener Satz in %
 //   Kapitel = { id, bkp, titel, grp: [Gruppe] }
-//   Gruppe = { id, titel, rab, pos: [Position] }   rab fehlt = Gesamtrabatt gilt, false = gilt nicht, Zahl = eigener Satz in %
+//   Gruppe = { id, titel, rg, pos: [Position] }   rg = ID der Rabattgruppe, fehlt = Gesamtrabatt
 //   Position = { id, titel, text, menge, eh, preis, npk, bkp, typ, form, her, enr, ek, fak, std, ic, opt, an, gl: { ogl, psl, rgl, ngl, et } }
 //     id fest (ändert sich nie), preis = Einheitspreis von Hand (fehlt = aus EK × Faktor + Zeit × Ansatz), opt = optionale Position, an = Option aktiviert.
 
-// BKP 23 nach EIT.swiss 2018 (BKP CRB 2017, erweitert): Kapitel 230 bis 236 mit allen Unterstufen. Eigene Nummern ergänzt die Offerte (z. B. 238).
+// BKP 23 nach EIT.swiss 2018 (BKP CRB 2017, erweitert): Kapitel 230 bis 239 mit allen Unterstufen (237 bis 239 seit CJ 26.10.2026). Eigene Nummern ergänzt die Offerte.
 export const BKP = [
   ["23", "Elektroanlagen"],
   ["230", "Übergangsposition"],
@@ -42,6 +43,10 @@ export const BKP = [
   ["236.7", "Sicherheitsinstallationen"], ["236.71", "Einbruch-, Überfallmeldeinstallationen"], ["236.72", "Zutrittskontrollinstallationen"], ["236.73", "Videoüberwachungsinstallationen"],
   ["236.74", "Umgebungsschutz"], ["236.75", "Brandmeldeinstallationen"], ["236.76", "Gasmeldeinstallationen"], ["236.77", "Löschinstallationen"], ["236.8", "Brandschutzinstallationen"],
   ["236.9", "Übriges"], ["236.91", "Schwachstromleitungen"],
+  ["237", "Gebäudeautomations-Installationen"], ["237.1", "Gebäudeautomation-Anlagen"], ["237.2", "Gebäudeautomation-Installationen"],
+  ["238", "Provisorische Installationen"],
+  ["239", "Übriges"], ["239.1", "Demontagen, Entsorgungen"], ["239.2", "Diverses"], ["239.21", "Brandabschottungen, Schallschutz"], ["239.22", "Höhenzuschläge"],
+  ["239.23", "Bemusterungen"], ["239.24", "Unvorhergesehenes"], ["239.25", "Unabhängige Kontrollen"], ["239.3", "Planerische Leistungen"],
 ];
 export const bkpTitle = (nr) => BKP.find((b) => b[0] === nr)?.[1] || "";
 // Hauptstufe eines Kapitels für die Summenzeile «Total … [BKP] nnn» (232.51 → 232)
@@ -62,13 +67,17 @@ export const isNumber = (v) => typeof v === "number" && Number.isFinite(v);
 export const fmtNum = (x) => (isNumber(x) ? String(x) : ""); // Satz oder Faktor wie eingegeben: 8.1, 1.4
 export const fmtChf = (x) => { const [a, b] = (Math.round(x * 100) / 100).toFixed(2).split("."); return `${a.replace(/\B(?=(\d{3})+(?!\d))/g, "'")}.${b}`; }; // 4'981.85
 
-export const newOfferte = (datum = "") => ({ nid: 1, nr: "", ver: "", datum, gueltig: "", art: "", bau: "", fak: DEF.fak, ansatz: DEF.ansatz, rabatt: DEF.rabatt, skonto: DEF.skonto, mwst: DEF.mwst, kap: [] });
+export const newOfferte = (datum = "") => ({ nid: 1, nr: "", ver: "", datum, gueltig: "", art: "", bau: "", fak: DEF.fak, ansatz: DEF.ansatz, rabatt: DEF.rabatt, skonto: DEF.skonto, mwst: DEF.mwst, rg: [], kap: [] });
 const nextId = (of) => of.nid++;
 export function addKapitel(of, bkp, titel) {
   const k = { id: nextId(of), bkp: String(bkp || "").trim(), titel: titel ?? bkpTitle(String(bkp || "").trim()), grp: [] };
   k.grp.push({ id: nextId(of), titel: "", pos: [] }); // eine Gruppe ohne Titel: Positionen gleich erfassen, weitere Gruppen (Raum, Wohnung) bei Bedarf
   of.kap.push(k); return k;
 }
+export function addRabattgruppe(of, kz = "", name = "") { const r = { id: nextId(of), kz, name }; of.rg.push(r); return r; }
+// Rabattgruppe löschen: Gruppen, die sie nutzen, fallen auf den Gesamtrabatt zurück
+export function delRabattgruppe(of, id) { of.rg = of.rg.filter((r) => r.id !== id); for (const k of of.kap) for (const g of k.grp) if (g.rg === id) delete g.rg; }
+export const rabattgruppe = (of, g) => (g.rg ? of.rg.find((r) => r.id === g.rg) : null);
 export function addGruppe(of, kap, titel = "") { const g = { id: nextId(of), titel, pos: [] }; kap.grp.push(g); return g; }
 export function addPosition(of, grp, p = {}) { const n = { ...p, id: nextId(of) }; grp.pos.push(n); return n; }
 // Kopie bekommt eine neue feste ID (die ID einer Position ändert sich nie und gilt nur einmal)
@@ -88,8 +97,8 @@ export const unitPrice = unitRaw;
 export const posAmount = (p, of) => (p.menge || 0) * unitPrice(p, of);
 // zählt die Position zur Angebotssumme? Optionen erst nach Aktivierung
 export const counts = (p) => !p.opt || p.an === true;
-// Rabattsatz einer Gruppe: eigener Satz, kein Rabatt (false) oder Gesamtrabatt der Offerte
-export const groupRate = (g, of) => (g.rab === false ? 0 : isNum(g.rab) ? g.rab : of.rabatt || 0);
+// Rabattsatz einer Gruppe: aus ihrer Rabattgruppe (eigener Satz, 0 = kein Rabatt), sonst Gesamtrabatt der Offerte
+export const groupRate = (g, of) => { const r = rabattgruppe(of, g); return r && isNum(r.satz) ? r.satz : of.rabatt || 0; };
 
 // Alle Summen der Offerte in Franken. Alles ungerundet bis auf total (5 Rappen); die Anzeige rundet auf den Rappen.
 export function totals(of) {
@@ -104,12 +113,12 @@ export function totals(of) {
         if (counts(p)) gs += b; else opt += b;
       }
       grp.set(g.id, gs); ks += gs;
-      const r = groupRate(g, of);
-      if (r && gs) { const e = rab.get(r) || { satz: r, basis: 0 }; e.basis += gs; rab.set(r, e); }
+      const r = groupRate(g, of), rg = rabattgruppe(of, g), key = rg ? rg.id : 0; // je Rabattgruppe eine Zeile, ohne Gruppe: Gesamtrabatt
+      if (r && gs) { const e = rab.get(key) || { satz: r, basis: 0, ...(rg ? { kz: rg.kz, name: rg.name } : {}) }; e.basis += gs; rab.set(key, e); }
     }
     kap.push({ id: k.id, bkp: k.bkp, titel: k.titel, summe: ks }); zs += ks;
   }
-  const rabatt = [...rab.values()].sort((a, b) => a.satz - b.satz).map((e) => ({ satz: e.satz, basis: e.basis, betrag: e.basis * e.satz / 100 }));
+  const rabatt = [...rab.entries()].sort((a, b) => a[0] - b[0]).map(([, e]) => ({ ...e, betrag: e.basis * e.satz / 100 })); // Gesamtrabatt zuerst, dann Rabattgruppen in der Reihenfolge ihrer Anlage
   const rabSum = rabatt.reduce((s, e) => s + e.betrag, 0), netto = zs - rabSum, mwst = netto * (of.mwst ?? DEF.mwst) / 100, total = round05(netto + mwst);
   return { pos, grp, kap, zwischensumme: zs, rabatt, rabattTotal: rabSum, netto, mwst, total, optionen: opt,
     skonto: of.skonto ? { satz: of.skonto, tage: of.skTage || 0, betrag: total * of.skonto / 100 } : null }; // Skonto nur als Hinweis
@@ -130,6 +139,8 @@ export function cleanOfferte(o) {
   of.art = pick(o.art, ARTEN) || ""; of.bau = pick(o.bau, BAUARTEN) || "";
   for (const k of ["fak", "ansatz", "rabatt", "skonto", "mwst"]) { const v = num(o[k], 0, k === "fak" ? 100 : k === "ansatz" ? 10000 : 100); of[k] = v ?? DEF[k]; }
   put(of, "skTage", num(o.skTage, 0, 365));
+  for (const r of Array.isArray(o.rg) ? o.rg : []) { if (!r || typeof r !== "object") continue; const x = { id: id(r.id), kz: str(r.kz, 3), name: str(r.name, 80) }; put(x, "satz", num(r.satz, 0, 100)); if (x.id) of.rg.push(x); }
+  const rgs = new Set(of.rg.map((r) => r.id));
   const late = []; // ohne gültige ID: neue Nummer nach dem Laden
   for (const rk of Array.isArray(o.kap) ? o.kap : []) {
     if (!rk || typeof rk !== "object") continue;
@@ -139,7 +150,7 @@ export function cleanOfferte(o) {
       if (!rg || typeof rg !== "object") continue;
       const g = { id: id(rg.id), titel: str(rg.titel, 200), pos: [] };
       if (!g.id) late.push(g);
-      if (rg.rab === false) g.rab = false; else put(g, "rab", num(rg.rab, 0, 100));
+      if (rgs.has(rg.rg)) g.rg = rg.rg; // Verweis auf eine Rabattgruppe, die es gibt
       for (const rp0 of Array.isArray(rg.pos) ? rg.pos : []) { if (rp0 && typeof rp0 === "object") { const p = cleanPos(rp0, id); if (!p.id) late.push(p); g.pos.push(p); } }
       k.grp.push(g);
     }

@@ -3227,6 +3227,7 @@ async function elShareDialog(id, only = null) {
   const shown = openModal("Link teilen", `<div class="el-shbody">${E.shareDialogHTML(name, null, shareUrl, pick, nm)}</div>`, async (b, done) => {
     if (b.dataset.c !== undefined) done(null);
     else if (b.dataset.shnew !== undefined) {
+      if (S.doc.sheets.some((sh) => sh.kind === "offerte")) { toast("Projekte mit Offerte lassen sich noch nicht teilen: die Datenbank blendet Offerten und EK-Preise noch nicht aus.", "error"); return; } // bis zur Migration share_offerte (CJ 26.10.2026)
       b.disabled = true; let n = null;
       const mods = pick && pick.on.size < ids.length ? ids.filter((m) => pick.on.has(m)) : null;
       await load(async () => { n = await shareCreate(id, mods); return n ? [n, ...links] : null; }); if (n) copy(n.token);

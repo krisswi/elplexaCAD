@@ -22,9 +22,8 @@ export function viewHTML(of) {
     h += `<section class="of-kap" aria-label="Kapitel ${esc(k.bkp)} ${esc(k.titel)}"><div class="of-kh">${inp(`k${k.id}.bkp`, k.bkp, { cls: "of-bkp", ph: "BKP", lab: "BKP-Nummer" })}${inp(`k${k.id}.titel`, k.titel, { cls: "of-kt", ph: "Titel des Kapitels", lab: "Titel des Kapitels" })}`
       + `<span class="of-acts">${btn("kup", `data-k="${k.id}"`, "Kapitel nach oben", "↑")}${btn("kdown", `data-k="${k.id}"`, "Kapitel nach unten", "↓")}${btn("addgrp", `data-k="${k.id}"`, "Gruppe hinzufügen (z. B. Raum, Wohnung)", "+ Gruppe", "btn outline small")}${btn("delkap", `data-k="${k.id}"`, "Kapitel löschen", "×", "btn icon small danger")}</span></div>`;
     k.grp.forEach((g, gi) => {
-      const eigen = O.isNumber(g.rab);
       h += `<div class="of-grp"><div class="of-gh">${inp(`g${g.id}.titel`, g.titel, { cls: "of-gt", ph: k.grp.length > 1 ? "Gruppe (z. B. Raum, Wohnung)" : "Gruppe ohne Titel (z. B. Raum, Wohnung)", lab: "Titel der Gruppe" })}`
-        + `<label class="of-rab"><span>Rabatt</span><select data-of="g${g.id}.rab" aria-label="Rabatt der Gruppe"><option value=""${g.rab === undefined ? " selected" : ""}>Gesamtrabatt gilt</option><option value="nein"${g.rab === false ? " selected" : ""}>gilt nicht</option><option value="eigen"${eigen ? " selected" : ""}>eigener Satz</option></select>${eigen ? `${inp(`g${g.id}.rabp`, g.rab, { cls: "of-pct", num: true, lab: "Eigener Rabattsatz in Prozent" })}<span>%</span>` : ""}</label>`
+        + `<label class="of-rab"><span>Rabatt</span><select data-of="g${g.id}.rg" aria-label="Rabattgruppe"><option value="">Gesamtrabatt</option>${of.rg.map((r) => `<option value="${r.id}"${g.rg === r.id ? " selected" : ""}>${esc([r.kz, r.name].filter(Boolean).join(" – ") || "Rabattgruppe")}</option>`).join("")}</select></label>`
         + `<span class="of-acts">${btn("gup", `data-g="${g.id}"`, "Gruppe nach oben", "↑")}${btn("gdown", `data-g="${g.id}"`, "Gruppe nach unten", "↓")}${btn("delgrp", `data-g="${g.id}"`, "Gruppe löschen", "×", "btn icon small danger")}</span></div>`;
       h += `<table class="of-tab"><thead><tr><th class="c-pos">Pos</th><th class="c-txt">Text</th><th class="c-ic">IC</th><th class="c-n">Menge</th><th class="c-eh">EH</th><th class="c-n">Preis</th><th class="c-n">Betrag</th><th class="c-opt" title="Optionale Position">Opt.</th><th class="c-act"><span class="sr">Aktionen</span></th></tr></thead><tbody>`;
       g.pos.forEach((p, pi) => { h += posRow(of, t, p, `${ki + 1}.${gi + 1}.${pi + 1}`); });
@@ -60,7 +59,7 @@ function summaryHTML(of, t) {
   let h = `<section class="of-end" aria-label="Schlusszusammenstellung"><h2>Schlusszusammenstellung</h2><table class="of-stab"><tbody>`;
   for (const k of t.kap) h += row(`BKP ${esc(k.bkp)} ${esc(k.titel)}`, O.fmtChf(k.summe));
   h += row("Zwischensumme", O.fmtChf(t.zwischensumme), "of-strong");
-  for (const r of t.rabatt) h += row(`Rabatt ${O.fmtNum(r.satz)} % auf ${O.fmtChf(r.basis)}`, `− ${O.fmtChf(r.betrag)}`);
+  for (const r of t.rabatt) h += row(`Rabatt${r.kz || r.name ? ` ${esc([r.kz, r.name].filter(Boolean).join(" "))}` : ""} ${O.fmtNum(r.satz)} % auf ${O.fmtChf(r.basis)}`, `− ${O.fmtChf(r.betrag)}`);
   if (t.rabatt.length) h += row("Total nach Rabatt", O.fmtChf(t.netto));
   h += row(`MwSt ${O.fmtNum(of.mwst)} %`, O.fmtChf(t.mwst));
   const c = (x) => Math.round(x * 100), rd = c(t.total) - c(t.netto) - c(t.mwst); // Rundung auf 5 Rappen, damit die Zeilen sichtbar aufgehen
@@ -90,16 +89,28 @@ export function panelHTML(of) {
     + `${sel("Abrechnungsart", "o.art", O.ARTEN, of.art, "–")}${sel("Bauart", "o.bau", O.BAUARTEN, of.bau, "–")}</section>`
     + `<section class="section"><h2 class="section-title">Rechenwerte</h2>${fld("Materialfaktor", "o.fak", of.fak, { num: true })}${fld("Stundenansatz CHF", "o.ansatz", of.ansatz, { num: true })}${fld("Gesamtrabatt %", "o.rabatt", of.rabatt, { num: true })}`
     + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div>${fld("MwSt %", "o.mwst", of.mwst, { num: true })}</section>`
+    + rgHTML(of)
     + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">Total inkl. MwSt <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
+}
+
+// Rabattgruppen (CJ 26.10.2026): selbst angelegt mit Buchstabe und Bezeichnung, Regel Gesamtrabatt / kein Rabatt / eigener Satz. Die Gruppe in der Tabelle wählt sie.
+const RG_REGEL = { "": "Gesamtrabatt", kein: "kein Rabatt", eigen: "eigener Satz" };
+function rgHTML(of) {
+  const rows = of.rg.map((r) => { const reg = r.satz === undefined ? "" : r.satz === 0 ? "kein" : "eigen";
+    return `<div class="of-rg">${inp(`r${r.id}.kz`, r.kz, { cls: "of-rgkz", ph: "R", lab: "Buchstabe" })}${inp(`r${r.id}.name`, r.name, { ph: "Bezeichnung", lab: "Bezeichnung" })}`
+      + `<select data-of="r${r.id}.regel" aria-label="Regel">${opts(RG_REGEL, reg)}</select>${reg === "eigen" ? `${inp(`r${r.id}.satz`, r.satz, { cls: "of-pct", num: true, lab: "Satz in Prozent" })}<span>%</span>` : ""}`
+      + `${btn("delrg", `data-r="${r.id}"`, "Rabattgruppe löschen", "×", "btn icon small danger")}</div>`; }).join("");
+  return `<section class="section"><h2 class="section-title">Rabattgruppen</h2>${rows || `<p class="note">Ohne Rabattgruppe gilt überall der Gesamtrabatt.</p>`}${btn("addrg", "", "Rabattgruppe anlegen", "+ Rabattgruppe", "btn outline small")}</section>`;
 }
 
 // ---------- Änderungen ----------
 // Zahl aus dem Feld: 1'234,50 und 1234.5 gehen, leer = nicht gesetzt
 export const parseNum = (s) => { const t = String(s).replace(/['’\s]/g, "").replace(",", "."); if (!t) return undefined; const n = Number(t); return Number.isFinite(n) ? n : NaN; };
-const NUM = new Set(["menge", "preis", "ek", "fak", "std", "ansatz", "rabatt", "skonto", "skTage", "mwst", "rabp"]);
+const NUM = new Set(["menge", "preis", "ek", "fak", "std", "ansatz", "rabatt", "skonto", "skTage", "mwst"]);
 function target(of, key) {
   const [ref, ...path] = key.split("."), id = Number(ref.slice(1));
   if (ref === "o") return { obj: of, f: path[0] };
+  if (ref[0] === "r") { const r = of.rg.find((x) => x.id === id); return r && { obj: r, f: path[0] }; }
   if (ref[0] === "k") { const k = of.kap.find((x) => x.id === id); return k && { obj: k, f: path[0] }; }
   if (ref[0] === "g") { const g = O.findGrp(of, id)?.g; return g && { obj: g, f: path[0] }; }
   const p = O.findPos(of, id)?.p; if (!p) return null;
@@ -113,8 +124,10 @@ export function apply(of, el) {
   if (f === "gl") { const s = String(v).trim(); obj.gl ||= {}; if (s) obj.gl[tg.sub] = s; else delete obj.gl[tg.sub]; if (!Object.keys(obj.gl).length) delete obj.gl; return true; }
   if (f === "opt") { if (v) obj.opt = true; else { delete obj.opt; delete obj.an; } return true; }
   if (f === "an") { if (v) obj.an = true; else delete obj.an; return true; }
-  if (f === "rab") { if (v === "nein") obj.rab = false; else if (v === "eigen") obj.rab = O.isNumber(obj.rab) ? obj.rab : of.rabatt || 0; else delete obj.rab; return true; }
-  if (f === "rabp") { const n = parseNum(v); if (!(n >= 0 && n <= 100)) return false; obj.rab = n; return true; }
+  if (f === "rg") { const n = Number(v); if (n && of.rg.some((r) => r.id === n)) obj.rg = n; else delete obj.rg; return true; }
+  if (f === "regel") { if (v === "kein") obj.satz = 0; else if (v === "eigen") obj.satz = obj.satz || of.rabatt || 0; else delete obj.satz; return true; }
+  if (f === "satz") { const n = parseNum(v); if (!(n >= 0 && n <= 100)) return false; obj.satz = n; return true; }
+  if (f === "kz") { obj.kz = String(v).trim().slice(0, 3); return true; }
   if (f === "typ") { if (v === "regie") { if (!obj.eh) obj.eh = "h"; if (obj.std === undefined) obj.std = 1; } if (v && v !== "lp") obj.typ = v; else delete obj.typ; return true; }
   if (f === "form") { if (v && v !== "r") obj.form = v; else delete obj.form; return true; }
   if (NUM.has(f)) {
@@ -126,7 +139,7 @@ export function apply(of, el) {
   }
   if (obj === of && (f === "art" || f === "bau")) { of[f] = v; return true; }
   const s = f === "text" ? String(v) : String(v).trim();
-  if (obj === of || "grp" in obj || "pos" in obj) obj[f] = s; // Kopf, Kapitel, Gruppe: Feld bleibt (leer erlaubt)
+  if (obj === of || "grp" in obj || "pos" in obj || of.rg.includes(obj)) obj[f] = s; // Kopf, Kapitel, Gruppe: Feld bleibt (leer erlaubt)
   else if (s) obj[f] = s; else delete obj[f];
   return true;
 }
@@ -135,6 +148,8 @@ export function action(of, b) {
   const a = b.dataset.ofact, pid = Number(b.dataset.p), gid = Number(b.dataset.g), kid = Number(b.dataset.k);
   const move = (arr, i, d) => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; };
   if (a === "det") { if (open.has(pid)) open.delete(pid); else open.add(pid); return { ui: true, focus: null, keep: `[data-ofact="det"][data-p="${pid}"]` }; }
+  if (a === "addrg") { let r; return { fn: () => { r = O.addRabattgruppe(of); }, focus: () => `r${r.id}.kz` }; }
+  if (a === "delrg") return { fn: () => { O.delRabattgruppe(of, Number(b.dataset.r)); } };
   if (a === "addkap") { let k; return { fn: () => { k = O.addKapitel(of, b.dataset.bkp); }, focus: () => (b.dataset.bkp ? `g${k.grp[0].id}.titel` : `k${k.id}.bkp`) }; }
   if (a === "addgrp") { let g; return { fn: () => { g = O.addGruppe(of, of.kap.find((k) => k.id === kid)); }, focus: () => `g${g.id}.titel` }; }
   if (a === "addpos") { let p; return { fn: () => { p = O.addPosition(of, O.findGrp(of, gid).g, {}); }, focus: () => `p${p.id}.titel` }; }

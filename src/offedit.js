@@ -130,7 +130,7 @@ export function panelHTML(of, profil = null) {
     + senderHTML(profil)
     + `<section class="section"><h2 class="section-title">Kopf</h2>${fld("Offertnummer", "o.nr", of.nr)}${fld("Version (Revision, Nachtrag)", "o.ver", of.ver)}${fld("Datum", "o.datum", of.datum)}${fld("Gültig bis", "o.gueltig", of.gueltig, { ph: "z. B. 3 Monate" })}`
     + `${sel("Abrechnungsart", "o.art", O.ARTEN, of.art, "–")}${sel("Bauart", "o.bau", O.BAUARTEN, of.bau, "–")}</section>`
-    + `<section class="section"><h2 class="section-title">Rechenwerte</h2>${fld("Materialfaktor", "o.fak", of.fak, { num: true })}${fld("Stundenansatz CHF", "o.ansatz", of.ansatz, { num: true })}${fld("Gesamtrabatt %", "o.rabatt", of.rabatt, { num: true })}`
+    + `<section class="section"><h2 class="section-title">Rechenwerte</h2>${fld("Materialfaktor", "o.fak", of.fak, { num: true })}<div class="of-two">${fld("Stundenansatz CHF", "o.ansatz", of.ansatz, { num: true })}${fld("Zeitfaktor", "o.zf", of.zf, { num: true, ph: "1" })}</div>${fld("Gesamtrabatt %", "o.rabatt", of.rabatt, { num: true })}`
     + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div><label class="of-chk"><input type="checkbox" data-of="o.mwstan"${of.mwst ? " checked" : ""}> MwSt aufrechnen</label>${of.mwst ? fld("MwSt %", "o.mwst", of.mwst, { num: true }) : ""}`
     + `<div class="row"><button type="button" class="btn outline small" data-ofact="sollwerte" title="Ansatz und Faktor für neue Offerten, Rechnung der Preisbasis, IC-Zeiten (gilt für dein Konto, nicht nur diese Offerte)">Kalkulation Firmenwerte …</button></div></section>`
     + rgHTML(of)
@@ -157,7 +157,7 @@ function rgHTML(of) {
 // ---------- Änderungen ----------
 // Zahl aus dem Feld: 1'234,50 und 1234.5 gehen, leer = nicht gesetzt
 export const parseNum = (s) => { const t = String(s).replace(/['’\s]/g, "").replace(",", "."); if (!t) return undefined; const n = Number(t); return Number.isFinite(n) ? n : NaN; };
-const NUM = new Set(["menge", "preis", "ek", "fak", "std", "ansatz", "rabatt", "skonto", "skTage", "mwst"]);
+const NUM = new Set(["menge", "preis", "ek", "fak", "std", "ansatz", "zf", "rabatt", "skonto", "skTage", "mwst"]);
 function target(of, key) {
   const [ref, ...path] = key.split("."), id = Number(ref.slice(1));
   if (ref === "o") return { obj: of, f: path[0] };
@@ -191,6 +191,7 @@ export function apply(of, el) {
   if (NUM.has(f)) {
     const n = parseNum(v);
     if (Number.isNaN(n) || (n !== undefined && n < 0 && f !== "menge" && f !== "preis")) return false;
+    if (obj === of && f === "zf") { if (n === undefined || n === 1) delete of.zf; else if (n >= 0.01 && n <= 10) of.zf = n; else return false; return true; } // Zeitfaktor: leer = 1
     if (obj === of) { if (n === undefined) { if (f === "skTage") delete of.skTage; else of[f] = O.DEF[f]; } else of[f] = n; return true; }
     if (n === undefined) delete obj[f]; else obj[f] = n;
     return true;

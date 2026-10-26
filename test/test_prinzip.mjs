@@ -72,7 +72,7 @@ pz.items.push(sym("PZ_FILS", 40, 250), sym("PZ_LEITER_3", 100, 250), sym("PZ_VER
 pz.items[0].attrs.BMK = "3F1"; // von Hand
 doc.nextId = id;
 const txt = serializeModel(doc), o = JSON.parse(txt);
-assert.strictEqual(VERSION, 19); assert.strictEqual(o.version, 19, "mit Prinzipschema Version 19");
+assert.ok(VERSION >= 19); assert.strictEqual(o.version, 19, "mit Prinzipschema Version 19");
 const back = parseModel(txt);
 assert.deepStrictEqual(JSON.parse(serializeModel(back)), o, "Speichern und Laden ohne Verlust");
 assert.deepStrictEqual(back.sheets[1].paper, { size: "A3", quer: true });

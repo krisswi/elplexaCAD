@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 24, "elplexa liest Version 24 (Plan Schritt 5: Versatz der Beschriftung …)");
+assert.strictEqual(M.VERSION, 25, "elplexa liest Version 25 (Offerte, 26.10.2026)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -62,12 +62,12 @@ assert.deepStrictEqual([dirty.layers.length, dirty.layers[0].name, dirty.alay], 
 assert.throws(() => M.parseModel(file([plan([{ id: 1, type: "symbol", sym: "LS_1P", x: 0, y: 0 }])])), /Plan enthält ein unbekanntes/);
 assert.throws(() => M.parseModel(file([plan([{ id: 1, type: "wall", layer: "bg", a: [0, 0], b: [0, 0], d: 150 }])])), /defektes Objekt/, "Wand ohne Länge");
 
-// SchemaCAD v3 (ohne ELPLEXA, eigener Prozess) lehnt Version 20 ab und kennt kind "plan" nicht
+// SchemaCAD v3 (ohne ELPLEXA, eigener Prozess) kennt kind "plan" nicht und lehnt Dateien mit Plan ab (seit Version 25 am Blatt, vorher über die Version)
 const { execFileSync } = await import("node:child_process");
 const v3 = execFileSync(process.execPath, ["--input-type=module", "-e", `import { parseModel, VERSION, KINDS, modBase } from "./src/model.js";
 let e = ""; try { parseModel(${JSON.stringify(file([plan([])]))}); } catch (x) { e = x.message; }
 console.log(JSON.stringify([VERSION, KINDS.includes("plan"), modBase({ kind: "plan" }), e]));`], { cwd: new URL("..", import.meta.url) }).toString();
-assert.deepStrictEqual(JSON.parse(v3), [19, false, "schema", "Die Datei stammt aus einer neueren Version von SchemaCAD."]);
+assert.deepStrictEqual(JSON.parse(v3), [25, false, "schema", "Die Datei enthält einen Plan. Pläne öffnet nur elplexaCAD."]);
 
 // ---------- Ebenen ----------
 const sh = M.parseModel(file([plan(kueche())])).sheets[0];
@@ -335,7 +335,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 25)), /neueren Version/, "Version 25 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 26)), /neueren Version/, "Version 26 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#3FBBEB" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");

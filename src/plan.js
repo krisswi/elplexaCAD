@@ -81,7 +81,10 @@ export function moveLayer(sh, id, dir) {
 
 // ---------- Objekte ----------
 export const WALL_D = 150; // Vorgabe Wanddicke in mm
-export const MATS = [["beton", "Beton"], ["mauer", "Mauerwerk"], ["leicht", "Leichtbau/Gips"]]; // beton = Kreuzschraffur, mauer = Schraffur /, leicht = nur Umriss
+export const MATS = [["beton", "Beton"], ["mauer", "Mauerwerk"], ["leicht", "Leichtbau/Gips"], ["doppel", "Doppelschale (Stein, Isolation, Stein)"]]; // beton = Kreuzschraffur, mauer = Schraffur /, leicht = nur Umriss, doppel = zwei Schalen Schraffur / mit Isolation dazwischen
+// Doppelschalenmauerwerk (CJ 26.10.2026): Stein st je Schale und Isolation iso in mm, Dicke d = 2 × st + iso (Vorgabe 12 + 8 + 12 = 32 cm)
+export const DOPPEL = { st: 120, iso: 80 };
+export const doppelD = (st, iso) => 2 * st + iso;
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
 export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line"]);
@@ -108,7 +111,9 @@ export function setCol(it, col) { if (!hasCol(it)) return; const c = String(col 
 export function cleanPlanObj(it, id) {
   if (it.type === "wall") {
     if (!isPt(it.a) || !isPt(it.b) || !isNum(it.d) || it.d <= 0 || Math.hypot(it.b[0] - it.a[0], it.b[1] - it.a[1]) < EPS) return null;
-    return { id, type: "wall", layer: String(it.layer ?? ""), a: [it.a[0], it.a[1]], b: [it.b[0], it.b[1]], d: it.d, mat: MATS.some(([k]) => k === it.mat) ? it.mat : "mauer" };
+    const o = { id, type: "wall", layer: String(it.layer ?? ""), a: [it.a[0], it.a[1]], b: [it.b[0], it.b[1]], d: it.d, mat: MATS.some(([k]) => k === it.mat) ? it.mat : "mauer" };
+    if (o.mat === "doppel") { o.st = isNum(it.st) && it.st > 0 ? it.st : DOPPEL.st; o.iso = isNum(it.iso) && it.iso >= 0 ? it.iso : DOPPEL.iso; o.d = doppelD(o.st, o.iso); } // Dicke folgt den Schichten
+    return o;
   }
   if (it.type === "opening") {
     if (!isNum(it.wall) || !isNum(it.t) || !isNum(it.w) || it.w <= 0 || !OPENINGS.some(([k]) => k === it.kind)) return null;
@@ -153,7 +158,7 @@ export function cleanPlanObj(it, id) {
 // Blattfelder und Objekte aus der Datei. Bereinigung: Objekte auf unbekannter Ebene → aktive Ebene, Öffnung ohne Wand fällt weg,
 // Öffnung in die Wand geklemmt, Mass mit fehlender Wand verliert den Bezug. Gibt die höchste id zurück.
 // Dateiversion 24 (Plan Schritt 5, CJ 26.10.2026): ältere Stände kennen diese Felder nicht
-export const planV24 = (sh) => sh.items.some((i) => i.lo);
+export const planV24 = (sh) => sh.items.some((i) => i.lo || i.mat === "doppel");
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 export function cleanPlanSheet(rs, m, maxId) {
   m.paper = cleanPlanPaper(rs.paper);
@@ -303,7 +308,8 @@ export function wallShapes(walls, openings = []) {
     const poly = [a.R, b.R, b.L, a.L];
     const cuts = [-Infinity, ...ops.flat().sort((x, y) => x - y), Infinity], fills = [];
     for (let i = 0; i < cuts.length; i += 2) { const f = clipBand(poly, w.a, u, cuts[i], cuts[i + 1]); if (f.length >= 3) fills.push(f); }
-    return { id: w.id, poly, fills, lines: lin.map(([p, q]) => [p.map(r3), q.map(r3)]) };
+    const iso = w.mat === "doppel" && w.iso > 0 ? fills.map((f) => clipBand(f, w.a, nl, -w.iso / 2, w.iso / 2)).filter((f) => f.length >= 3) : []; // Isolation mittig, Ecken auf Gehrung wie die Wand
+    return { id: w.id, poly, fills, iso, lines: lin.map(([p, q]) => [p.map(r3), q.map(r3)]) };
   });
 }
 

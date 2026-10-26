@@ -112,6 +112,22 @@ assert.strictEqual(ow.fills.length, 2, "Schraffur in zwei Teilen");
 assert.ok(ow.lines.some((l) => l[0][0] === 500 && l[1][0] === 500) && ow.lines.some((l) => l[0][0] === 1400), "Leibungen bei 500 und 1400");
 assert.ok(!ow.lines.some((l) => l[0][1] === l[1][1] && Math.min(l[0][0], l[1][0]) < 1000 && Math.max(l[0][0], l[1][0]) > 1000), "keine Fläche über der Tür");
 
+// ---------- Doppelschale (CJ 26.10.2026): Stein + Isolation + Stein, Dicke daraus, Isolation mittig mit Gehrung ----------
+{
+  const cw = (o) => P.cleanPlanObj({ type: "wall", layer: "bg", a: [0, 0], b: [4000, 0], d: 150, ...o }, 1);
+  assert.deepStrictEqual([cw({ mat: "doppel" }).st, cw({ mat: "doppel" }).iso, cw({ mat: "doppel" }).d], [120, 80, 320], "Vorgabe 12 + 8 + 12 = 32 cm");
+  assert.strictEqual(cw({ mat: "doppel", st: 150, iso: 100 }).d, 400, "Dicke folgt Stein und Isolation");
+  assert.ok(!("st" in cw({ mat: "mauer", st: 150 })), "Stein nur bei Doppelschale");
+  const dw = [[0, 0, 4000, 0], [4000, 0, 4000, 3000]].map(([x0, y0, x1, y1], i) => cw({ mat: "doppel", a: [x0, y0], b: [x1, y1] }) && { ...cw({ mat: "doppel", a: [x0, y0], b: [x1, y1] }), id: i + 1 });
+  const ds = P.wallShapes(dw, []);
+  const ys = ds[0].iso[0].map((p) => p[1]);
+  assert.deepStrictEqual([Math.min(...ys), Math.max(...ys)], [-40, 40], "Isolation 80 mm mittig");
+  const has = (x, y) => ds[0].iso[0].some((p) => Math.abs(p[0] - x) < 1e-6 && Math.abs(p[1] - y) < 1e-6);
+  assert.ok(has(3960, 40) && has(4040, -40), "Isolation auf Gehrung in der Ecke");
+  assert.ok(P.wallShapes(walls, [])[0].iso.length === 0, "andere Wände ohne Isolation");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ ...dw[0], id: 1 }])])))).version, 24, "Doppelschale: Version 24");
+}
+
 // ---------- Ecke ziehen: beide Wände folgen, T-Stoss-Wand nicht ----------
 const g = M.parseModel(file([plan([...kueche(), tw])])).sheets[0];
 assert.strictEqual(P.moveNode(g, [4000, 0], [4500, -200]), 4, "zwei Wände und zwei Masse an der Ecke");

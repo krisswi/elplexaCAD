@@ -38,7 +38,7 @@ export function makePlan(c) {
   const sh = () => S.model;
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
-  const opt = { d: P.WALL_D, mat: "mauer", side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: false, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: false, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
@@ -266,7 +266,8 @@ export function makePlan(c) {
     const s = 1.5 * k, w = 0.13 * k, d = `M${-s / 2},${s / 2}L${s / 2},${1.5 * s}M0,0L${s},${s}M${s / 2},${-s / 2}L${1.5 * s},${s / 2}`;
     const e = `M${s / 2},${-s / 2}L${-s / 2},${s / 2}M${s},0L0,${s}M${1.5 * s},${s / 2}L${s / 2},${1.5 * s}`;
     const pat = (id, path) => `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${f(s)}" height="${f(s)}"><rect width="${f(s)}" height="${f(s)}" fill="#fff"/><path d="${path}" stroke="${INK}" stroke-width="${f(w)}" fill="none"/></pattern>`;
-    return `<defs>${pat("pl-mauer", d)}${pat("pl-beton", d + e)}</defs>`;
+    const iso = `<pattern id="pl-iso" patternUnits="userSpaceOnUse" width="${f(s)}" height="${f(s)}"><rect width="${f(s)}" height="${f(s)}" fill="#fff"/><path d="M0,${f(s / 2)}q${f(s / 4)},${f(-s / 2)} ${f(s / 2)},0t${f(s / 2)},0" stroke="${INK}" stroke-width="${f(w)}" fill="none"/></pattern>`; // Isolation: Wellen
+    return `<defs>${pat("pl-mauer", d)}${pat("pl-beton", d + e)}${iso}</defs>`;
   }
   // Öffnung: Linien und Bögen in Welt-mm. Tür: Flügel und Bogen auf der Seite side, Band bei hinge; Fenster: Doppellinie; Schiebetür: Flügel an der Fläche
   function openingSVG(w, o, k, stroke = INK) {
@@ -335,7 +336,8 @@ export function makePlan(c) {
     for (const l of S0.layers) {
       if (!l.show) continue;
       const ws = walls.filter((w) => w.layer === l.id);
-      for (const w of ws) for (const poly of shapes.get(w.id).fills) s += `<path d="M${poly.map(pt).join("L")}Z" fill="${w.mat === "leicht" ? "#fff" : `url(#pl-${w.mat})`}" stroke="none"/>`;
+      for (const w of ws) for (const poly of shapes.get(w.id).fills) s += `<path d="M${poly.map(pt).join("L")}Z" fill="${w.mat === "leicht" ? "#fff" : w.mat === "doppel" ? "url(#pl-mauer)" : `url(#pl-${w.mat})`}" stroke="none"/>`;
+      for (const w of ws) for (const poly of shapes.get(w.id).iso) s += `<path d="M${poly.map(pt).join("L")}Z" fill="url(#pl-iso)" stroke="${INK}" stroke-width="${f(0.18 * k)}"/>`; // Doppelschale: Isolation
       const segs = ws.flatMap((w) => shapes.get(w.id).lines);
       if (segs.length) s += `<path d="${segs.map(([a, b]) => `M${pt(a)}L${pt(b)}`).join("")}" fill="none" stroke="${INK}" stroke-width="${f(0.5 * k)}" stroke-linecap="round"/>`;
       for (const o of ops) if (byId.get(o.wall)?.layer === l.id) s += openingSVG(byId.get(o.wall), o, k);
@@ -376,7 +378,7 @@ export function makePlan(c) {
     if (draft && mouse) {
       const b = draftEnd();
       if (Math.hypot(b[0] - draft.a[0], b[1] - draft.a[1]) > 1) {
-        const side = wallSide(b), nw = { id: -1, ...P.innerWall(draft.a, b, opt.d, side), d: opt.d }, ws = [], items = sh().items;
+        const side = wallSide(b), nw = { id: -1, ...P.innerWall(draft.a, b, wallD(), side), d: wallD() }, ws = [], items = sh().items;
         const prev = items.find((i) => i.id === draft.prev), first = items.find((i) => i.id === draft.first);
         if (prev) { const pc = { ...prev }; if (side !== draft.side && draft.pts.length === 2) Object.assign(pc, P.innerWall(draft.pts[0], draft.pts[1], pc.d, side)); P.mitre(pc, nw); ws.push(pc); } // Ecke zur vorigen Wand schon in der Vorschau
         if (first && first !== prev && Math.hypot(b[0] - draft.start[0], b[1] - draft.start[1]) < 1e-6) { const fc = { ...first }; P.mitre(nw, fc); ws.push(fc); }
@@ -578,7 +580,7 @@ export function makePlan(c) {
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) { if (close) cancel(); return; }
     const id = nextId(), d0 = draft, side = wallSide(b), resolved = d0.auto && Math.abs(turn(b)) > 1e-6, shut = Math.hypot(b[0] - d0.start[0], b[1] - d0.start[1]) < 1e-6 && d0.first !== undefined;
     change(() => {
-      const w = { id, type: "wall", layer: sh().alay, ...P.innerWall(a, b, opt.d, side), d: opt.d, mat: opt.mat }, items = sh().items;
+      const w = { id, type: "wall", layer: sh().alay, ...P.innerWall(a, b, wallD(), side), d: wallD(), mat: opt.mat, ...(opt.mat === "doppel" ? { st: opt.st, iso: opt.iso } : {}) }, items = sh().items;
       const prev = items.find((i) => i.id === d0.prev), first = items.find((i) => i.id === d0.first);
       if (resolved && side !== d0.side && first) Object.assign(first, P.innerWall(d0.pts[0], d0.pts[1], first.d, side)); // erste Wand auf die richtige Seite
       if (prev) P.mitre(prev, w);
@@ -747,7 +749,7 @@ export function makePlan(c) {
   const copyRow = () => `<div class="row"><button class="btn outline small" data-plact="copy">Kopieren</button><button class="btn outline small" data-plact="dup">Duplizieren</button>${clip?.length ? `<button class="btn outline small" data-plact="paste">Einfügen</button>` : ""}</div>`;
   function panelHTML(sel0, { head }) {
     const it = sel0.length === 1 ? sel0[0] : null, note = (t) => `<p class="note">${t}</p>`;
-    if (it?.type === "wall") return head("Wand", P.MATS.find(([k]) => k === it.mat)[1]) + inp("len", "Länge Mittellinie in mm", P.fmtLen(P.wallLen(it))) + inp("d", "Dicke in mm", P.fmtLen(it.d))
+    if (it?.type === "wall") return head("Wand", P.MATS.find(([k]) => k === it.mat)[1]) + inp("len", "Länge Mittellinie in mm", P.fmtLen(P.wallLen(it))) + thickFields(it, "data-plf")
       + sel1("mat", P.MATS, it.mat, "Material") + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Länge ändern verschiebt das Ende (Griff am Ende), angeschlossene Ecken folgen. Ecken ziehen: Griff an den Enden.") + copyRow() + del1();
     if (it?.type === "opening") {
       const w = sh().items.find((i) => i.id === it.wall);
@@ -784,7 +786,7 @@ export function makePlan(c) {
         + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. Shift-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
     }
     let h = "";
-    if (S.tool === "pl-wall") h += head("Neue Wand", "Klick Start, Länge tippen, Enter") + inp("d", "Dicke in mm", P.fmtLen(opt.d), "data-plo") + sel1("mat", P.MATS, opt.mat, "Material").replace("data-plf", "data-plo")
+    if (S.tool === "pl-wall") h += head("Neue Wand", "Klick Start, Länge tippen, Enter") + thickFields(opt, "data-plo") + sel1("mat", P.MATS, opt.mat, "Material").replace("data-plf", "data-plo")
       + sel1("side", [["0", "automatisch (nach der ersten Kurve)"], ["1", "links der Zeichenrichtung"], ["-1", "rechts der Zeichenrichtung"]], opt.side, "Wand liegt").replace("data-plf", "data-plo")
       + note("Gezeichnet wird die Innenkante, die Wand wächst nach aussen (automatisch nach der ersten Kurve, Taste X wechselt die Seite). Eingetippte Länge = lichte Länge. Gespeichert wird die Mittellinie. Orange Hilfslinien: Ausrichtung an Anfang, Ecken und letztem Punkt (Alt ohne Fang).");
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
@@ -799,11 +801,15 @@ export function makePlan(c) {
     return h;
   }
   // Eingaben rechts: Wert übernehmen beim Verlassen des Felds oder Enter (change)
+  const wallD = () => (opt.mat === "doppel" ? P.doppelD(opt.st, opt.iso) : opt.d); // Dicke neuer Wände
+  // Felder Dicke bzw. Stein und Isolation (Doppelschale), für das Werkzeug (data-plo) oder die gewählte Wand
+  const thickFields = (o, attr) => (o.mat === "doppel" ? inp("st", "Stein je Schale in mm", P.fmtLen(o.st), attr) + inp("iso", "Isolation in mm", P.fmtLen(o.iso), attr) + `<p class="note">Gesamtdicke ${P.fmtLen(P.doppelD(o.st, o.iso))} mm (Stein + Isolation + Stein).</p>` : inp("d", "Dicke in mm", P.fmtLen(o.d), attr));
   function panelChange(t) {
     const S0 = sh(), it = sel()[0];
     if (t.dataset.plo !== undefined) {
       const k = t.dataset.plo;
       if (k === "d") { const v = P.parseLen(t.value); if (v > 0) opt.d = v; else toast("Dicke nicht verstanden.", "error"); }
+      else if (k === "st" || k === "iso") { const v = P.parseLen(t.value); if (v > 0 || (k === "iso" && v === 0)) opt[k] = v; else toast(`${k === "st" ? "Stein" : "Isolation"} nicht verstanden.`, "error"); }
       else if (k === "ow") { const v = P.parseLen(t.value); if (v > 0) opt.ow[opt.okind] = v; }
       else if (k === "ctrl") opt.ctrl = t.checked;
       else if (k === "lkind") { opt.lkind = t.value; updateHint(); }
@@ -828,6 +834,8 @@ export function makePlan(c) {
     if (k === "soll") { const s = v.trim() ? L : undefined; if (v.trim() && !(L > 0)) return bad(), true; change(() => { if (s) it.soll = s; else delete it.soll; }); return true; }
     if (k === "off") { const o = Number(v.trim().replace(",", ".").replace("−", "-")); if (!Number.isFinite(o)) return bad(), true; change(() => { it.off = o; }); return true; }
     if (k === "d") { if (!(L > 0)) return bad(), true; change(() => { it.d = L; opt.d = L; }); return true; }
+    if (k === "st" || k === "iso") { if (!(L > 0 || (k === "iso" && L === 0))) return bad(), true; change(() => { it[k] = L; opt[k] = L; it.d = P.doppelD(it.st, it.iso); }); return true; }
+    if (k === "mat" && it.type === "wall") { change(() => { it.mat = v; if (v === "doppel") { it.st = opt.st; it.iso = opt.iso; it.d = P.doppelD(it.st, it.iso); } else { delete it.st; delete it.iso; } }); return true; }
     if (k === "w" || k === "t" || k === "br" || k === "h") {
       const x = (k === "br" || k === "h") && !v.trim() ? undefined : k === "t" && /^\s*0\s*$/.test(v) ? 0 : L;
       if (x !== undefined && !(x >= 0)) return bad(), true;

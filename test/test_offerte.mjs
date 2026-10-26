@@ -77,7 +77,7 @@ g1.pos.splice(1, 1);
 
 // ---------- Speichern und Laden ----------
 Object.assign(of, { nr: "OF-2026-01", ver: "Rev. 1", gueltig: "3 Monate", art: "ep", bau: "wohn" });
-Object.assign(p1, { npk: "513 211 212", bkp: "232.51", eh: "Stk", text: "Typ 13, UP\nweiss", typ: "it", form: "o", her: "Hager", enr: "123 456 789", ic: "22", gl: { rgl: "Küche", psl: "EG" } });
+Object.assign(p1, { npk: "513 211 212", eh: "Stk", text: "Typ 13, UP\nweiss", typ: "it", form: "o", her: "Hager", enr: "123 456 789", ic: "22" }); // Gliederung und BKP erbt die Position (test_offerte_gliederung.mjs)
 const doc = newDoc(); const sh = newSheet("offerte"); sh.of = of; sh.meta.BLATT = "1"; doc.sheets.push(sh);
 doc.mods = { offerte: { name: "Offerte EFH" } };
 const txt = serializeModel(doc), back = JSON.parse(txt);
@@ -99,7 +99,7 @@ assert.strictEqual(cl.kap[0].grp[0].rg, undefined, "Rabattgruppe fehlt: Gesamtra
 assert.strictEqual(O.cleanOfferte({ rg: [{ id: 4, kz: "R", name: "Rabatt", satz: 3 }], kap: [{ id: 5, grp: [{ id: 6, rg: 9, pos: [] }, { id: 7, rg: 4, pos: [] }] }] }).kap[0].grp.map((g) => g.rg).join(), ",4", "Verweis auf fehlende Rabattgruppe fällt weg");
 assert.ok(O.BKP.some((b) => b[0] === "239.21") && O.bkpTitle("238") === "Provisorische Installationen", "BKP 237 bis 239 vorbelegt");
 assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 25, sheets: [{ kind: "offerte", meta: {}, items: [{ id: 1, type: "text", x: 0, y: 0, text: "x" }] }] })), /keine Zeichenobjekte/);
-assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 27, sheets: [{ meta: {}, items: [] }] })), /neueren Version/);
+assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 28, sheets: [{ meta: {}, items: [] }] })), /neueren Version/);
 // v3 (dieser Prozess ohne ELPLEXA) lehnt einen Plan am Blatt ab
 assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 24, sheets: [{ kind: "plan", meta: {}, items: [] }] })), /Pläne öffnet nur elplexaCAD/);
 

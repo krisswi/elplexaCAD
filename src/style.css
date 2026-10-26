@@ -505,6 +505,35 @@ body.is-offerte #svg, body.is-offerte #zoombar { display: none; }
 .of-dbadd:hover { background: var(--hover); }
 .of-dbadd b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .of-dbadd span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Gliederung der Offerte (CJ 26.10.2026): links Baum und BKP-Kapitel als einklappbare Bereiche, in der Mitte Knoten als Kopfzeile mit Summe */
+.of-areah { margin: 0 0 6px; }
+.of-area { display: flex; align-items: baseline; gap: 6px; width: 100%; padding: 2px 0; border: 0; background: transparent; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+.of-caret { flex: none; width: 10px; }
+.of-areas { margin-left: auto; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
+.of-tree { display: flex; flex-direction: column; margin-bottom: 8px; }
+.of-kni { display: flex; align-items: baseline; gap: 6px; text-align: left; padding: 4px 6px 4px calc(6px + var(--lv, 0) * 14px); border: 0; border-radius: 6px; background: transparent; font-size: 13px; }
+.of-kni:hover { background: var(--hover); }
+.of-kni.on { background: var(--hover); font-weight: 600; box-shadow: inset 3px 0 0 var(--pe-green); }
+.of-kni span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.of-kni small { flex: none; color: var(--muted); font-size: 11px; font-weight: 400; }
+.of-knedit { border-top: 1px solid var(--panel-line); padding-top: 8px; margin-bottom: 8px; }
+.of-knedit .row { flex-wrap: wrap; gap: 4px; }
+.of-kaplist { display: flex; flex-direction: column; margin-bottom: 10px; }
+.of-kapi { display: flex; gap: 8px; align-items: baseline; text-align: left; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; font-size: 13px; }
+.of-kapi:hover { background: var(--hover); }
+.of-kapi b { flex: none; width: 52px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.of-path { font-weight: 600; color: var(--ink) !important; }
+.of-kn { margin: 18px 0 8px; }
+.of-kn.lv1 { margin-left: 12px; } .of-kn.lv2 { margin-left: 24px; } .of-kn.lv3 { margin-left: 36px; }
+.of-knh { padding: 2px 0; border: 0; background: transparent; font: inherit; font-size: 16px; font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; }
+.of-knh:hover { text-decoration: underline; }
+.of-knsum { display: flex; justify-content: space-between; padding: 4px 12px 14px; font-weight: 600; }
+.of-knsum b { font-variant-numeric: tabular-nums; }
+.of-ptw { display: flex; align-items: center; gap: 2px; }
+.of-ptw input { flex: 1; }
+.of-tab .btn.icon.small.of-lupe { flex: none; padding: 0; color: var(--muted); }
+.of-inh { margin: 6px 0 0; }
+.modal.of-dbmodal { width: min(560px, 94vw); }
 .of-chk { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 4px 0 8px; }
 /* Sollwerte und IC-Zeiten (sollwerte.js, Offerte Schritt 4) */
 .modal.sw-modal { width: min(640px, 94vw); }

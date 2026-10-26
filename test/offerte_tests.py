@@ -1,6 +1,7 @@
 # UI-Tests für das Modul Offerte (Schritt 1, CJ 26.10.2026) in SchemaCAD v3 und elplexaCAD. Aufruf: python3 test/offerte_tests.py [Ausgabeordner]
 # Kapitel aus dem BKP-Katalog, Position per Tastatur (Tab), Summen mit Rundung, Option, Rabatt, Rückgängig, Datei Version 25, Absender aus dem Firmenprofil (Schritt 2).
 # Schritt 5: PDF mit und ohne Preise (v3 Druckseiten, elplexaCAD echtes PDF), Excel-Download mit Formeln, ohne EK und Zeit; Blattleiste als Kapitelliste, Variante und Nachtrag.
+# Gliederung (CJ 26.10.2026): links Gliederung und BKP-Kapitel einklappbar, Lupe statt Datenbankliste, Knoten mit Kapiteln, Blattleiste je Knoten.
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -16,6 +17,9 @@ def flow(page, tag):
     D = lambda: page.evaluate("window.__schemacad.doc")
     txt = lambda s: page.locator(s).first.inner_text()
     check(f"{tag}: Offerte offen, Zeichenfläche weg", page.evaluate("window.__schemacad.kind") == "offerte" and page.is_visible("#of-view") and not page.is_visible("#svg"))
+    check(f"{tag}: nichts angelegt: Gliederung offen, BKP zu", page.get_attribute('[data-area="gl"]', "aria-expanded") == "true" and page.get_attribute('[data-area="bkp"]', "aria-expanded") == "false")
+    page.click('[data-ofact="knsel"][data-n="0"]'); page.wait_for_timeout(100)  # ohne Gliederung: ganze Offerte
+    check(f"{tag}: Klick auf «Ganze Offerte»: Gliederung zu, BKP auf", page.get_attribute('[data-area="gl"]', "aria-expanded") == "false" and page.is_visible('[data-ofact="addkap"][data-bkp="232.51"]'))
     page.click('[data-ofact="addkap"][data-bkp="232.51"]'); page.wait_for_timeout(100)
     check(f"{tag}: Kapitel 232.51 mit Titel aus dem BKP", page.input_value('.of-kh .of-kt') == "Lichtinstallationen allgemein")
     page.keyboard.type("Küche"); page.keyboard.press("Tab")
@@ -50,22 +54,30 @@ def flow(page, tag):
     check(f"{tag}: MwSt wieder ein: 8.1 %", txt(".of-total").endswith("189.60") and page.input_value('[data-of="o.mwst"]') == "8.1", txt(".of-total"))
     check(f"{tag}: Mausrad scrollt die Offerte (Zeichenfläche hält es nicht an)", not page.evaluate("(() => { const e = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }); document.querySelector('#of-view').dispatchEvent(e); return e.defaultPrevented; })()"))
     check(f"{tag}: Profil im Browser gespeichert", page.evaluate("JSON.parse(localStorage.getItem('schemacad.user.profil.v1')).data.FIRMA") == "Muster Elektro")
-    # Schritt 3: Positionsdatenbank beim Benutzer (erfundene Werte)
-    check(f"{tag}: Datenbank leer", "Noch keine Position" in page.inner_text("#left"))
+    # Schritt 3: Positionsdatenbank beim Benutzer (erfundene Werte), seit der Gliederung über die Lupe an der Position
+    page.click('.of-pos >> nth=0 >> [data-ofact="lupe"]'); page.wait_for_timeout(150)
+    check(f"{tag}: Lupe: Datenbank leer", "Noch keine Position" in page.inner_text(".modal"))
+    page.click(".modal [data-c]"); page.wait_for_timeout(100)
     page.click('.of-pos >> nth=0 >> [data-ofact="det"]'); page.wait_for_timeout(100)
     page.fill('[data-of$=".her"]', "Muster AG"); page.keyboard.press("Tab")
     page.fill('[data-of$=".enr"]', "111 222 333"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
     page.click('[data-ofact="dbsave"]'); page.wait_for_timeout(200)
-    check(f"{tag}: Position in der Datenbank gespeichert", "1 Position in deiner Datenbank" in page.inner_text("#left"), page.inner_text("#left")[:200])
-    page.fill("#of-posfind", "111222"); page.wait_for_timeout(100)
-    check(f"{tag}: Suche nach E-Nr. ohne Leerzeichen", page.locator(".of-dbadd").count() == 1 and "Steckdose T13" in txt(".of-dbadd"))
+    check(f"{tag}: Position in der Datenbank gespeichert", page.evaluate("Object.keys(JSON.parse(localStorage.getItem('schemacad.user.positionen.v1')).rows).length") == 1)
     page.click('[data-ofact="addgrp"]'); page.wait_for_timeout(100); page.keyboard.type("Bad"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
-    page.click(".of-dbadd"); page.wait_for_timeout(150)
+    page.click('.of-grp >> nth=1 >> [data-ofact="addpos"]'); page.wait_for_timeout(100)
+    page.click('.of-grp >> nth=1 >> [data-ofact="lupe"]'); page.wait_for_timeout(150)
+    page.fill("#of-dbfind", "111222"); page.wait_for_timeout(100)
+    check(f"{tag}: Lupe: Suche nach E-Nr. ohne Leerzeichen", page.locator(".modal .of-dbadd").count() == 1 and "Steckdose T13" in txt(".modal .of-dbadd"))
+    page.click(".modal .of-dbadd"); page.wait_for_timeout(150)
     g = off(D())["of"]["kap"][0]["grp"]
     cp = g[1]["pos"][0] if len(g) > 1 and g[1]["pos"] else {}
-    check(f"{tag}: Treffer in die zuletzt bearbeitete Gruppe kopiert, ohne Menge", cp.get("titel") == "Steckdose T13" and cp.get("enr") == "111 222 333" and "menge" not in cp and cp.get("id") != pos.get("id"), g)
+    check(f"{tag}: Treffer füllt die leere Position ohne Rückfrage, ohne Menge", cp.get("titel") == "Steckdose T13" and cp.get("enr") == "111 222 333" and "menge" not in cp and cp.get("id") != pos.get("id") and len(g[1]["pos"]) == 1, g)
     page.keyboard.type("4"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
     check(f"{tag}: Kopie frei änderbar, Fokus auf Menge", off(D())["of"]["kap"][0]["grp"][1]["pos"][0].get("menge") == 4)
+    page.click('.of-grp >> nth=1 >> [data-ofact="lupe"]'); page.wait_for_timeout(150); page.click(".modal .of-dbadd"); page.wait_for_timeout(150)
+    q = page.inner_text(".modal") if page.locator(".modal").count() else ""
+    check(f"{tag}: Position mit Inhalt: Lupe fragt ersetzen oder darunter einfügen", "Ersetzen" in q and "Darunter einfügen" in q, q[:200])
+    page.click(".modal [data-c]"); page.wait_for_timeout(100)
     # Schritt 5: PDF und Excel, mit und ohne Preise. EK, Faktor, Zeit und Ansatz nie in der Ausgabe (EK 9.99 und Zeit 0.77 als Merkmal).
     page.fill('[data-of$=".ek"] >> nth=0', "9.99"); page.keyboard.press("Tab"); page.wait_for_timeout(50)
     page.fill('[data-of$=".std"] >> nth=0', "0.77"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
@@ -113,7 +125,7 @@ def flow(page, tag):
     with page.expect_file_chooser() as fc: page.click('[data-ofact="import"]')
     fc.value.set_files(str(x)); page.wait_for_timeout(400)
     dlg = page.inner_text(".modal")
-    check(f"{tag}: Import zeigt die Deutung", "Excel-Offerte importieren" in dlg and "Küche" in dlg and "Bad" in dlg and "Positionen" in dlg, dlg[:300])
+    check(f"{tag}: Import zeigt die Deutung", "Excel-Offerte importieren" in dlg and "BKP 232.51" in dlg and "Positionen" in dlg, dlg[:300])
     page.click(".modal [data-ok]"); page.wait_for_timeout(300)
     o = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]
     gr = o["kap"][0]["grp"] if o["kap"] else []
@@ -130,6 +142,29 @@ def flow(page, tag):
     page.click("#btn-undo"); page.wait_for_timeout(200)
     gr = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]["kap"][0]["grp"]
     check(f"{tag}: Rückgängig nimmt das Ziehen zurück", [g["titel"] for g in gr] == ["Küche", "Bad"])
+    # Gliederung: Knoten anlegen, umbenennen, Kapitel im Knoten, Hauptbereich und Blattleiste zeigen nur den Knoten
+    page.click('[data-area="gl"]'); page.wait_for_timeout(100)
+    page.click('[data-ofact="knadd"]'); page.wait_for_timeout(150)
+    page.keyboard.type("Wohnung 1"); page.keyboard.press("Enter"); page.wait_for_timeout(150)
+    o = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]
+    check(f"{tag}: Knoten angelegt und benannt", [n["titel"] for n in o.get("kn", [])] == ["Wohnung 1"], o.get("kn"))
+    kid = o["kn"][0]["id"]
+    page.click(f'.of-kni[data-n="{kid}"]'); page.wait_for_timeout(150)
+    check(f"{tag}: Klick auf Knoten: BKP auf, Hauptbereich leer", page.get_attribute('[data-area="bkp"]', "aria-expanded") == "true" and "Noch kein BKP-Kapitel in «Wohnung 1»" in page.inner_text("#of-view"))
+    page.fill("#of-bkpfind", "236"); page.wait_for_timeout(100)
+    page.click('[data-ofact="addkap"][data-bkp="236"]'); page.wait_for_timeout(150)
+    page.click('[data-ofact="addpos"]'); page.keyboard.type("Netzwerkdose"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
+    d = D(); o = [x2 for x2 in d["sheets"] if x2.get("kind") == "offerte"][-1]["of"]
+    check(f"{tag}: Kapitel im Knoten, Position ohne gl und bkp", o["kap"][-1].get("kn") == kid and o["kap"][-1]["grp"][0]["pos"][0]["titel"] == "Netzwerkdose" and "gl" not in o["kap"][-1]["grp"][0]["pos"][0] and d["version"] == 27, d["version"])
+    v = page.inner_text("#of-view") + " ".join(page.eval_on_selector_all("#of-view input", "(l) => l.map((e) => e.value)"))
+    check(f"{tag}: Hauptbereich zeigt nur den Knoten", "Netzwerkdose" in v and "Steckdose T13" not in v and "Total Wohnung 1" in v, v[:200])
+    page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(100)
+    page.click("#sheetbar [data-ofkap]"); page.wait_for_timeout(200)
+    items = page.locator("#of-menu [data-ofm]").all_inner_texts()
+    check(f"{tag}: Blattleiste: Kapitel des Knotens", len(items) == 2 and "BKP 236" in items[0] and items[1] == "Schlusszusammenstellung", items)
+    page.keyboard.press("Escape")
+    end = page.inner_text(".of-end")
+    check(f"{tag}: Schlusszusammenstellung mit Summe je Knoten", "Wohnung 1 [RGL]" in end, end[:300])
     page.screenshot(path=str(OUT / f"{tag}.png"))
 
 with sync_playwright() as p:

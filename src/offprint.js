@@ -2,6 +2,7 @@
 // files.js buildPrint): elplexaCAD macht daraus ein eigenes PDF (pdfout.js), SchemaCAD v3 den Druckdialog.
 // Seite 1: Absender (Firmenprofil mit Logo und MwSt-Nr.), Kundenadresse (Projektfelder Bauherr), Kopf der Offerte. Folgeseiten: Kopfzeile.
 // Spalten Pos, Text, IC, Menge, EH, Preis, Betrag; je Kapitel «Total … BKP nnn», am Ende die Schlusszusammenstellung wie im Editor.
+// Gliederung (CJ 26.10.2026): Knoten als Kopfzeile «Wohnung 1 [RGL]» wie im Messerli-Muster, darunter seine Kapitel und Unterknoten, danach «Total …» des Knotens.
 // prices = false: ohne Preis, Betrag und Summen. EK, Faktor, Zeit, Zeitfaktor und Ansatz kommen nie auf die Seite.
 import * as O from "./offerte.js";
 import { profilLines } from "./profil.js";
@@ -58,7 +59,11 @@ function columns(prices) {
 function blocks(of, prices, tot) {
   const C = columns(prices), out = [];
   const num = (x, y, s, col, bold = false) => t(C[col].x + C[col].w, y, s, { anchor: "end", bold });
-  of.kap.forEach((k, ki) => {
+  const order = O.kapOrder(of);
+  for (const e of O.outline(of)) {
+    if (e.t === "kn") { out.push({ h: 11, keep: true, draw: (y) => t(L, y + 7, O.knLabel(e.n), { h: 4, bold: true }) + hl(L, R, y + 8.8, INK) }); continue; }
+    if (e.t === "end") { if (prices) out.push({ h: 11, draw: (y) => hl(L, R, y + 1, INK) + hl(L, R, y + 1.6, INK) + t(L, y + 5.6, `Total ${e.n.titel || "Ohne Titel"}`, { bold: true, h: 3.4 }) + num(0, y + 5.6, O.fmtChf(tot.kn.get(e.n.id) || 0), "betrag", true) }); continue; }
+    const k = e.k, ki = order.indexOf(k);
     out.push({ h: 9, keep: true, draw: (y) => t(L, y + 6, k.bkp, { h: 3.6, bold: true }) + t(C.txt.x, y + 6, k.titel || O.bkpTitle(k.bkp), { h: 3.6, bold: true }) + hl(L, R, y + 7.6, INK) });
     k.grp.forEach((g, gi) => {
       if (g.titel) out.push({ h: 7, keep: true, draw: (y) => t(C.txt.x, y + 5, g.titel, { h: 3.2, bold: true }) });
@@ -81,8 +86,8 @@ function blocks(of, prices, tot) {
       });
       if (prices && g.titel && k.grp.length > 1) out.push({ h: 6, draw: (y) => hl(C.betrag.x, R, y + 0.8) + t(C.txt.x, y + 4, `Total ${g.titel}`) + num(0, y + 4, O.fmtChf(tot.grp.get(g.id) || 0), "betrag") });
     });
-    if (prices) out.push({ h: 10, draw: (y) => hl(L, R, y + 1, INK) + t(C.txt.x, y + 5.2, `Total ${k.titel || ""} BKP ${O.bkpMain(k.bkp) || k.bkp}`.replace(/\s+/g, " "), { bold: true }) + num(0, y + 5.2, O.fmtChf(tot.kap[ki].summe), "betrag", true) });
-  });
+    if (prices) out.push({ h: 10, draw: (y) => hl(L, R, y + 1, INK) + t(C.txt.x, y + 5.2, `Total ${k.titel || ""} BKP ${O.bkpMain(k.bkp) || k.bkp}`.replace(/\s+/g, " "), { bold: true }) + num(0, y + 5.2, O.fmtChf(tot.kapSum.get(k.id) || 0), "betrag", true) });
+  }
   if (prices && of.kap.length) {
     const { rows, notes } = O.summaryRows(of, tot), rh = 5.2;
     out.push({ h: 14 + rows.length * rh + notes.length * 4.6 + 4, draw: (y) => {
@@ -90,7 +95,7 @@ function blocks(of, prices, tot) {
       for (const r of rows) {
         const big = r.art === "total", strong = big || r.art === "zs";
         if (big) s += hl(C.txt.x, R, yy - 3.8, INK);
-        s += t(C.txt.x, yy, r.text, { bold: strong, h: big ? 3.4 : FS }) + t(R, yy, (big ? "CHF " : "") + O.fmtSigned(r.betrag), { anchor: "end", bold: strong, h: big ? 3.4 : FS });
+        s += t(C.txt.x + (r.lv || 0) * 4, yy, r.text, { bold: strong || r.art === "kn", h: big ? 3.4 : FS }) + t(R, yy, (big ? "CHF " : "") + O.fmtSigned(r.betrag), { anchor: "end", bold: strong, h: big ? 3.4 : FS });
         yy += rh;
       }
       yy += 1.5;

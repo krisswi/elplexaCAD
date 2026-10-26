@@ -1,12 +1,15 @@
 // Modul «Offerten» (CJ 26.10.2026), Schritt 1: Datenmodell, BKP-Gliederung, Positionen, Summen mit Rundung. Ohne Browser, ohne Supabase.
-// Eine Offerte ist ein Blatt (kind "offerte") mit den Daten in sh.of. Aufbau nach dem Messerli-Muster: BKP-Kapitel → Gruppen → Positionen.
+// Eine Offerte ist ein Blatt (kind "offerte") mit den Daten in sh.of. Aufbau (CJ 26.10.2026): Gliederung → BKP-Kapitel → Gruppen → Positionen.
 // Pflicht sind nur Text, Menge und Preis, alle übrigen Felder dürfen fehlen (Einmannbetrieb).
 // Datenformat (fehlende Felder = leer bzw. Standard):
-//   of = { nid, nr, ver, datum, gueltig, art, bau, fak, ansatz, zf, rabatt, skonto, skTage, mwst, rg: [Rabattgruppe], kap: [Kapitel] }
+//   of = { nid, nr, ver, datum, gueltig, art, bau, fak, ansatz, zf, rabatt, skonto, skTage, mwst, rg: [Rabattgruppe], kn: [Knoten], kap: [Kapitel] }
 //   Rabattgruppe = { id, kz, name, satz }   selbst angelegt (CJ 26.10.2026), kz = Buchstabe (z. B. R, N); satz fehlt = Gesamtrabatt, 0 = kein Rabatt, Zahl = eigener Satz in %
-//   Kapitel = { id, bkp, titel, grp: [Gruppe] }
+//   Knoten = { id, up, art, titel }   Gliederung (CJ 26.10.2026, Dateiversion 27): flache Liste, up = oberer Knoten (fehlt = oberste Ebene), Reihenfolge der Liste gilt
+//     unter Geschwistern. art = ogl, psl, rgl, ngl, et (fehlt = rgl, Raum). Keine Ebene ist Pflicht, ohne Knoten ist die Offerte wie bisher.
+//   Kapitel = { id, kn, bkp, titel, grp: [Gruppe] }   kn = Knoten (fehlt = ohne Gliederung). Dieselbe BKP-Nummer darf unter mehreren Knoten stehen.
 //   Gruppe = { id, titel, rg, pos: [Position] }   rg = ID der Rabattgruppe, fehlt = Gesamtrabatt
-//   Position = { id, titel, text, menge, eh, preis, npk, bkp, typ, form, her, enr, ek, fak, std, ic, opt, an, gl: { ogl, psl, rgl, ngl, et } }
+//   Position = { id, titel, text, menge, eh, preis, npk, typ, form, her, enr, ek, fak, std, ic, opt, an }
+//     Gliederung und BKP erbt die Position aus Knoten und Kapitel (glOf, bkpOf: { ogl, psl, rgl, ngl, et } für IfA 18), sie trägt sie nicht selbst.
 //     id fest (ändert sich nie), preis = Einheitspreis von Hand (fehlt = aus EK × Faktor + Zeit × Zeitfaktor × Ansatz), opt = optionale Position, an = Option aktiviert.
 //   zf = Zeitfaktor der Offerte (CJ 26.10.2026, Dateiversion 26): wirkt auf alle Zeiten ausser Regie, fehlt = 1.
 
@@ -57,7 +60,8 @@ export const ARTEN = { pauschal: "Pauschal", regie: "Regie", ep: "Einheitspreis"
 export const BAUARTEN = { wohn: "Wohnbau (NPK 585)", zweck: "Zweckbau (NPK 583)" };
 export const TYPEN = { lp: "Leistungsposition", it: "Installationsteil", mat: "Material", regie: "Regie" }; // fehlt = Leistungsposition
 export const FORMEN = { g: "geschlossen", o: "offen", r: "Reserveposition" }; // fehlt = Reserveposition (eigene Position)
-export const GLIEDERUNG = { ogl: "Objekt", psl: "Lage/Geschoss", rgl: "Raum", ngl: "Nutzung", et: "Einrichtungstyp" }; // NPK-Gliederung, für IfA 18
+export const GLIEDERUNG = { ogl: "Objekt", psl: "Lage/Geschoss", rgl: "Raum", ngl: "Nutzung", et: "Einrichtungstyp" }; // Art eines Knotens, NPK-Gliederung für IfA 18
+export const GL_KURZ = { ogl: "OGL", psl: "PSL", rgl: "RGL", ngl: "NGL", et: "ET" }; // Kopfzeile im Messerli-Muster: «Wohnung 1 [ET]»
 export const DEF = { fak: 1.4, ansatz: 0, mwst: 8.1, rabatt: 0, skonto: 0 }; // Standardwerte der Offerte (Materialfaktor 1.40, MwSt 8.1 %)
 
 // Rundung (CJ 26.10.2026): Positionen und Zwischensummen ungerundet wie im Excel (Anzeige auf den Rappen), nur das Total inkl. MwSt auf 5 Rappen.
@@ -68,13 +72,59 @@ export const isNumber = (v) => typeof v === "number" && Number.isFinite(v);
 export const fmtNum = (x) => (isNumber(x) ? String(x) : ""); // Satz oder Faktor wie eingegeben: 8.1, 1.4
 export const fmtChf = (x) => { const [a, b] = (Math.round(x * 100) / 100).toFixed(2).split("."); return `${a.replace(/\B(?=(\d{3})+(?!\d))/g, "'")}.${b}`; }; // 4'981.85
 
-export const newOfferte = (datum = "") => ({ nid: 1, nr: "", ver: "", datum, gueltig: "", art: "", bau: "", fak: DEF.fak, ansatz: DEF.ansatz, rabatt: DEF.rabatt, skonto: DEF.skonto, mwst: DEF.mwst, rg: [], kap: [] });
+export const newOfferte = (datum = "") => ({ nid: 1, nr: "", ver: "", datum, gueltig: "", art: "", bau: "", fak: DEF.fak, ansatz: DEF.ansatz, rabatt: DEF.rabatt, skonto: DEF.skonto, mwst: DEF.mwst, rg: [], kn: [], kap: [] });
 const nextId = (of) => of.nid++;
-export function addKapitel(of, bkp, titel) {
-  const k = { id: nextId(of), bkp: String(bkp || "").trim(), titel: titel ?? bkpTitle(String(bkp || "").trim()), grp: [] };
+// kn = Knoten der Gliederung (0 = ohne Gliederung)
+export function addKapitel(of, bkp, titel, kn = 0) {
+  const k = { id: nextId(of), ...(kn ? { kn } : {}), bkp: String(bkp || "").trim(), titel: titel ?? bkpTitle(String(bkp || "").trim()), grp: [] };
   k.grp.push({ id: nextId(of), titel: "", pos: [] }); // eine Gruppe ohne Titel: Positionen gleich erfassen, weitere Gruppen (Raum, Wohnung) bei Bedarf
   of.kap.push(k); return k;
 }
+// ---------- Gliederung (Knoten) ----------
+export const knArt = (n) => n.art || "rgl";
+export const knFind = (of, id) => (id ? of.kn.find((n) => n.id === id) : undefined);
+export const knKids = (of, id = 0) => of.kn.filter((n) => (n.up || 0) === id);
+export const knLabel = (n) => `${n.titel || "Ohne Titel"} [${GL_KURZ[knArt(n)]}]`;
+// Weg von oben bis zum Knoten (Haus A › 1. OG › Wohnzimmer)
+export function knPath(of, id) { const out = []; for (let n = knFind(of, id); n && out.length <= of.kn.length; n = knFind(of, n.up)) out.unshift(n); return out; }
+// IDs des Knotens und aller Knoten darunter
+export function knSub(of, id) { const out = new Set([id]); for (let grow = true; grow;) { grow = false; for (const n of of.kn) if (n.up && out.has(n.up) && !out.has(n.id)) { out.add(n.id); grow = true; } } return out; }
+export function addKnoten(of, up = 0, titel = "", art = "rgl") { const n = { id: nextId(of), ...(up ? { up } : {}), ...(art !== "rgl" ? { art } : {}), titel }; of.kn.push(n); return n; }
+// Knoten löschen: mit allen Knoten darunter und ihren Kapiteln
+export function delKnoten(of, id) { const ids = knSub(of, id); of.kn = of.kn.filter((n) => !ids.has(n.id)); of.kap = of.kap.filter((k) => !ids.has(k.kn)); }
+// Knoten verschieben: up/down unter den Geschwistern, in = unter den vorherigen Geschwister, out = eine Ebene höher (nach dem bisherigen oberen Knoten).
+// Gibt false zurück, wenn es nicht geht.
+export function moveKnoten(of, id, how) {
+  const n = knFind(of, id); if (!n) return false;
+  const sib = knKids(of, n.up || 0), i = sib.indexOf(n), at = (x) => of.kn.indexOf(x);
+  if (how === "up" || how === "down") { const o = sib[i + (how === "up" ? -1 : 1)]; if (!o) return false; const a = at(n), b = at(o); [of.kn[a], of.kn[b]] = [of.kn[b], of.kn[a]]; return true; }
+  if (how === "in") { const prev = sib[i - 1]; if (!prev) return false; n.up = prev.id; of.kn.splice(at(n), 1); of.kn.push(n); return true; }
+  if (how === "out") { const par = knFind(of, n.up); if (!par) return false; if (par.up) n.up = par.up; else delete n.up; of.kn.splice(at(n), 1); of.kn.splice(at(par) + 1, 0, n); return true; }
+  return false;
+}
+// Reihenfolge der Offerte (Editor, PDF, Excel, Summen): zuerst die Kapitel ohne Gliederung, dann der Baum von oben nach unten, je Knoten seine Kapitel und danach
+// seine Unterknoten. Einträge { t: "kn", n, lv } (Kopf), { t: "kap", k, lv }, { t: "end", n, lv } (Abschluss des Knotens, für «Total …»).
+// root = nur dieser Knoten mit allem darunter (0 = ganze Offerte), all = auch Knoten ohne Kapitel (Editor).
+export function outline(of, { root = 0, all = false } = {}) {
+  const out = [], own = (id) => of.kap.filter((k) => (k.kn || 0) === id);
+  const has = (id) => own(id).length > 0 || knKids(of, id).some((c) => has(c.id));
+  const node = (n, lv) => {
+    if (!all && !has(n.id)) return;
+    out.push({ t: "kn", n, lv });
+    for (const k of own(n.id)) out.push({ t: "kap", k, lv: lv + 1 });
+    for (const c of knKids(of, n.id)) node(c, lv + 1);
+    out.push({ t: "end", n, lv });
+  };
+  const r = knFind(of, root);
+  if (r) node(r, 0);
+  else { for (const k of own(0)) out.push({ t: "kap", k, lv: 0 }); for (const n of knKids(of)) node(n, 0); }
+  return out;
+}
+export const kapOrder = (of) => outline(of).filter((e) => e.t === "kap").map((e) => e.k);
+// Vererbung: Gliederung und BKP einer Position aus ihrem Knoten und Kapitel. Haben zwei Knoten auf dem Weg dieselbe Art, gilt der untere.
+export function glOf(of, pid) { const f = findPos(of, pid), gl = {}; if (f) for (const n of knPath(of, f.k.kn)) if (n.titel) gl[knArt(n)] = n.titel; return gl; }
+export const bkpOf = (of, pid) => findPos(of, pid)?.k.bkp || "";
+
 export function addRabattgruppe(of, kz = "", name = "") { const r = { id: nextId(of), kz, name }; of.rg.push(r); return r; }
 // Rabattgruppe löschen: Gruppen, die sie nutzen, fallen auf den Gesamtrabatt zurück
 export function delRabattgruppe(of, id) { of.rg = of.rg.filter((r) => r.id !== id); for (const k of of.kap) for (const g of k.grp) if (g.rg === id) delete g.rg; }
@@ -124,8 +174,8 @@ export const groupRate = (g, of) => { const r = rabattgruppe(of, g); return r &&
 // Alle Summen der Offerte in Franken. Alles ungerundet bis auf total (5 Rappen); die Anzeige rundet auf den Rappen.
 export function totals(of) {
   let zs = 0, opt = 0;
-  const rab = new Map(), kap = [], grp = new Map(), pos = new Map();
-  for (const k of of.kap) {
+  const rab = new Map(), kap = [], kapSum = new Map(), kn = new Map(), grp = new Map(), pos = new Map();
+  for (const k of kapOrder(of)) {
     let ks = 0;
     for (const g of k.grp) {
       let gs = 0;
@@ -137,19 +187,25 @@ export function totals(of) {
       const r = groupRate(g, of), rg = rabattgruppe(of, g), key = rg ? rg.id : 0; // je Rabattgruppe eine Zeile, ohne Gruppe: Gesamtrabatt
       if (r && gs) { const e = rab.get(key) || { satz: r, basis: 0, ...(rg ? { kz: rg.kz, name: rg.name } : {}) }; e.basis += gs; rab.set(key, e); }
     }
-    kap.push({ id: k.id, bkp: k.bkp, titel: k.titel, summe: ks }); zs += ks;
+    kap.push({ id: k.id, bkp: k.bkp, titel: k.titel, summe: ks }); kapSum.set(k.id, ks); zs += ks;
+    for (const n of knPath(of, k.kn)) kn.set(n.id, (kn.get(n.id) || 0) + ks); // Summe je Knoten mit allem darunter
   }
   const rabatt = [...rab.entries()].sort((a, b) => a[0] - b[0]).map(([, e]) => ({ ...e, betrag: e.basis * e.satz / 100 })); // Gesamtrabatt zuerst, dann Rabattgruppen in der Reihenfolge ihrer Anlage
   const rabSum = rabatt.reduce((s, e) => s + e.betrag, 0), netto = zs - rabSum, mwst = netto * (of.mwst ?? DEF.mwst) / 100, total = round05(netto + mwst);
-  return { pos, grp, kap, zwischensumme: zs, rabatt, rabattTotal: rabSum, netto, mwst, total, optionen: opt,
+  return { pos, grp, kap, kapSum, kn, zwischensumme: zs, rabatt, rabattTotal: rabSum, netto, mwst, total, optionen: opt,
     skonto: of.skonto ? { satz: of.skonto, tage: of.skTage || 0, betrag: total * of.skonto / 100 } : null }; // Skonto nur als Hinweis
 }
 
-// Schlusszusammenstellung als Zeilen (Editor, PDF und Excel, Schritt 5): { text, betrag, art } mit art = kap, zs, rab, netto, mwst, rund, total.
+// Schlusszusammenstellung als Zeilen (Editor, PDF und Excel, Schritt 5): { text, betrag, art } mit art = kn (Summe je Knoten), kap, zs, rab, netto, mwst, rund, total.
+// kn und kap tragen id und lv (Einzug nach der Gliederung).
 // betrag in Franken (Rabatt negativ). notes: Skonto-Hinweis und Optionen (nicht in der Angebotssumme).
 export const totalLabel = (of) => (of.mwst ? "Total inkl. MwSt" : "Total ohne MwSt"); // MwSt nur am Schluss, aus = Satz 0
 export function summaryRows(of, t = totals(of)) {
-  const rows = t.kap.map((k) => ({ art: "kap", text: `BKP ${k.bkp} ${k.titel}`.trim(), betrag: k.summe }));
+  const rows = [];
+  for (const e of outline(of)) {
+    if (e.t === "kn") rows.push({ art: "kn", id: e.n.id, lv: e.lv, text: knLabel(e.n), betrag: t.kn.get(e.n.id) || 0 });
+    else if (e.t === "kap") rows.push({ art: "kap", id: e.k.id, lv: e.lv, text: e.k.bkp ? `BKP ${e.k.bkp} ${e.k.titel}`.trim() : e.k.titel || "Ohne BKP", betrag: t.kapSum.get(e.k.id) || 0 });
+  }
   rows.push({ art: "zs", text: "Zwischensumme", betrag: t.zwischensumme });
   for (const r of t.rabatt) rows.push({ art: "rab", text: `Rabatt${r.kz || r.name ? ` ${[r.kz, r.name].filter(Boolean).join(" ")}` : ""} ${fmtNum(r.satz)} % auf ${fmtChf(r.basis)}`, betrag: -r.betrag, satz: r.satz, basis: r.basis });
   if (t.rabatt.length) rows.push({ art: "netto", text: "Total nach Rabatt", betrag: t.netto });
@@ -164,7 +220,7 @@ export function summaryRows(of, t = totals(of)) {
 }
 // Betrag mit Vorzeichen für die Anzeige: − 12.50
 export const fmtSigned = (x) => (Math.round(x * 100) < 0 ? `− ${fmtChf(-x)}` : fmtChf(x));
-// Positionsnummer wie im Editor: NPK-Nr. oder Kapitel.Gruppe.Position
+// Positionsnummer wie im Editor: NPK-Nr. oder Kapitel.Gruppe.Position (Kapitel gezählt in der Reihenfolge der Offerte, kapOrder)
 export const posNo = (p, ki, gi, pi) => p.npk || `${ki + 1}.${gi + 1}.${pi + 1}`;
 
 // Laden: prüft und säubert die Offerte aus der Datei. Unbekannte Felder fallen weg, fehlende bleiben leer. IDs bleiben, doppelte bekommen eine neue.
@@ -185,17 +241,22 @@ export function cleanOfferte(o) {
   const zf = num(o.zf, 0.01, 10); if (zf !== undefined && zf !== 1) of.zf = zf;
   for (const r of Array.isArray(o.rg) ? o.rg : []) { if (!r || typeof r !== "object") continue; const x = { id: id(r.id), kz: str(r.kz, 3), name: str(r.name, 80) }; put(x, "satz", num(r.satz, 0, 100)); if (x.id) of.rg.push(x); }
   const rgs = new Set(of.rg.map((r) => r.id));
+  // Gliederung: Knoten ohne gültige ID fallen weg (Kapitel verweisen auf sie), oberer Knoten nur, wenn es ihn gibt und kein Kreis entsteht
+  const rkn = (Array.isArray(o.kn) ? o.kn : []).filter((r) => r && typeof r === "object").map((r) => [r, { id: id(r.id) }]).filter(([, n]) => n.id);
+  const kns = new Set(rkn.map(([, n]) => n.id));
+  for (const [r, n] of rkn) { if (kns.has(r.up) && r.up !== n.id) n.up = r.up; const a = pick(r.art, GLIEDERUNG); if (a && a !== "rgl") n.art = a; n.titel = str(r.titel, 200); of.kn.push(n); }
+  for (const n of of.kn) { let x = n, i = 0; while (x?.up && i++ <= of.kn.length) x = knFind(of, x.up); if (i > of.kn.length) delete n.up; }
   const late = []; // ohne gültige ID: neue Nummer nach dem Laden
   for (const rk of Array.isArray(o.kap) ? o.kap : []) {
     if (!rk || typeof rk !== "object") continue;
-    const k = { id: id(rk.id), bkp: str(rk.bkp, 40), titel: str(rk.titel, 200), grp: [] };
+    const k = { id: id(rk.id), ...(kns.has(rk.kn) ? { kn: rk.kn } : {}), bkp: str(rk.bkp, 40), titel: str(rk.titel, 200), grp: [] };
     if (!k.id) late.push(k);
     for (const rg of Array.isArray(rk.grp) ? rk.grp : []) {
       if (!rg || typeof rg !== "object") continue;
       const g = { id: id(rg.id), titel: str(rg.titel, 200), pos: [] };
       if (!g.id) late.push(g);
       if (rgs.has(rg.rg)) g.rg = rg.rg; // Verweis auf eine Rabattgruppe, die es gibt
-      for (const rp0 of Array.isArray(rg.pos) ? rg.pos : []) { if (rp0 && typeof rp0 === "object") { const p = cleanPos(rp0, id); if (!p.id) late.push(p); g.pos.push(p); } }
+      for (const rp0 of Array.isArray(rg.pos) ? rg.pos : []) { if (rp0 && typeof rp0 === "object") { const p = cleanPos(rp0, id); delete p.gl; delete p.bkp; if (!p.id) late.push(p); g.pos.push(p); } } // Gliederung und BKP erbt die Position
       k.grp.push(g);
     }
     of.kap.push(k);

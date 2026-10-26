@@ -28,7 +28,7 @@ import { newPlanSheet } from "./plan.js";
 import { makeDispo } from "./dispoedit.js";
 import * as OF from "./offedit.js";
 import { readXlsx, parseOfferte, buildOfferte } from "./offimport.js";
-import { totals as O_totals, fmtChf as OF_fmt } from "./offerte.js";
+import { totals as O_totals, fmtChf as OF_fmt, bkpOf as O_bkpOf, knFind as O_knFind, knSub as O_knSub } from "./offerte.js";
 import { toast, openModal, confirmDialog, formDialog, chooseDialog, makeMenu } from "./dialogs.js";
 import { fieldHTML, actions, head, dupDel, textPanelHTML, turnHTML } from "./panel.js";
 import { startDialog } from "./start.js";
@@ -255,8 +255,8 @@ function renderSheet() {
   pat.querySelector("circle").setAttribute("r", isDispo() || isPv() || ELPLEXA && isPlan() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
   gSheet.innerHTML = ELPLEXA && isPlan() ? PL.sheetSVG() : S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : isPrinzip() ? PZ.sheetSVG(S.model, S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
-// Offerte: nach dem Neuzeichnen auch die Leiste (Kapitel der Offerte)
-function renderItems() { $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); renderSheetBar(); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
+// Offerte: nach dem Neuzeichnen auch die linke Spalte (Gliederung, Kapitel des Knotens) und die Leiste (Kapitel der Offerte)
+function renderItems() { $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); ofLeft(); renderSheetBar(); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
 const pickable = () => (ELPLEXA && isPlan() ? PL.pickable() : isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
 
 function railMap() {
@@ -428,7 +428,7 @@ function renderLeft() {
 }
 function renderLeftBody() {
   if (isDeck()) { const k = S.model.kind; leftEl.innerHTML = `<section class="section"><h2 class="section-title">${T.kindLabel(S.model)}</h2><p class="note">${k === "title" ? "Blatt 1. Hier wird nicht gezeichnet, die Angaben stehen rechts." : k === "toc" ? "Blatt 2. Entsteht automatisch aus allen Blättern der Datei." : "Letztes Blatt, A4 hoch. Entsteht automatisch aus den Schutzgeräten aller Schemablätter."}</p></section>`; return; }
-  if (isOff()) { leftEl.innerHTML = OF.leftHTML(); return; }
+  if (isOff()) { leftEl.innerHTML = OF.leftHTML(S.model.of); return; }
   if (isDispo()) { leftEl.innerHTML = dispoLeftHTML(); return; }
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
   if (ELPLEXA && isPlan()) { leftEl.innerHTML = PL.leftHTML(); return; }
@@ -760,8 +760,10 @@ function renderSheetBar() {
 // BKP-Kapiteln und zur Schlusszusammenstellung. Plus fragt «Variante» (Kopie) oder «Nachtrag» (leer, gleiche Nummer), beides als eigenes Offerten-Modul.
 // elplexaCAD: die ganze Leiste ist das Inhaltsverzeichnis. SchemaCAD v3: die Leiste blättert weiter durch alle Blätter (sonst kein Weg zurück zum Schema),
 // dazu der Knopf «Kapitel» mit derselben Liste.
+// Gliederung (CJ 26.10.2026): die Leiste kennt nur die Kapitel, die der Hauptbereich zeigt (angewählter Knoten mit allem darunter).
 const ofParts = () => [...ofView.querySelectorAll(".of-kap, .of-end")];
-function ofTargets() { const t = S.model.of.kap.map((k) => `BKP ${k.bkp} ${k.titel}`.trim()); if (ofView.querySelector(".of-end")) t.push("Schlusszusammenstellung"); return t; }
+const ofTargets = () => ofParts().map((el) => el.dataset.label || "Schlusszusammenstellung");
+const ofJumpKap = (kid) => { const i = ofParts().findIndex((el) => el.dataset.kid === String(kid)); if (i >= 0) ofJump(i); };
 let ofPin = null; // angesprungenes Kapitel { i, top }: gilt, bis von Hand gescrollt wird (kurze Offerte scrollt beim Sprung nicht)
 function ofCur() { // Kapitel oben in der Ansicht
   if (ofPin && Math.abs(ofView.scrollTop - ofPin.top) < 2 && ofPin.i < ofParts().length) return ofPin.i;
@@ -812,11 +814,11 @@ async function ofImport() {
   } catch (err) { toast("Die Excel-Datei liess sich nicht lesen: " + (err.message || err), "error"); return; }
   if (!res.info.positionen) { toast("Keine Positionen gefunden. Erwartet wird eine Kopfzeile mit Text (Artikel, Titel, Beschreibung) und Menge.", "error"); return; }
   const defs = offerDefaults(), probe = buildOfferte(res, defs), t = O_totals(probe), rows = [];
-  let gi = 0;
-  probe.kap.forEach((k) => k.grp.forEach((g) => { rows.push(`<label class="chk of-imp"><input type="checkbox" data-impg="${gi++}" checked> <span>${R.esc([k.bkp && `BKP ${k.bkp}`, g.titel || "ohne Titel"].filter(Boolean).join(" · "))}</span><span class="note">${g.pos.length} Pos. · ${OF_fmt(t.grp.get(g.id) || 0)}</span></label>`); }));
-  const i = res.info, body = `<p>${R.esc(file.name)}: Blätter ${R.esc(i.blaetter.join(", "))}, ${i.positionen} Positionen in ${gi} Gruppen${res.fak ? `, Materialfaktor ${res.fak}` : ""}. `
+  let gi = 0; // je Kapitel eine Zeile (Gliederung: Knoten · BKP)
+  probe.kap.forEach((k) => { const n = k.grp.reduce((s, g) => s + g.pos.length, 0); rows.push(`<label class="chk of-imp"><input type="checkbox" data-impg="${gi++}" checked> <span>${R.esc([O_knFind(probe, k.kn)?.titel, k.bkp ? `BKP ${k.bkp}` : !k.kn && (k.titel || "ohne Titel")].filter(Boolean).join(" · "))}</span><span class="note">${n} Pos. · ${OF_fmt(t.kapSum.get(k.id) || 0)}</span></label>`); });
+  const i = res.info, body = `<p>${R.esc(file.name)}: Blätter ${R.esc(i.blaetter.join(", "))}, ${i.positionen} Positionen${probe.kn.length ? ` in ${probe.kn.length} Knoten der Gliederung` : ""}${res.fak ? `, Materialfaktor ${res.fak}` : ""}. `
     + `Summen- und Totalzeilen übernimmt der Import nicht, die Offerte rechnet selbst.${i.ohnePreis ? ` ${i.ohnePreis} Position${i.ohnePreis === 1 ? "" : "en"} ohne Preis.` : ""}</p>`
-    + `<p class="note">Abgewählte Gruppen kommen als Optionen (nicht in der Angebotssumme), z. B. eine Variante V1. Ziehen verschiebt danach Positionen und Gruppen.</p>`
+    + `<p class="note">Textzeilen ohne Menge und Preis (z. B. Räume) werden Knoten der Gliederung. Abgewählte Zeilen kommen als Optionen (nicht in der Angebotssumme), z. B. eine Variante V1.</p>`
     + `<div class="print-list">${rows.join("")}</div><p class="of-imp-sum">Zwischensumme <b data-impsum>${OF_fmt(t.zwischensumme)}</b></p>`
     + `<div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>Importieren</button></div>`;
   const root = $("#modal-root"), off = () => new Set([...root.querySelectorAll("[data-impg]")].filter((b) => !b.checked).map((b) => Number(b.dataset.impg)));
@@ -2070,7 +2072,7 @@ async function profSync() {
   if (u === profUser) return;
   profUser = u;
   try { if (await syncProfil()) profShown(); } catch { /* online nicht erreichbar: Stand im Browser gilt */ }
-  try { if (await PD.sync() && isOff()) renderLeftBody(); } catch { /* Positionsdatenbank: Stand im Browser gilt */ }
+  try { await PD.sync(); } catch { /* Positionsdatenbank: Stand im Browser gilt */ }
   try { await syncSollwerte(); } catch { /* Sollwerte und IC-Zeiten: Stand im Browser gilt */ }
 }
 function profShown() { if (isOff()) renderRight(); if (ELPLEXA && EL_S.hub && !EL_S.hub.hidden && EL_S.tab === "profil") elHub(true, { keepFocus: true }); }
@@ -2088,7 +2090,7 @@ function ofChange(e) {
   if (!OF.apply(c, t) || JSON.stringify(c) === JSON.stringify(S.model.of)) { renderItems(); renderRight(); return; }
   change(() => { S.model.of = c; });
 }
-function ofClick(e) {
+async function ofClick(e) {
   const b = e.target.closest?.("[data-ofact]");
   if (!isOff() || !b) return;
   if (b.dataset.ofact === "profil") { firmProfil(); return; }
@@ -2096,15 +2098,55 @@ function ofClick(e) {
   if (b.dataset.ofact === "dbsave") { ofDbSave(Number(b.dataset.p)); return; }
   if (b.dataset.ofact === "import") { ofImport(); return; }
   if (b.dataset.ofact === "out") { offerteOut(S.model, b.dataset.kind, b.dataset.prices === "1"); return; } // PDF oder Excel (Schritt 5)
-  if (b.dataset.ofact === "dbdel") { ofDbDel(b.dataset.db); return; }
+  if (b.dataset.ofact === "kapjump") { ofJumpKap(Number(b.dataset.k)); return; } // Kapitel des Knotens im Hauptbereich zeigen
+  if (b.dataset.ofact === "lupe") { ofLupe(Number(b.dataset.p)); return; }
+  if (b.dataset.ofact === "kndel" && !(await ofKnDelOk(Number(b.dataset.n)))) return;
   const r = OF.action(S.model.of, b); if (!r) return;
-  if (r.ui) renderItems(); else change(r.fn);
+  if (r.ui) { renderItems(); if (r.top) { ofView.scrollTop = 0; ofPin = null; renderSheetBar(); } } else change(r.fn);
   ofRefocus(r.focus ? `[data-of="${r.focus()}"]` : r.keep);
 }
 for (const el of [ofView, leftEl, rightEl]) { el.addEventListener("change", ofChange); el.addEventListener("click", ofClick); }
 for (const el of [ofView, rightEl]) el.addEventListener("keydown", (e) => { const t = e.target; if (isOff() && e.key === "Enter" && t.matches?.("input[type=text][data-of]")) { e.preventDefault(); const k = t.dataset.of; t.blur(); ofRefocus(`[data-of="${k}"]`); } }); // Enter übernimmt
-leftEl.addEventListener("input", (e) => { const id = e.target.id; if (!isOff() || (id !== "of-bkpfind" && id !== "of-posfind")) return; (id === "of-bkpfind" ? OF.setBkpFind : OF.setPosFind)(e.target.value); renderLeftBody(); const f = $(`#${id}`); f.focus(); f.setSelectionRange(f.value.length, f.value.length); });
-ofView.addEventListener("focusin", (e) => { if (isOff()) OF.noteTarget(S.model.of, e.target.dataset?.of); }); // Treffer der Positionsdatenbank kommen in diese Gruppe
+for (const el of [leftEl]) el.addEventListener("keydown", (e) => { const t = e.target; if (isOff() && e.key === "Enter" && t.matches?.("input[type=text][data-of]")) { e.preventDefault(); const k = t.dataset.of; t.blur(); ofRefocus(`[data-of="${k}"]`); } }); // Titel des Knotens: Enter übernimmt
+leftEl.addEventListener("input", (e) => { const id = e.target.id; if (!isOff() || id !== "of-bkpfind") return; OF.setBkpFind(e.target.value); renderLeftBody(); const f = $(`#${id}`); f.focus(); f.setSelectionRange(f.value.length, f.value.length); });
+// Linke Spalte neu zeichnen, der Fokus bleibt auf demselben Feld oder Knopf
+function ofLeft() {
+  const a = document.activeElement, sel = leftEl.contains(a) ? (a.dataset.of ? `[data-of="${a.dataset.of}"]` : a.id ? `#${a.id}` : a.dataset.ofact ? `[data-ofact="${a.dataset.ofact}"]${a.dataset.n ? `[data-n="${a.dataset.n}"]` : ""}${a.dataset.area ? `[data-area="${a.dataset.area}"]` : ""}` : null) : null;
+  leftEl.innerHTML = OF.leftHTML(S.model.of);
+  if (sel) leftEl.querySelector(sel)?.focus();
+}
+// Knoten löschen: mit allem darunter. Hat er Positionen, fragt die App (Rückgängig geht trotzdem).
+async function ofKnDelOk(id) {
+  const of = S.model.of, ids = O_knSub(of, id), n = of.kap.filter((k) => ids.has(k.kn)).reduce((s, k) => s + k.grp.reduce((a, g) => a + g.pos.length, 0), 0);
+  return !n || confirmDialog("Knoten löschen?", `«${O_knFind(of, id)?.titel || "Ohne Titel"}» wird mit allen Knoten darunter, ${n} Position${n === 1 ? "" : "en"} und ihren Kapiteln gelöscht.`, "Löschen");
+}
+// Lupe (CJ 26.10.2026): Positionsdatenbank im Fenster. Ein Treffer füllt die Position; hat sie schon Inhalt, fragt die App «ersetzen» oder «darunter einfügen».
+async function ofLupe(pid) {
+  const root = $("#modal-root"), list = () => root.querySelector("[data-dbhits]");
+  const body = `<div class="field"><input type="text" id="of-dbfind" placeholder="Titel, Text, E-Nr., Hersteller, NPK" aria-label="Positionen suchen" autocomplete="off" spellcheck="false"></div>`
+    + `<div class="of-dblist" role="list" data-dbhits>${OF.dbHitsHTML("")}</div><div class="actions"><button class="btn outline" data-c>Abbrechen</button></div>`;
+  const find = () => { const l = list(); if (l) l.innerHTML = OF.dbHitsHTML(root.querySelector("#of-dbfind")?.value || ""); };
+  const ask = openModal("Position aus der Datenbank", body, async (b, done) => {
+    if (b.dataset.c !== undefined) done(null);
+    else if (b.dataset.dbpick) done(b.dataset.dbpick);
+    else if (b.dataset.dbdel) { // zweiter Klick löscht
+      if (b.dataset.sure === undefined) { b.dataset.sure = ""; b.textContent = "Löschen?"; b.classList.remove("icon"); return; }
+      await PD.remove(b.dataset.dbdel); find();
+    }
+  }, null, "#of-dbfind", "of-dbmodal");
+  root.addEventListener("input", find);
+  const id = await ask;
+  root.removeEventListener("input", find);
+  const e = id && PD.list().find((x) => x.id === id), p = e && O_findPos(pid); if (!p) return;
+  let how = "replace";
+  if (OF.hasContent(p)) {
+    how = await openModal("Position hat schon Inhalt", `<p>«${R.esc(e.titel || e.text)}» übernehmen:</p><div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn outline" data-h="below">Darunter einfügen</button><button class="btn primary" data-h="replace">Ersetzen</button></div>`,
+      (b, done) => { if (b.dataset.h) done(b.dataset.h); else if (b.dataset.c !== undefined) done(null); }, null, '[data-h="replace"]');
+    if (!how) return;
+  }
+  let n; change(() => { n = OF.dbFill(S.model.of, pid, e, how); });
+  if (n) ofRefocus(`[data-of="p${n.id}.menge"]`);
+}
 // Ziehen (CJ 26.10.2026): Positionen und Gruppen verschieben, auch über Gruppen und Kapitel hinweg. Ein Schritt im Rückgängig.
 let ofDrag = null, ofMark = null;
 const ofMarkSet = (t) => { if (ofMark && (!t || ofMark.el !== t.el || ofMark.mark !== t.mark)) ofMark.el.classList.remove("drop-before", "drop-after", "drop-in"); ofMark = t; if (t) t.el.classList.add(`drop-${t.mark}`); };
@@ -2125,17 +2167,11 @@ ofView.addEventListener("dragend", ofDragEnd);
 // Positionsdatenbank (positionen.js, Offerte Schritt 3): Position speichern oder Eintrag löschen. Ändert die Offerte nicht.
 async function ofDbSave(pid) {
   const p = O_findPos(pid); if (!p) return;
-  const r = await PD.save(p);
+  const r = await PD.save({ ...p, bkp: O_bkpOf(S.model.of, pid) || undefined }); // BKP aus dem Kapitel als Hinweis in der Datenbank
   if (!r) { toast("Ohne Text gibt es nichts zu speichern.", "error"); return; }
   toast(`${r.neu ? "In der Datenbank gespeichert" : "Eintrag in der Datenbank ersetzt"}${r.wo === "lokal" && cloudUser() ? " (vorerst nur im Browser)" : ""}.`);
-  renderLeftBody();
 }
 const O_findPos = (pid) => { for (const k of S.model.of.kap) for (const g of k.grp) { const p = g.pos.find((x) => x.id === pid); if (p) return p; } return null; };
-async function ofDbDel(id) {
-  const e = PD.list().find((x) => x.id === id); if (!e) return;
-  if (!(await confirmDialog("Aus der Datenbank löschen?", `«${e.titel || e.text}» wird aus deiner Positionsdatenbank gelöscht. Offerten, die die Position schon enthalten, bleiben gleich.`, "Löschen"))) return;
-  await PD.remove(id); renderLeftBody();
-}
 sheetMenu = makeMenu($("#sheet-menu"), { up: true, beforeShow: () => closeEditor(true), onOpen: () => { $("#sheet-find").value = ""; renderSheetList(); $("#sheet-find").focus(); $("#sheet-menu .mi.on")?.scrollIntoView({ block: "nearest" }); } });
 $("#sheet-find").addEventListener("input", renderSheetList);
 // Blattmenü (CJ 18.10.2026): Rechtsklick oder gedrückt halten auf dem Blattnamen, einer Zeile der Blattliste oder (elplexaCAD) einer

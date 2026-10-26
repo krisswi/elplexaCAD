@@ -253,7 +253,8 @@ function renderSheet() {
   pat.querySelector("circle").setAttribute("r", isDispo() || isPv() || ELPLEXA && isPlan() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
   gSheet.innerHTML = ELPLEXA && isPlan() ? PL.sheetSVG() : S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : isPrinzip() ? PZ.sheetSVG(S.model, S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
-function renderItems() { $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
+// Offerte: nach dem Neuzeichnen auch die Leiste (Kapitel der Offerte)
+function renderItems() { $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); renderSheetBar(); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
 const pickable = () => (ELPLEXA && isPlan() ? PL.pickable() : isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
 
 function railMap() {
@@ -749,10 +750,65 @@ function renderSheetBar() {
   $("#sheetbar").innerHTML = `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt (Bild auf)" aria-label="Vorheriges Blatt"${a === 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Liste aller Blätter (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${a + 1} von ${n}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt (Bild ab)" aria-label="Nächstes Blatt"${a === n - 1 ? " disabled" : ""}>›</button>`
-    + `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>` + starBtn();
+    + (isOff() ? ofKapBtn("") + ofPlusBtn() : `<button class="sheettab add" id="sheet-add" data-addsheet aria-haspopup="menu" aria-expanded="false" title="Neu: ${addKindLabel()}. Gedrückt halten oder Rechtsklick: Blatttyp wählen" aria-label="Neu: ${addKindLabel()}">${R.icons.plus}</button>`) + starBtn();
   if (keep) document.getElementById(keep)?.focus();
   if (open) renderSheetList();
 }
+// Blattleiste der Offerte (CJ 26.10.2026): Inhaltsverzeichnis der Offerte statt «Offerte 2» im selben Modul. ‹ › und die Liste springen zu den
+// BKP-Kapiteln und zur Schlusszusammenstellung. Plus fragt «Variante» (Kopie) oder «Nachtrag» (leer, gleiche Nummer), beides als eigenes Offerten-Modul.
+// elplexaCAD: die ganze Leiste ist das Inhaltsverzeichnis. SchemaCAD v3: die Leiste blättert weiter durch alle Blätter (sonst kein Weg zurück zum Schema),
+// dazu der Knopf «Kapitel» mit derselben Liste.
+const ofParts = () => [...ofView.querySelectorAll(".of-kap, .of-end")];
+function ofTargets() { const t = S.model.of.kap.map((k) => `BKP ${k.bkp} ${k.titel}`.trim()); if (ofView.querySelector(".of-end")) t.push("Schlusszusammenstellung"); return t; }
+let ofPin = null; // angesprungenes Kapitel { i, top }: gilt, bis von Hand gescrollt wird (kurze Offerte scrollt beim Sprung nicht)
+function ofCur() { // Kapitel oben in der Ansicht
+  if (ofPin && Math.abs(ofView.scrollTop - ofPin.top) < 2 && ofPin.i < ofParts().length) return ofPin.i;
+  ofPin = null;
+  const top = ofView.getBoundingClientRect().top + 40; let i = 0;
+  ofParts().forEach((el, n) => { if (el.getBoundingClientRect().top <= top) i = n; });
+  return i;
+}
+function ofJump(i) { const el = ofParts()[i]; if (!el) return; ofView.scrollTop += el.getBoundingClientRect().top - ofView.getBoundingClientRect().top - 8; ofPin = { i, top: ofView.scrollTop }; renderSheetBar(); }
+const ofStep = (d) => ofJump(Math.max(0, Math.min(ofTargets().length - 1, ofCur() + d)));
+let ofShown = -1;
+ofView.addEventListener("scroll", () => { if (isOff() && ofCur() !== ofShown) renderSheetBar(); }, { passive: true });
+function ofKapBtn(id = ' id="sheet-cur"') {
+  const t = ofTargets(), i = (ofShown = Math.min(ofCur(), t.length - 1));
+  if (!id) return `<button class="sheettab nav of-kapbtn" id="of-kap" data-ofkap aria-haspopup="menu" title="Kapitel der Offerte"${t.length ? "" : " disabled"}>Kapitel ▾</button>`;
+  return `<button class="sheettab cur"${id} data-ofkap aria-haspopup="menu" title="Kapitel der Offerte: Liste zum Springen"${t.length ? "" : " disabled"}><span class="cl">${R.esc(t[i] || "Noch kein Kapitel")}</span>${t.length ? `<span class="of">${i + 1} von ${t.length}</span>` : ""}<span class="caret" aria-hidden="true">▾</span></button>`;
+}
+const ofPlusBtn = () => `<button class="sheettab add" id="sheet-add" data-ofplus aria-haspopup="menu" title="Neu: Variante oder Nachtrag dieser Offerte (je ein eigenes Modul)" aria-label="Neu: Variante oder Nachtrag">${R.icons.plus}</button>`;
+// Variante (Kopie dieser Offerte) oder Nachtrag (leere Offerte mit gleicher Nummer) als neues Offerten-Modul mit eigenem Namen
+function ofNew(kind) {
+  const src = S.model.of, k0 = S.model.kind, v = Math.max(...S.doc.sheets.filter((sh) => modBase(sh) === "offerte").map(varOf)) + 1;
+  const names = E_modNames("offerte"), word = kind === "var" ? "Variante" : "Nachtrag";
+  const n = names.filter((x) => x.includes(`– ${word} `)).length + (kind === "var" ? 2 : 1), name = `Offerte – ${word} ${n}`;
+  setTool("select");
+  change(() => {
+    const sh = setVar(newSheet("offerte"), v);
+    if (kind === "var") sh.of = structuredClone(src);
+    else Object.assign(sh.of, offerDefaults(), { nr: src.nr });
+    sh.of.ver = `${word} ${n}`;
+    sh.meta.BLATT = String(maxNo("offerte") + 1);
+    S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
+    (S.doc.mods ??= {})[modKey("offerte", v)] = { name };
+  });
+  afterSheetChange(k0);
+  toast(`Neues Modul «${name}»${kind === "var" ? ": Kopie der Offerte" : ""}.`);
+}
+// Menü der Offerten-Leiste: geht nach oben auf wie die Blattliste (Kapitelliste, Variante oder Nachtrag)
+const ofMenuEl = document.createElement("div"); ofMenuEl.className = "menu"; ofMenuEl.id = "of-menu"; ofMenuEl.setAttribute("role", "menu"); ofMenuEl.hidden = true; $("#app").append(ofMenuEl);
+const ofMenu = makeMenu(ofMenuEl, { up: true, left: true, beforeShow: () => closeEditor(true) });
+function ofMenuOpen(b) {
+  const mi = (act, title, on = false, sub = "") => `<button class="mi${on ? " on" : ""}" role="menuitem" data-ofm="${act}" tabindex="-1" aria-checked="${on}"><span class="mt"><span class="mh">${R.esc(title)}</span>${sub ? `<span class="ms">${R.esc(sub)}</span>` : ""}</span></button>`;
+  const kap = b.dataset.ofkap !== undefined, cur = ofCur();
+  ofMenuEl.setAttribute("aria-label", kap ? "Kapitel der Offerte" : "Variante oder Nachtrag");
+  ofMenuEl.innerHTML = kap ? `<div class="ctx-head">Kapitel der Offerte</div>` + ofTargets().map((l, i) => mi(`k:${i}`, l, i === cur)).join("")
+    : `<div class="ctx-head">Neu als eigenes Offerten-Modul</div>` + mi("var", "Variante", false, "Kopie dieser Offerte") + mi("nach", "Nachtrag", false, "Leere Offerte mit gleicher Offertnummer");
+  ofMenu.toggle(b);
+}
+ofMenuEl.addEventListener("click", (e) => { const a = e.target.closest("[data-ofm]")?.dataset.ofm; if (!a) return; if (a.startsWith("k:")) ofJump(Number(a.slice(2))); else ofNew(a); });
+const E_modNames = (base) => [...new Set(S.doc.sheets.filter((sh) => modBase(sh) === base).map(modOf))].map((id) => modName(S.doc, id));
 // Sprünge zu wichtigen Blättern (CJ 18.10.2026): mit M (★) markierte Blätter. Knopf ★ in der Blattleiste: Klick = nächstes markiertes
 // Blatt, Rechtsklick oder gedrückt halten = Liste aller markierten (Klick-Regel). Tasten ⇧Bild ab / ⇧Bild auf. Über alle Module.
 const pinned = () => S.doc.sheets.map((sh, i) => (sh.pin ? i : -1)).filter((i) => i >= 0);
@@ -1951,8 +2007,10 @@ onPanel("click", (e) => {
 
 let addHeld = false, addTimer = 0; // langes Drücken auf + öffnet die Auswahl statt ein Blatt anzulegen
 $("#sheetbar").addEventListener("click", (e) => {
-  const step = e.target.closest("[data-step]");
-  if (step) stepSheet(Number(step.dataset.step));
+  const step = e.target.closest("[data-step]"), ofs = e.target.closest("[data-ofstep]"), ofm = e.target.closest("[data-ofkap], [data-ofplus]");
+  if (ofs) ofStep(Number(ofs.dataset.ofstep));
+  else if (ofm) ofMenuOpen(ofm); // Kapitelliste, Variante oder Nachtrag
+  else if (step) stepSheet(Number(step.dataset.step));
   else if (e.target.closest("[data-gosheet]")) sheetMenu.toggle($("#sheet-cur"));
   else if (e.target.closest("[data-starjump]")) jumpStar(1);
   else if (e.target.closest("[data-addsheet]")) { if (addHeld) addHeld = false; else if (addMenu.open) addMenu.hide(false); else addSameKind(); }
@@ -2351,7 +2409,15 @@ function elSheetBar() {
   $("#btn-dxf-all").hidden = S.doc.sheets.length < 2;
   const open = sheetMenu?.open, keep = document.activeElement?.closest?.("#sheetbar") && document.activeElement.id;
   const mn = S.doc.mods?.[elMod()]?.name || `${m.short || m.label}${varOf(sh) > 1 && !T.isDeck(sh) ? ` ${varOf(sh)}` : ""}`; // eigener Name des Moduls (18.10.2026)
-  $("#sheetbar").innerHTML = `<span class="el-sbmod" title="Modul ${R.esc(modName(S.doc, elMod()))}"><span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>${R.esc(mn)}</span>`
+  const mod = `<span class="el-sbmod" title="Modul ${R.esc(modName(S.doc, elMod()))}"><span class="el-dot" style="background:${m.color}" aria-hidden="true"></span>${R.esc(mn)}</span>`;
+  if (isOff()) { // Offerte: Inhaltsverzeichnis (Kapitel), Plus = Variante oder Nachtrag
+    const t = ofTargets(), i = Math.min(ofCur(), t.length - 1);
+    $("#sheetbar").innerHTML = mod + `<button class="sheettab nav" data-ofstep="-1" title="Vorheriges Kapitel (Bild auf)" aria-label="Vorheriges Kapitel"${i <= 0 ? " disabled" : ""}>‹</button>`
+      + ofKapBtn() + `<button class="sheettab nav" data-ofstep="1" title="Nächstes Kapitel (Bild ab)" aria-label="Nächstes Kapitel"${i >= t.length - 1 ? " disabled" : ""}>›</button>` + ofPlusBtn() + starBtn();
+    if (keep) document.getElementById(keep)?.focus();
+    return;
+  }
+  $("#sheetbar").innerHTML = mod
     + `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt im Modul (Bild auf)" aria-label="Vorheriges Blatt"${pos <= 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Blätter dieses Moduls (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${pos + 1} von ${idx.length}</span><span class="caret" aria-hidden="true">▾</span></button>`
     + `<button class="sheettab nav" data-step="1" title="Nächstes Blatt im Modul (Bild ab)" aria-label="Nächstes Blatt"${pos >= idx.length - 1 ? " disabled" : ""}>›</button>`
@@ -2366,7 +2432,7 @@ function elSheetList() {
   const rows = idx.map((i) => ({ sh: S.doc.sheets[i], i, label: sheetLabel(S.doc.sheets[i], i), title: S.doc.sheets[i].meta.TITEL || "" })).filter((r) => !q || `${r.label} ${r.title}`.toLowerCase().includes(q));
   $("#sheet-menu .slist").innerHTML = rows.length ? rows.map(({ sh, i, label, title }, n) => `<div class="srow"><button class="mi${i === S.active ? " on" : ""}" data-sheet="${i}" data-ctx="${i}" tabindex="-1"${i === S.active ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${R.esc(label)}</span><span class="ms">${R.esc(title || "ohne Titel")}</span></span><span class="pos">${idx.indexOf(i) + 1}</span></button><button class="pin" data-pin="${i}" tabindex="-1" title="${sh.pin ? "Markierung entfernen" : "Blatt markieren"} (M für das aktive Blatt)" aria-label="${sh.pin ? "Markierung entfernen" : "Blatt markieren"}" aria-pressed="${!!sh.pin}">${sh.pin ? "★" : "☆"}</button></div>`).join("") : `<div class="empty">Kein Blatt gefunden</div>`;
 }
-function elStep(d) { const idx = elIdx(), i = idx[idx.indexOf(S.active) + d]; if (i !== undefined) switchSheet(i); }
+function elStep(d) { if (isOff()) { ofStep(d); return; } const idx = elIdx(), i = idx[idx.indexOf(S.active) + d]; if (i !== undefined) switchSheet(i); }
 function elAddFilter() { const ok = E.ADD_KINDS[E.baseOf(elMod())] || []; for (const b of document.querySelectorAll("#add-menu [data-new]")) if (!ok.includes(b.dataset.new)) b.hidden = true; else if (b.dataset.new !== "deck") b.hidden = false; } // deck: eigene Regel davor
 function elSync() {
   const id = elMod(), m = E.modById(id);

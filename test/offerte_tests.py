@@ -1,6 +1,6 @@
 # UI-Tests für das Modul Offerte (Schritt 1, CJ 26.10.2026) in SchemaCAD v3 und elplexaCAD. Aufruf: python3 test/offerte_tests.py [Ausgabeordner]
 # Kapitel aus dem BKP-Katalog, Position per Tastatur (Tab), Summen mit Rundung, Option, Rabatt, Rückgängig, Datei Version 25, Absender aus dem Firmenprofil (Schritt 2).
-# Schritt 5: PDF mit und ohne Preise (v3 Druckseiten, elplexaCAD echtes PDF), Excel-Download mit Formeln, ohne EK und Zeit.
+# Schritt 5: PDF mit und ohne Preise (v3 Druckseiten, elplexaCAD echtes PDF), Excel-Download mit Formeln, ohne EK und Zeit; Blattleiste als Kapitelliste, Variante und Nachtrag.
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -89,6 +89,26 @@ def flow(page, tag):
     import zipfile
     sh = zipfile.ZipFile(x).read("xl/worksheets/sheet1.xml").decode()
     check(f"{tag}: Excel mit Formeln, ohne EK und Zeit", dl.value.suggested_filename.endswith("_Offerte.xlsx") and "<f>SUMIFS(" in sh and "Muster Elektro" in sh and "9.99" not in sh and "0.77" not in sh, dl.value.suggested_filename)
+    # Blattleiste (CJ 26.10.2026): Kapitel springen, Plus = Variante oder Nachtrag als eigenes Offerten-Modul
+    page.click('[data-ofact="addkap"][data-bkp="236"]'); page.wait_for_timeout(150)
+    page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(100)
+    page.click("#sheetbar [data-ofkap]"); page.wait_for_timeout(200)
+    items = page.locator("#of-menu [data-ofm]").all_inner_texts()
+    check(f"{tag}: Kapitelliste mit Schlusszusammenstellung", len(items) == 3 and "BKP 236" in items[1] and items[2] == "Schlusszusammenstellung", items)
+    page.click('#of-menu [data-ofm="k:2"]'); page.wait_for_timeout(200)
+    check(f"{tag}: Sprung zur Schlusszusammenstellung", page.evaluate("(() => { const v = document.querySelector('#of-view'), e = document.querySelector('.of-end'); return Math.abs(e.getBoundingClientRect().top - v.getBoundingClientRect().top - 8) < 3 || v.scrollTop + v.clientHeight >= v.scrollHeight - 2; })()"))
+    if tag == "elplexa":
+        check(f"{tag}: Leiste zeigt das Kapitel", "von 3" in page.inner_text("#sheetbar"), page.inner_text("#sheetbar"))
+        page.click('#sheetbar [data-ofstep="-1"]'); page.wait_for_timeout(200)
+        check(f"{tag}: ‹ springt ein Kapitel zurück", "BKP 236" in page.inner_text("#sheetbar") and "2 von 3" in page.inner_text("#sheetbar"), page.inner_text("#sheetbar"))
+    else: check(f"{tag}: v3 blättert weiter durch die Blätter", page.locator('#sheetbar [data-step="-1"]').count() == 1 and page.locator("#sheetbar .of-kapbtn").count() == 1)
+    n0 = len([x for x in D()["sheets"] if x.get("kind") == "offerte"])
+    page.click("#sheetbar [data-ofplus]"); page.wait_for_timeout(150); page.click('#of-menu [data-ofm="var"]'); page.wait_for_timeout(300)
+    d = D(); offs = [x for x in d["sheets"] if x.get("kind") == "offerte"]
+    check(f"{tag}: Variante = Kopie als eigenes Modul mit Namen", len(offs) == n0 + 1 and offs[-1].get("var") == 2 and len(offs[-1]["of"]["kap"]) == 2 and offs[-1]["of"]["ver"] == "Variante 2" and d.get("mods", {}).get("offerte:2", {}).get("name") == "Offerte – Variante 2", d.get("mods"))
+    page.click("#sheetbar [data-ofplus]"); page.wait_for_timeout(150); page.click('#of-menu [data-ofm="nach"]'); page.wait_for_timeout(300)
+    d = D(); o = [x for x in d["sheets"] if x.get("kind") == "offerte"][-1]
+    check(f"{tag}: Nachtrag = leere Offerte, gleiche Nummer", o.get("var") == 3 and not o["of"]["kap"] and o["of"]["ver"] == "Nachtrag 1" and d["mods"]["offerte:3"]["name"] == "Offerte – Nachtrag 1", o["of"])
     page.screenshot(path=str(OUT / f"{tag}.png"))
 
 with sync_playwright() as p:

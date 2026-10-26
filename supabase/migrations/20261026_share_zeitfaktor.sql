@@ -1,3 +1,4 @@
+-- Angewendet am 26.10.2026 mit OK von CJ.
 -- Zeitfaktor der Offerte (CJ 26.10.2026, Dateiversion 26): of.zf wirkt auf alle Zeiten ausser Regie, fehlt = 1 (offerte.js unitRaw).
 -- share_offer_strip rechnet den Verkaufspreis im Teilen-Link mit dem Zeitfaktor und entfernt zf wie Faktor und Ansatz. Sonst unverändert.
 

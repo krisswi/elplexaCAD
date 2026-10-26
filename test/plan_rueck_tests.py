@@ -78,7 +78,7 @@ with sync_playwright() as p:
     check("Fang aus: Wand frei gesetzt, nicht auf dem Raster", len(w) == 1 and all(abs(v[0] % 100) > 1 for v in (w[0]["a"], w[0]["b"])), w)
     page.click('[data-plact="free"]'); page.wait_for_timeout(80); n0 = len(of("wall")); click(2537, -1213); click(3571, -1213); key("Escape")
     w = of("wall")[n0:]
-    check("Fang wieder an: Wand rastet auf dem Raster", page.get_attribute('[data-plact="free"]', "aria-pressed") == "false" and len(w) == 1 and abs(w[0]["a"][0] % 100) < 1e-6, w)
+    check("Fang wieder an: Wand rastet auf dem Raster (10 mm)", page.get_attribute('[data-plact="free"]', "aria-pressed") == "false" and len(w) == 1 and abs(w[0]["a"][0] % 10) < 1e-6 and abs(w[0]["a"][0] - 2537) < 10, w)
     key("v")
 
     # Neues Plan-Modul: eingepasst, nicht mit Zoom/Ausschnitt des vorigen Plans (lag dort, wo die Maus beim Zoomen war)

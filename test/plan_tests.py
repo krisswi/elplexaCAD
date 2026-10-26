@@ -234,7 +234,7 @@ with sync_playwright() as p:
     page.mouse.click(*at(-1500, -1500)); page.wait_for_timeout(60)
     drag(2500, 500, 3450, 1300)
     check("Rahmen wählt die Leitung darin", sel() == [LN], sel())
-    page.click('[data-plact="multi"]'); page.wait_for_timeout(60); click(3000, 2200)
+    page.click('[data-plact="multi"]'); page.wait_for_timeout(60); click(3000, 1650)  # geschwungen: Kurve läuft nicht durch den Eckpunkt, am geraden Anfang klicken
     check("Knopf Mehrfachwahl: Klick fügt hinzu (ohne Shift)", len(sel()) == 2, sel())
     page.click('[data-plact="multi"]'); page.wait_for_timeout(60)
     page.keyboard.press("Meta+a"); page.wait_for_timeout(80); mm = M(); ok_l = {l["id"] for l in mm["layers"] if l["show"] and not l["lock"]}; wl = {i["id"]: i["layer"] for i in mm["items"] if i["type"] == "wall"}
@@ -300,12 +300,12 @@ with sync_playwright() as p:
 
     # ---------- Speichern / Laden ohne Datenverlust ----------
     d1 = D()
-    check("Datei: Version 22 (Plan mit Leitungen und Farben)", d1["version"] == 22, d1["version"])
+    check("Datei: Version 23 (Plan mit geschwungenen Leitungen, Vorgabe seit 26.10.2026)", d1["version"] == 23, d1["version"])
     blur()
     with page.expect_download() as dl: page.keyboard.press("Shift+Meta+s")
     out = OUT / "plan_rundlauf.elplexa.json"; dl.value.save_as(str(out)); page.wait_for_timeout(300)
     raw = json.loads(out.read_text())
-    check("Gespeichert: Version 22, zwei Pläne", raw["version"] == 22 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
+    check("Gespeichert: Version 23, zwei Pläne", raw["version"] == 23 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
     blur()
     with page.expect_file_chooser() as fc:
         page.keyboard.press("Meta+o"); page.wait_for_timeout(300)

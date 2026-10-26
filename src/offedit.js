@@ -132,7 +132,7 @@ export function panelHTML(of, profil = null) {
     + `${sel("Abrechnungsart", "o.art", O.ARTEN, of.art, "–")}${sel("Bauart", "o.bau", O.BAUARTEN, of.bau, "–")}</section>`
     + `<section class="section"><h2 class="section-title">Rechenwerte</h2>${fld("Materialfaktor", "o.fak", of.fak, { num: true })}${fld("Stundenansatz CHF", "o.ansatz", of.ansatz, { num: true })}${fld("Gesamtrabatt %", "o.rabatt", of.rabatt, { num: true })}`
     + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div><label class="of-chk"><input type="checkbox" data-of="o.mwstan"${of.mwst ? " checked" : ""}> MwSt aufrechnen</label>${of.mwst ? fld("MwSt %", "o.mwst", of.mwst, { num: true }) : ""}`
-    + `<div class="row"><button type="button" class="btn outline small" data-ofact="sollwerte" title="Ansatz und Faktor für neue Offerten, Rechnung der Preisbasis, IC-Zeiten">Sollwerte und IC-Zeiten …</button></div></section>`
+    + `<div class="row"><button type="button" class="btn outline small" data-ofact="sollwerte" title="Ansatz und Faktor für neue Offerten, Rechnung der Preisbasis, IC-Zeiten (gilt für dein Konto, nicht nur diese Offerte)">Kalkulation Firmenwerte …</button></div></section>`
     + rgHTML(of)
     + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">${totLabel(of)} <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
 }

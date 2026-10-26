@@ -95,7 +95,7 @@ export const loadIcZeiten = () => cleanIcZeiten(A.load("iczeiten"));
 export const saveIcZeiten = (t, opt) => A.save("iczeiten", cleanIcZeiten(t), opt);
 export async function syncSollwerte() { const a = await A.sync("sollwerte"), b = await A.sync("iczeiten"); return a || b; }
 
-// ---------- Fenster «Sollwerte und IC-Zeiten» (beide Stände). openModal und toast aus dialogs.js, parseNum aus offedit.js. ----------
+// ---------- Fenster «Kalkulation Firmenwerte» (beide Stände, im Profil und in der Offerte). openModal und toast aus dialogs.js, parseNum aus offedit.js. ----------
 const fmt = (x) => (isNum(x) ? x.toFixed(2) : "–");
 const v = (x) => (isNum(x) ? String(x) : "");
 export function sollwerteDialog({ openModal, toast, parseNum }, { online = false } = {}) {
@@ -137,7 +137,7 @@ export function sollwerteDialog({ openModal, toast, parseNum }, { online = false
   };
   const body = `<p>${online ? "Gilt für alle neuen Offerten und liegt online bei deinem Konto." : "Gilt für alle neuen Offerten. Ohne Anmeldung nur in diesem Browser."} Jedes Feld darf leer bleiben.</p><div id="sw-body">${inner()}</div>
 <div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>Speichern</button></div>`;
-  const p = openModal("Sollwerte und IC-Zeiten", body, (b, done) => {
+  const p = openModal("Kalkulation Firmenwerte", body, (b, done) => {
     if (b.dataset.c !== undefined) { done(null); return; }
     if (b.dataset.swmode) { read(); s.modus = b.dataset.swmode; document.getElementById("sw-body").innerHTML = inner(); return; }
     if (b.dataset.icadd !== undefined) { read(); ic.rows.push({ ic: "" }); document.getElementById("sw-icrows").innerHTML = icRows(); root().querySelector(`[data-ic="${ic.rows.length - 1}.ic"]`)?.focus(); return; }

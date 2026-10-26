@@ -1979,6 +1979,8 @@ async function profSync() {
   try { await syncSollwerte(); } catch { /* Sollwerte und IC-Zeiten: Stand im Browser gilt */ }
 }
 function profShown() { if (isOff()) renderRight(); if (ELPLEXA && EL_S.hub && !EL_S.hub.hidden && EL_S.tab === "profil") elHub(true, { keepFocus: true }); }
+// Kalkulation Firmenwerte (sollwerte.js, Offerte Schritt 4): beim Benutzer, nicht in der Offerte. Bestehende Offerten bleiben gleich.
+const kalkFirma = () => sollwerteDialog({ openModal, toast, parseNum: OF.parseNum }, { online: !!cloudUser() });
 async function firmProfil() { if (await profilDialog({ openModal, toast }, { online: !!cloudUser() })) profShown(); }
 
 // ---------- Offerte (offedit.js, CJ 26.10.2026) ----------
@@ -1995,7 +1997,7 @@ function ofClick(e) {
   const b = e.target.closest?.("[data-ofact]");
   if (!isOff() || !b) return;
   if (b.dataset.ofact === "profil") { firmProfil(); return; }
-  if (b.dataset.ofact === "sollwerte") { sollwerteDialog({ openModal, toast, parseNum: OF.parseNum }, { online: !!cloudUser() }); return; }
+  if (b.dataset.ofact === "sollwerte") { kalkFirma(); return; }
   if (b.dataset.ofact === "dbsave") { ofDbSave(Number(b.dataset.p)); return; }
   if (b.dataset.ofact === "dbdel") { ofDbDel(b.dataset.db); return; }
   const r = OF.action(S.model.of, b); if (!r) return;
@@ -2546,7 +2548,7 @@ function elInit() {
     else if (b.dataset.elonline) elOnlineOpen(b.dataset.elonline);
     else if (b.dataset.elodel) elOnlineDelete(b.dataset.elodel);
     else ({ hub: () => elHub(true), bare: elBare, pdf: () => printPdf(), modmenu: () => EL_S.modMenu.toggle(b), addmod: () => EL_S.addMenu.toggle(b), newproj: elNewProject, openfile: () => openJson(), csv: elCsv, zeitcsv: elZeitCsv, projview: () => { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); }, selrm: elSelRemove, selclr: () => { EL_S.sel?.clear(); elHub(true, { keepFocus: true }); }, timechip: () => { if (!EL_S.hub.hidden && EL_S.tab === "zeit") { $("#el-zh")?.focus(); return; } EL_S.tab = "projekte"; EL_S.pview = true; elHub(true, { keepFocus: true }); document.getElementById("el-th")?.scrollIntoView({ block: "center" }); document.getElementById("el-th")?.focus(); }, help: elHelp, tipoff: () => elTipSet(false),
-      hand: elHand, gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, feedback: elFeedback, firmprof: firmProfil }[b.dataset.elact] || (() => {}))();
+      hand: elHand, gwr: elGwr, onsave: elOnlineSave, onlist: elOnlineList, logout: elLogout, feedback: elFeedback, firmprof: firmProfil, kalk: kalkFirma }[b.dataset.elact] || (() => {}))();
   });
   hub.addEventListener("keydown", (e) => { // Reiter mit Pfeiltasten (Roving-Tabindex)
     const t = e.target.closest?.(".el-tab"); if (!t || e.altKey || e.metaKey || e.ctrlKey) return;

@@ -263,6 +263,8 @@ export function profileHTML(o) {
     <div class="el-eyerow"><span class="el-eye">Firmenprofil</span></div>${firm.length ? `<p class="el-prow el-firm">${firm.map(esc).join("<br>")}</p>` : `<p class="el-note">Noch keine Firmendaten. Sie gelten für alle Module: neue Titelseiten, Absender der Offerte.</p>`}
     <div class="el-acts"><button class="btn outline" id="el-pf-firm" data-elact="firmprof">Firmenprofil bearbeiten …</button></div>
     <p class="el-note">${o.user ? "Liegt online bei deinem Konto und in diesem Browser." : "Ohne Anmeldung nur in diesem Browser; nach dem Anmelden online bei deinem Konto."}</p>
+    <div class="el-eyerow"><span class="el-eye">Kalkulation</span></div><p class="el-note">Stundenansatz, Materialfaktor, Rechnung der Preisbasis und IC-Zeiten. Neue Offerten übernehmen Ansatz und Faktor.</p>
+    <div class="el-acts"><button class="btn outline" id="el-pf-kalk" data-elact="kalk">Kalkulation Firmenwerte …</button></div>
     <div class="el-eyerow"><span class="el-eye">Anzeige</span></div><label class="chk"><input type="checkbox" data-eltip${o.tip ? " checked" : ""}> <span>Tipp-Zeile unten zeigen</span></label></section>`;
 }
 

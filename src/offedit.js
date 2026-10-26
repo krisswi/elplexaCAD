@@ -5,6 +5,7 @@ import { esc } from "./render.js";
 import * as O from "./offerte.js";
 import { profilLines } from "./profil.js";
 import * as PD from "./positionen.js";
+import { icZeit, loadIcZeiten } from "./sollwerte.js";
 
 // Teilen-Link (CJ 26.10.2026): ro = nur lesen (Felder als Text, keine Knöpfe), prices = Preise freigegeben. EK, Faktor und Zeit kommen nie an (share_open).
 let mode = { ro: false, prices: true };
@@ -113,7 +114,9 @@ function dbCopy(of, e) {
   let g = lastGrp && O.findGrp(of, lastGrp)?.g;
   if (!g) { const k = of.kap.at(-1) || O.addKapitel(of, e.bkp ? O.bkpMain(e.bkp) : ""); g = k.grp.at(-1) || O.addGruppe(of, k); }
   lastGrp = g.id;
-  return O.addPosition(of, g, PD.cleanEntry(e));
+  const p = PD.cleanEntry(e), t = icZeit(p.ic);
+  if (p.std === undefined && t !== undefined) p.std = t; // Zeit aus der eigenen IC-Tabelle (Schritt 4)
+  return O.addPosition(of, g, p);
 }
 
 // ---------- Rechts: Kopf und Rechenwerte ----------
@@ -128,7 +131,8 @@ export function panelHTML(of, profil = null) {
     + `<section class="section"><h2 class="section-title">Kopf</h2>${fld("Offertnummer", "o.nr", of.nr)}${fld("Version (Revision, Nachtrag)", "o.ver", of.ver)}${fld("Datum", "o.datum", of.datum)}${fld("Gültig bis", "o.gueltig", of.gueltig, { ph: "z. B. 3 Monate" })}`
     + `${sel("Abrechnungsart", "o.art", O.ARTEN, of.art, "–")}${sel("Bauart", "o.bau", O.BAUARTEN, of.bau, "–")}</section>`
     + `<section class="section"><h2 class="section-title">Rechenwerte</h2>${fld("Materialfaktor", "o.fak", of.fak, { num: true })}${fld("Stundenansatz CHF", "o.ansatz", of.ansatz, { num: true })}${fld("Gesamtrabatt %", "o.rabatt", of.rabatt, { num: true })}`
-    + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div><label class="of-chk"><input type="checkbox" data-of="o.mwstan"${of.mwst ? " checked" : ""}> MwSt aufrechnen</label>${of.mwst ? fld("MwSt %", "o.mwst", of.mwst, { num: true }) : ""}</section>`
+    + `<div class="of-two">${fld("Skonto %", "o.skonto", of.skonto, { num: true })}${fld("innert Tagen", "o.skTage", of.skTage, { num: true })}</div><label class="of-chk"><input type="checkbox" data-of="o.mwstan"${of.mwst ? " checked" : ""}> MwSt aufrechnen</label>${of.mwst ? fld("MwSt %", "o.mwst", of.mwst, { num: true }) : ""}`
+    + `<div class="row"><button type="button" class="btn outline small" data-ofact="sollwerte" title="Ansatz und Faktor für neue Offerten, Rechnung der Preisbasis, IC-Zeiten">Sollwerte und IC-Zeiten …</button></div></section>`
     + rgHTML(of)
     + `<section class="section"><h2 class="section-title">Summe</h2><p class="of-psum">${totLabel(of)} <b>CHF ${O.fmtChf(t.total)}</b></p></section>`;
 }
@@ -174,6 +178,13 @@ export function apply(of, el) {
   if (f === "rg") { const n = Number(v); if (n && of.rg.some((r) => r.id === n)) obj.rg = n; else delete obj.rg; return true; }
   if (f === "regel") { if (v === "kein") obj.satz = 0; else if (v === "eigen") obj.satz = obj.satz || of.rabatt || 0; else delete obj.satz; return true; }
   if (f === "satz") { const n = parseNum(v); if (!(n >= 0 && n <= 100)) return false; obj.satz = n; return true; }
+  // IC-Code (Schritt 4): Zeit aus der eigenen IC-Tabelle vorbelegen, wenn die Position keine eigene Zeit hat (leer oder die Zeit des bisherigen IC-Codes)
+  if (f === "ic" && tg.p) {
+    const t = loadIcZeiten(), old = icZeit(obj.ic, t), s = String(v).trim(), nu = icZeit(s, t);
+    if (s) obj.ic = s; else delete obj.ic;
+    if (nu !== undefined && (obj.std === undefined || obj.std === old)) obj.std = nu;
+    return true;
+  }
   if (f === "kz") { obj.kz = String(v).trim().slice(0, 3); return true; }
   if (f === "typ") { if (v === "regie") { if (!obj.eh) obj.eh = "h"; if (obj.std === undefined) obj.std = 1; } if (v && v !== "lp") obj.typ = v; else delete obj.typ; return true; }
   if (f === "form") { if (v && v !== "r") obj.form = v; else delete obj.form; return true; }

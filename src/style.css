@@ -496,3 +496,16 @@ body.is-offerte #svg, body.is-offerte #zoombar { display: none; }
 .of-dbadd b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .of-dbadd span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .of-chk { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 4px 0 8px; }
+/* Sollwerte und IC-Zeiten (sollwerte.js, Offerte Schritt 4) */
+.modal.sw-modal { width: min(640px, 94vw); }
+.sw-modal h3 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.sw-modes { gap: 6px; margin: 4px 0 6px; }
+.sw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 12px; }
+.sw-f { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.sw-in { display: flex; align-items: center; gap: 4px; } .sw-in i { font-style: normal; font-size: 11px; white-space: nowrap; }
+.sw-f input, .sw-f select, .sw-ic input { height: 30px; padding: 0 7px; border: 1px solid var(--panel-line); border-radius: 6px; background: #fff; color: var(--ink); min-width: 0; width: 100%; }
+.sw-res { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.sw-res th, .sw-res td { padding: 3px 6px; border-bottom: 1px solid var(--panel-line); text-align: right; } .sw-res th:first-child, .sw-res td:first-child { text-align: left; }
+.sw-res .sw-strong td { font-weight: 600; }
+.sw-take { margin: 12px 0 0; font-size: 13px; }
+.sw-ic { display: grid; grid-template-columns: 70px 90px 1fr auto; gap: 6px; margin-bottom: 6px; }

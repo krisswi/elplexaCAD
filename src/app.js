@@ -45,6 +45,7 @@ import * as PZ from "./prinzip.js";
 import { setRemote } from "./ablage.js";
 import * as PD from "./positionen.js";
 import { loadProfil, syncProfil, profilDialog } from "./profil.js";
+import { offerDefaults, syncSollwerte, sollwerteDialog } from "./sollwerte.js";
 import { PRINZIP_GROUPS, PRINZIP_FAMILIES, PZ_ABGANG, PZ_POL, polNext, sichName, kabelN } from "./prinzipsym.js";
 
 
@@ -877,6 +878,7 @@ function addOfferte(v) {
   v = varIn("offerte", v);
   change(() => {
     const sh = setVar(newSheet("offerte"), v);
+    Object.assign(sh.of, offerDefaults()); // Ansatz und Faktor aus den Sollwerten des Benutzers (Schritt 4), in der Offerte änderbar
     sh.meta.BLATT = String(maxNo("offerte") + 1);
     S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
   });
@@ -1974,6 +1976,7 @@ async function profSync() {
   profUser = u;
   try { if (await syncProfil()) profShown(); } catch { /* online nicht erreichbar: Stand im Browser gilt */ }
   try { if (await PD.sync() && isOff()) renderLeftBody(); } catch { /* Positionsdatenbank: Stand im Browser gilt */ }
+  try { await syncSollwerte(); } catch { /* Sollwerte und IC-Zeiten: Stand im Browser gilt */ }
 }
 function profShown() { if (isOff()) renderRight(); if (ELPLEXA && EL_S.hub && !EL_S.hub.hidden && EL_S.tab === "profil") elHub(true, { keepFocus: true }); }
 async function firmProfil() { if (await profilDialog({ openModal, toast }, { online: !!cloudUser() })) profShown(); }
@@ -1992,6 +1995,7 @@ function ofClick(e) {
   const b = e.target.closest?.("[data-ofact]");
   if (!isOff() || !b) return;
   if (b.dataset.ofact === "profil") { firmProfil(); return; }
+  if (b.dataset.ofact === "sollwerte") { sollwerteDialog({ openModal, toast, parseNum: OF.parseNum }, { online: !!cloudUser() }); return; }
   if (b.dataset.ofact === "dbsave") { ofDbSave(Number(b.dataset.p)); return; }
   if (b.dataset.ofact === "dbdel") { ofDbDel(b.dataset.db); return; }
   const r = OF.action(S.model.of, b); if (!r) return;

@@ -5,6 +5,10 @@
 import sys, tempfile, json, math, re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+
+def plsym(page, k):  # Symbolgruppen sind zu (CJ 26.10.2026): Gruppe aufklappen, dann Symbol wählen
+    page.evaluate("k => document.querySelector(`[data-plsym='${k}']`).closest('section').querySelector('[data-plgrp][aria-expanded=false]')?.click()", k)
+    page.click(f'[data-plsym="{k}"]')
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="plan_"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -155,17 +159,20 @@ with sync_playwright() as p:
 
     # ---------- Schritt 2: Elektrosymbole ----------
     check("Palette: ca. 30 Symbole in Gruppen", page.locator("[data-plsym]").count() >= 30 and all(g in page.inner_text("#left-body") for g in ["Schalter", "Steckdosen", "Leuchten", "Geräte"]), page.locator("[data-plsym]").count())
-    page.click('[data-plsym="STD"]'); page.wait_for_timeout(80)
+    check("Symbolgruppen zu beim Start", page.locator(".pl-syms").count() >= 8 and page.locator(".pl-syms.zu").count() == page.locator(".pl-syms").count() and not page.is_visible('[data-plsym="STD"]'))
+    page.click('[data-plgrp="Steckdosen"]'); page.wait_for_timeout(50)
+    check("Gruppe klappt auf, andere bleiben zu", page.is_visible('[data-plsym="STD"]') and not page.is_visible('[data-plsym="SCH0"]'))
+    plsym(page, "STD"); page.wait_for_timeout(80)
     check("Symbol gewählt: Werkzeug Symbol, Hinweis", "Steckdose T13" in page.inner_text("#hint") and page.get_attribute('[data-plsym="STD"]', "aria-pressed") == "true")
     click(3750, 600)  # nahe an der rechten Wand: rastet an der Innenfläche ein, zeigt in den Raum
     y = of("sym")[-1]; STD = y["id"]
     check("Steckdose an der Wand: auf der Innenfläche (x 3925), Drehung 90, Standardhöhe (nicht gespeichert)", near(y["at"], [3925, y["at"][1]]) and abs(y["at"][1] - 600) <= 10 and y["r"] == 90 and "h" not in y and y["layer"] == "bg", y)
-    page.click('[data-plsym="LEUCHTE"]'); key("r"); click(2000, 2000)
+    plsym(page, "LEUCHTE"); key("r"); click(2000, 2000)
     y = of("sym")[-1]; LE = y["id"]
     check("Deckenleuchte frei, R dreht beim Setzen um 90°, ohne Höhe", y["key"] == "LEUCHTE" and y["r"] == 90 and "h" not in y and abs(y["at"][0] - 2000) <= 10, y)
-    page.click('[data-plsym="VERWEIS"]'); click(1200, 1800)
+    plsym(page, "VERWEIS"); click(1200, 1800)
     VW = of("sym")[-1]["id"]
-    page.click('[data-plsym="SCH0"]'); click(3000, 300)
+    plsym(page, "SCH0"); click(3000, 300)
     SW = of("sym")[-1]["id"]
     check("Schalter an der unteren Wand (y 75, r 0)", near(item(SW)["at"], [item(SW)["at"][0], 75]) and item(SW)["r"] == 0, item(SW))
     blur(); key("v"); c0 = page.evaluate(f"(() => {{ const i = window.__schemacad.model.items.find((x) => x.id === {STD}); return i.at; }})()")

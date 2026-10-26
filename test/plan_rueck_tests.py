@@ -4,6 +4,10 @@
 import sys, math
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+
+def plsym(page, k):  # Symbolgruppen sind zu (CJ 26.10.2026): Gruppe aufklappen, dann Symbol wählen
+    page.evaluate("k => document.querySelector(`[data-plsym='${k}']`).closest('section').querySelector('[data-plgrp][aria-expanded=false]')?.click()", k)
+    page.click(f'[data-plsym="{k}"]')
 ROOT = Path(__file__).resolve().parent.parent
 errors, fails = [], []
 def check(name, cond, info=""):
@@ -59,7 +63,7 @@ with sync_playwright() as p:
     key("Escape"); key("v")
 
     # Steckdose an der unteren (Innen-)Wand: Stiel an der Wand, Farbe blau
-    page.check("#grid-on"); page.click('[data-plsym="STD"]'); click(3000, -1500)
+    page.check("#grid-on"); plsym(page, "STD"); click(3000, -1500)
     y = of("sym")[-1]
     check("Steckdose an der Wand nach oben in den Raum (r = 0, Stiel unten)", y["r"] == 0 and abs(y["at"][1] - (-2000 - 0)) < 80 + 5 and "col" not in y, y)
     check("Vorgabefarbe der Steckdose blau", "#3fbbeb" in page.inner_html("#items") and "#ed3f2a" not in page.inner_html("#items"))

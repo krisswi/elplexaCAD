@@ -38,6 +38,7 @@ export function makePlan(c) {
   const sh = () => S.model;
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
+  const grpOpen = new Set(); // aufgeklappte Symbolgruppen links, nur für die Sitzung (Start immer zu)
   const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
@@ -719,8 +720,9 @@ export function makePlan(c) {
       + `<button class="btn outline small" data-plact="rename">Umbenennen</button><button class="btn outline small danger" data-plact="ldel"${n < 2 ? " disabled" : ""}>Löschen</button></div>`
       + `<div class="row"><button class="btn outline small" data-plact="ladd"${n >= P.MAX_LAYERS ? " disabled" : ""}>${R.icons.plus.replace("<svg", '<svg width="16" height="16"')}Ebene</button></div>`
       + `<p class="note">${n} von ${P.MAX_LAYERS} Ebenen. Reihenfolge = Zeichenfolge, oben liegt zuoberst.</p></section>`;
-    for (const g of SYM_GROUPS) { // Elektrosymbole (Schritt 2): Klick wählt, Klick in den Plan setzt
-      h += `<section class="section pl-syms"><h2 class="section-title">${R.esc(g)}</h2>`;
+    for (const g of SYM_GROUPS) { // Elektrosymbole (Schritt 2): Klick wählt, Klick in den Plan setzt. Gruppen zu, Klick auf den Titel klappt auf (CJ 26.10.2026)
+      const on = grpOpen.has(g);
+      h += `<section class="section pl-syms${on ? "" : " zu"}"><h2 class="section-title"><button class="pl-grp" data-plgrp="${R.esc(g)}" aria-expanded="${on}"><span class="caret" aria-hidden="true">▸</span>${R.esc(g)}</button></h2>`;
       for (const d of PLAN_SYMS.filter((x) => x.group === g)) h += `<button class="sym" data-plsym="${d.key}" aria-pressed="${S.tool === "pl-sym" && opt.sym === d.key}"><span class="thumb">${symThumb(d)}</span><span><span class="name">${R.esc(d.label)}</span>${d.wall ? '<br><span class="sub">an der Wand</span>' : ""}</span></button>`;
       h += `</section>`;
     }
@@ -907,6 +909,8 @@ export function makePlan(c) {
     if (sh().kind !== "plan") return;
     const y = e.target.closest("[data-plsym]");
     if (y) { opt.sym = y.dataset.plsym; opt.symR = 0; setTool("pl-sym"); renderLeft(); return; }
+    const g = e.target.closest("[data-plgrp]");
+    if (g) { const n = g.dataset.plgrp, on = !grpOpen.has(n); if (on) grpOpen.add(n); else grpOpen.delete(n); g.setAttribute("aria-expanded", on); g.closest("section").classList.toggle("zu", !on); return; }
     const b = e.target.closest("[data-plact]"); if (b) leftAct(b);
   });
   c.leftEl.addEventListener("input", (e) => { // Deckkraft PDF-Plan: Vorschau beim Ziehen, gespeichert beim Loslassen (change)

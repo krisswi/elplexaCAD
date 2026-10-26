@@ -4,6 +4,10 @@
 import sys, tempfile, math
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+
+def plsym(page, k):  # Symbolgruppen sind zu (CJ 26.10.2026): Gruppe aufklappen, dann Symbol wählen
+    page.evaluate("k => document.querySelector(`[data-plsym='${k}']`).closest('section').querySelector('[data-plgrp][aria-expanded=false]')?.click()", k)
+    page.click(f'[data-plsym="{k}"]')
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="plan_fang_"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -32,9 +36,9 @@ with sync_playwright() as p:
 
     # Wand unten (Innenkante y 75), Schalter und Steckdose an der Wand, Abzweigdose frei
     key("w"); page.keyboard.down("Alt"); click(75, 75); page.keyboard.up("Alt"); page.keyboard.type("3850"); page.keyboard.press("Enter"); page.wait_for_timeout(100); key("Escape"); key("Escape")
-    page.click('[data-plsym="SCH0"]'); click(1000, 200)
-    page.click('[data-plsym="STD"]'); click(3000, 200)
-    page.click('[data-plsym="DOSE"]'); click(2000, 1500)
+    plsym(page, "SCH0"); click(1000, 200)
+    plsym(page, "STD"); click(3000, 200)
+    plsym(page, "DOSE"); click(2000, 1500)
     key("Escape"); key("v")
     sw, so, ab = (next(i for i in of("sym") if i["key"] == k) for k in ("SCH0", "STD", "DOSE"))
     check("Schalter und Steckdose an der Wand, Dose frei", sw["at"][1] == 225 and so["at"][1] == 225 and ab["at"] == [2000, 1500], (sw, so, ab))

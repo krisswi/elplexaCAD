@@ -38,7 +38,7 @@ export function makePlan(c) {
   const sh = () => S.model;
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
-  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: false, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
@@ -295,7 +295,7 @@ export function makePlan(c) {
     const m = [(A[0] + B[0]) / 2 + n[0] * 1.6 * k, (A[1] + B[1]) / 2 + n[1] * 1.6 * k];
     return s + txt(m[0], m[1], label, 2.5 * k, Math.atan2(u[1], u[0]) * 180 / Math.PI, d.ctrl && ci.diff && Math.abs(ci.diff) >= 1 ? "#c0392b" : stroke);
   }
-  // Leitung: Strichmuster nach Art (Papier-mm × k), flexibel mit einer Welle in der Mitte jedes Abschnitts. Geschwungen: glatte Kurve durch die Punkte.
+  // Leitung: Strichmuster nach Art (Papier-mm × k), flexibel mit einer Welle in der Mitte jedes Abschnitts. Geschwungen: glatte Kurve (B-Spline, P.curveSegs).
   function lineSVG(it, k, stroke = P.colOf(it), pts = it.pts, curve = it.curve) {
     const dash = P.LINE_DASH[it.kind], w = 0.35 * k, segs = curve && pts.length > 2 ? P.curveSegs(pts) : null;
     const d = segs ? `M${pt(pts[0])}${segs.map(([, b, c2, e]) => `C${pt(b)} ${pt(c2)} ${pt(e)}`).join("")}` : `M${pts.map(pt).join("L")}`;
@@ -373,7 +373,7 @@ export function makePlan(c) {
       else if (it.type === "sym") s += `<g class="pl-scale">${symSVG(it, k, SEL)}</g>`;
       else if (it.type === "line") s += `<g class="pl-scale">${lineSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
     }
-    if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, draftPts([...lineDraft.pts, [mouse.x, mouse.y]]), opt.lcurve)}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
+    if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, [...lineDraft.pts, [mouse.x, mouse.y]], opt.lcurve)}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
     if (drag?.type === "box" && drag.started) { const b = boxOf(drag); s += `<rect x="${f(b.x0)}" y="${f(b.y0)}" width="${f(b.x1 - b.x0)}" height="${f(b.y1 - b.y0)}" fill="rgba(47,158,88,.08)" stroke="${SEL}" stroke-width="1" stroke-dasharray="5 3"/>`; }
     if (draft && mouse) {
       const b = draftEnd();
@@ -600,11 +600,10 @@ export function makePlan(c) {
     renderOverlay(); updateHint();
   }
   const same = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < P.EPS;
-  const draftPts = (pts) => (opt.lcurve ? P.bowPts(pts) : pts); // geschwungen mit zwei Punkten: Bogen (Zwischenpunkt)
   // Leitung abschliessen (ab zwei Punkten), sonst verwerfen
   function finishLine() {
     const pts = lineDraft?.pts ?? []; lineDraft = null;
-    if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "line", layer: sh().alay, pts: draftPts(pts), kind: opt.lkind, curve: opt.lcurve }, id))); }
+    if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "line", layer: sh().alay, pts, kind: opt.lkind, curve: opt.lcurve }, id))); }
     renderOverlay(); updateHint();
   }
   // Kopieren, Einfügen (je Mal 5 mm auf dem Papier weiter versetzt), Duplizieren, alles wählen
@@ -736,7 +735,7 @@ export function makePlan(c) {
   // ---------- Rechte Leiste ----------
   const sel1 = (k, opts, cur, label) => `<div class="field"><label>${label}</label><select data-plf="${k}">${opts.map(([v, l]) => `<option value="${v}"${String(v) === String(cur) ? " selected" : ""}>${R.esc(l)}</option>`).join("")}</select></div>`;
   const inp = (k, label, v, attr = 'data-plf') => `<div class="field"><label>${label}</label><input type="text" inputmode="decimal" ${attr}="${k}" value="${R.esc(v)}" autocomplete="off"></div>`;
-  const LINE_FORMS = [["0", "gerade (Ecken)"], ["1", "geschwungen (Bogen)"]];
+  const LINE_FORMS = [["0", "gerade (Ecken)"], ["1", "geschwungen"]];
   const layerOpts = () => sh().layers.map((l) => [l.id, l.name]);
   const del1 = () => `<div class="row"><button class="btn outline small danger" data-act="del">${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Löschen</button></div>`;
   // Farbe (5.100): Felder für Leitungen und Symbole der Wahl, «Vorgabe» nimmt die eigene Farbe weg
@@ -792,7 +791,7 @@ export function makePlan(c) {
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
     else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
-      + note("Fang an Symbolmitten, Leitungspunkten und Wandecken, Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen: die Kurve läuft durch alle Punkte, mit zwei Punkten entsteht ein Bogen (Mittelpunkt danach ziehbar). Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
+      + note("Fang an Symbolmitten, Leitungspunkten und Wandecken, Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
     if (S.tool === "select" && clip?.length) h += `<div class="row"><button class="btn outline small" data-plact="paste">Einfügen (${clip.filter((i) => i.type !== "opening").length})</button><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
     else if (S.tool === "select") h += `<div class="row"><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
@@ -828,7 +827,7 @@ export function makePlan(c) {
     const k = t.dataset.plf, v = t.value;
     if (k === "mlayer") { if (P.layerById(S0, v)) change(() => { for (const x of sel()) if (x.type !== "opening") x.layer = v; }); else renderRight(); return true; }
     if (k === "lk") { change(() => { it.kind = v; }); return true; }
-    if (k === "lc") { change(() => { if (v === "1") { it.curve = true; it.pts = P.bowPts(it.pts); } else delete it.curve; }); return true; }
+    if (k === "lc") { change(() => { if (v === "1") it.curve = true; else delete it.curve; }); return true; }
     const L = P.parseLen(v), bad = () => { toast(`„${v}“ nicht verstanden. Beispiele: 3450, 345 cm, 3,45 m.`, "error"); renderRight(); };
     if (k === "len") { if (!(L > 0)) return bad(), true; change(() => (it.type === "wall" ? P.setWallLength(S0, it, L) : P.setDimLength(S0, it, L))); return true; }
     if (k === "soll") { const s = v.trim() ? L : undefined; if (v.trim() && !(L > 0)) return bad(), true; change(() => { if (s) it.soll = s; else delete it.soll; }); return true; }

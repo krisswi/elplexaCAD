@@ -7,7 +7,7 @@
 // Symbol { id, type: "sym", layer, key, at: [x, y], r, h?, txt?, ap?, fu?, nr? } (Schritt 2, plansym.js; r Drehung in Grad, h Höhe in cm,
 // txt Beschriftung, ap Aufputz, fu/nr Sicherung und Nummer am Hinweispfeil). Symbole hängen nicht an der Wand (wandern nicht mit).
 // Leitung { id, type: "line", layer, pts: [[x, y] …] (mind. 2), kind, col?, curve? } (Schritt 3, CJ 24.10.2026; kind = Verlegeart nach 5.110;
-// curve: true = geschwungen, glatte Kurve durch alle Punkte, CJ 24.10.2026, Dateiversion 23).
+// curve: true = geschwungen, glatte Kurve (B-Spline, Punkte = Steuerpunkte), CJ 24.10.2026, Dateiversion 23).
 // Hintergrund bg (CJ 24.10.2026, Dateiversion 23): PDF-Seite wie im Stringplan (pv.js: Massstab, Fixpunkt = Nullpunkt, Drehung), liegt auf der Ebene «Hintergrund».
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
@@ -616,13 +616,16 @@ export function contentBox(sh) {
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }
-// ---------- Geschwungene Leitung (CJ 24.10.2026) ----------
-// Glatte Kurve durch alle Punkte (Catmull-Rom als kubische Bézier): je Abschnitt [p1, c1, c2, p2]. Enden: Tangente zum Nachbarpunkt.
+// ---------- Geschwungene Leitung (CJ 24.10.2026, B-Spline CJ 26.10.2026) ----------
+// Glatte Kurve als kubischer B-Spline: die Punkte sind Steuerpunkte, die Kurve läuft durch Anfang und Ende, sonst nur in die Nähe der Punkte
+// und wird nie wellig (liegt in der Hülle der Punkte). Enden: gespiegelter Hilfspunkt, so beginnt die Kurve gerade in Richtung des zweiten Punkts
+// (zwei Punkte = Gerade). Je Abschnitt ein kubisches Bézier [p1, c1, c2, p2], Anzahl = Punkte − 1.
 export function curveSegs(pts) {
-  const out = [];
-  for (let i = 1; i < pts.length; i++) {
-    const p0 = pts[Math.max(0, i - 2)], p1 = pts[i - 1], p2 = pts[i], p3 = pts[Math.min(pts.length - 1, i + 1)];
-    out.push([p1, add(p1, sub(p2, p0), 1 / 6), add(p2, sub(p3, p1), -1 / 6), p2]);
+  const n = pts.length, q = [add(pts[0], sub(pts[0], pts[1])), ...pts, add(pts[n - 1], sub(pts[n - 1], pts[n - 2]))], out = [];
+  const mix = (a, b, c, wa, wb, wc) => [0, 1].map((j) => (wa * a[j] + wb * b[j] + wc * c[j]) / (wa + wb + wc));
+  for (let i = 1; i < n; i++) {
+    const [q0, q1, q2, q3] = q.slice(i - 1, i + 3);
+    out.push([mix(q0, q1, q2, 1, 4, 1), mix(q1, q2, q2, 2, 1, 0), mix(q1, q2, q2, 1, 2, 0), mix(q1, q2, q3, 1, 4, 1)]);
   }
   return out;
 }
@@ -635,11 +638,5 @@ export function bezAt([a, b, c, d], t) {
 const CURVE_N = 16; // Stützpunkte je Abschnitt für Treffer und Inhalt
 // Linienzug der Leitung (geschwungen: angenähert), für Treffer, Rahmen und Inhalt
 export const linePts = (it) => (it.curve && it.pts.length > 2 ? [it.pts[0], ...curveSegs(it.pts).flatMap((sg) => Array.from({ length: CURVE_N }, (_, j) => bezAt(sg, (j + 1) / CURVE_N).p.map(r3)))] : it.pts);
-// Geschwungen mit nur zwei Punkten: Zwischenpunkt in der Mitte, um ein Fünftel der Länge nach links versetzt (ergibt einen Bogen, Punkt ziehbar)
-export function bowPts(pts) {
-  if (pts.length !== 2) return pts;
-  const [a, b] = pts, v = sub(b, a), m = add(a, v, 0.5), n = normal([v[0], v[1]]);
-  return [a, add(m, n, 0.2).map(r3), b];
-}
 
 export { segX, normal };

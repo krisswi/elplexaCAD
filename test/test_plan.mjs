@@ -397,20 +397,30 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b.sheets[0].items[0], cur, "curve gespeichert");
   assert.ok(!("curve" in P.cleanPlanObj({ ...cur, curve: "ja" }, 1)), "nur true gilt");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ ...cur, curve: undefined }])], 23)))).version, 22, "gerade Leitung bleibt Version 22");
-  // Kurve läuft durch alle Punkte, Enden der Abschnitte = Punkte
+  // B-Spline (CJ 26.10.2026): Punkte = Steuerpunkte, Kurve durch Anfang und Ende, nicht durch den Mittelpunkt, ein Bézier je Abschnitt
   const sg = P.curveSegs(cur.pts);
   assert.strictEqual(sg.length, 2, "ein Bézier je Abschnitt");
-  near(sg[0][0], [0, 0], "Anfang"); near(sg[0][3], [1000, 1000], "durch den Mittelpunkt"); near(sg[1][3], [2000, 0], "Ende");
-  near(sg[0][2], [1000 - 2000 / 6, 1000], "Tangente am Scheitel waagrecht");
-  near(P.bezAt(sg[0], 1).p, [1000, 1000], "bezAt t=1");
+  near(sg[0][0], [0, 0], "Anfang"); near(sg[1][3], [2000, 0], "Ende");
+  near(sg[0][3], [1000, 4000 / 6], "Scheitel unter dem Steuerpunkt (nicht hindurch)"); near(sg[0][3], sg[1][0], "Abschnitte stossen aneinander");
+  near(sg[0][2], [1000 - 2000 / 6, 4000 / 6], "Tangente am Scheitel waagrecht");
+  near(P.bezAt(sg[0], 1).p, sg[0][3], "bezAt t=1");
+  // kein Anfangsradius: Anfang, erster Kontrollpunkt und zweiter liegen auf der Geraden zum zweiten Punkt
+  const cr = (o, p, q) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+  assert.ok(Math.abs(cr(sg[0][0], sg[0][1], cur.pts[1])) < 1e-6 && Math.abs(cr(sg[0][0], sg[0][2], cur.pts[1])) < 1e-6, "erstes Stück beginnt gerade");
+  // zwei Punkte: Gerade
+  const g2 = P.curveSegs([[0, 0], [1000, 0]]);
+  assert.ok(g2.length === 1 && g2[0].every((q) => Math.abs(q[1]) < 1e-9), "zwei Punkte geschwungen = Gerade");
+  // nie wellig: Zickzack-Punkte ergeben eine Kurve ohne Ausschlag über die Punkte hinaus und mit Krümmung nur an den Ecken der Punkte
+  const zz = [[0, 0], [1000, 300], [2000, 0], [3000, 300], [4000, 0]], lp = P.linePts({ pts: zz, curve: true });
+  assert.ok(lp.every((q) => q[1] >= -1e-6 && q[1] <= 300 + 1e-6), "Kurve bleibt zwischen den Punkten");
+  const zs = P.linePts({ pts: [[0, 0], [1000, 0], [2000, 50], [3000, 50]], curve: true }), dy = zs.slice(1).map((q, i) => q[1] - zs[i][1]);
+  assert.ok(dy.every((d) => d >= -1e-6), "steigende Punkte: Kurve fällt nie (keine Welle)");
   // Treffer folgt der Kurve, nicht der Sehne
   const sh = d.sheets[0], top = P.bezAt(sg[0], 0.5).p;
-  assert.ok(top[1] > 500 + 50, "Kurve liegt über der Sehne");
+  assert.ok(top[1] > 300, "Kurve liegt über der Sehne Anfang–Ende");
   assert.strictEqual(P.hitPlan(sh, sh.items, top, 10)?.id, 70, "Treffer auf der Kurve");
   assert.ok(P.linePts(cur).length > cur.pts.length && P.linePts({ ...cur, curve: undefined }) === cur.pts, "Linienzug nur bei Kurve angenähert");
-  // Zwei Punkte geschwungen: Bogen mit Zwischenpunkt links, um 1/5 der Länge versetzt
-  assert.deepStrictEqual(P.bowPts([[0, 0], [1000, 0]]), [[0, 0], [500, 200], [1000, 0]], "Bogen nach links");
-  assert.deepStrictEqual(P.bowPts(cur.pts), cur.pts, "drei Punkte bleiben");
+  assert.strictEqual(P.bowPts, undefined, "kein Bogenpunkt mehr");
   // PDF-Plan je Plan-Blatt (wie Stringplan): bg mit Massstab, Fixpunkt und Drehung bleibt, PDF nur einmal gespeichert
   const bg = { asset: "pdf1", name: "Plaene.pdf", page: 2, w: 1190.55, h: 841.89, fix: [100, 700], mmPerPt: 50 * 25.4 / 72, rot: 2.5 };
   const raw = { ...JSON.parse(file([plan([], { bg }), plan([], { sid: 8, var: 2, bg: { ...bg, page: 3 } })], 23)), assets: { pdf1: { name: "Plaene.pdf", type: "application/pdf", data: "JVBERg==" } } };

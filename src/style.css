@@ -421,3 +421,64 @@ details.proj[open] summary { margin-bottom: 8px; }
 @media (hover: none) { .abgdel { opacity: 1; } }
 .abgsave { width: 100%; }
 
+
+/* ---------- Offerte (offedit.js, CJ 26.10.2026): Tabelle über der Zeichenfläche ---------- */
+#of-view { position: absolute; inset: 0; overflow: auto; background: var(--bench); padding: 18px 18px 80px; }
+body.is-offerte #svg, body.is-offerte #zoombar { display: none; }
+.of-wrap { max-width: 1180px; margin: 0 auto; }
+.of-title h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.of-title p, .of-empty { margin: 2px 0 14px; color: var(--muted); }
+.of-kap { background: #fff; border: 1px solid var(--panel-line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; }
+.of-kh, .of-gh { display: flex; align-items: center; gap: 8px; }
+.of-kh { margin-bottom: 8px; }
+.of-kh input, .of-gh input, .of-tab input[type="text"], .of-tab textarea, .of-gh select, .of-df input, .of-df select { height: 30px; padding: 0 7px; border: 1px solid transparent; border-radius: 6px; background: transparent; min-width: 0; }
+.of-kh input:hover, .of-gh input:hover, .of-tab input[type="text"]:hover, .of-tab textarea:hover { border-color: var(--panel-line); }
+.of-kh input:focus, .of-gh input:focus, .of-tab input:focus, .of-tab textarea:focus, .of-df input:focus { border-color: var(--pe-green); background: #fff; outline: none; }
+.of-kh .of-bkp { width: 84px; font-weight: 600; }
+.of-kh .of-kt { flex: 1; font-size: 15px; font-weight: 600; }
+.of-acts { display: flex; gap: 2px; flex: none; }
+.of-acts .btn.icon.small, .of-tab .btn.icon.small { width: 28px; height: 28px; }
+.of-grp { margin: 6px 0 10px; border-top: 1px solid var(--hover); padding-top: 6px; }
+.of-gt { flex: 1; font-weight: 500; }
+.of-rab { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
+.of-gh select, .of-df select { border-color: var(--panel-line); background: #fff; }
+.of-pct { width: 56px; text-align: right; border-color: var(--panel-line) !important; }
+.of-tab { width: 100%; border-collapse: collapse; font-size: 13.5px; table-layout: fixed; }
+.of-tab th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); padding: 4px 4px; border-bottom: 1px solid var(--panel-line); }
+.of-tab td { padding: 2px 2px; vertical-align: top; border-bottom: 1px solid var(--hover); }
+.of-tab tfoot td { border-bottom: 0; padding-top: 6px; }
+.of-tab input[type="text"], .of-tab textarea { width: 100%; }
+.of-tab textarea { display: block; height: auto; min-height: 26px; padding: 3px 7px; font: inherit; font-size: 12.5px; color: var(--muted); resize: vertical; }
+.of-tab .c-pos { width: 64px; color: var(--muted); padding-top: 8px; font-variant-numeric: tabular-nums; }
+.of-tab .c-ic { width: 48px; } .of-tab .c-eh { width: 56px; } .of-tab .c-n { width: 96px; } .of-tab .c-opt { width: 64px; } .of-tab .c-act { width: 150px; }
+.of-tab .c-n, .of-tab .c-n input { text-align: right; font-variant-numeric: tabular-nums; }
+.of-tab th.c-n { text-align: right; }
+.of-amt, .of-sum { padding-top: 8px !important; padding-right: 8px !important; }
+.of-sum { font-weight: 600; }
+.of-tab .c-opt { padding-top: 8px; }
+.of-an { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; font-size: 12px; color: var(--muted); }
+.of-tab .c-act { white-space: nowrap; text-align: right; }
+.of-pos.off td:not(.c-opt):not(.c-act) { opacity: .55; }
+.of-det td { background: var(--panel); }
+.of-dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 10px; padding: 6px 4px 8px; }
+.of-df { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.of-df input { border-color: var(--panel-line); background: #fff; color: var(--ink); }
+.of-ksum { display: flex; justify-content: space-between; padding: 8px 8px 2px; border-top: 2px solid var(--ink); font-weight: 600; }
+.of-ksum b { font-variant-numeric: tabular-nums; }
+.of-end { background: #fff; border: 1px solid var(--panel-line); border-radius: var(--radius); padding: 12px 14px; max-width: 560px; margin-left: auto; }
+.of-end h2 { margin: 0 0 8px; font-size: 15px; }
+.of-stab { width: 100%; border-collapse: collapse; }
+.of-stab td { padding: 4px 2px; border-bottom: 1px solid var(--hover); }
+.of-stab .c-n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.of-stab .of-strong td { font-weight: 600; }
+.of-stab .of-total td { font-weight: 700; border-top: 2px solid var(--ink); border-bottom: 0; }
+.of-note { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.of-bkplist { display: flex; flex-direction: column; margin-bottom: 10px; }
+.of-bkpi { display: flex; gap: 8px; align-items: baseline; text-align: left; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; font-size: 13px; }
+.of-bkpi:hover { background: var(--hover); }
+.of-bkpi b { flex: none; width: 52px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.of-bkpi.lv-1 b, .of-bkpi.lv0 { font-weight: 600; }
+.of-bkpi.lv1 { padding-left: 16px; } .of-bkpi.lv2 { padding-left: 26px; color: var(--muted); }
+.of-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.of-psum { margin: 0; } .of-psum b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.of-tab .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

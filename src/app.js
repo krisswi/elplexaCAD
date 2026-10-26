@@ -26,6 +26,7 @@ import { makePv } from "./pvedit.js";
 import { makePlan } from "./planedit.js";
 import { newPlanSheet } from "./plan.js";
 import { makeDispo } from "./dispoedit.js";
+import * as OF from "./offedit.js";
 import { toast, openModal, confirmDialog, formDialog, chooseDialog, makeMenu } from "./dialogs.js";
 import { fieldHTML, actions, head, dupDel, textPanelHTML, turnHTML } from "./panel.js";
 import { startDialog } from "./start.js";
@@ -49,6 +50,7 @@ const stage = $("#stage"), svg = $("#svg"), world = $("#world");
 const gSheet = $("#sheet"), gItems = $("#items"), gOverlay = $("#overlay");
 // Linke Leiste: Inhalt in #left-body (wird neu gezeichnet), darunter die Symbolsuche (CJ 18.10.2026), bleibt stehen und behält den Fokus
 const leftEl = (() => { const b = document.createElement("div"); b.id = "left-body"; $("#left").append(b); return b; })(), rightEl = $("#right"), editor = $("#texteditor");
+const ofView = $("#of-view"); // Offerte (offedit.js)
 const AUTOSAVE_KEY = "schemacad.autosave.v1";
 const PX_PER_MM = 96 / 25.4;
 const TERMINALS = "TERMINALS"; // Platzhalter für „Klemmenleiste setzen“
@@ -84,7 +86,7 @@ const S = {
   undo: [], redo: [], pending: null, pendingPushed: false,
   fileHandle: null, fileName: "Unbenannt", dirty: false,
   editing: null, clip: null, legSel: null, // legSel: in der Legende gewähltes Gerät (ID)
-  gridSize: { schema: 2.5, dispo: 5, pv: 100, pvtab: 100, prinzip: 2.5, title: 2.5, toc: 2.5, legend: 2.5 }, // Rasterweite je Blatttyp (Stringplan: Annahme 100 mm)
+  gridSize: { schema: 2.5, dispo: 5, pv: 100, pvtab: 100, prinzip: 2.5, offerte: 2.5, title: 2.5, toc: 2.5, legend: 2.5 }, // Rasterweite je Blatttyp (Stringplan: Annahme 100 mm)
   // Voreinstellungen für neue Bauteile einer Disposition (mm)
   guides: [], // Hilfslinien der Disposition (Fang an Kanten und Mitten anderer Bauteile)
   dp: { devH: D.DEV_H, plateW: 500, plateH: 400, railLen: 250, freeTE: 2, freeLabel: "Gerät", textH: 15 },
@@ -107,6 +109,7 @@ const PV = makePv({ S, $, TOOLS, toast, change, openModal, chooseDialog, formDia
 const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimCancel, dimOverlay, autoDimPick, hideDimSel, dispoAct, ansichtHTML, setDimNum, applyDp: dispoApplyDp, setTfAll, cabAct: dispoCabAct, cornerKey: dispoCornerKey, plateCorner, newDispoItem, plateAt, guideSnap, edgesX, edgesY, dispoSnap, addDispoItem, dispoExtras, setPlateW, handleItem, handleAt, HANDLE_CURSOR, dragHandle, applyMass, massAt, alignSelected, addAutoRails, handOver, leftHTML: dispoLeftHTML, dispoPanel } =
   makeDispo({ S, TOOLS, round3, isDispo, selectedItems, nextId, snapBase, change, moveItem, setTool, afterSheetChange, sheetLabel, nextSheetNo, makeSheet, blattHTML });
 
+const isOff = () => S.model.kind === "offerte"; // Offerte (offedit.js, CJ 26.10.2026): Tabelle in #of-view statt Zeichenfläche
 const isPlan = () => S.model.kind === "plan"; // Plan (planedit.js, nur elplexaCAD, CJ 23.10.2026): immer als ELPLEXA && isPlan(), fällt im v3-Bau weg
 // Plan (nur elplexaCAD): eigene Bedienung, app.js leitet Zeiger, Tasten und Leisten weiter
 const PL = ELPLEXA ? makePlan({ S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, renderSheet, updateHint, fitView, applyView, pushUndo, snapshot, markDirty, nextId, formDialog, confirmDialog, chooseDialog, openModal, sheetLabel, workCount: () => workCount(), download: (...a) => download(...a),
@@ -246,7 +249,7 @@ function renderSheet() {
   pat.querySelector("circle").setAttribute("r", isDispo() || isPv() || ELPLEXA && isPlan() ? Math.max(0.17, 0.9 / S.view.z) : 0.17);
   gSheet.innerHTML = ELPLEXA && isPlan() ? PL.sheetSVG() : S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : isPrinzip() ? PZ.sheetSVG(S.model, S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
-function renderItems() { $("#dims-on").checked = S.model.dims !== false; gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
+function renderItems() { $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
 const pickable = () => (ELPLEXA && isPlan() ? PL.pickable() : isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
 
 function railMap() {
@@ -350,6 +353,7 @@ function renderOverlay() {
 
 // ---------- Seitenleisten ----------
 function hintText() {
+  if (isOff()) return "Offerte: links ein BKP-Kapitel wählen, Positionen in der Tabelle erfassen. Tab springt ins nächste Feld, Enter übernimmt. Kopf und Rechenwerte rechts.";
   if (S.model.kind === "legend") return "Sicherungslegende: entsteht aus den Schutzgeräten aller Schemablätter. Klick auf eine Zeile wählt das Gerät.";
   if (isDeck()) return S.model.kind === "title" ? "Titelseite: Angaben rechts eintragen. Objekt, Auftrag, Schema, Gezeichnet und Datum gelten für alle Blätter." : "Inhaltsverzeichnis: wird automatisch erstellt. Klick auf eine Zeile springt zum Blatt.";
   if (isPv()) return PV.hint();
@@ -411,12 +415,13 @@ $("#sym-find").addEventListener("keydown", (e) => {
 });
 function renderLeft() {
   renderLeftBody();
-  symFind.hidden = isDeck() || isPv();
+  symFind.hidden = isDeck() || isPv() || isOff();
   if (ELPLEXA && isPlan()) symFind.hidden = true;
   if (!symFind.hidden) applySymFind();
 }
 function renderLeftBody() {
   if (isDeck()) { const k = S.model.kind; leftEl.innerHTML = `<section class="section"><h2 class="section-title">${T.kindLabel(S.model)}</h2><p class="note">${k === "title" ? "Blatt 1. Hier wird nicht gezeichnet, die Angaben stehen rechts." : k === "toc" ? "Blatt 2. Entsteht automatisch aus allen Blättern der Datei." : "Letztes Blatt, A4 hoch. Entsteht automatisch aus den Schutzgeräten aller Schemablätter."}</p></section>`; return; }
+  if (isOff()) { leftEl.innerHTML = OF.leftHTML(); return; }
   if (isDispo()) { leftEl.innerHTML = dispoLeftHTML(); return; }
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
   if (ELPLEXA && isPlan()) { leftEl.innerHTML = PL.leftHTML(); return; }
@@ -625,7 +630,7 @@ const SHEET_POPS = new Set(["haupt", "ansicht"]);
 const popHTML = () => (SHEET_POPS.has(popKind) ? sheetPopHTML(popKind) : ELPLEXA && isPlan() ? PL.popHTML({ head, fieldHTML, META_FIELDS }) : isPrinzip() ? PZ.popHTML(S.model, { head, fieldHTML, META_FIELDS }) : PV.popHTML(popKind, { head, fieldHTML, META_FIELDS }));
 function renderPvBar() {
   if (ELPLEXA && isPlan()) { planPvBar(); return; }
-  const on = isPv() || isPrinzip(), doc = !on && !isDeck(); // Schema: Hauptlinien, Disposition: Ansicht (Schriftfeld rechts, D1); Prinzipschema: Druck wie PV
+  const on = isPv() || isPrinzip(), doc = !on && !isDeck() && !isOff(); // Schema: Hauptlinien, Disposition: Ansicht (Schriftfeld rechts, D1); Prinzipschema: Druck wie PV
   $("#pv-bar").hidden = !on; $("#doc-bar").hidden = !doc; $("#btn-haupt").hidden = isDispo(); $("#btn-ansicht").hidden = !isDispo();
   if (!pvPop) return;
   if (pvPop.open && (SHEET_POPS.has(popKind) ? !doc || (popKind === "haupt" && isDispo()) || (popKind === "ansicht" && !isDispo()) : !on)) { pvPop.hide(false); return; }
@@ -656,6 +661,7 @@ function renderRightPanel() {
   renderPvBar();
   const sel = selectedItems();
   if (isDeck()) { rightEl.innerHTML = S.model.kind === "legend" ? L.panelHTML(S.doc, S.model, S.legSel, { head, fieldHTML }) : T.deckPanelHTML(S.doc, S.model, { head, fieldHTML }); return; }
+  if (isOff()) { rightEl.innerHTML = OF.panelHTML(S.model.of); return; }
   if (ELPLEXA && isPlan()) { rightEl.innerHTML = PL.panelHTML(sel, { head }); return; }
   const special = dispoPanel(sel);
   if (special !== null) { rightEl.innerHTML = special; return; }
@@ -729,7 +735,7 @@ function renderRightPanel() {
 
 // ---------- Blätter ----------
 const workCount = () => S.doc.sheets.filter((sh) => !T.isDeck(sh)).length;
-function sheetLabel(sh, i) { const v = sh.var > 1 ? ` · V${sh.var}` : ""; return sh.kind === "title" ? "Titelseite" : sh.kind === "toc" ? "Inhalt" : sh.kind === "legend" ? `Legende ${sh.meta.BLATT}` : sh.kind === "pvtab" ? `Stringübersicht${v}` : `${sh.kind === "dispo" ? "Dispo" : sh.kind === "pv" ? "Stringplan" : sh.kind === "prinzip" ? "Prinzipschema" : ELPLEXA && sh.kind === "plan" ? "Plan" : "Blatt"} ${sh.meta.BLATT || i + 1}${v}`; } // V2: Variante (18.10.2026)
+function sheetLabel(sh, i) { const v = sh.var > 1 ? ` · V${sh.var}` : ""; return sh.kind === "title" ? "Titelseite" : sh.kind === "toc" ? "Inhalt" : sh.kind === "legend" ? `Legende ${sh.meta.BLATT}` : sh.kind === "pvtab" ? `Stringübersicht${v}` : `${sh.kind === "dispo" ? "Dispo" : sh.kind === "pv" ? "Stringplan" : sh.kind === "prinzip" ? "Prinzipschema" : sh.kind === "offerte" ? "Offerte" : ELPLEXA && sh.kind === "plan" ? "Plan" : "Blatt"} ${sh.meta.BLATT || i + 1}${v}`; } // V2: Variante (18.10.2026)
 // Kompakte Leiste: ‹ Blatt 58 · 1 von 12 ▾ › +. Die Mitte öffnet die Liste aller Blätter, + hält eine Auswahl bereit
 function renderSheetBar() {
   if (ELPLEXA) { elSheetBar(); return; }
@@ -791,6 +797,8 @@ function syncKind() {
   $("#btn-handover").hidden = !isDispo();
   renderPvBar();
   $("#dims-on").closest("label").style.display = isDispo() ? "" : "none";
+  ofView.hidden = !isOff(); document.body.classList.toggle("is-offerte", isOff()); // Offerte: Tabelle über der Zeichenfläche, Raster und Zoom ausgeblendet (style.css)
+  if (isOff()) { ofView.innerHTML = ""; $("#grid-on").closest("label").style.display = $("#grid-size").style.display = $("#mag-on").closest("label").style.display = "none"; }
   if (ELPLEXA) elSync();
 }
 // Nach jedem Wechsel des angezeigten Blatts: bei anderem Blatttyp (oder reset) Werkzeug zurücksetzen, Ansicht einpassen, alles neu zeichnen
@@ -859,6 +867,18 @@ function addPlan(v) {
   });
   afterSheetChange(k0, { fit: true }); // CJ 24.10.2026: neuer Plan eingepasst, nicht mit Zoom/Ausschnitt des vorigen Plans (lag dort, wo die Maus beim Zoomen war)
 }
+// Offerte (CJ 26.10.2026): neues Blatt im offenen Offerten-Modul, mit leerer Offerte (Datum von heute)
+function addOfferte(v) {
+  setTool("select");
+  const k0 = S.model.kind;
+  v = varIn("offerte", v);
+  change(() => {
+    const sh = setVar(newSheet("offerte"), v);
+    sh.meta.BLATT = String(maxNo("offerte") + 1);
+    S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
+  });
+  afterSheetChange(k0);
+}
 // Stringübersicht: eine für alle Stringpläne der Datei (CJ 14.10.), seit 18.10.2026 eine je PV-Modul. Gibt es sie schon, wird sie angezeigt.
 function addPvTab() {
   const v = S.model.kind === "pv" || S.model.kind === "pvtab" ? varOf(S.model) : 1, i = S.doc.sheets.findIndex((sh) => sh.kind === "pvtab" && varOf(sh) === v);
@@ -869,8 +889,8 @@ function addPvTab() {
   afterSheetChange(k0);
 }
 // Plus-Knopf (CJ 16.10.): Blatt vom Typ des aktuellen Blatts. Stringplan und Stringübersicht → Stringplan, Titel, Inhalt, Legende → Schemablatt.
-const addKindLabel = () => (ELPLEXA && isPlan() ? "Plan" : { dispo: "Disposition", pv: "Stringplan", pvtab: "Stringplan", prinzip: "Prinzipschema" }[S.model.kind] || "Schemablatt");
-function addSameKind() { const k = S.model.kind; (k === "dispo" ? addDispo : k === "pv" || k === "pvtab" ? addPv : k === "prinzip" ? addPrinzip : ELPLEXA && k === "plan" ? addPlan : addSheet)(); }
+const addKindLabel = () => (ELPLEXA && isPlan() ? "Plan" : { dispo: "Disposition", pv: "Stringplan", pvtab: "Stringplan", prinzip: "Prinzipschema", offerte: "Offerte" }[S.model.kind] || "Schemablatt");
+function addSameKind() { const k = S.model.kind; (k === "dispo" ? addDispo : k === "pv" || k === "pvtab" ? addPv : k === "prinzip" ? addPrinzip : k === "offerte" ? addOfferte : ELPLEXA && k === "plan" ? addPlan : addSheet)(); }
 function addSheet(v) {
   setTool("select");
   const k0 = S.model.kind;
@@ -1428,7 +1448,7 @@ const touch = makeTouch({ S, stage, pointerPos, zoomAt, applyView, renderOverlay
 } });
 stage.addEventListener("pointerdown", (e) => {
   if (touch.down(e)) return;
-  if (e.target.closest("#zoombar, #sheetbar") || e.target === editor) return;
+  if (e.target.closest("#zoombar, #sheetbar, #of-view") || e.target === editor) return; // Offerte: Tabelle bedient sich selbst
   if (!editor.hidden) closeEditor(true);
   svg.focus({ preventScroll: true });
   const { sx, sy } = pointerPos(e);
@@ -1684,7 +1704,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Tab" || e.altKey || e.metaKey || e.ctrlKey) return;
   const t = e.target;
   if (!(t instanceof HTMLElement) || !t.matches("input, select, textarea")) return;
-  const root = t.closest("#right, #pv-pop, #el-hub");
+  const root = t.closest("#right, #pv-pop, #el-hub, #of-view");
   if (!root) return;
   const before = tabList(root), at = before.indexOf(t), key = tabKey(t), nth = key ? [...root.querySelectorAll(key)].indexOf(t) : -1;
   e.preventDefault(); e.stopPropagation();
@@ -1703,6 +1723,7 @@ window.addEventListener("keydown", (e) => {
   const t = e.target;
   const typing = t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA");
   const mod = e.metaKey || e.ctrlKey;
+  if (isOff() && !mod && t instanceof HTMLElement && t.closest("#of-view, #left, #right")) return; // Offerte: Tasten gehören den Feldern und Knöpfen
   if (ELPLEXA && isPlan() && !typing && PL.key(e, mod)) { e.preventDefault(); return; } // Plan: Werkzeuge, Länge tippen, Pfeiltasten (planedit.js)
   if (mod && !typing) {
     const k = e.key.toLowerCase();
@@ -1940,7 +1961,27 @@ for (const ev of ["pointerup", "pointerleave", "pointercancel"]) $("#sheetbar").
 $("#sheetbar").addEventListener("contextmenu", (e) => { const b = e.target.closest("#sheet-add"); if (b) { e.preventDefault(); clearTimeout(addTimer); addMenu.show(b); } });
 $("#sheetbar").addEventListener("keydown", (e) => { const b = e.target.closest("#sheet-add"); if (b && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); addMenu.show(b); } });
 const addMenu = makeMenu($("#add-menu"), { up: true, beforeShow: () => { closeEditor(true); $("#add-menu [data-new=deck]").hidden = !(S.doc.sheets.some((sh) => !sh.kind) && (S.doc.noTitle || S.doc.noToc)); if (ELPLEXA) elAddFilter(); } });
-$("#add-menu").addEventListener("click", (e) => { const b = e.target.closest("[data-new]"); if (b) ({ dispo: addDispo, pv: addPv, pvtab: addPvTab, prinzip: addPrinzip, deck: addDeck }[b.dataset.new] || addSheet)(); });
+$("#add-menu").addEventListener("click", (e) => { const b = e.target.closest("[data-new]"); if (b) ({ dispo: addDispo, pv: addPv, pvtab: addPvTab, prinzip: addPrinzip, offerte: addOfferte, deck: addDeck }[b.dataset.new] || addSheet)(); });
+// ---------- Offerte (offedit.js, CJ 26.10.2026) ----------
+// Feld übernehmen: an einer Kopie prüfen, damit ungültige oder gleiche Werte keinen Schritt im Rückgängig anlegen (Feld zeigt dann den alten Wert)
+function ofRefocus(sel) { const el = sel && document.querySelector(sel); if (!el) return; el.focus(); if (el.matches("input[type=text]")) el.select(); }
+function ofChange(e) {
+  const t = e.target;
+  if (!isOff() || !(t instanceof HTMLElement) || !t.dataset.of) return;
+  const c = structuredClone(S.model.of);
+  if (!OF.apply(c, t) || JSON.stringify(c) === JSON.stringify(S.model.of)) { renderItems(); renderRight(); return; }
+  change(() => { S.model.of = c; });
+}
+function ofClick(e) {
+  const b = e.target.closest?.("[data-ofact]");
+  if (!isOff() || !b) return;
+  const r = OF.action(S.model.of, b); if (!r) return;
+  if (r.ui) renderItems(); else change(r.fn);
+  ofRefocus(r.focus ? `[data-of="${r.focus()}"]` : r.keep);
+}
+for (const el of [ofView, leftEl, rightEl]) { el.addEventListener("change", ofChange); el.addEventListener("click", ofClick); }
+for (const el of [ofView, rightEl]) el.addEventListener("keydown", (e) => { const t = e.target; if (isOff() && e.key === "Enter" && t.matches?.("input[type=text][data-of]")) { e.preventDefault(); const k = t.dataset.of; t.blur(); ofRefocus(`[data-of="${k}"]`); } }); // Enter übernimmt
+leftEl.addEventListener("input", (e) => { if (!isOff() || e.target.id !== "of-bkpfind") return; OF.setBkpFind(e.target.value); renderLeftBody(); const f = $("#of-bkpfind"); f.focus(); f.setSelectionRange(f.value.length, f.value.length); });
 sheetMenu = makeMenu($("#sheet-menu"), { up: true, beforeShow: () => closeEditor(true), onOpen: () => { $("#sheet-find").value = ""; renderSheetList(); $("#sheet-find").focus(); $("#sheet-menu .mi.on")?.scrollIntoView({ block: "nearest" }); } });
 $("#sheet-find").addEventListener("input", renderSheetList);
 // Blattmenü (CJ 18.10.2026): Rechtsklick oder gedrückt halten auf dem Blattnamen, einer Zeile der Blattliste oder (elplexaCAD) einer
@@ -2933,7 +2974,7 @@ function elOpen(id, { create = true, exact = false } = {}) { // create: false = 
 }
 // Neues Modul (auch ein weiteres derselben Art, CJ 18.10.2026): nächste freie Nummer, erstes Blatt
 function elNew(id) {
-  const add = { schema: addSheet, dispo: addDispo, pv: addPv, prinzip: addPrinzip, plan: addPlan }[id];
+  const add = { schema: addSheet, dispo: addDispo, pv: addPv, prinzip: addPrinzip, plan: addPlan, offerte: addOfferte }[id];
   if (!add) { toast(`${E.modById(id).label} kommt später.`); return; }
   const vs = S.doc.sheets.filter((sh) => modBase(sh) === id && !T.isDeck(sh)).map(varOf);
   elHub(false); add(vs.length ? Math.max(...vs) + 1 : 1);
@@ -3173,7 +3214,7 @@ function elNoteGo(id) { // zum Blatt springen, Notiz in die Mitte
 // Ist es das offene Projekt, wählen Häkchen die Module (CJ 18.10.2026); only = Vorwahl ein Modul (Exportieren › Modul teilen). Alle Häkchen = ganzes Projekt.
 async function elShareDialog(id, only = null) {
   const name = EL_S.onlist?.find((x) => x.id === id)?.name || elName(), mine = S.doc.project?.online?.id === id;
-  const ids = mine ? E.modIds(S.doc).filter((m) => !E.modById(m)?.auto && E.baseOf(m) !== "plan") : [], pick = mine ? { ids, on: new Set(only ? [only] : ids) } : null, nm = (m) => modName(mine ? S.doc : {}, m);
+  const ids = mine ? E.modIds(S.doc).filter((m) => !E.modById(m)?.auto && E.baseOf(m) !== "plan" && E.baseOf(m) !== "offerte") : [], pick = mine ? { ids, on: new Set(only ? [only] : ids) } : null, nm = (m) => modName(mine ? S.doc : {}, m);
   let links = null;
   const draw = () => { const m = $("#modal-root .modal"); if (m) m.querySelector(".el-shbody").innerHTML = E.shareDialogHTML(name, links, shareUrl, pick, nm); };
   const load = async (fn) => { try { const l = await fn(); if (l) links = l; } catch (err) { toast(err.message || String(err), "error"); } draw(); };
@@ -3200,6 +3241,7 @@ async function elShareDialog(id, only = null) {
 // Exportieren › Modul teilen (CJ 18.10.2026): Link nur für das offene Modul. Geteilt wird der Online-Stand, darum vorher online speichern.
 async function elShareModule() {
   if (S.shared) return;
+  if (E.baseOf(elMod() || "") === "offerte") { toast("Eine Offerte einzeln zu teilen geht noch nicht (Teilen-Link kennt das Modul nicht)."); return; } // Annahme: Offerten gehen nicht an Dritte per Link, Schritt 2 klärt die Speicherschicht
   if (E.baseOf(elMod() || "") === "plan") { toast("Einen Plan einzeln zu teilen geht noch nicht. Das ganze Projekt teilen geht (Bereich Online in der Übersicht)."); return; } // share_mod_of in Supabase kennt „plan“ nicht (nicht geprüft)
   if (!cloudUser() && !(await elLogin())) return;
   if (!S.doc.project?.online || S.dirty) {

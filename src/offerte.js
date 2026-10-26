@@ -59,6 +59,8 @@ export const DEF = { fak: 1.4, ansatz: 0, mwst: 8.1, rabatt: 0, skonto: 0 }; // 
 const rp = (x) => Math.round(Number((x * 100).toFixed(6))); // Franken → Rappen
 const rp05 = (x) => Math.round(Number((x * 20).toFixed(6))) * 5; // Franken → Rappen, auf 5 Rappen gerundet
 export const round05 = (x) => rp05(x) / 100;
+export const isNumber = (v) => typeof v === "number" && Number.isFinite(v);
+export const fmtNum = (x) => (isNumber(x) ? String(x) : ""); // Satz oder Faktor wie eingegeben: 8.1, 1.4
 export const fmtChf = (x) => { const [a, b] = (Math.round(x * 100) / 100).toFixed(2).split("."); return `${a.replace(/\B(?=(\d{3})+(?!\d))/g, "'")}.${b}`; }; // 4'981.85
 
 export const newOfferte = (datum = "") => ({ nid: 1, nr: "", ver: "", datum, gueltig: "", art: "", bau: "", fak: DEF.fak, ansatz: DEF.ansatz, rabatt: DEF.rabatt, skonto: DEF.skonto, mwst: DEF.mwst, kap: [] });

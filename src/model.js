@@ -11,7 +11,7 @@ import { cleanShape, isColor, SHAPE_LAYER } from "./formen.js";
 import { cleanAssets, cleanBg, usedAssets, cleanLayers, cleanPvItem, cleanLayerId, cleanPvDoc, PV_ITEMS, checkStrings, cleanPaper, anlageFromSheet, tidyPv, cleanHide, cleanPmid, cleanNorth, cleanStrk } from "./pv.js";
 import { cleanAdr, cleanGwr } from "./gwr.js";
 import { cleanPlanSheet, planV24 } from "./plan.js";
-import { cleanOfferte } from "./offerte.js";
+import { cleanOfferte, newOfferte } from "./offerte.js";
 
 export const FORMAT = "schemacad";
 export const VERSION = 25; // 25: Offerte (kind "offerte", offerte.js), in beiden Ständen, seit 26.10.2026; v3 lehnt Pläne (20 bis 24) seither am Blatt ab. // 24: Plan mit Neuerungen aus Schritt 5 (planV24 in plan.js: Versatz der Beschriftung lo …), seit 26.10.2026. // 23: Plan mit PDF-Hintergrund (bg) oder geschwungener Leitung (curve), seit 24.10.2026. // 22: Plan mit Leitungen (type "line") oder Farben (col), seit 24.10.2026. // 21: Plan mit Elektrosymbolen (type "sym"), seit 24.10.2026. // 20: Plan (kind "plan", nur elplexaCAD; v3 bleibt bei 19 und lehnt solche Dateien ab), seit 23.10.2026. // 19: Prinzipschema (kind "prinzip", Symbole PZ_*), seit 21.10.2026. // 18: Modulstatus (doc.mods[Modul].st) und eigene Reihenfolge der Module (.o), seit 20.10.2026. // 17: Text ausgerichtet (al), Klemmentexte (lab, vert), Steuerkasten (ctrl), seit 19.10.2026. // 16: Module mehrfach (Blattfeld var, Namen doc.mods), seit 18.10.2026. // 15: freies Zeichnen im Schema (shape: Linie, Rechteck, Kreis) oder Textfarbe (c), seit 18.10.2026. // 14: Wandlermessung in Einzelteilen nach BKW (ZW_CT, ZW_SICH, ZW_PK, ZW_PK1, ZW_ZAEHLER2) oder gedrehter Text (r), seit 17.10.2026. // 13: Stringplan mit Leitungen (pvline) und Punkten (pvpoint), seit 17.10.2026. // 12: Disposition mit freier Schiene (free), Schiene N/PE/PEN (BAR), Zuleitung (cable), Beschriftung (beschr), Vertigroup NH1–NH3 oder mit Wandler (wr, wl), seit 16.10.2026. 11: 11: Eingangsverdrahtung (Hauptlinien main.l "feed", HAK_TNCS_1, HPAS_1P), seit 16.10.2026.
@@ -56,7 +56,7 @@ export function newMeta() {
 // Eine Disposition trägt eine sid, damit eine Ansicht auf dem Schemablatt ihre Quelle wiederfindet.
 export const KINDS = ["dispo", "pv", "pvtab", "prinzip", "offerte", "title", "toc", "legend"]; // offerte: Offerte (offerte.js, CJ 26.10.2026), Daten in sh.of, keine Objekte
 if (typeof ELPLEXA !== "undefined" && ELPLEXA) KINDS.push("plan"); // Plan (plan.js, nur elplexaCAD, CJ 23.10.2026)
-export const newSheet = (kind = "schema") => ({ meta: newMeta(), items: [], ...(KINDS.includes(kind) ? { kind } : {}) });
+export const newSheet = (kind = "schema") => { const sh = { meta: newMeta(), items: [], ...(KINDS.includes(kind) ? { kind } : {}) }; if (sh.kind === "offerte") sh.of = newOfferte(sh.meta.DATUM); return sh; };
 // Ein Dokument: mehrere Blätter, Objekt-IDs gelten im ganzen Dokument (wichtig für Verweise von Blatt zu Blatt)
 export const newDoc = () => ({ format: FORMAT, version: 2, active: 0, nextId: 1, sheets: [newSheet()] });
 

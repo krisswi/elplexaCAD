@@ -75,6 +75,7 @@ export function makeMenu(menu, { up = false, left = false, form = false, onOpen,
       const r = btn.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight; // am Knopf, bleibt im Bild
       if (beside) { menu.style.top = `${Math.max(8, Math.min(r.top, innerHeight - 8 - h))}px`; menu.style.left = `${Math.max(8, beside.getBoundingClientRect().left - 8 - w)}px`; menu.style.transformOrigin = "top right"; return; }
       menu.style.transformOrigin = "";
+      if (typeof ELPLEXA !== "undefined" && ELPLEXA && !up && r.bottom + 4 + h > innerHeight - 8) menu.style.maxHeight = `${Math.max(160, innerHeight - 12 - r.bottom)}px`; // elplexaCAD: nach unten offen bleibt das Menü unter dem Knopf und scrollt (+ Modul mit Offerte, 26.10.2026)
       menu.style.top = `${Math.max(8, up ? r.top - 4 - h : r.bottom + 4)}px`;
       menu.style.left = `${Math.max(8, Math.min(up || left ? r.left : r.right - w, innerWidth - 8 - w))}px`;
     },

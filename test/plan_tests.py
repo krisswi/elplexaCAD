@@ -325,7 +325,7 @@ with sync_playwright() as p:
     with page.expect_file_chooser() as fc: page.keyboard.press("Meta+o")
     fc.value.set_files(str(out)); page.wait_for_timeout(600)
     msg = page.inner_text("body")
-    check("v3: Datei mit Plan abgelehnt (neuere Version)", page.evaluate("window.__schemacad.doc.sheets.every((s) => s.kind !== 'plan')") and ("neuer" in msg or "Version" in msg), msg[-300:])
+    check("v3: Datei mit Plan abgelehnt (seit Version 25 am Blatt)", page.evaluate("window.__schemacad.doc.sheets.every((s) => s.kind !== 'plan')") and "nur elplexaCAD" in msg, msg[-300:])
     page.close()
     b.close()
 

@@ -294,7 +294,7 @@ export function makePlan(c) {
     const s0 = o.t, s1 = o.t + o.w;
     if (o.kind === "fenster") {
       let s = ln(at(s0, h), at(s1, h)) + ln(at(s0, -h), at(s1, -h)) + ln(at(s0, h / 4), at(s1, h / 4)) + ln(at(s0, -h / 4), at(s1, -h / 4));
-      if (o.br !== undefined) { const q = at((s0 + s1) / 2, -h - 2.5 * k); s += txt(q[0], q[1], `BR ${Math.round(o.br)}`, 2 * k, Math.atan2(u[1], u[0]) * 180 / Math.PI, stroke); }
+      if (o.br !== undefined) { const tf = sh().tf ?? 1, q = at((s0 + s1) / 2, -h - 2.5 * tf * k); s += txt(q[0], q[1], `BR ${Math.round(o.br)}`, 2 * tf * k, Math.atan2(u[1], u[0]) * 180 / Math.PI, stroke); }
       return s;
     }
     if (o.kind === "durchgang") return ln(at(s0, 0), at(s1, 0), `stroke-dasharray="${f(k)} ${f(k)}"`);
@@ -310,8 +310,8 @@ export function makePlan(c) {
     const tick = (p) => { const t = 1.2 * k, v = [(u[0] + n[0]) * t / Math.SQRT2, (u[1] + n[1]) * t / Math.SQRT2]; return ln([p[0] - v[0], p[1] - v[1]], [p[0] + v[0], p[1] + v[1]], `stroke-width="${f(0.35 * k)}"`); }; // Schrägstrich
     let s = (Math.abs(d.off) > 1e-6 ? ln(d.a, [A[0] + n[0] * ov, A[1] + n[1] * ov]) + ln(d.b, [B[0] + n[0] * ov, B[1] + n[1] * ov]) : "") + ln(A, B, d.ctrl ? `stroke-dasharray="${f(1.5 * k)} ${f(k)}"` : "") + tick(A) + tick(B);
     const ci = P.ctrlInfo(d), label = d.ctrl ? `${P.fmtLen(L)}${ci.soll ? ` (Soll ${P.fmtLen(ci.soll)}, ${ci.diff > 0 ? "+" : ""}${P.fmtLen(ci.diff)})` : ""}` : P.fmtLen(L);
-    const m = [(A[0] + B[0]) / 2 + n[0] * 1.6 * k, (A[1] + B[1]) / 2 + n[1] * 1.6 * k];
-    return s + txt(m[0], m[1], label, 2.5 * k, Math.atan2(u[1], u[0]) * 180 / Math.PI, d.ctrl && ci.diff && Math.abs(ci.diff) >= 1 ? "#c0392b" : stroke);
+    const tf = P.tfOf(d, sh()), m = [(A[0] + B[0]) / 2 + n[0] * 1.6 * tf * k, (A[1] + B[1]) / 2 + n[1] * 1.6 * tf * k];
+    return s + txt(m[0], m[1], label, 2.5 * tf * k, Math.atan2(u[1], u[0]) * 180 / Math.PI, d.ctrl && ci.diff && Math.abs(ci.diff) >= 1 ? "#c0392b" : stroke);
   }
   // Leitung: Strichmuster nach Art (Papier-mm × k), flexibel mit einer Welle in der Mitte jedes Abschnitts. Geschwungen: glatte Kurve (B-Spline, P.curveSegs).
   function lineSVG(it, k, stroke = P.colOf(it), pts = it.pts, curve = it.curve) {
@@ -328,15 +328,16 @@ export function makePlan(c) {
     return s;
   }
   // Symbol (plansym.js): Teile in Papier-mm, in der Welt × Massstab k, gedreht um r. Texte drehen mit und bleiben lesbar (P.symTexts).
-  function symSVG(it, k, stroke = INK) {
-    const def = P.symDef(it, k);
+  // tf: Textgrösse (P.tfOf: einzeln, sonst Plan); Palette und Stückliste zeichnen mit 1
+  function symSVG(it, k, stroke = INK, tf = P.tfOf(it, sh())) {
+    const def = P.symDef(it, k, tf);
     let g = "";
     for (const q of it.ap && def.ap ? [...def.parts, def.ap] : def.parts) {
       if (q[0] === "l") g += `<line x1="${q[1]}" y1="${q[2]}" x2="${q[3]}" y2="${q[4]}"/>`;
       else if (q[0] === "c") g += `<circle cx="${q[1]}" cy="${q[2]}" r="${q[3]}"${q[4] ? ` fill="${stroke}"` : ""}/>`;
       else if (q[0] === "p") g += q[2] === "w" ? `<path d="${q[1]}" fill="#fff" stroke="none"/>` : q[2] === "wl" ? `<path d="${q[1]}" fill="none" stroke="#fff" stroke-width="${q[3] ?? 0.18}" stroke-linejoin="round"/>` : `<path d="${q[1]}"${q[2] ? ` fill="${stroke}"` : ""}/>`; // "w" weiss gefüllt, "wl" weisse Linie (EXIT)
     }
-    const t = P.symTexts(it, k, fmtH).map((x) => txt(x.at[0], x.at[1], x.s, x.size, x.a, stroke, x.anchor)).join("");
+    const t = P.symTexts(it, k, fmtH, tf).map((x) => txt(x.at[0], x.at[1], x.s, x.size, x.a, stroke, x.anchor)).join("");
     return `<g transform="translate(${f(it.at[0])} ${f(it.at[1])}) rotate(${it.r}) scale(${k})" fill="none" stroke="${stroke}" stroke-width="0.18" stroke-linecap="round">${g}</g>${t}`;
   }
   const fmtH = (h) => `${String(Math.round(h * 10) / 10).replace(".", ",")}`; // Höhe in cm, ohne Einheit (wie im Plan üblich)
@@ -456,7 +457,7 @@ export function makePlan(c) {
         y -= RH;
         if (r.head) { s += txt(x0, y, r.head, 3.2, 0, INK, "start"); continue; }
         const def = SYM_BY_KEY.get(r.key), k = Math.min(1, 2.6 / def.r);
-        s += symSVG({ key: r.key, at: [x0 + 6 - def.c[0] * k, y - def.c[1] * k], r: 0, ap: r.ap }, k, P.defCol({ type: "sym", key: r.key })) + txt(x0 + 16, y, r.label, 3, 0, INK, "start") + txt(x1, y, String(r.n), 3, 0, INK, "end");
+        s += symSVG({ key: r.key, at: [x0 + 6 - def.c[0] * k, y - def.c[1] * k], r: 0, ap: r.ap }, k, P.defCol({ type: "sym", key: r.key }), 1) + txt(x0 + 16, y, r.label, 3, 0, INK, "start") + txt(x1, y, String(r.n), 3, 0, INK, "end");
         s += `<line x1="${f(x0)}" y1="${f(y - RH / 2)}" x2="${f(x1)}" y2="${f(y - RH / 2)}" stroke="#c8ced6" stroke-width="0.15"/>`;
       }
       pages.push(pageSVG(p, S0.meta, `Stückliste · ${name}${lines.length > per ? ` · Seite ${j / per + 1}` : ""}`, `<g class="pl-print">${keepW(s)}</g>`));
@@ -584,7 +585,7 @@ export function makePlan(c) {
   // Beschriftung unter dem Zeiger: zuerst am gewählten Symbol, sonst das zuletzt gesetzte
   function labelAt(w, t) {
     const ys = pickable().filter((i) => i.type === "sym"), k = den();
-    return [...ys.filter((i) => S.sel.has(i.id)), ...ys.reverse()].find((i) => P.labelHit(i, k, [w.x, w.y], t, fmtH)) ?? null;
+    return [...ys.filter((i) => S.sel.has(i.id)), ...ys.reverse()].find((i) => P.labelHit(i, k, [w.x, w.y], t, fmtH, P.tfOf(i, sh()))) ?? null;
   }
   let lastLab = null; // letzter Druck auf eine Beschriftung (Doppelklick, das dblclick-Ereignis kommt nach dem Neuzeichnen nicht an)
   function tap(w) {
@@ -740,7 +741,7 @@ export function makePlan(c) {
   // Vorschau in der Palette: Symbol ohne Beschriftung, Ansicht um die Mitte
   function symThumb(d) {
     const e = d.r + 0.8, [cx, cy] = d.c;
-    return `<svg viewBox="${f(cx - e)} ${f(-cy - e)} ${f(2 * e)} ${f(2 * e)}" aria-hidden="true"><g transform="scale(1,-1)">${symSVG({ key: d.key, at: [0, 0], r: 0 }, 1, "currentColor")}</g></svg>`;
+    return `<svg viewBox="${f(cx - e)} ${f(-cy - e)} ${f(2 * e)} ${f(2 * e)}" aria-hidden="true"><g transform="scale(1,-1)">${symSVG({ key: d.key, at: [0, 0], r: 0 }, 1, "currentColor", 1)}</g></svg>`;
   }
   async function leftAct(b) {
     const S0 = sh(), id = b.dataset.layer, a = b.dataset.plact;
@@ -774,6 +775,14 @@ export function makePlan(c) {
     return `<div class="field"><label>Farbe${cur ? ` (${R.esc(dname(cur))})` : " (verschieden)"}</label><div class="swatches">${P.PLAN_COLS.map(([c, l]) => `<button class="swatch" style="--sw:${c}" data-plcol="${c}" aria-pressed="${c === cur}" title="${R.esc(l)}" aria-label="${R.esc(l)}"></button>`).join("")}</div></div>`
       + `<div class="row"><button class="btn outline small" data-plact="coldef"${own ? "" : " disabled"}>Vorgabe${dv.size === 1 ? ` (${R.esc(dname([...dv][0]))})` : ""}</button></div>`;
   }
+  // Textgrösse (CJ 27.10.2026, wie Disposition: Prozent der Vorgabe, gespeichert als Faktor tf). Einzeln: leer = Wert des Plans.
+  const pct = (f0) => Math.round(f0 * 100);
+  const tfField = (items) => {
+    const vs = new Set(items.map((i) => i.tf)), one = vs.size === 1 ? [...vs][0] : null, g = pct(sh().tf ?? 1);
+    return `<div class="field"><label>Textgrösse in % (leer = wie Plan)</label><input type="text" inputmode="decimal" data-pltf="sel" value="${one === null || one === undefined ? "" : pct(one)}" placeholder="${vs.size > 1 ? "verschieden" : `Plan: ${g} %`}" autocomplete="off"></div>`;
+  };
+  const tfPlanField = () => `<div class="field"><label>Textgrösse im ganzen Plan in % (100 = Vorgabe)</label><input type="text" inputmode="decimal" data-pltf="plan" value="${pct(sh().tf ?? 1)}" autocomplete="off"></div>`
+    + `<p class="note">Gilt für Beschriftungen, Höhen, Verweise und Masse. Am gewählten Symbol, Verweis oder Mass rechts einzeln einstellbar, der Einzelwert geht vor.</p>`;
   const copyRow = () => `<div class="row"><button class="btn outline small" data-plact="copy">Kopieren</button><button class="btn outline small" data-plact="dup">Duplizieren</button>${clip?.length ? `<button class="btn outline small" data-plact="paste">Einfügen</button>` : ""}</div>`;
   function panelHTML(sel0, { head }) {
     const it = sel0.length === 1 ? sel0[0] : null, note = (t) => `<p class="note">${t}</p>`;
@@ -793,13 +802,13 @@ export function makePlan(c) {
       return head(it.ctrl ? "Kontrollmass" : "Mass", it.ref !== undefined ? "an der Wand" : it.ctrl ? "Diagonale prüfen" : "frei")
         + (it.ctrl ? `<p class="note">Ist ${P.fmtLen(ci.ist)} mm${ci.soll ? `, Soll ${P.fmtLen(ci.soll)} mm, Abweichung ${ci.diff > 0 ? "+" : ""}${P.fmtLen(ci.diff)} mm` : ""}.</p>` + inp("soll", "Soll in mm (leer = ohne)", ci.soll ? P.fmtLen(ci.soll) : "")
           : inp("len", "Länge in mm", P.fmtLen(P.dimLen(it))) + note(it.ref !== undefined ? "Eintippen ändert die Wand: Ende b wandert, angeschlossene Ecken folgen." : "Eintippen verschiebt Ende b auf der Masslinie, Wände an diesem Punkt folgen."))
-        + inp("off", "Abstand der Masslinie in mm", P.fmtLen(it.off)) + sel1("layer", layerOpts(), it.layer, "Ebene") + del1();
+        + inp("off", "Abstand der Masslinie in mm", P.fmtLen(it.off)) + tfField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene") + del1();
     }
     if (it?.type === "sym") {
       const def = SYM_BY_KEY.get(it.key), tin = (k, label, v) => `<div class="field"><label>${label}</label><input type="text" data-plf="${k}" value="${R.esc(v ?? "")}" autocomplete="off" spellcheck="false"></div>`;
       return head(def.label, def.group) + (def.ref ? tin("fu", "Zeile 1 (z. B. UV EG)", it.fu) + tin("nr", "Zeile 2 (z. B. 11X4)", it.nr) + tin("txt", "Zeile 3 (z. B. Kabel 5×2,5)", it.txt) : "") + (def.num !== undefined ? tin("num", "Anzahl (Zahl am Strich)", it.num ?? def.num) : "") + (P.sizeOf(it.key) ? inp("vw", def.wall ? "Breite in mm (entlang der Wand)" : "Länge in mm", P.fmtLen(P.symSize(it).w)) + (P.symSize(it).t !== undefined ? inp("vt", def.wall ? "Tiefe in mm" : "Breite in mm", P.fmtLen(P.symSize(it).t)) : "") : "") + (def.ref ? "" : tin("txt", "Beschriftung", it.txt))
         + (def.ref ? "" : `<div class="field"><label>Höhe in cm${def.h !== undefined ? " (nur wenn abweichend)" : ""}</label><input type="text" inputmode="decimal" data-plf="sh" value="${it.h === undefined ? "" : fmtH(it.h)}" placeholder="${def.h !== undefined ? `leer = Standard ${def.h} cm` : "leer = ohne"}" autocomplete="off"></div>`) + inp("rot", "Drehung in Grad", String(it.r))
-        + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
+        + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : "") + tfField([it]) + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
         + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben. Die Beschriftung lässt sich für sich ziehen, Doppelklick setzt sie zurück.`)
         + (it.lo ? `<div class="row"><button class="btn outline small" data-plact="lores">Beschriftung zurücksetzen</button></div>` : "") + copyRow() + del1();
     }
@@ -809,7 +818,8 @@ export function makePlan(c) {
     if (sel0.length > 1) {
       const n = (t) => sel0.filter((i) => i.type === t).length, parts = [["wall", "Wände"], ["opening", "Öffnungen"], ["dim", "Masse"], ["sym", "Symbole"], ["line", "Leitungen"]].filter(([t]) => n(t)).map(([t, l]) => `${n(t)} ${l}`);
       const cols = sel0.filter(P.hasCol), lays = new Set(sel0.filter((i) => i.type !== "opening").map((i) => i.layer));
-      return head(`${sel0.length} Objekte`, parts.join(", ")) + (cols.length ? colField(cols) : note("Farbe nur für Leitungen und Symbole; Mauern, Öffnungen und Masse bleiben schwarz."))
+      const tfs = sel0.filter((i) => i.type === "sym" || i.type === "dim");
+      return head(`${sel0.length} Objekte`, parts.join(", ")) + (tfs.length ? tfField(tfs) : "") + (cols.length ? colField(cols) : note("Farbe nur für Leitungen und Symbole; Mauern, Öffnungen und Masse bleiben schwarz."))
         + (lays.size ? sel1("mlayer", lays.size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], lays.size === 1 ? [...lays][0] : "", "Ebene") : "")
         + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. ⌘-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
     }
@@ -825,7 +835,7 @@ export function makePlan(c) {
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
     if (S.tool === "select" && clip?.length) h += `<div class="row"><button class="btn outline small" data-plact="paste">Einfügen (${clip.filter((i) => i.type !== "opening").length})</button><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
     else if (S.tool === "select") h += `<div class="row"><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
-    h += head(c.sheetLabel(sh(), S.active), "Plan") + note(`Massstab ${fmtDen(den())}, Papier und Plankopf oben unter „Druck“. Roter Kreis = gemeinsamer Nullpunkt aller Pläne.`)
+    h += head(c.sheetLabel(sh(), S.active), "Plan") + note(`Massstab ${fmtDen(den())}, Papier und Plankopf oben unter „Druck“. Roter Kreis = gemeinsamer Nullpunkt aller Pläne.`) + tfPlanField()
       + `<div class="row"><button class="btn outline small" data-act="dupsheet">${R.icons.copy.replace("<svg", '<svg width="16" height="16"')}Blatt duplizieren</button><button class="btn outline small danger" data-act="delsheet"${c.workCount() < 2 ? " disabled" : ""}>${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Blatt löschen</button></div>`;
     return h;
   }
@@ -852,6 +862,14 @@ export function makePlan(c) {
       if (k === "bom") { change(() => { if (t.checked) delete S0.bom; else S0.bom = false; }); return true; }
       if (k === "size" && PAPERS[t.value]) p.size = t.value; else if (k === "quer") p.quer = t.value === "1"; else if (k === "den" && P.PLAN_DENS.includes(Number(t.value))) p.den = Number(t.value); else return true;
       change(() => { S0.paper = p; }); c.renderSheet(); renderItems(); return true;
+    }
+    if (t.dataset.pltf !== undefined) { // Textgrösse: gesamt (plan) oder an der Wahl (sel)
+      const v = t.value.trim(), n = Number(v.replace(",", ".").replace("%", "")) / 100, plan = t.dataset.pltf === "plan";
+      if ((v || plan) && !(n >= P.TF_MIN && n <= P.TF_MAX)) { toast(`Textgrösse ${pct(P.TF_MIN)} bis ${pct(P.TF_MAX)} %.`, "error"); renderRight(); return true; }
+      const f0 = Math.round(n * 100) / 100, its = sel().filter((i) => i.type === "sym" || i.type === "dim");
+      if (plan) change(() => { if (f0 === 1) delete S0.tf; else S0.tf = f0; });
+      else if (its.length) change(() => { for (const i of its) if (v) i.tf = f0; else delete i.tf; });
+      return true;
     }
     if (t.dataset.plf === undefined || !it) return false;
     const k = t.dataset.plf, v = t.value;
@@ -951,7 +969,7 @@ export function makePlan(c) {
     else if (a === "lores") change(() => { for (const it of sel()) delete it.lo; });
     else if (a === "copy") copySel(); else if (a === "paste") paste(); else if (a === "dup") dup(); else if (a === "all") selAll();
   });
-  for (const el of [c.rightEl, c.popEl]) el.addEventListener("change", (e) => { if (sh().kind === "plan" && (e.target.dataset.plf !== undefined || e.target.dataset.plo !== undefined || e.target.dataset.plp !== undefined)) panelChange(e.target); });
+  for (const el of [c.rightEl, c.popEl]) el.addEventListener("change", (e) => { if (sh().kind === "plan" && (e.target.dataset.plf !== undefined || e.target.dataset.plo !== undefined || e.target.dataset.plp !== undefined || e.target.dataset.pltf !== undefined)) panelChange(e.target); });
 
   // Alt oder Shift gedrückt oder losgelassen: Fangpunkt unter dem Zeiger neu berechnen
   const mod = () => { if (raw) move(raw, { shiftKey: S.shift, altKey: S.alt }); };

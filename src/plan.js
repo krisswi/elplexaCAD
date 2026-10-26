@@ -104,6 +104,11 @@ export const lineCol = () => LINE_COL;
 export const defCol = (it) => (it.type === "line" ? lineCol() : it.type === "sym" ? (SYM_BY_KEY.get(it.key).cat === "leitung" ? lineCol() : CAT_COL[SYM_BY_KEY.get(it.key).cat] ?? "#000000") : "#000000");
 export const colOf = (it) => it.col ?? defCol(it);
 export const hasCol = (it) => it.type === "line" || it.type === "sym";
+// Textgrösse (CJ 27.10.2026, Muster Disposition): Faktor tf (1 = Vorgabe), gesamt am Blatt (sh.tf) und einzeln an Symbol, Verweis und Mass (it.tf).
+// Der Einzelwert überschreibt den Gesamtwert. Gilt für Beschriftung, Höhe, Verweis-Zeilen und Masstext; Zusatztexte im Symbol (T15, LED, Zahl) bleiben fest.
+export const TF_MIN = 0.25, TF_MAX = 4;
+const cleanTf = (v) => (isNum(v) && v >= TF_MIN && v <= TF_MAX ? r3(v) : undefined);
+export const tfOf = (it, sh) => it.tf ?? sh?.tf ?? 1;
 // Farbe setzen: gleich der Vorgabe = Feld entfernen
 export function setCol(it, col) { if (!hasCol(it)) return; const c = String(col ?? "").toLowerCase(); if (!HEX.test(c) || c === defCol(it)) delete it.col; else it.col = c; }
 
@@ -129,6 +134,7 @@ export function cleanPlanObj(it, id) {
     const o = { id, type: "dim", layer: String(it.layer ?? ""), a: [it.a[0], it.a[1]], b: [it.b[0], it.b[1]], off: isNum(it.off) ? it.off : 0 };
     if (isNum(it.ref)) o.ref = it.ref;
     if (it.ctrl === true) { o.ctrl = true; if (isNum(it.soll) && it.soll > 0) o.soll = it.soll; } // Kontrollmass (Diagonale): Ist, optional Soll
+    const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf; // Textgrösse einzeln (auch 1: überschreibt den Gesamtwert)
     return o;
   }
   if (it.type === "sym") {
@@ -143,6 +149,7 @@ export function cleanPlanObj(it, id) {
     const lo = cleanLo(it.lo); if (lo) o.lo = lo;
     const z = sizeOf(it.key); if (z) for (const f of ["w", "t"]) if (z[f] !== undefined && isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && Math.round(it[f]) !== z[f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
     if (def.num !== undefined && str(it.num, 6) && str(it.num, 6) !== def.num) o.num = str(it.num, 6); // Zahl der Mehrfachsteckdose (CJ 26.10.2026)
+    const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
     setCol(o, it.col);
     return o;
   }
@@ -163,7 +170,11 @@ export function cleanPlanObj(it, id) {
 const OLD_KEYS = new Set(["SCH0", "SCH0_2", "SCH3", "SCH6", "TASTER", "DIMMER", "STOREN", "SCH_LAMPE", "STD", "STD3", "STD_T15", "STD_USB", "STD_BODEN", "KOMBI", "LEUCHTE", "LEUCHTE_EB", "LEUCHTE_W", "LEUCHTE_WEB", "LED", "LED_EB", "LED_W", "BWM", "PIR", "GERAET", "HERD", "BACKOFEN", "MIKRO", "GSP", "KUEHL", "VENT", "BOILER", "DOSE", "EINLASS", "VERTEILER", "ANSCHLUSS", "STEIG_AUF", "STEIG_AB", "STEIG_DURCH", "VERWEIS"]); // Symbole bis Dateiversion 23
 export const V24_SYMS = { has: (k) => !!k && !OLD_KEYS.has(k) }; // Symbole, die ältere Stände nicht kennen
 export const planV24 = (sh) => sh.items.some((i) => i.lo || i.num !== undefined || (i.type === "sym" && (i.w !== undefined || i.t !== undefined)) || i.mat === "doppel" || V24_SYMS.has(i.key) || (i.ap && !SYM_BY_KEY.get(i.key)?.group?.startsWith("Schalter")));
-const VERSION_NOW = 24;
+// Dateiversion 28 (CJ 27.10.2026): Textgrösse gesamt (sh.tf) oder einzeln (it.tf); ältere Stände würden sie still verlieren
+export const planV28 = (sh) => sh.tf !== undefined || sh.items.some((i) => i.tf !== undefined);
+// Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28
+export const planVer = (sh) => (planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
+const VERSION_NOW = 28;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 // ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
 const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
@@ -174,6 +185,7 @@ export function cleanPlanSheet(rs, m, maxId, ver = VERSION_NOW) {
   const pm = cleanPmid(rs.pmid); if (pm) m.pmid = pm; // Druckmitte frei gewählt (wie Stringplan 5ao)
   if (rs.bom === false) m.bom = false; // Stückliste nicht drucken (Schritt 4, fehlt = drucken)
   if (rs.bgOff === true) m.bgOff = true; // PDF-Plan ausgeblendet, unabhängig von den Ebenen (CJ 26.10.2026)
+  const tf = cleanTf(rs.tf); if (tf !== undefined && tf !== 1) m.tf = tf; // Textgrösse des ganzen Plans, fehlt = 1
   if (isNum(rs.bgOp) && rs.bgOp >= 10 && rs.bgOp <= 100 && Math.round(rs.bgOp) !== BG_OP) m.bgOp = Math.round(rs.bgOp); // Deckkraft in %, fehlt = BG_OP
   if (isNum(rs.sid) && rs.sid > 0) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); }
   for (const it of Array.isArray(rs.items) ? rs.items : []) {
@@ -546,24 +558,25 @@ export function cleanLo(v) {
 export const sizeOf = (key) => SYM_BY_KEY.get(key)?.size ?? null;
 export const symSize = (it) => { const z = sizeOf(it.key); return z ? { w: it.w ?? z.w, ...(z.t !== undefined ? { t: it.t ?? z.t } : {}) } : null; };
 // Symboldefinition für ein Objekt: bei Verteilungen Teile, Mitte und Radius aus w und t (Papier-mm = Welt-mm / k)
-export function symDef(it, k) {
+export function symDef(it, k, tf = 1) {
   const def = SYM_BY_KEY.get(it.key), z = symSize(it);
-  if (def.ref) return { ...def, parts: refParts(it) };
+  if (def.ref) return { ...def, parts: refParts(it, tf) };
   if (!z) return def;
   const W = z.w / k, T = (z.t ?? 0) / k, r = (n) => Math.round(n * 1000) / 1000;
   return { ...def, parts: def.size.parts(W, T), c: def.wall ? [0, r(T / 2)] : [0, 0], r: r(Math.max(1, Math.hypot(W / 2, def.wall ? T / 2 : T / 2))) };
 }
 // Hinweis (VERWEIS): Kasten um die Zeilen oben (fu), unten (nr) und Kabel (txt), Mitte = Vorgabe + Versatz lo (Papier-mm im System des Symbols)
 const REF_H = 2.2, REF_LH = REF_H * 1.45, REF_DEF = [-8, 4];
-export function refBox(it) {
-  const rows = [it.fu, it.nr, it.txt].filter(Boolean), lo = it.lo ?? [0, 0];
-  const w = Math.max(5, ...rows.map((s) => s.length * REF_H * 0.62)) + 2, h = Math.max(1, rows.length) * REF_LH + 0.6;
-  return { rows: rows.length ? rows : [], x: REF_DEF[0] + lo[0], y: REF_DEF[1] + lo[1], w, h };
+// tf: Textgrösse (tfOf), der Kasten wächst mit
+export function refBox(it, tf = 1) {
+  const rows = [it.fu, it.nr, it.txt].filter(Boolean), lo = it.lo ?? [0, 0], H = REF_H * tf;
+  const w = Math.max(5, ...rows.map((s) => s.length * H * 0.62)) + 2 * Math.max(1, tf), h = Math.max(1, rows.length) * REF_LH * tf + 0.6 * tf;
+  return { rows: rows.length ? rows : [], x: REF_DEF[0] + lo[0], y: REF_DEF[1] + lo[1], w, h, lh: REF_LH * tf, th: H };
 }
-function refParts(it) {
-  const b = refBox(it), r3 = (n) => Math.round(n * 1000) / 1000, x0 = b.x - b.w / 2, y0 = b.y - b.h / 2, R = 1, out = [];
+function refParts(it, tf = 1) {
+  const b = refBox(it, tf), r3 = (n) => Math.round(n * 1000) / 1000, x0 = b.x - b.w / 2, y0 = b.y - b.h / 2, R = 1, out = [];
   out.push(["p", `M${r3(x0 + R)},${r3(y0)}h${r3(b.w - 2 * R)}a${R} ${R} 0 0 1 ${R},${R}v${r3(b.h - 2 * R)}a${R} ${R} 0 0 1 ${-R},${R}h${r3(-(b.w - 2 * R))}a${R} ${R} 0 0 1 ${-R},${-R}v${r3(-(b.h - 2 * R))}a${R} ${R} 0 0 1 ${R},${-R}Z`, false]);
-  for (let i = 1; i < b.rows.length; i++) { const y = b.y + ((b.rows.length - 1) / 2 - i + 0.5) * REF_LH; out.push(["l", r3(x0), r3(y), r3(x0 + b.w), r3(y)]); } // Trennstrich zwischen den Zeilen
+  for (let i = 1; i < b.rows.length; i++) { const y = b.y + ((b.rows.length - 1) / 2 - i + 0.5) * b.lh; out.push(["l", r3(x0), r3(y), r3(x0 + b.w), r3(y)]); } // Trennstrich zwischen den Zeilen
   // Linie vom Ziel (0|0) zum nächsten Punkt auf dem Kastenrand
   const cx = Math.max(x0, Math.min(0, x0 + b.w)), cy = Math.max(y0, Math.min(0, y0 + b.h));
   const inside = cx === 0 && cy === 0, ex = inside ? b.x : cx, ey = inside ? y0 : cy;
@@ -575,21 +588,21 @@ export const symH = (it) => it.h ?? SYM_BY_KEY.get(it.key)?.h;
 // Texte eines Symbols in der Welt (CJ 24.10.2026): drehen mit dem Symbol, stehen nie auf dem Kopf. Zusatztexte (T15, USB, 3, LED) und Verweis
 // mittig an ihrem Ort; Beschriftung und Höhe neben der Mitte in Richtung der x-Achse des Symbols (Wandsymbol: entlang der Wand), Zeilen untereinander.
 // Gibt [{ at, s, size, a, anchor }] (size und Abstände in Papier-mm × k).
-export function symTexts(it, k, fmtH = (h) => String(h)) {
-  const def = symDef(it, k), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
+export function symTexts(it, k, fmtH = (h) => String(h), tf = 1) {
+  const def = symDef(it, k, tf), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
   const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)], out = [];
   for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[5] === "num" ? (it.num ?? q[4]) : q[4], size: q[3] * k, a, anchor: "middle" }); // num: Zahl am Symbol änderbar
-  if (def.ref) { const b = refBox(it); b.rows.forEach((s, i) => out.push({ at: w(b.x, b.y + ((b.rows.length - 1) / 2 - i) * REF_LH * (flip ? -1 : 1)), s, size: REF_H * k, a, anchor: "middle", label: true })); return out; } // Hinweis: Zeilen im Kasten, ziehbar wie eine Beschriftung
+  if (def.ref) { const b = refBox(it, tf); b.rows.forEach((s, i) => out.push({ at: w(b.x, b.y + ((b.rows.length - 1) / 2 - i) * b.lh * (flip ? -1 : 1)), s, size: b.th * k, a, anchor: "middle", label: true })); return out; } // Hinweis: Zeilen im Kasten, ziehbar wie eine Beschriftung
   // Abstand: hinter dem Symbol und hinter Zusatztexten rechts der Mitte (Breite ca. 0,6 × Höhe je Zeichen)
   const ext = Math.max(def.r, ...def.parts.filter((q) => q[0] === "t").map((q) => q[1] - def.c[0] + q[4].length * q[3] * 0.3));
   const lines = [it.txt, it.h !== undefined && it.h !== def.h ? fmtH(it.h) : ""].filter(Boolean), c = symCenter(it, k), d = (ext + 0.6) * k, sg = flip ? -1 : 1;
   const [lx, ly] = it.lo ?? [0, 0], ox = k * (lx * co - ly * si), oy = k * (lx * si + ly * co); // Versatz dreht mit dem Symbol
-  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * k * sg; out.push({ at: [c[0] + co * d - si * o + ox, c[1] + si * d + co * o + oy].map(r3), s, size: 1.8 * k, a, anchor: flip ? "end" : "start", label: true }); });
+  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * tf * k * sg; out.push({ at: [c[0] + co * d - si * o + ox, c[1] + si * d + co * o + oy].map(r3), s, size: 1.8 * tf * k, a, anchor: flip ? "end" : "start", label: true }); });
   return out;
 }
 // Trifft p die Beschriftung (Bezeichnung, Höhe) eines Symbols? Kasten je Zeile: Breite ca. 0,6 × Höhe je Zeichen, ab dem Ankerpunkt.
-export function labelHit(it, k, p, tol, fmtH) {
-  return symTexts(it, k, fmtH).some((t) => {
+export function labelHit(it, k, p, tol, fmtH, tf = 1) {
+  return symTexts(it, k, fmtH, tf).some((t) => {
     if (!t.label) return false;
     const r = (t.a * Math.PI) / 180, dx = p[0] - t.at[0], dy = p[1] - t.at[1], u = dx * Math.cos(r) + dy * Math.sin(r), v = -dx * Math.sin(r) + dy * Math.cos(r), wd = t.s.length * t.size * 0.6;
     return (t.anchor === "end" ? u >= -wd - tol && u <= tol : u >= -tol && u <= wd + tol) && Math.abs(v) <= t.size / 2 + tol;

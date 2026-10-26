@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 27, "elplexa liest Version 27 (Gliederung der Offerte, 26.10.2026)");
+assert.strictEqual(M.VERSION, 28, "elplexa liest Version 28 (Textgrösse im Plan, 27.10.2026)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -335,7 +335,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 28)), /neueren Version/, "Version 28 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 29)), /neueren Version/, "Version 29 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#3FBBEB" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
@@ -464,5 +464,26 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(P.snapPlan({}, [], [-90, -20], { grid: 10, tol: 20, segs: ab.segs }), { x: -75, y: -20, snap: "edge" }, "… und auf der linken");
   assert.deepStrictEqual(P.snapPlan({}, [], [0, 0], { grid: 10, tol: 20, segs: ab.segs }), { x: 0, y: 0, snap: "grid" }, "Mitte der Dose: Raster");
   assert.deepStrictEqual(P.snapPlan({}, [], [1008, 150], { grid: 10, tol: 20, extra: sw.pts }), { x: 1000, y: 160, snap: "end" }, "Leitung rastet am oberen Fangpunkt des Schalters");
+}
+// ---------- Textgrösse gesamt und einzeln (CJ 27.10.2026) ----------
+{
+  const its = [{ id: 60, type: "sym", layer: "bg", key: "SCH0", at: [0, 0], r: 0, txt: "E1", tf: 1.5 }, { id: 61, type: "sym", layer: "bg", key: "STD", at: [500, 0], r: 0, txt: "K2" },
+    { id: 62, type: "sym", layer: "bg", key: "VERWEIS", at: [0, 900], r: 0, fu: "UV EG", tf: 1 }, { id: 63, type: "dim", layer: "bg", a: [0, 0], b: [1000, 0], off: 300, tf: 0.8 }];
+  const d = M.parseModel(file([plan(its, { tf: 1.2 })], 27)), out = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(out.version, 28, "Textgrösse: Version 28");
+  assert.strictEqual(out.sheets[0].tf, 1.2, "Gesamtwert am Blatt");
+  assert.deepStrictEqual(out.sheets[0].items.map((i) => i.tf), [1.5, undefined, 1, 0.8], "Einzelwerte bleiben, auch 1 (überschreibt den Plan)");
+  const s0 = d.sheets[0], [a, b, v, m] = s0.items;
+  assert.deepStrictEqual([P.tfOf(a, s0), P.tfOf(b, s0), P.tfOf(v, s0), P.tfOf(m, s0)], [1.5, 1.2, 1, 0.8], "Einzelwert vor Gesamtwert");
+  const size = (it, tf) => P.symTexts(it, 50, String, tf).find((t) => t.label).size;
+  assert.strictEqual(size(b, 1), 1.8 * 50, "Vorgabe 1,8 mm Papier");
+  assert.ok(Math.abs(size(b, 1.2) - 1.8 * 1.2 * 50) < 1e-9 && Math.abs(size(a, 1.5) - 1.8 * 1.5 * 50) < 1e-9, "Beschriftung wächst mit");
+  const r1 = P.refBox(v, 1), r2 = P.refBox(v, 2);
+  assert.ok(r2.w > r1.w && r2.h > r1.h && r2.th === 2 * r1.th, "Verweis: Kasten und Zeilen wachsen mit");
+  assert.deepStrictEqual(P.symTexts(b, 50, String, 2).filter((t) => !t.label), P.symTexts(b, 50, String, 1).filter((t) => !t.label), "Zusatztexte im Symbol bleiben fest");
+  // Unsinnige Werte fallen weg, 1 am Blatt wird nicht gespeichert
+  const z = M.parseModel(file([plan([{ ...its[1], tf: 0 }, { ...its[0], id: 64, tf: "2" }], { tf: 1 })], 27)).sheets[0];
+  assert.deepStrictEqual([z.tf, z.items[0].tf, z.items[1].tf], [undefined, undefined, undefined], "tf 0, Text und Blatt 1 fallen weg");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan(kueche())], 24)))).version, 20, "ohne Textgrösse bleibt die Version");
 }
 console.log("test_plan: alles ok");

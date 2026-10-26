@@ -39,7 +39,7 @@ export function makePlan(c) {
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
   const grpOpen = new Set(); // aufgeklappte Symbolgruppen links, nur für die Sitzung (Start immer zu)
-  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, multi: false, free: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, multi: false, free: false, ap: false }; // sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
@@ -413,7 +413,7 @@ export function makePlan(c) {
     }
     if (bgDraft && mouse) s += measureSVG({ x: bgDraft[0], y: bgDraft[1] }, mouse, S.tool === "pl-rotate" ? "Kante" : "", z);
     if (S.tool === "pl-pmid" && mouse) { const { a, k: d, ox, oy } = pageAt([mouse.x, mouse.y]); s += `<rect x="${f(ox + a.x0 * d)}" y="${f(oy + a.y0 * d)}" width="${f((a.x1 - a.x0) * d)}" height="${f((a.y1 - a.y0) * d)}" fill="rgba(47,109,179,.06)" stroke="${DRAFT}" stroke-width="1.5" stroke-dasharray="6 4"/>`; } // Vorschau des Planfelds
-    if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r }, k, DRAFT)}</g>`; }
+    if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r, ap: opt.ap }, k, DRAFT)}</g>`; }
     if (S.tool === "pl-open" && raw) { const pv = openPreview(); if (pv) s += `<g class="pl-scale">${openingSVG(pv.w, pv.o, k, DRAFT)}</g>`; }
     s += pinsSVG(z);
     if (mouse?.guides) s += mouse.guides.map(([q, r]) => `<path d="M${pt(q)}L${pt(r)}" stroke="${GUIDE}" stroke-width="1" stroke-dasharray="${px(6)} ${px(4)}" fill="none"/><circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${GUIDE}"/>`).join("");
@@ -456,7 +456,7 @@ export function makePlan(c) {
         y -= RH;
         if (r.head) { s += txt(x0, y, r.head, 3.2, 0, INK, "start"); continue; }
         const def = SYM_BY_KEY.get(r.key), k = Math.min(1, 2.6 / def.r);
-        s += symSVG({ key: r.key, at: [x0 + 6 - def.c[0] * k, y - def.c[1] * k], r: 0 }, k, P.defCol({ type: "sym", key: r.key })) + txt(x0 + 16, y, r.label, 3, 0, INK, "start") + txt(x1, y, String(r.n), 3, 0, INK, "end");
+        s += symSVG({ key: r.key, at: [x0 + 6 - def.c[0] * k, y - def.c[1] * k], r: 0, ap: r.ap }, k, P.defCol({ type: "sym", key: r.key })) + txt(x0 + 16, y, r.label, 3, 0, INK, "start") + txt(x1, y, String(r.n), 3, 0, INK, "end");
         s += `<line x1="${f(x0)}" y1="${f(y - RH / 2)}" x2="${f(x1)}" y2="${f(y - RH / 2)}" stroke="#c8ced6" stroke-width="0.15"/>`;
       }
       pages.push(pageSVG(p, S0.meta, `Stückliste · ${name}${lines.length > per ? ` · Seite ${j / per + 1}` : ""}`, `<g class="pl-print">${keepW(s)}</g>`));
@@ -493,7 +493,7 @@ export function makePlan(c) {
     if (T === "pl-sym") {
       if (!layerOk()) return;
       const q = symPlace(opt.sym, w, opt.symR), def = SYM_BY_KEY.get(opt.sym), id = nextId();
-      change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r }, id)));
+      change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r, ap: opt.ap }, id))); // ap fällt bei Symbolen ohne Aufputz-Variante weg
       return;
     }
     if (T === "pl-line") {
@@ -684,6 +684,13 @@ export function makePlan(c) {
       if (ys.length) { change(() => { for (const y of ys) y.r = (y.r + step) % 360; }); return true; }
       return true;
     }
+    if (k.toLowerCase() === "a" && !e.altKey) { // Aufputz/Unterputz (CJ 26.10.2026): beim Setzen für die nächsten Symbole, sonst an den gewählten (alle gleich: Mehrheit UP → AP)
+      const ys = sel().filter((i) => i.type === "sym" && SYM_BY_KEY.get(i.key).ap);
+      if (S.tool === "pl-sym") { opt.ap = !opt.ap; toast(`${opt.ap ? "Aufputz (AP)" : "Unterputz (UP)"} für die nächsten Symbole${SYM_BY_KEY.get(opt.sym).ap ? "" : ". Dieses Symbol hat keine AP-Variante"}.`); renderOverlay(); renderRight(); updateHint(); return true; }
+      if (ys.length) { const on = !ys.every((i) => i.ap); change(() => { for (const y of ys) { if (on) y.ap = true; else delete y.ap; } }); toast(`${ys.length} ${ys.length === 1 ? "Symbol" : "Symbole"} ${on ? "Aufputz (AP)" : "Unterputz (UP)"}.`); return true; }
+      if (sel().length) toast("Gewählte Symbole haben keine Aufputz-Variante (nur Schalter und Steckdosen).");
+      return true;
+    }
     if ("tiqry".includes(k.toLowerCase()) && k.length === 1) return true; // Werkzeuge anderer Blätter: hier ohne Wirkung
     if (k.startsWith("Arrow") && S.sel.size) {
       const step = (S.grid.on ? S.grid.size : 10) * (e.shiftKey ? 5 : 1), dx = k === "ArrowLeft" ? -step : k === "ArrowRight" ? step : 0, dy = k === "ArrowUp" ? step : k === "ArrowDown" ? -step : 0;
@@ -790,7 +797,7 @@ export function makePlan(c) {
       const def = SYM_BY_KEY.get(it.key), tin = (k, label, v) => `<div class="field"><label>${label}</label><input type="text" data-plf="${k}" value="${R.esc(v ?? "")}" autocomplete="off" spellcheck="false"></div>`;
       return head(def.label, def.group) + (def.ref ? tin("fu", "Oben (z. B. UV EG)", it.fu) + tin("nr", "Unten (z. B. 11X4)", it.nr) + tin("txt", "Kabel (z. B. 5×2,5)", it.txt) : "") + (def.num !== undefined ? tin("num", "Anzahl (Zahl am Strich)", it.num ?? def.num) : "") + (P.sizeOf(it.key) ? inp("vw", def.wall ? "Breite in mm (entlang der Wand)" : "Länge in mm", P.fmtLen(P.symSize(it).w)) + (P.symSize(it).t !== undefined ? inp("vt", def.wall ? "Tiefe in mm" : "Breite in mm", P.fmtLen(P.symSize(it).t)) : "") : "") + (def.ref ? "" : tin("txt", "Beschriftung", it.txt))
         + (def.ref ? "" : `<div class="field"><label>Höhe in cm${def.h !== undefined ? " (nur wenn abweichend)" : ""}</label><input type="text" inputmode="decimal" data-plf="sh" value="${it.h === undefined ? "" : fmtH(it.h)}" placeholder="${def.h !== undefined ? `leer = Standard ${def.h} cm` : "leer = ohne"}" autocomplete="off"></div>`) + inp("rot", "Drehung in Grad", String(it.r))
-        + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
+        + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
         + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben. Die Beschriftung lässt sich für sich ziehen, Doppelklick setzt sie zurück.`)
         + (it.lo ? `<div class="row"><button class="btn outline small" data-plact="lores">Beschriftung zurücksetzen</button></div>` : "") + copyRow() + del1();
     }
@@ -809,7 +816,7 @@ export function makePlan(c) {
       + sel1("side", [["0", "automatisch (nach der ersten Kurve)"], ["1", "links der Zeichenrichtung"], ["-1", "rechts der Zeichenrichtung"]], opt.side, "Wand liegt").replace("data-plf", "data-plo")
       + note("Gezeichnet wird die Innenkante, die Wand wächst nach aussen (automatisch nach der ersten Kurve, Taste X wechselt die Seite). Eingetippte Länge = lichte Länge. Gespeichert wird die Mittellinie. Orange Hilfslinien: Ausrichtung an Anfang, Ecken und letztem Punkt (Alt ohne Fang).");
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
-    else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`); }
+    else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`) + (def.ap ? `<label class="check"><input type="checkbox" data-plo="ap"${opt.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : ""); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
       + note("Fang an den Anschlusspunkten der Symbole und am Raster (nicht an Wänden und anderen Leitungen), Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
@@ -830,7 +837,7 @@ export function makePlan(c) {
       if (k === "d") { const v = P.parseLen(t.value); if (v > 0) opt.d = v; else toast("Dicke nicht verstanden.", "error"); }
       else if (k === "st" || k === "iso") { const v = P.parseLen(t.value); if (v > 0 || (k === "iso" && v === 0)) opt[k] = v; else toast(`${k === "st" ? "Stein" : "Isolation"} nicht verstanden.`, "error"); }
       else if (k === "ow") { const v = P.parseLen(t.value); if (v > 0) opt.ow[opt.okind] = v; }
-      else if (k === "ctrl") opt.ctrl = t.checked;
+      else if (k === "ctrl" || k === "ap") opt[k] = t.checked;
       else if (k === "lkind") { opt.lkind = t.value; updateHint(); }
       else if (k === "lcurve") { opt.lcurve = t.value === "1"; updateHint(); }
       else if (k === "side") { opt.side = Number(t.value) < 0 ? -1 : Number(t.value) > 0 ? 1 : 0; if (draft) { draft.side = opt.side || 1; draft.auto = opt.side === 0; } }
@@ -894,14 +901,14 @@ export function makePlan(c) {
     if (S.tool === "pl-wall") return draft ? `Wand: Länge tippen (Innenkante, z. B. 3450 oder 3,45 m), Tab = Winkel tippen, Enter setzt, oder klicken. Shift 0/45/90°, orange Linie = Ausrichtung (Rechteck schliessen), Alt ohne Fang, X wechselt die Wandseite, Klick auf den Anfang schliesst, Esc beendet.${draft.len || draft.ang ? `  Eingabe: ${draft.len || "–"} mm, ${draft.ang || "–"}°` : ""}` : `Wand: Klick setzt den Anfang der Innenkante (Wandecken, Wandflächen, Ausrichtung und Raster rasten ein, Alt frei). Die Wand liegt ${opt.side === 0 ? "automatisch aussen (nach der ersten Kurve)" : opt.side > 0 ? "links der Zeichenrichtung" : "rechts der Zeichenrichtung"}, X wechselt. Dicke und Material rechts.`;
     if (S.tool === "pl-open") return `Öffnung: Klick auf eine Wand setzt ${P.OPENINGS.find(([k]) => k === opt.okind)[1]} (${P.fmtLen(opt.ow[opt.okind])} mm) mittig auf den Klick. Art und Breite rechts.`;
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
-    if (S.tool === "pl-sym") return `Symbol: Klick setzt ${SYM_BY_KEY.get(opt.sym).label}. ${SYM_BY_KEY.get(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."} Esc oder V beendet.`;
+    if (S.tool === "pl-sym") return `Symbol: Klick setzt ${SYM_BY_KEY.get(opt.sym).label}${SYM_BY_KEY.get(opt.sym).ap ? ` ${opt.ap ? "AP" : "UP"}` : ""}. ${SYM_BY_KEY.get(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."}${SYM_BY_KEY.get(opt.sym).ap ? " A wechselt AP/UP." : ""} Esc oder V beendet.`;
     if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt${opt.lcurve ? ", geschwungen" : ""}). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;
     if (S.tool === "pl-measure") return bgDraft ? "Massstab messen: Endpunkt der bekannten Strecke klicken (Shift 0/45/90°). Esc bricht ab." : "Massstab messen: Anfang einer bekannten Strecke auf dem PDF-Plan klicken (z. B. eine Masskette). Danach die Länge in mm eingeben.";
     if (S.tool === "pl-rotate") return bgDraft ? "Plan drehen: zweiten Punkt der Kante klicken. Esc bricht ab." : "Plan drehen: zwei Punkte einer Kante klicken, die waagrecht oder senkrecht liegen soll.";
     if (S.tool === "pl-fix") return "Fixpunkt: Punkt auf dem PDF-Plan klicken, der in allen Stockwerken gleich liegt (z. B. Ecke Treppenhaus). Er wird zum Nullpunkt.";
     if (S.tool === "pl-pmid") return "Druckmitte: in den Plan klicken, dort liegt die Mitte des Planfelds (Rahmen zeigt den Druckbereich). Esc bricht ab.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
-    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "Shift-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, K Leitung, R dreht Symbole.`;
+    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "Shift-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, K Leitung, R dreht Symbole, A Aufputz/Unterputz.`;
   }
 
   // Bedienung der Leisten (eigene Datenattribute, app.js kennt sie nicht)

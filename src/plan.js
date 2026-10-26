@@ -596,10 +596,12 @@ export function labelHit(it, k, p, tol, fmtH) {
   });
 }
 // Stückliste (Schritt 4, CJ 24.10.2026): Anzahl je Symbol auf sichtbaren Ebenen, Reihenfolge wie die Palette. Leitungen zählen nicht.
+// Symbole mit Aufputz-Variante getrennt nach UP und AP (CJ 26.10.2026), UP zuerst.
 export function bomOf(sh) {
-  const n = new Map();
-  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it)) n.set(it.key, (n.get(it.key) ?? 0) + 1);
-  return PLAN_SYMS.filter((d) => n.has(d.key)).map((d) => ({ key: d.key, label: d.label, group: d.group, n: n.get(d.key) }));
+  const n = new Map(), id = (key, ap) => `${key}${ap ? ":ap" : ""}`;
+  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it)) { const k = id(it.key, it.ap && SYM_BY_KEY.get(it.key).ap); n.set(k, (n.get(k) ?? 0) + 1); }
+  return PLAN_SYMS.flatMap((d) => (d.ap ? [false, true] : [false]).filter((ap) => n.has(id(d.key, ap)))
+    .map((ap) => ({ key: d.key, label: d.ap ? `${d.label}, ${ap ? "AP" : "UP"}` : d.label, group: d.group, n: n.get(id(d.key, ap)), ...(ap ? { ap } : {}) })));
 }
 // CSV wie die übrigen Listen: Semikolon, Text in Anführungszeichen wenn nötig
 export function bomCsv(rows) {

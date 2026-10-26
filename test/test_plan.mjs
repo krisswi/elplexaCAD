@@ -385,7 +385,11 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(P.bomOf(sh).map((r) => [r.key, r.n]), [["SCH0", 1], ["STD", 3], ["LEUCHTE", 1]], "Anzahl je Symbol, Reihenfolge der Palette, Leitungen zählen nicht");
   sh.layers.find((l) => l.id === "l1").show = false;
   assert.strictEqual(P.bomOf(sh).find((r) => r.key === "STD").n, 2, "ausgeblendete Ebene zählt nicht");
-  assert.strictEqual(P.bomCsv(P.bomOf(sh)), "Gruppe;Symbol;Anzahl\r\nSchalter;Schalter Sch. 0, 1-polig;1\r\nSteckdosen;Steckdose T13 (Schutzkontakt);2\r\nLeuchten;Leuchte an Decke;1\r\n", "CSV mit Semikolon");
+  assert.strictEqual(P.bomCsv(P.bomOf(sh)), "Gruppe;Symbol;Anzahl\r\nSchalter;Schalter Sch. 0, 1-polig, UP;1\r\nSteckdosen;Steckdose T13 (Schutzkontakt), UP;2\r\nLeuchten;Leuchte an Decke;1\r\n", "CSV mit Semikolon");
+  // AP/UP getrennt (CJ 26.10.2026): UP zuerst, ap nur bei Symbolen mit Aufputz-Variante
+  const apSh = M.parseModel(file([plan([["STD", true], ["STD", false], ["STD", true], ["LEUCHTE", true]].map(([key, ap], i) => ({ id: 70 + i, type: "sym", layer: "bg", key, at: [i * 100, 0], r: 0, ap })))], 27)).sheets[0];
+  assert.ok(!("ap" in apSh.items.find((i) => i.key === "LEUCHTE")), "Leuchte ohne Aufputz-Variante: ap fällt weg");
+  assert.deepStrictEqual(P.bomOf(apSh).map((r) => [r.label, r.n, !!r.ap]), [["Steckdose T13 (Schutzkontakt), UP", 1, false], ["Steckdose T13 (Schutzkontakt), AP", 2, true], ["Leuchte an Decke", 1, false]], "Stückliste getrennt UP/AP");
   assert.strictEqual(P.bomCsv([{ group: "A", label: 'x;"y"', n: 1 }]).split("\r\n")[1], 'A;"x;""y""";1', "CSV: Semikolon und Anführungszeichen maskiert");
 }
 

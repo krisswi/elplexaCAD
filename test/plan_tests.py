@@ -162,6 +162,11 @@ with sync_playwright() as p:
     check("Symbolgruppen zu beim Start", page.locator(".pl-syms").count() >= 8 and page.locator(".pl-syms.zu").count() == page.locator(".pl-syms").count() and not page.is_visible('[data-plsym="STD"]'))
     page.click('[data-plgrp="Steckdosen"]'); page.wait_for_timeout(50)
     check("Gruppe klappt auf, andere bleiben zu", page.is_visible('[data-plsym="STD"]') and not page.is_visible('[data-plsym="SCH0"]'))
+    blur(); key("/"); page.keyboard.type("Steck"); page.wait_for_timeout(50)
+    check("Suche / «Steck»: Steckdosen auch in zugeklappter Gruppe, sonst nichts", page.evaluate("document.activeElement.id") == "sym-find" and page.is_visible('[data-plsym="STD_USB"]') and not page.is_visible('[data-plsym="SCH0"]') and not page.is_visible('[data-plsym="LEUCHTE"]'))
+    page.fill("#sym-find", "zzz"); check("Suche ohne Treffer: Hinweis", "Kein Symbol" in page.inner_text("#left-body"))
+    page.keyboard.press("Escape"); page.wait_for_timeout(50)
+    check("Esc leert die Suche, Gruppen wieder zu", page.input_value("#sym-find") == "" and not page.is_visible('[data-plsym="SCH0"]') and page.is_visible('[data-plsym="STD"]'))
     plsym(page, "STD"); page.wait_for_timeout(80)
     check("Symbol gewählt: Werkzeug Symbol, Hinweis", "Steckdose T13" in page.inner_text("#hint") and page.get_attribute('[data-plsym="STD"]', "aria-pressed") == "true")
     click(3750, 600)  # nahe an der rechten Wand: rastet an der Innenfläche ein, zeigt in den Raum

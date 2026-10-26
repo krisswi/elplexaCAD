@@ -403,27 +403,26 @@ const symQ = () => $("#sym-find").value.trim().toLowerCase();
 function applySymFind() {
   const q = symQ(), words = q.split(/\s+/).filter(Boolean);
   leftEl.classList.toggle("searching", !!q);
-  for (const el of leftEl.querySelectorAll("[data-sym]")) {
+  for (const el of leftEl.querySelectorAll(ELPLEXA ? "[data-sym], [data-plsym]" : "[data-sym]")) { // Plan: gleiche Suche über die Symbolkacheln (CJ 26.10.2026)
     const fam = el.closest(".symfam")?.querySelector(".name")?.textContent || "";
-    const hay = `${fam} ${el.textContent} ${el.title || ""} ${el.getAttribute("aria-label") || ""} ${el.dataset.sym.replace(/^D:\w+:/, "").replace(/_/g, " ")}`.toLowerCase(); // auch der interne Name (LS_1P)
+    const hay = `${fam} ${el.textContent} ${el.title || ""} ${el.getAttribute("aria-label") || ""} ${(ELPLEXA ? el.dataset.sym ?? el.dataset.plsym : el.dataset.sym).replace(/^D:\w+:/, "").replace(/_/g, " ")}`.toLowerCase(); // auch der interne Name (LS_1P)
     el.hidden = !!q && !words.every((x) => hay.includes(x));
   }
   for (const g of leftEl.querySelectorAll(".symfam")) g.hidden = !!q && !g.querySelector("[data-sym]:not([hidden])");
-  for (const sec of leftEl.querySelectorAll("section")) sec.hidden = !!q && !sec.querySelector("[data-sym]:not([hidden])");
+  for (const sec of leftEl.querySelectorAll("section")) sec.hidden = !!q && !sec.querySelector(ELPLEXA ? "[data-sym]:not([hidden]), [data-plsym]:not([hidden])" : "[data-sym]:not([hidden])");
   let none = leftEl.querySelector(".symnone");
-  if (q && !leftEl.querySelector("[data-sym]:not([hidden])")) { if (!none) { none = document.createElement("p"); none.className = "note symnone"; leftEl.append(none); } none.textContent = `Kein Symbol für „${$("#sym-find").value.trim()}“.`; }
+  if (q && !leftEl.querySelector(ELPLEXA ? "[data-sym]:not([hidden]), [data-plsym]:not([hidden])" : "[data-sym]:not([hidden])")) { if (!none) { none = document.createElement("p"); none.className = "note symnone"; leftEl.append(none); } none.textContent = `Kein Symbol für „${$("#sym-find").value.trim()}“.`; }
   else none?.remove();
 }
 $("#sym-find").addEventListener("input", applySymFind);
 $("#sym-find").addEventListener("keydown", (e) => {
   e.stopPropagation();
-  if (e.key === "Enter") { e.preventDefault(); const first = symQ() && leftEl.querySelector("[data-sym]:not([hidden])"); if (first) { first.click(); svg.focus({ preventScroll: true }); } }
+  if (e.key === "Enter") { e.preventDefault(); const first = symQ() && leftEl.querySelector(ELPLEXA ? "[data-sym]:not([hidden]), [data-plsym]:not([hidden])" : "[data-sym]:not([hidden])"); if (first) { first.click(); svg.focus({ preventScroll: true }); } }
   else if (e.key === "Escape") { e.preventDefault(); e.target.value = ""; applySymFind(); svg.focus({ preventScroll: true }); }
 });
 function renderLeft() {
   renderLeftBody();
   symFind.hidden = isDeck() || isPv() || isOff();
-  if (ELPLEXA && isPlan()) symFind.hidden = true;
   if (!symFind.hidden) applySymFind();
 }
 function renderLeftBody() {

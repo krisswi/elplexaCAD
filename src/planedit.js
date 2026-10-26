@@ -58,7 +58,13 @@ export function makePlan(c) {
   }
   const grid = () => (S.gridSize.plan ??= 10); // Vorgabe 10 mm (CJ 26.10.2026)
   const snapAt = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined });
-  const faces = () => P.faceGeom(visible().filter((i) => i.type === "wall"));
+  // Wandflächen für den Fang: nur neu rechnen, wenn sich Wände ändern (sonst je Mausbewegung alle Wände, quadratisch: träge bei grossen Plänen, CJ 26.10.2026)
+  let facesKey = "", facesVal = null;
+  const faces = () => {
+    const ws = visible().filter((i) => i.type === "wall"), key = ws.map((w) => `${w.id} ${w.a} ${w.b} ${w.d}`).join(";");
+    if (key !== facesKey || !facesVal) { facesKey = key; facesVal = P.faceGeom(ws); }
+    return facesVal;
+  };
   const AXES = [[1, 0], [0, 1]];
   const alignDirs = (u) => (u && Math.abs(u[0] * u[1]) > 1e-4 ? [...AXES, u, [-u[1], u[0]]] : AXES); // waagrecht, senkrecht und in und quer zur letzten Wand
   // Wand zeichnen: gezeichnet wird die Innenlinie. Fang an Ecken und Flächen der Wände, Ausrichtungsfang an Anfang, letztem Punkt und Ecken (Rechteck schliessen).

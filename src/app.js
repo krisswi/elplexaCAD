@@ -27,6 +27,8 @@ import { makePlan } from "./planedit.js";
 import { newPlanSheet } from "./plan.js";
 import { makeDispo } from "./dispoedit.js";
 import * as OF from "./offedit.js";
+import { readXlsx, parseOfferte, buildOfferte } from "./offimport.js";
+import { totals as O_totals, fmtChf as OF_fmt } from "./offerte.js";
 import { toast, openModal, confirmDialog, formDialog, chooseDialog, makeMenu } from "./dialogs.js";
 import { fieldHTML, actions, head, dupDel, textPanelHTML, turnHTML } from "./panel.js";
 import { startDialog } from "./start.js";
@@ -779,22 +781,55 @@ function ofKapBtn(id = ' id="sheet-cur"') {
 }
 const ofPlusBtn = () => `<button class="sheettab add" id="sheet-add" data-ofplus aria-haspopup="menu" title="Neu: Variante oder Nachtrag dieser Offerte (je ein eigenes Modul)" aria-label="Neu: Variante oder Nachtrag">${R.icons.plus}</button>`;
 // Variante (Kopie dieser Offerte) oder Nachtrag (leere Offerte mit gleicher Nummer) als neues Offerten-Modul mit eigenem Namen
-function ofNew(kind) {
+function ofNew(kind, imported = null, label = "") { // imported: fertige Offerte aus dem Excel-Import, label: Name des Moduls
   const src = S.model.of, k0 = S.model.kind, v = Math.max(...S.doc.sheets.filter((sh) => modBase(sh) === "offerte").map(varOf)) + 1;
   const names = E_modNames("offerte"), word = kind === "var" ? "Variante" : "Nachtrag";
-  const n = names.filter((x) => x.includes(`– ${word} `)).length + (kind === "var" ? 2 : 1), name = `Offerte – ${word} ${n}`;
+  const n = names.filter((x) => x.includes(`– ${word} `)).length + (kind === "var" ? 2 : 1), name = imported ? label : `Offerte – ${word} ${n}`;
   setTool("select");
   change(() => {
     const sh = setVar(newSheet("offerte"), v);
-    if (kind === "var") sh.of = structuredClone(src);
+    if (imported) sh.of = imported;
+    else if (kind === "var") sh.of = structuredClone(src);
     else Object.assign(sh.of, offerDefaults(), { nr: src.nr });
-    sh.of.ver = `${word} ${n}`;
+    if (!imported) sh.of.ver = `${word} ${n}`;
     sh.meta.BLATT = String(maxNo("offerte") + 1);
     S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
     (S.doc.mods ??= {})[modKey("offerte", v)] = { name };
   });
   afterSheetChange(k0);
-  toast(`Neues Modul «${name}»${kind === "var" ? ": Kopie der Offerte" : ""}.`);
+  if (!imported) toast(`Neues Modul «${name}»${kind === "var" ? ": Kopie der Offerte" : ""}.`);
+}
+// Excel-Offerte einlesen (Schritt 5, CJ 26.10.2026): Datei wählen, Deutung im Fenster zeigen, Gruppen abwählbar (werden Optionen, z. B. Variante V1).
+// Leere Offerte wird gefüllt, sonst entsteht ein neues Offerten-Modul mit dem Dateinamen. Ein Schritt im Rückgängig.
+async function ofImport() {
+  const file = await new Promise((res) => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; inp.onchange = () => res(inp.files[0] || null); inp.addEventListener("cancel", () => res(null)); inp.click(); });
+  if (!file) return;
+  const base = file.name.replace(/\.xlsx$/i, "");
+  let res;
+  try {
+    const inflate = async (d) => new Uint8Array(await new Response(new Blob([d]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+    res = parseOfferte(await readXlsx(new Uint8Array(await file.arrayBuffer()), inflate), { titel: base });
+  } catch (err) { toast("Die Excel-Datei liess sich nicht lesen: " + (err.message || err), "error"); return; }
+  if (!res.info.positionen) { toast("Keine Positionen gefunden. Erwartet wird eine Kopfzeile mit Text (Artikel, Titel, Beschreibung) und Menge.", "error"); return; }
+  const defs = offerDefaults(), probe = buildOfferte(res, defs), t = O_totals(probe), rows = [];
+  let gi = 0;
+  probe.kap.forEach((k) => k.grp.forEach((g) => { rows.push(`<label class="chk of-imp"><input type="checkbox" data-impg="${gi++}" checked> <span>${R.esc([k.bkp && `BKP ${k.bkp}`, g.titel || "ohne Titel"].filter(Boolean).join(" · "))}</span><span class="note">${g.pos.length} Pos. · ${OF_fmt(t.grp.get(g.id) || 0)}</span></label>`); }));
+  const i = res.info, body = `<p>${R.esc(file.name)}: Blätter ${R.esc(i.blaetter.join(", "))}, ${i.positionen} Positionen in ${gi} Gruppen${res.fak ? `, Materialfaktor ${res.fak}` : ""}. `
+    + `Summen- und Totalzeilen übernimmt der Import nicht, die Offerte rechnet selbst.${i.ohnePreis ? ` ${i.ohnePreis} Position${i.ohnePreis === 1 ? "" : "en"} ohne Preis.` : ""}</p>`
+    + `<p class="note">Abgewählte Gruppen kommen als Optionen (nicht in der Angebotssumme), z. B. eine Variante V1. Ziehen verschiebt danach Positionen und Gruppen.</p>`
+    + `<div class="print-list">${rows.join("")}</div><p class="of-imp-sum">Zwischensumme <b data-impsum>${OF_fmt(t.zwischensumme)}</b></p>`
+    + `<div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>Importieren</button></div>`;
+  const root = $("#modal-root"), off = () => new Set([...root.querySelectorAll("[data-impg]")].filter((b) => !b.checked).map((b) => Number(b.dataset.impg)));
+  const upd = () => { const el = root.querySelector("[data-impsum]"); if (el) el.textContent = OF_fmt(O_totals(buildOfferte(res, defs, off())).zwischensumme); };
+  const ask = openModal("Excel-Offerte importieren", body, (b, done) => { if (b.dataset.ok !== undefined) done(off()); else if (b.dataset.c !== undefined) done(null); }, null, "[data-ok]", "sw-modal");
+  root.addEventListener("change", upd);
+  const sel = await ask;
+  root.removeEventListener("change", upd);
+  if (!sel) return;
+  const of = buildOfferte(res, defs, sel);
+  if (!S.model.of.kap.length) { const keep = S.model.of; of.nr = keep.nr; of.datum = keep.datum || of.datum; change(() => { S.model.of = of; }); }
+  else ofNew("imp", of, `Offerte – ${base}`);
+  toast(`${i.positionen} Positionen aus «${file.name}» übernommen. BKP und Texte sind frei änderbar.`);
 }
 // Menü der Offerten-Leiste: geht nach oben auf wie die Blattliste (Kapitelliste, Variante oder Nachtrag)
 const ofMenuEl = document.createElement("div"); ofMenuEl.className = "menu"; ofMenuEl.id = "of-menu"; ofMenuEl.setAttribute("role", "menu"); ofMenuEl.hidden = true; $("#app").append(ofMenuEl);
@@ -865,6 +900,7 @@ function syncKind() {
 function afterSheetChange(prevKind, { reset = false, fit = false } = {}) {
   const kindChanged = (prevKind || "schema") !== (S.model.kind || "schema");
   if (kindChanged || reset) { S.tool = "select"; S.placeSym = null; S.sel.clear(); svg.className.baseVal = ""; }
+  OF.closeDetails(); // aufgeklappte Angaben gehören zur bisherigen Offerte (IDs gelten je Offerte)
   syncKind(); renderLeft();
   if (kindChanged || fit || isDispo() || isPv()) fitView(); else renderSheet();
   renderSheetBar(); renderItems(); renderOverlay(); renderRight(); updateHint();
@@ -2058,6 +2094,7 @@ function ofClick(e) {
   if (b.dataset.ofact === "profil") { firmProfil(); return; }
   if (b.dataset.ofact === "sollwerte") { kalkFirma(); return; }
   if (b.dataset.ofact === "dbsave") { ofDbSave(Number(b.dataset.p)); return; }
+  if (b.dataset.ofact === "import") { ofImport(); return; }
   if (b.dataset.ofact === "out") { offerteOut(S.model, b.dataset.kind, b.dataset.prices === "1"); return; } // PDF oder Excel (Schritt 5)
   if (b.dataset.ofact === "dbdel") { ofDbDel(b.dataset.db); return; }
   const r = OF.action(S.model.of, b); if (!r) return;
@@ -2068,6 +2105,23 @@ for (const el of [ofView, leftEl, rightEl]) { el.addEventListener("change", ofCh
 for (const el of [ofView, rightEl]) el.addEventListener("keydown", (e) => { const t = e.target; if (isOff() && e.key === "Enter" && t.matches?.("input[type=text][data-of]")) { e.preventDefault(); const k = t.dataset.of; t.blur(); ofRefocus(`[data-of="${k}"]`); } }); // Enter übernimmt
 leftEl.addEventListener("input", (e) => { const id = e.target.id; if (!isOff() || (id !== "of-bkpfind" && id !== "of-posfind")) return; (id === "of-bkpfind" ? OF.setBkpFind : OF.setPosFind)(e.target.value); renderLeftBody(); const f = $(`#${id}`); f.focus(); f.setSelectionRange(f.value.length, f.value.length); });
 ofView.addEventListener("focusin", (e) => { if (isOff()) OF.noteTarget(S.model.of, e.target.dataset?.of); }); // Treffer der Positionsdatenbank kommen in diese Gruppe
+// Ziehen (CJ 26.10.2026): Positionen und Gruppen verschieben, auch über Gruppen und Kapitel hinweg. Ein Schritt im Rückgängig.
+let ofDrag = null, ofMark = null;
+const ofMarkSet = (t) => { if (ofMark && (!t || ofMark.el !== t.el || ofMark.mark !== t.mark)) ofMark.el.classList.remove("drop-before", "drop-after", "drop-in"); ofMark = t; if (t) t.el.classList.add(`drop-${t.mark}`); };
+const ofDragEnd = () => { ofMarkSet(null); ofView.querySelector(".dragging")?.classList.remove("dragging"); ofDrag = null; };
+ofView.addEventListener("dragstart", (e) => {
+  const h = e.target.closest?.("[data-drag]"); if (!isOff() || !h) return;
+  ofDrag = h.dataset.drag; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", ofDrag);
+  h.closest(ofDrag[0] === "p" ? "tr" : ".of-grp").classList.add("dragging");
+});
+ofView.addEventListener("dragover", (e) => { if (!ofDrag) return; const t = OF.dropAt(ofDrag, e.target, e.clientY); ofMarkSet(t); if (t) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } });
+ofView.addEventListener("drop", (e) => {
+  if (!ofDrag) return; e.preventDefault();
+  const t = OF.dropAt(ofDrag, e.target, e.clientY); ofDragEnd();
+  const c = structuredClone(S.model.of);
+  if (t && t.fn(c)) change(() => { S.model.of = c; });
+});
+ofView.addEventListener("dragend", ofDragEnd);
 // Positionsdatenbank (positionen.js, Offerte Schritt 3): Position speichern oder Eintrag löschen. Ändert die Offerte nicht.
 async function ofDbSave(pid) {
   const p = O_findPos(pid); if (!p) return;

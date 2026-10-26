@@ -109,6 +109,27 @@ def flow(page, tag):
     page.click("#sheetbar [data-ofplus]"); page.wait_for_timeout(150); page.click('#of-menu [data-ofm="nach"]'); page.wait_for_timeout(300)
     d = D(); o = [x for x in d["sheets"] if x.get("kind") == "offerte"][-1]
     check(f"{tag}: Nachtrag = leere Offerte, gleiche Nummer", o.get("var") == 3 and not o["of"]["kap"] and o["of"]["ver"] == "Nachtrag 1" and d["mods"]["offerte:3"]["name"] == "Offerte – Nachtrag 1", o["of"])
+    # Excel-Import (leerer Nachtrag wird gefüllt) mit der eben exportierten Excel, dann Ziehen
+    with page.expect_file_chooser() as fc: page.click('[data-ofact="import"]')
+    fc.value.set_files(str(x)); page.wait_for_timeout(400)
+    dlg = page.inner_text(".modal")
+    check(f"{tag}: Import zeigt die Deutung", "Excel-Offerte importieren" in dlg and "Küche" in dlg and "Bad" in dlg and "Positionen" in dlg, dlg[:300])
+    page.click(".modal [data-ok]"); page.wait_for_timeout(300)
+    o = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]
+    gr = o["kap"][0]["grp"] if o["kap"] else []
+    check(f"{tag}: Import füllt die leere Offerte (Kapitel, Gruppen, Positionen, ohne EK)", [g["titel"] for g in gr] == ["Küche", "Bad"] and [len(g["pos"]) for g in gr] == [2, 1] and "ek" not in str(o), o.get("kap"))
+    page.set_viewport_size({"width": 1440, "height": 1400}); page.evaluate("document.querySelectorAll('.toast').forEach((t) => t.remove())")  # Ziel nicht unter Hinweisen und schwebender Blattleiste
+    if page.locator('[data-ofact="det"][aria-expanded="true"]').count(): page.click('[data-ofact="det"][aria-expanded="true"]')
+    page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(150)
+    page.drag_and_drop('.of-grp >> nth=0 >> .of-pos >> nth=0 >> .of-drag', '.of-grp >> nth=1 >> .of-pos >> nth=0', target_position={"x": 300, "y": 30}); page.wait_for_timeout(300)
+    gr = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]["kap"][0]["grp"]
+    check(f"{tag}: Position in eine andere Gruppe gezogen", [len(g["pos"]) for g in gr] == [1, 2] and gr[1]["pos"][1]["titel"] == "Steckdose T13", [[p2["titel"] for p2 in g["pos"]] for g in gr])
+    page.drag_and_drop('.of-grp >> nth=1 >> .of-gh .of-drag', '.of-grp >> nth=0', target_position={"x": 100, "y": 5}); page.wait_for_timeout(300)
+    gr = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]["kap"][0]["grp"]
+    check(f"{tag}: Gruppe nach oben gezogen", [g["titel"] for g in gr] == ["Bad", "Küche"], [g["titel"] for g in gr])
+    page.click("#btn-undo"); page.wait_for_timeout(200)
+    gr = [x2 for x2 in D()["sheets"] if x2.get("kind") == "offerte"][-1]["of"]["kap"][0]["grp"]
+    check(f"{tag}: Rückgängig nimmt das Ziehen zurück", [g["titel"] for g in gr] == ["Küche", "Bad"])
     page.screenshot(path=str(OUT / f"{tag}.png"))
 
 with sync_playwright() as p:

@@ -86,6 +86,25 @@ export const copyPosition = (of, grp, p, at = grp.pos.length) => { const n = { .
 export const findPos = (of, id) => { for (const k of of.kap) for (const g of k.grp) { const i = g.pos.findIndex((p) => p.id === id); if (i >= 0) return { k, g, p: g.pos[i], i }; } return null; };
 export const findGrp = (of, id) => { for (const k of of.kap) { const i = k.grp.findIndex((g) => g.id === id); if (i >= 0) return { k, g: k.grp[i], i }; } return null; };
 
+// Ziehen (CJ 26.10.2026): Position in eine Gruppe vor die Position before (null = ans Ende), auch über Gruppen und Kapitel hinweg.
+// Gruppe in ein Kapitel vor die Gruppe before. Die feste ID bleibt. Gibt false zurück, wenn nichts zu tun ist.
+export function movePos(of, pid, gid, before = null) {
+  const f = findPos(of, pid), to = findGrp(of, gid)?.g;
+  if (!f || !to || pid === before) return false;
+  f.g.pos.splice(f.i, 1);
+  const at = before === null ? -1 : to.pos.findIndex((p) => p.id === before);
+  to.pos.splice(at < 0 ? to.pos.length : at, 0, f.p);
+  return true;
+}
+export function moveGrp(of, gid, kid, before = null) {
+  const f = findGrp(of, gid), to = of.kap.find((k) => k.id === kid);
+  if (!f || !to || gid === before) return false;
+  f.k.grp.splice(f.i, 1);
+  const at = before === null ? -1 : to.grp.findIndex((g) => g.id === before);
+  to.grp.splice(at < 0 ? to.grp.length : at, 0, f.g);
+  return true;
+}
+
 // Einheitspreis einer Position (Franken, ungerundet wie im Excel). Von Hand gesetzt gilt der Preis. Sonst Material: EK × Faktor (der Position, sonst der Offerte),
 // Arbeit: Zeit × Zeitfaktor × Ansatz. Regie rechnet nur Zeit × Ansatz (Regiestunden sind tatsächliche Stunden, ohne Zeitfaktor).
 export function unitRaw(p, of) {

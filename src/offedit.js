@@ -11,6 +11,7 @@ import { icZeit, loadIcZeiten } from "./sollwerte.js";
 let mode = { ro: false, prices: true };
 export const setMode = (m) => { mode = { ro: false, prices: true, ...m }; };
 const open = new Set(); // Positionen mit aufgeklappten Angaben (nur Anzeige, nicht in der Datei)
+export const closeDetails = () => open.clear();
 let bkpFind = "", posFind = "", lastGrp = 0; // lastGrp: Gruppe, in die ein Treffer der Positionsdatenbank kommt (zuletzt bearbeitet)
 const val = (v) => (v === undefined || v === null ? "" : esc(String(v)));
 const opts = (set, cur, empty) => (empty !== undefined ? `<option value="">${esc(empty)}</option>` : "") + Object.entries(set).map(([k, l]) => `<option value="${k}"${k === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
@@ -19,16 +20,19 @@ const fld = (label, key, v, o = {}) => `<div class="field"><label for="of-${key}
 const sel = (label, key, set, cur, empty) => `<div class="field"><label for="of-${key}">${esc(label)}</label><select id="of-${key}" data-of="${key}">${opts(set, cur, empty)}</select></div>`;
 const btn = (act, attrs, label, txt, cls = "btn icon small") => mode.ro ? "" : `<button type="button" class="${cls}" data-ofact="${act}" ${attrs} title="${esc(label)}" aria-label="${esc(label)}">${txt}</button>`;
 
+// Ziehgriff (CJ 26.10.2026): Positionsnummer bzw. ⠿ vor dem Gruppentitel. Geteilte Ansicht: nur der Text.
+const drag = (key, txt, title) => (mode.ro ? (key[0] === "p" ? txt : "") : `<span class="of-drag" draggable="true" data-drag="${key}" title="${esc(title)}">${txt}</span>`);
+
 // ---------- Mitte: Gliederung und Positionen ----------
 export function viewHTML(of) {
   const t = O.totals(of);
   let h = `<div class="of-wrap"><div class="of-title"><h1>Offerte${of.nr ? ` ${esc(of.nr)}` : ""}</h1><p>${[of.ver && `Version ${esc(of.ver)}`, of.datum && esc(of.datum), of.art && esc(O.ARTEN[of.art]), of.bau && esc(O.BAUARTEN[of.bau])].filter(Boolean).join(" · ") || "Kopf und Rechenwerte rechts"}</p></div>`;
   if (!of.kap.length) h += `<p class="of-empty">Noch kein Kapitel. Links ein BKP-Kapitel wählen oder ein eigenes anlegen.</p>`;
   of.kap.forEach((k, ki) => {
-    h += `<section class="of-kap" aria-label="Kapitel ${esc(k.bkp)} ${esc(k.titel)}"><div class="of-kh">${inp(`k${k.id}.bkp`, k.bkp, { cls: "of-bkp", ph: "BKP", lab: "BKP-Nummer" })}${inp(`k${k.id}.titel`, k.titel, { cls: "of-kt", ph: "Titel des Kapitels", lab: "Titel des Kapitels" })}`
+    h += `<section class="of-kap" data-kid="${k.id}" aria-label="Kapitel ${esc(k.bkp)} ${esc(k.titel)}"><div class="of-kh">${inp(`k${k.id}.bkp`, k.bkp, { cls: "of-bkp", ph: "BKP", lab: "BKP-Nummer" })}${inp(`k${k.id}.titel`, k.titel, { cls: "of-kt", ph: "Titel des Kapitels", lab: "Titel des Kapitels" })}`
       + `<span class="of-acts">${btn("kup", `data-k="${k.id}"`, "Kapitel nach oben", "↑")}${btn("kdown", `data-k="${k.id}"`, "Kapitel nach unten", "↓")}${btn("addgrp", `data-k="${k.id}"`, "Gruppe hinzufügen (z. B. Raum, Wohnung)", "+ Gruppe", "btn outline small")}${btn("delkap", `data-k="${k.id}"`, "Kapitel löschen", "×", "btn icon small danger")}</span></div>`;
     k.grp.forEach((g, gi) => {
-      h += `<div class="of-grp"><div class="of-gh">${inp(`g${g.id}.titel`, g.titel, { cls: "of-gt", ph: k.grp.length > 1 ? "Gruppe (z. B. Raum, Wohnung)" : "Gruppe ohne Titel (z. B. Raum, Wohnung)", lab: "Titel der Gruppe" })}`
+      h += `<div class="of-grp" data-gid="${g.id}"><div class="of-gh">${drag(`g${g.id}`, "⠿", "Gruppe ziehen: an eine andere Stelle oder in ein anderes Kapitel")}${inp(`g${g.id}.titel`, g.titel, { cls: "of-gt", ph: k.grp.length > 1 ? "Gruppe (z. B. Raum, Wohnung)" : "Gruppe ohne Titel (z. B. Raum, Wohnung)", lab: "Titel der Gruppe" })}`
         + (mode.ro ? "" : `<label class="of-rab"><span>Rabatt</span><select data-of="g${g.id}.rg" aria-label="Rabattgruppe"><option value="">Gesamtrabatt</option>${of.rg.map((r) => `<option value="${r.id}"${g.rg === r.id ? " selected" : ""}>${esc([r.kz, r.name].filter(Boolean).join(" – ") || "Rabattgruppe")}</option>`).join("")}</select></label>`)
         + `<span class="of-acts">${btn("gup", `data-g="${g.id}"`, "Gruppe nach oben", "↑")}${btn("gdown", `data-g="${g.id}"`, "Gruppe nach unten", "↓")}${btn("delgrp", `data-g="${g.id}"`, "Gruppe löschen", "×", "btn icon small danger")}</span></div>`;
       h += `<table class="of-tab"><thead><tr><th class="c-pos">Pos</th><th class="c-txt">Text</th><th class="c-ic">IC</th><th class="c-n">Menge</th><th class="c-eh">EH</th>${mode.prices ? `<th class="c-n">Preis</th><th class="c-n">Betrag</th>` : ""}<th class="c-opt" title="Optionale Position">Opt.</th><th class="c-act"><span class="sr">Aktionen</span></th></tr></thead><tbody>`;
@@ -44,7 +48,7 @@ export function viewHTML(of) {
 }
 function posRow(of, t, p, no) {
   const id = p.id, k = (f) => `p${id}.${f}`, ep = O.unitPrice(p, of), det = open.has(id), off = p.opt && !p.an;
-  let h = `<tr class="of-pos${off ? " off" : ""}" data-pid="${id}"><td class="c-pos">${esc(no)}</td>`
+  let h = `<tr class="of-pos${off ? " off" : ""}" data-pid="${id}"><td class="c-pos">${drag(`p${id}`, esc(no), "Position ziehen: an eine andere Stelle, auch in eine andere Gruppe oder ein anderes Kapitel")}</td>`
     + `<td class="c-txt">${inp(k("titel"), p.titel, { cls: "of-pt", ph: "Text", lab: "Text der Position" })}${mode.ro ? (p.text ? `<span class="of-ro of-rtext">${val(p.text)}</span>` : "") : `<textarea data-of="${k("text")}" rows="1" placeholder="Beschreibung" aria-label="Beschreibung">${val(p.text)}</textarea>`}</td>`
     + `<td class="c-ic">${inp(k("ic"), p.ic, { lab: "IC-Code" })}</td><td class="c-n">${inp(k("menge"), p.menge, { num: true, lab: "Menge" })}</td><td class="c-eh">${inp(k("eh"), p.eh, { ph: "Stk", lab: "Einheit" })}</td>`
     + (mode.prices ? `<td class="c-n">${mode.ro ? `<span class="of-ro">${O.fmtChf(ep)}</span>` : inp(k("preis"), p.preis, { num: true, ph: ep ? O.fmtChf(ep) : "", lab: "Einheitspreis (leer = aus EK und Zeit)" })}</td>`
@@ -69,6 +73,32 @@ function summaryHTML(of, t) {
   for (const r of rows) h += `<tr${cls[r.art] ? ` class="${cls[r.art]}"` : ""}><td>${esc(r.text)}</td><td class="c-n">${O.fmtSigned(r.betrag)}</td></tr>`;
   h += `</tbody></table>`;
   return h + notes.map((n) => `<p class="of-note">${esc(n)}</p>`).join("") + `</section>`;
+}
+
+// Ablageort beim Ziehen. drag = "p12" (Position) oder "g5" (Gruppe), el = Element unter der Maus, y = Mausposition.
+// Gibt { el, mark, fn } zurück (mark: before, after, in; fn verschiebt in der Offerte) oder null.
+export function dropAt(drag, el, y) {
+  if (!el?.closest) return null;
+  const id = Number(drag.slice(1)), half = (e) => { const r = e.getBoundingClientRect(); return y > r.top + r.height / 2; };
+  const grpEl = el.closest(".of-grp"), kapEl = el.closest(".of-kap");
+  if (drag[0] === "p") {
+    const row = el.closest("tr.of-pos");
+    if (row && grpEl) {
+      const pid = Number(row.dataset.pid), gid = Number(grpEl.dataset.gid), after = half(row);
+      return { el: row, mark: after ? "after" : "before", fn: (of) => { const g = O.findGrp(of, gid)?.g; if (!g) return false; const i = g.pos.findIndex((p) => p.id === pid);
+        return O.movePos(of, id, gid, after ? g.pos[i + 1]?.id ?? null : pid); } };
+    }
+    if (grpEl) { const gid = Number(grpEl.dataset.gid); return { el: grpEl, mark: "in", fn: (of) => O.movePos(of, id, gid) }; }
+    if (kapEl) { const k0 = Number(kapEl.dataset.kid); return { el: kapEl, mark: "in", fn: (of) => { const g = of.kap.find((k) => k.id === k0)?.grp.at(-1); return !!g && O.movePos(of, id, g.id); } }; }
+    return null;
+  }
+  if (grpEl && kapEl) {
+    const gid = Number(grpEl.dataset.gid), kid = Number(kapEl.dataset.kid), after = half(grpEl);
+    return { el: grpEl, mark: after ? "after" : "before", fn: (of) => { const k = of.kap.find((x) => x.id === kid); if (!k) return false; const i = k.grp.findIndex((g) => g.id === gid);
+      return O.moveGrp(of, id, kid, after ? k.grp[i + 1]?.id ?? null : gid); } };
+  }
+  if (kapEl) { const kid = Number(kapEl.dataset.kid); return { el: kapEl, mark: "in", fn: (of) => O.moveGrp(of, id, kid) }; }
+  return null;
 }
 
 // ---------- Links: BKP-Katalog ----------
@@ -130,7 +160,8 @@ export function panelHTML(of, profil = null) {
 
 // Ausgabe (Schritt 5): PDF und Excel, je mit oder ohne Preise. EK, Faktor, Zeit, Zeitfaktor und Ansatz kommen nie hinein.
 const outHTML = () => `<section class="section"><h2 class="section-title">Ausgabe</h2><p class="note">Ohne EK, Faktor, Zeit und Ansatz.</p><div class="of-two">`
-  + [["pdf", 1, "PDF mit Preisen"], ["pdf", 0, "PDF ohne Preise"], ["xlsx", 1, "Excel mit Preisen"], ["xlsx", 0, "Excel ohne Preise"]].map(([k, p, l]) => `<button type="button" class="btn outline small" data-ofact="out" data-kind="${k}" data-prices="${p}">${l}</button>`).join("") + `</div></section>`;
+  + [["pdf", 1, "PDF mit Preisen"], ["pdf", 0, "PDF ohne Preise"], ["xlsx", 1, "Excel mit Preisen"], ["xlsx", 0, "Excel ohne Preise"]].map(([k, p, l]) => `<button type="button" class="btn outline small" data-ofact="out" data-kind="${k}" data-prices="${p}">${l}</button>`).join("")
+  + `</div><div class="row"><button type="button" class="btn outline small" data-ofact="import" title="Bestehende Excel-Offerte einlesen: leere Offerte wird gefüllt, sonst entsteht ein neues Offerten-Modul">Excel-Offerte importieren …</button></div></section>`;
 
 // Absender aus dem Firmenprofil (Schritt 2): nur Anzeige, geändert wird im Fenster «Firmenprofil» (gilt für alle Offerten und Module)
 function senderHTML(p) {

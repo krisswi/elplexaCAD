@@ -1,6 +1,6 @@
 {
   "name": "schemacad",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "elplexaCAD und SchemaCAD v3: Schema, Disposition und PV-Strangplan als Browser-App",
   "scripts": {
     "build": "node build.mjs && node build.mjs elplexa",

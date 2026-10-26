@@ -112,6 +112,20 @@ export const userStore = {
   },
   save: (name, data, at) => restQuiet("user_settings?on_conflict=owner,name", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ name, data, updated_at: at }) }),
 };
+// Positionsdatenbank (Offerte Schritt 3, Tabelle user_positions): Adapter für positionen.js. Liest in Stücken zu 1000 Zeilen (Grenze von Supabase).
+export const posStore = {
+  user: () => sess?.email || null,
+  async list() {
+    const out = [];
+    for (let n = 0; ; n += 1000) {
+      const r = await restQuiet(`user_positions?select=id,data,updated_at&order=id&limit=1000&offset=${n}`) || [];
+      for (const x of r) out.push({ id: x.id, data: x.data, at: x.updated_at });
+      if (r.length < 1000) return out;
+    }
+  },
+  save: (id, data, at) => restQuiet("user_positions?on_conflict=owner,id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ id, data, updated_at: at }) }),
+  remove: (id) => restQuiet(`user_positions?id=eq.${encodeURIComponent(id)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }),
+};
 
 export const PROJ_MAX = 5_000_000; // Zeichen Projekt-JSON ohne PDF, gleiche Grenze in der Datenbank
 export const PDF_MAX = 52428800; // Bytes je PDF (50 MiB), Grenze des Buckets (Gratis-Plan)

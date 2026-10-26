@@ -44,6 +44,22 @@ def flow(page, tag):
     page.fill('.modal [data-pf="FIRMA"]', "Muster Elektro"); page.fill('.modal [data-pf="TEL"]', "031 000 00 00"); page.click(".modal [data-ok]"); page.wait_for_timeout(200)
     check(f"{tag}: Absender zeigt das Profil", "Muster Elektro" in page.inner_text(".of-sender") and "031 000 00 00" in page.inner_text(".of-sender"))
     check(f"{tag}: Profil im Browser gespeichert", page.evaluate("JSON.parse(localStorage.getItem('schemacad.user.profil.v1')).data.FIRMA") == "Muster Elektro")
+    # Schritt 3: Positionsdatenbank beim Benutzer (erfundene Werte)
+    check(f"{tag}: Datenbank leer", "Noch keine Position" in page.inner_text("#left"))
+    page.click('.of-pos >> nth=0 >> [data-ofact="det"]'); page.wait_for_timeout(100)
+    page.fill('[data-of$=".her"]', "Muster AG"); page.keyboard.press("Tab")
+    page.fill('[data-of$=".enr"]', "111 222 333"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
+    page.click('[data-ofact="dbsave"]'); page.wait_for_timeout(200)
+    check(f"{tag}: Position in der Datenbank gespeichert", "1 Position in deiner Datenbank" in page.inner_text("#left"), page.inner_text("#left")[:200])
+    page.fill("#of-posfind", "111222"); page.wait_for_timeout(100)
+    check(f"{tag}: Suche nach E-Nr. ohne Leerzeichen", page.locator(".of-dbadd").count() == 1 and "Steckdose T13" in txt(".of-dbadd"))
+    page.click('[data-ofact="addgrp"]'); page.wait_for_timeout(100); page.keyboard.type("Bad"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
+    page.click(".of-dbadd"); page.wait_for_timeout(150)
+    g = off(D())["of"]["kap"][0]["grp"]
+    cp = g[1]["pos"][0] if len(g) > 1 and g[1]["pos"] else {}
+    check(f"{tag}: Treffer in die zuletzt bearbeitete Gruppe kopiert, ohne Menge", cp.get("titel") == "Steckdose T13" and cp.get("enr") == "111 222 333" and "menge" not in cp and cp.get("id") != pos.get("id"), g)
+    page.keyboard.type("4"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
+    check(f"{tag}: Kopie frei änderbar, Fokus auf Menge", off(D())["of"]["kap"][0]["grp"][1]["pos"][0].get("menge") == 4)
     page.screenshot(path=str(OUT / f"{tag}.png"))
 
 with sync_playwright() as p:

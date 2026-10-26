@@ -91,7 +91,7 @@ export function parseModel(text) {
     if (!m.kind) { if (isNum(rs.sid)) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); } if (rs.main) m.main = cleanMain(rs.main); } // Hauptlinien (hauptlinien.js): Ziel über sid
     Object.assign(m.meta, rs.meta || {});
     doc.sheets.push(m);
-    if (typeof ELPLEXA !== "undefined" && ELPLEXA && m.kind === "plan") { const bg = cleanBg(rs.bg, assets); if (bg) m.bg = bg; maxId = cleanPlanSheet(rs, m, maxId); continue; } // PDF-Plan (wie Stringplan), Wände, Öffnungen, Masse (plan.js)
+    if (typeof ELPLEXA !== "undefined" && ELPLEXA && m.kind === "plan") { const bg = cleanBg(rs.bg, assets); if (bg) m.bg = bg; maxId = cleanPlanSheet(rs, m, maxId, o.version); continue; } // PDF-Plan (wie Stringplan), Wände, Öffnungen, Masse (plan.js)
     maxId = parseItems(rs.items || [], m, maxId);
     if (m.kind === "dispo" && m.items.some((i) => !isDispoItem(i))) throw new Error("Eine Disposition darf nur Bauteile und Texte enthalten.");
     if (m.kind !== "dispo" && m.items.some((i) => PLAN_TYPES.has(i.type))) throw new Error("Bauteile der Disposition gehören auf ein Dispositionsblatt.");

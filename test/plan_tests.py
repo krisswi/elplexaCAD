@@ -170,7 +170,7 @@ with sync_playwright() as p:
     check("Schalter an der unteren Wand (y 75, r 0)", near(item(SW)["at"], [item(SW)["at"][0], 75]) and item(SW)["r"] == 0, item(SW))
     blur(); key("v"); c0 = page.evaluate(f"(() => {{ const i = window.__schemacad.model.items.find((x) => x.id === {STD}); return i.at; }})()")
     click(c0[0] - 100, c0[1])
-    check("Steckdose wählbar, rechts Beschriftung und Höhe", sel() == [STD] and "Beschriftung" in page.inner_text("#right") and page.input_value('[data-plf="sh"]') == "30" and "Standard 30" in page.inner_text("#right"), sel())
+    check("Steckdose wählbar, rechts Beschriftung und Höhe", sel() == [STD] and "Beschriftung" in page.inner_text("#right") and page.input_value('[data-plf="sh"]') == "" and "Standard 30" in page.get_attribute('[data-plf="sh"]', "placeholder"), sel())
     field('[data-plf="txt"]', "Kühlschrank"); field('[data-plf="sh"]', "40")
     check("Beschriftung und Höhe gesetzt, im Plan sichtbar", item(STD).get("txt") == "Kühlschrank" and item(STD).get("h") == 40 and "Kühlschrank" in page.inner_html("#items") and ">40<" in page.inner_html("#items"), item(STD))
     field('[data-plf="sh"]', "30")

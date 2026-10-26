@@ -311,7 +311,7 @@ export function makePlan(c) {
   }
   // Symbol (plansym.js): Teile in Papier-mm, in der Welt × Massstab k, gedreht um r. Texte drehen mit und bleiben lesbar (P.symTexts).
   function symSVG(it, k, stroke = INK) {
-    const def = SYM_BY_KEY.get(it.key);
+    const def = P.symDef(it, k);
     let g = "";
     for (const q of it.ap && def.ap ? [...def.parts, def.ap] : def.parts) {
       if (q[0] === "l") g += `<line x1="${q[1]}" y1="${q[2]}" x2="${q[3]}" y2="${q[4]}"/>`;
@@ -769,8 +769,8 @@ export function makePlan(c) {
     }
     if (it?.type === "sym") {
       const def = SYM_BY_KEY.get(it.key), tin = (k, label, v) => `<div class="field"><label>${label}</label><input type="text" data-plf="${k}" value="${R.esc(v ?? "")}" autocomplete="off" spellcheck="false"></div>`;
-      return head(def.label, def.group) + (def.ref ? tin("fu", "Sicherung (z. B. F3)", it.fu) + tin("nr", "Nummer (Stromkreis)", it.nr) : "") + tin("txt", "Beschriftung", it.txt)
-        + inp("sh", def.h !== undefined ? `Höhe in cm (Standard ${def.h}, steht nur abweichend im Plan)` : "Höhe in cm (leer = ohne)", P.symH(it) === undefined ? "" : fmtH(P.symH(it))) + inp("rot", "Drehung in Grad", String(it.r))
+      return head(def.label, def.group) + (def.ref ? tin("fu", "Sicherung (z. B. F3)", it.fu) + tin("nr", "Nummer (Stromkreis)", it.nr) : "") + (def.num !== undefined ? tin("num", "Anzahl (Zahl am Strich)", it.num ?? def.num) : "") + (P.SIZED[it.key] ? inp("vw", "Breite in mm (entlang der Wand)", P.fmtLen(P.symSize(it).w)) + inp("vt", "Tiefe in mm", P.fmtLen(P.symSize(it).t)) : "") + tin("txt", "Beschriftung", it.txt)
+        + `<div class="field"><label>Höhe in cm${def.h !== undefined ? " (nur wenn abweichend)" : ""}</label><input type="text" inputmode="decimal" data-plf="sh" value="${it.h === undefined ? "" : fmtH(it.h)}" placeholder="${def.h !== undefined ? `leer = Standard ${def.h} cm` : "leer = ohne"}" autocomplete="off"></div>` + inp("rot", "Drehung in Grad", String(it.r))
         + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz</label>` : "") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
         + note(`${def.wall ? "Wandsymbol: Ziehen rastet an der nächsten Wandfläche ein (Alt frei). " : ""}R dreht um 90° (Shift+R zurück). Pfeiltasten schieben. Die Beschriftung lässt sich für sich ziehen, Doppelklick setzt sie zurück.`)
         + (it.lo ? `<div class="row"><button class="btn outline small" data-plact="lores">Beschriftung zurücksetzen</button></div>` : "") + copyRow() + del1();
@@ -842,6 +842,8 @@ export function makePlan(c) {
       change(() => { if (x === undefined) delete it[k]; else it[k] = x; if (k === "w" || k === "t") P.clampOpening(S0.items.find((i) => i.id === it.wall), it); }); return true;
     }
     if (it.type === "sym") {
+      if (k === "vw" || k === "vt") { const f = k === "vw" ? "w" : "t", n2 = P.parseLen(v); if (!(n2 >= 10 && n2 <= 20000)) return bad(), true; change(() => { if (Math.round(n2) === P.SIZED[it.key][f]) delete it[f]; else it[f] = Math.round(n2); }); return true; }
+      if (k === "num") { change(() => { const t0 = v.trim().slice(0, 6); if (t0 && t0 !== SYM_BY_KEY.get(it.key).num) it.num = t0; else delete it.num; }); return true; }
       if (k === "txt" || k === "fu" || k === "nr") { change(() => { const t0 = v.trim().slice(0, k === "txt" ? 60 : 12); if (t0) it[k] = t0; else delete it[k]; }); return true; }
       if (k === "ap") { change(() => { if (t.checked) it.ap = true; else delete it.ap; }); return true; }
       const n = Number(v.trim().replace(",", ".").replace("−", "-"));

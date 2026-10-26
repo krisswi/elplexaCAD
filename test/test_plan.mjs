@@ -236,7 +236,7 @@ assert.ok(S2.PLAN_SYMS.length >= 30 && S2.SYM_BY_KEY.size === S2.PLAN_SYMS.lengt
 assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.length), "jedes Symbol mit Name, Kategorie, Gruppe, Zeichnung");
 {
   const syms = [
-    { id: 30, type: "sym", layer: "l1", key: "STD", at: [3925, 400], r: 90, h: 110, txt: "Kühlschrank" },
+    { id: 30, type: "sym", layer: "l1", key: "STD", at: [3925, 400], r: 90, h: 115, txt: "Kühlschrank" },
     { id: 31, type: "sym", layer: "bg", key: "SCH0", at: [300, 75], r: 0, h: 120, ap: true },
     { id: 32, type: "sym", layer: "bg", key: "LEUCHTE", at: [2000, 1500], r: 45 },
     { id: 33, type: "sym", layer: "bg", key: "VERWEIS", at: [1000, 1000], r: 180, fu: "F3", nr: "2" },
@@ -293,12 +293,24 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(lb(180).map((x) => x.anchor), ["end", "end"], "obere Wand: gekippt, rechtsbündig vom Symbol weg");
   assert.ok(lb(180)[0].at[1] > lb(180)[1].at[1] && lb(180)[0].at[0] < 0, "gekippt: Beschriftung bleibt oben, links neben dem Symbol");
   assert.ok(lb(90)[0].at[1] > 0 && lb(90)[0].at[0] < lb(90)[1].at[0], "rechte Wand: Text senkrecht über dem Symbol, Beschriftung links der Höhe");
-  const usb = tx({ key: "STD_USB", r: 0, txt: "Bett" }), w0 = usb[0].at[0] + usb[0].s.length * usb[0].size * 0.3;
-  assert.ok(usb[1].at[0] > w0, "Beschriftung beginnt hinter «2×USB»");
+  const usb = tx({ key: "STD_USB", r: 0, txt: "Bett" }), z = usb.find((x) => x.s === "2"), lab = usb.find((x) => x.s === "Bett");
+  assert.ok(lab.at[0] > z.at[0] + z.size * 0.3, "Beschriftung beginnt hinter der Zahl");
+  // Mehrfachsteckdose: Zahl am Symbol änderbar (num), Vorgabe wird nicht gespeichert
+  assert.deepStrictEqual([tx({ key: "STD3", r: 0 })[0].s, tx({ key: "STD3", r: 0, num: "4" })[0].s, tx({ key: "STD2", r: 0 })[0].s], ["3", "4", "2"], "Zahl 3, geändert 4, 2-fach");
+  assert.deepStrictEqual([c({ key: "STD3", num: "3" }).num, c({ key: "STD3", num: " 5 " }).num, c({ key: "STD", num: "5" }).num], [undefined, "5", undefined], "num bereinigt");
+  // Verteilung in echten mm (CJ 26.10.2026): Vorgabe 600 × 200, Teile in Papier-mm = Welt / Massstab
+  assert.deepStrictEqual([c({ key: "VERTEILER", w: 800, t: 200 }).w, c({ key: "VERTEILER", w: 800, t: 200 }).t, c({ key: "STD", w: 800 }).w], [800, undefined, undefined], "w/t bereinigt");
+  const vd = P.symDef({ key: "VERTEILER", w: 1000, t: 250 }, 50);
+  assert.deepStrictEqual([vd.parts[0], vd.c], [["l", -10, 0, 10, 0], [0, 2.5]], "Verteilung 1000 × 250 mm bei 1:50 = 20 × 5 Papier-mm");
+  assert.strictEqual(P.symDef({ key: "VERTEILER" }, 20).parts[1][4], 10, "Vorgabe 200 mm tief bei 1:20 = 10 Papier-mm");
+  // alte Pläne (bis Version 23): vorausgefüllte Höhe 110 an Steckdosen und 200 an Wandleuchten fällt weg
+  const old = M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 110 }, { id: 51, type: "sym", layer: "bg", key: "LED_W", at: [0, 0], r: 0, h: 200 }, { id: 52, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 120 }])], 23)).sheets[0].items;
+  assert.deepStrictEqual(old.map((i) => i.h), [undefined, undefined, 120], "alte Vorgabehöhen weg, eigene bleibt");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "STD2", at: [0, 0], r: 0 }])], 24)))).version, 24, "2-fach-Steckdose: Version 24");
   assert.strictEqual(tx({ key: "VERWEIS", r: 180, fu: "F3", nr: "2" })[0].a, 0, "Verweis F3 / 2 nie auf dem Kopf");
   // Schalterhebel ragen nicht in die Wand (y ≥ 0), Aufputz-Halbkreis passt zum Kreis
   for (const d of S2.PLAN_SYMS.filter((x) => x.wall)) assert.ok(d.parts.filter((q) => q[0] === "l").every((q) => q[2] >= -1e-9 && q[4] >= -1e-9), `${d.key}: nichts unter der Wandfläche`);
-  for (const k of ["SCH3", "SCH6"]) { const d = S2.SYM_BY_KEY.get(k), c = d.parts.find((q) => q[0] === "c"); assert.ok(d.ap[1] === `M0,${c[2] + 1}A1 1 0 0 1 0,${c[2] - 1}Z` && d.c[1] === c[2], `${k}: Aufputz und Mitte am Kreis`); }
+  for (const k of ["SCH3", "SCH6"]) { const d = S2.SYM_BY_KEY.get(k), c = d.parts.find((q) => q[0] === "c"); assert.ok(d.ap[1] === `M0,${c[2] + 1}A1 1 0 0 0 0,${c[2] - 1}Z` && d.c[1] === c[2], `${k}: Aufputz (rechte Hälfte) und Mitte am Kreis`); }
 }
 
 // ---------- Schritt 3: Leitungen, Farben, Mehrfachwahl (CJ 24.10.2026) ----------

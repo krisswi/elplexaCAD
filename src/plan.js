@@ -141,6 +141,8 @@ export function cleanPlanObj(it, id) {
     if (def.ap && it.ap === true) o.ap = true;
     if (def.ref) { if (str(it.fu, 12)) o.fu = str(it.fu, 12); if (str(it.nr, 12)) o.nr = str(it.nr, 12); }
     const lo = cleanLo(it.lo); if (lo) o.lo = lo;
+    if (SIZED[it.key]) for (const f of ["w", "t"]) if (isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && it[f] !== SIZED[it.key][f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
+    if (def.num !== undefined && str(it.num, 6) && str(it.num, 6) !== def.num) o.num = str(it.num, 6); // Zahl der Mehrfachsteckdose (CJ 26.10.2026)
     setCol(o, it.col);
     return o;
   }
@@ -158,9 +160,13 @@ export function cleanPlanObj(it, id) {
 // Blattfelder und Objekte aus der Datei. Bereinigung: Objekte auf unbekannter Ebene → aktive Ebene, Öffnung ohne Wand fällt weg,
 // Öffnung in die Wand geklemmt, Mass mit fehlender Wand verliert den Bezug. Gibt die höchste id zurück.
 // Dateiversion 24 (Plan Schritt 5, CJ 26.10.2026): ältere Stände kennen diese Felder nicht
-export const planV24 = (sh) => sh.items.some((i) => i.lo || i.mat === "doppel");
+export const V24_SYMS = new Set(["STD2"]); // Symbole, die ältere Stände nicht kennen
+export const planV24 = (sh) => sh.items.some((i) => i.lo || i.num !== undefined || (i.type === "sym" && (i.w !== undefined || i.t !== undefined)) || i.mat === "doppel" || V24_SYMS.has(i.key) || (i.ap && !SYM_BY_KEY.get(i.key)?.group?.startsWith("Schalter")));
+const VERSION_NOW = 24;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
-export function cleanPlanSheet(rs, m, maxId) {
+// ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
+const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
+export function cleanPlanSheet(rs, m, maxId, ver = VERSION_NOW) {
   m.paper = cleanPlanPaper(rs.paper);
   m.layers = cleanPlanLayers(rs.layers);
   m.alay = layerById(m, rs.alay) ? rs.alay : m.layers[0].id;
@@ -175,6 +181,7 @@ export function cleanPlanSheet(rs, m, maxId) {
     const o = it && PLAN_ITEMS.has(it.type) ? cleanPlanObj(it, id) : null;
     if (!o) throw new Error("Ein Plan enthält ein unbekanntes oder defektes Objekt (id " + id + ").");
     if (o.type !== "opening" && !layerById(m, o.layer)) o.layer = m.alay;
+    if (ver < 24 && o.type === "sym" && o.h !== undefined && o.h === OLD_H[o.key]) delete o.h;
     m.items.push(o);
   }
   const walls = new Map(m.items.filter((i) => i.type === "wall").map((w) => [w.id, w]));
@@ -468,7 +475,7 @@ export function dimLine(d) { // Masslinie: a, b um off nach links (von a nach b)
 }
 export function hitPlan(sh, items, p, tol) {
   const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w])), k = paperOf(sh).den;
-  for (const it of [...items].reverse()) if (it.type === "sym") { const def = SYM_BY_KEY.get(it.key); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
+  for (const it of [...items].reverse()) if (it.type === "sym") { const def = symDef(it, k); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
   for (const it of [...items].reverse()) if (it.type === "line") { const q = linePts(it); if (q.some((x, i) => i && distSeg(p, q[i - 1], x) <= tol)) return it; }
   for (const o of items) {
     if (o.type !== "opening") continue;
@@ -511,7 +518,7 @@ export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, 
 }
 // Symbol: Mitte in der Welt (Papier-mm × Massstab k, gedreht um r)
 export function symCenter(it, k) {
-  const c = SYM_BY_KEY.get(it.key).c, a = (it.r * Math.PI) / 180;
+  const c = symDef(it, k).c, a = (it.r * Math.PI) / 180;
   return [it.at[0] + k * (c[0] * Math.cos(a) - c[1] * Math.sin(a)), it.at[1] + k * (c[0] * Math.sin(a) + c[1] * Math.cos(a))];
 }
 // Text lesbar halten: Winkel 0–359 → (-90, 90], flip = um 180° gekippt (sonst stünde er auf dem Kopf)
@@ -522,15 +529,26 @@ export function cleanLo(v) {
   const q = v.map((n) => Math.round(Math.max(-60, Math.min(60, n)) * 10) / 10 + 0);
   return q[0] || q[1] ? q : null;
 }
+// Verteilung (CJ 26.10.2026): Grösse in echten mm wie Wände und Türen, Breite w entlang der Wand, Tiefe t in den Raum; das Zeichen wächst mit
+export const SIZED = { VERTEILER: { w: 600, t: 200 } }; // Vorgabe in mm (Annahme)
+export const symSize = (it) => { const z = SIZED[it.key]; return z ? { w: it.w ?? z.w, t: it.t ?? z.t } : null; };
+// Symboldefinition für ein Objekt: bei Verteilungen Teile, Mitte und Radius aus w und t (Papier-mm = Welt-mm / k)
+export function symDef(it, k) {
+  const def = SYM_BY_KEY.get(it.key), z = symSize(it);
+  if (!z) return def;
+  const W = z.w / k / 2, T = z.t / k, r = (n) => Math.round(n * 1000) / 1000;
+  const parts = [["l", -r(W), 0, r(W), 0], ["l", r(W), 0, r(W), r(T)], ["l", r(W), r(T), -r(W), r(T)], ["l", -r(W), r(T), -r(W), 0], ["p", `M${-r(W)},0L${r(W)},${r(T)}L${r(W)},0Z`, true]];
+  return { ...def, parts, c: [0, r(T / 2)], r: r(Math.hypot(W, T / 2)) };
+}
 // Höhe eines Symbols in cm: eingetragen oder Standardhöhe des Symbols (undefined = ohne)
 export const symH = (it) => it.h ?? SYM_BY_KEY.get(it.key)?.h;
 // Texte eines Symbols in der Welt (CJ 24.10.2026): drehen mit dem Symbol, stehen nie auf dem Kopf. Zusatztexte (T15, USB, 3, LED) und Verweis
 // mittig an ihrem Ort; Beschriftung und Höhe neben der Mitte in Richtung der x-Achse des Symbols (Wandsymbol: entlang der Wand), Zeilen untereinander.
 // Gibt [{ at, s, size, a, anchor }] (size und Abstände in Papier-mm × k).
 export function symTexts(it, k, fmtH = (h) => String(h)) {
-  const def = SYM_BY_KEY.get(it.key), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
+  const def = symDef(it, k), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
   const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)], out = [];
-  for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[4], size: q[3] * k, a, anchor: "middle" });
+  for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[5] === "num" ? (it.num ?? q[4]) : q[4], size: q[3] * k, a, anchor: "middle" }); // num: Zahl am Symbol änderbar
   if (def.ref && (it.fu || it.nr)) out.push({ at: w(-4.9, 0), s: [it.fu, it.nr].filter(Boolean).join(" / "), size: 1.4 * k, a, anchor: "middle" });
   // Abstand: hinter dem Symbol und hinter Zusatztexten rechts der Mitte (Breite ca. 0,6 × Höhe je Zeichen)
   const ext = Math.max(def.r, ...def.parts.filter((q) => q[0] === "t").map((q) => q[1] - def.c[0] + q[4].length * q[3] * 0.3));
@@ -575,7 +593,7 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(SYM_BY_KEY.get(i.key), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(symDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }

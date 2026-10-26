@@ -436,4 +436,13 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(s2.map((s) => [s.bgOff, s.bgOp]), [[true, 30], [undefined, undefined], [undefined, undefined]], "bgOff/bgOp bereinigt");
 }
 
+// ---------- Fang an Symbolen (CJ 26.10.2026) ----------
+{
+  // Schalter: Mitte = Mitte des Kreises (vorher 0,2 mm Papier darunter), auch gedreht
+  for (const key of ["SCH0", "SCH0_2", "TASTER", "DIMMER", "STOREN", "SCH_LAMPE", "SCH3", "SCH6"]) {
+    const d = S2.SYM_BY_KEY.get(key), circ = d.parts.find((q) => q[0] === "c");
+    assert.deepStrictEqual(d.c, [circ[1], circ[2]], `${key}: Mitte = Kreismitte`);
+  }
+  near(P.symCenter({ key: "SCH0", at: [1000, 0], r: 90 }, 50), [1000 - 2.2 * 50, 0], "Schalter gedreht: Mitte mitgedreht");
+}
 console.log("test_plan: alles ok");

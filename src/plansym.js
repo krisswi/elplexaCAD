@@ -74,7 +74,8 @@ const half = (t0, t1) => { const a = at45(t0), b = at45(t1), q = [a[0] - 0.75 * 
 const seg45 = (t0, t1) => L(...at45(t0), ...at45(t1));
 
 // size: Grösse in echten mm (w Breite/Länge, t Tiefe), parts(W, T) zeichnet in Papier-mm; parts der Tabelle = Vorgabe bei 1:50 (Palette)
-const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (o.wall ? [0, 2] : [0, 0]), r: o.r ?? 2.6, ref: !!o.ref });
+// c = Mitte (Treffer, Fang); Schalter: Mitte des Kreises (CJ 26.10.2026: vorher [0, 2], Leitung rastete 0,2 mm Papier unter dem Kreis ein)
+const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (group === "Schalter" ? [0, o.cy ?? SC[1]] : o.wall ? [0, 2] : [0, 0]), r: o.r ?? 2.6, ref: !!o.ref });
 // Tabellen als /* @__PURE__ */-Aufrufe: so fallen sie im SchemaCAD-Bau ganz weg (v3 byte-gleich), obwohl plan.js sie importiert
 export const PLAN_SYMS = /* @__PURE__ */ (() => [
   // Schalter (Unterputz; Aufputz über Feld)

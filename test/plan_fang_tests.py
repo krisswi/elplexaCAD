@@ -53,11 +53,11 @@ with sync_playwright() as p:
     move(2000, 1500 + 90)
     check("Nah an der Dose: Seiten markiert", page.locator('#overlay path[stroke="#f4c400"]').count() == 4)
 
-    # Leitung: oben am Schalter (Kreis 225 + 2,2 × 50 = 335, oben 385), Punkt über der Dose, an der Dosenseite oben
+    # Leitung: oben am Schalter (Kreis 225 + 2,2 × 50 = 335, r 1,5 × 50: oben 410, CJ 27.10.2026), Punkt über der Dose, an der Dosenseite oben
     cx, cy = sw["at"][0], sw["at"][1] + 110
-    click(cx + 0.4 * t, cy + 50 + 0.4 * t); click(1600, 1300); click(1993 + 0.3 * t, 1575 + 0.4 * t); key("Enter")
+    click(cx + 0.4 * t, cy + 75 + 0.4 * t); click(1600, 1300); click(1993 + 0.3 * t, 1575 + 0.4 * t); key("Enter")
     ln = of("line")[-1]
-    check("Leitung beginnt am oberen Fangpunkt des Schalters", near(ln["pts"][0], [cx, cy + 50]), ln["pts"])
+    check("Leitung beginnt am oberen Fangpunkt des Schalters", near(ln["pts"][0], [cx, cy + 75]), ln["pts"])
     check("Leitung endet auf der oberen Seite der Dose, frei entlang der Seite", abs(ln["pts"][-1][1] - 1575) < 1e-6 and abs(ln["pts"][-1][0] - (1993 + 0.3 * t)) < 2, ln["pts"])
     check("Mittelpunkt auf dem 10-mm-Raster", ln["pts"][1] == [1600, 1300], ln["pts"])
     check("Neue Leitung geschwungen (Vorgabe)", ln.get("curve") is True and len(ln["pts"]) == 3)
@@ -74,7 +74,7 @@ with sync_playwright() as p:
     key("v"); page.mouse.click(*at(cx, cy)); page.wait_for_timeout(80); key("r"); page.wait_for_timeout(100)
     sw2 = next(i for i in of("sym") if i["key"] == "SCH0")
     if sw2["r"] != sw["r"]:
-        a = math.radians(sw2["r"]); top = [sw2["at"][0] - math.sin(a) * 160, sw2["at"][1] + math.cos(a) * 160]
+        a = math.radians(sw2["r"]); top = [sw2["at"][0] - math.sin(a) * 185, sw2["at"][1] + math.cos(a) * 185]
         key("l"); click(top[0] + 0.3 * t, top[1] - 0.3 * t); page.keyboard.down("Alt"); click(top[0] - 800, top[1] + 800); page.keyboard.up("Alt"); key("Enter")
         check("Gedrehter Schalter: Fangpunkt mitgedreht", near(of("line")[-1]["pts"][0], top, 1), (of("line")[-1]["pts"][0], top))
         page.keyboard.press("Meta+z"); page.wait_for_timeout(80); key("v"); page.mouse.click(*at(cx, cy)); key("r"); key("r"); key("r")

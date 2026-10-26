@@ -316,7 +316,7 @@ export function makePlan(c) {
     for (const q of it.ap && def.ap ? [...def.parts, def.ap] : def.parts) {
       if (q[0] === "l") g += `<line x1="${q[1]}" y1="${q[2]}" x2="${q[3]}" y2="${q[4]}"/>`;
       else if (q[0] === "c") g += `<circle cx="${q[1]}" cy="${q[2]}" r="${q[3]}"${q[4] ? ` fill="${stroke}"` : ""}/>`;
-      else if (q[0] === "p") g += `<path d="${q[1]}"${q[2] ? ` fill="${stroke}"` : ""}/>`;
+      else if (q[0] === "p") g += q[2] === "w" ? `<path d="${q[1]}" fill="#fff" stroke="none"/>` : q[2] === "wl" ? `<path d="${q[1]}" fill="none" stroke="#fff" stroke-width="${q[3] ?? 0.18}" stroke-linejoin="round"/>` : `<path d="${q[1]}"${q[2] ? ` fill="${stroke}"` : ""}/>`; // "w" weiss gefüllt, "wl" weisse Linie (EXIT)
     }
     const t = P.symTexts(it, k, fmtH).map((x) => txt(x.at[0], x.at[1], x.s, x.size, x.a, stroke, x.anchor)).join("");
     return `<g transform="translate(${f(it.at[0])} ${f(it.at[1])}) rotate(${it.r}) scale(${k})" fill="none" stroke="${stroke}" stroke-width="0.18" stroke-linecap="round">${g}</g>${t}`;

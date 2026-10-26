@@ -55,6 +55,17 @@ function notl(wall, inn, trafo) {
   if (!wall) return [...(inn ? [C(0, 0, 2.2)] : []), C(0, 0, r), L(-d, -d, d, d), L(-d, d, d, -d), sect(r, 135, 225), sect(r, 315, 405), ...(trafo ? rect(-0.45, inn ? 2.2 : r, 0.45, (inn ? 2.2 : r) + 2.2) : [])];
   return [halfC(2), ...(inn ? [arcW(2.4)] : []), L(0, 0, -1.414, 1.414), L(0, 0, 1.414, 1.414), sect(2, 0, 45), sect(2, 135, 180), ...(trafo ? rect(inn ? 2.4 : 2, 0, (inn ? 2.4 : 2) + 2.2, 0.9) : [])];
 }
+// Notausgangsleuchte EXIT 5.190 (CJ 26.10.2026: wie die Quelle): dunkles Schild, weisser Pfeil (Winkel deg) und weisse Fluchtfigur in der Tür,
+// selbst gezeichnet. side = Seite des Pfeils (−1 links, 1 rechts), die Figur läuft zum Pfeil.
+function exitSign(deg, side) {
+  const P2 = (x, y) => `${r3(x)},${r3(y)}`, ax = side * 2.3, fx = -side * 2.1, m = side, a = (deg * Math.PI) / 180;
+  const rot = ([x, y]) => [ax + x * Math.cos(a) - y * Math.sin(a), y * Math.cos(a) + x * Math.sin(a)];
+  const arrow = [[-1.1, -0.28], [0.2, -0.28], [0.2, -0.85], [1.1, 0], [0.2, 0.85], [0.2, 0.28], [-1.1, 0.28]].map(rot);
+  const fig = (pts) => ["p", `M${pts.map(([x, y]) => P2(fx + x * m, y)).join("L")}`, "wl", 0.32];
+  return [["p", "M-4.6,-1.8h9.2v3.6h-9.2Z", true], ["p", `M${arrow.map((p) => P2(...p)).join("L")}Z`, "w"],
+    ["p", `M${P2(fx - 0.95, -1.45)}h1.9v2.9h-1.9Z`, "wl", 0.15], ["p", `M${P2(fx + 0.25 * m - 0.3, 0.95)}a0.3 0.3 0 1 0 0.6,0a0.3 0.3 0 1 0 -0.6,0Z`, "w"],
+    fig([[0.1, 0.55], [-0.15, -0.2]]), fig([[0.05, 0.4], [0.5, 0.1], [0.75, 0.35]]), fig([[0.05, 0.4], [-0.35, 0.15], [-0.55, -0.15]]), fig([[-0.15, -0.2], [0.35, -0.6], [0.3, -1.2]]), fig([[-0.15, -0.2], [-0.45, -0.75], [-0.85, -0.8]])];
+}
 const wave = (x0, x1, y = 0) => { const n = 2, w = (x1 - x0) / n; let d = `M${x0},${y}`; for (let i = 0; i < n; i++) d += `q${w / 4},${-0.6} ${w / 2},0t${w / 2},0`; return ["p", d, false]; };
 
 // ---------- Steigleitungen 5.110: Punkt (Kreis), Linie unter 45°, halber Pfeil (offenes Dreieck links der Linie) ----------
@@ -115,6 +126,8 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
   S("BEREIT", "Bereitschaftsschaltung", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), L(-1.2, -1.8, 1.2, 1.8), L(-1.2, 1.8, 1.2, -1.8)], { r: 2.2 }),
   S("DAUER_S", "Dauerlicht geschaltet", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), L(-1.2, -1.8, 1.2, 1.8), L(-1.2, 1.8, 1.2, -1.8), tri([-1.2, -1.8], [1.2, -1.8], [0, 0], true)], { r: 2.2 }),
   S("DAUER", "Dauerlicht", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), tri([-1.2, -1.8], [1.2, -1.8], [0, 0], true), tri([-1.2, 1.8], [1.2, 1.8], [0, 0], true)], { r: 2.2 }),
+  ...[["EXIT_L", "links", 180, -1], ["EXIT_R", "rechts", 0, 1], ["EXIT_DL", "abwärts links", 225, -1], ["EXIT_DR", "abwärts rechts", 315, 1], ["EXIT_UL", "aufwärts links", 135, -1], ["EXIT_UR", "aufwärts rechts", 45, 1], ["EXIT_D", "durch Ausgang", 270, -1]]
+    .map(([k, nm, d, sd]) => S(k, `Notausgangsleuchte EXIT ${nm}`, "licht", "Notlicht", exitSign(d, sd), { r: 4.9 })),
   // Melder
   S("BWM", "Bewegungsmelder an Decke, 360°", "licht", "Melder", [...X(0, 0, 0.5), ...[0, 45, 90, 135, 180, 225, 270, 315].map((d) => { const u = dir(d); return L(u[0] * 0.8, u[1] * 0.8, u[0] * 1.9, u[1] * 1.9); })], { r: 2.2 }),
   S("PIR", "PIR-Melder in Einlasskasten", "licht", "Melder", [C(0, 1.3, 1.2), ["p", "M-0.4,0.8A0.7 0.7 0 0 1 -0.4,1.8", false], L(0, 2.5, 0, 4.4), L(0, 2.5, -0.4, 3.2), L(0, 2.5, 0.4, 3.2)], { wall: true, h: 110 }),

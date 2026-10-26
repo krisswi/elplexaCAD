@@ -66,6 +66,11 @@ with sync_playwright() as p:
     check("Als Gast nichts online", not store)
     check("Altes Anmeldefeld ist weg: kein Anmelden im Bereich Online, kein Konto-Menü", not vis('[data-elact="login"]') and page.locator("#el-acctmenu").count() == 0)
     page.screenshot(path=str(OUT / "pr_gast.png"))
+    # Kalkulation Firmenwerte (Offerte Schritt 4): eigener Knopf im Profil, gespeichert beim Benutzer
+    page.click("#el-pf-kalk"); page.wait_for_timeout(200)
+    check("Fenster Kalkulation Firmenwerte: Ansatz, Faktor, IC-Zeiten", vis('.modal [data-sw="ansatz"]') and vis('.modal [data-sw="fak"]') and vis(".modal [data-icadd]"))
+    page.fill('.modal [data-sw="ansatz"]', "90"); page.click(".modal [data-ok]"); page.wait_for_timeout(250)
+    check("Kalkulation beim Benutzer gespeichert", '"ansatz":90' in (page.evaluate("localStorage.getItem('schemacad.user.sollwerte.v1')") or ""))
     page.uncheck("[data-eltip]"); page.wait_for_timeout(200)
     check("Tipp-Zeile im Profil ausschalten", not vis(".el-tip") and not page.is_checked("[data-eltip]"))
     page.check("[data-eltip]"); page.wait_for_timeout(200)

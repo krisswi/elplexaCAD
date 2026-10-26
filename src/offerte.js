@@ -2,12 +2,13 @@
 // Eine Offerte ist ein Blatt (kind "offerte") mit den Daten in sh.of. Aufbau nach dem Messerli-Muster: BKP-Kapitel → Gruppen → Positionen.
 // Pflicht sind nur Text, Menge und Preis, alle übrigen Felder dürfen fehlen (Einmannbetrieb).
 // Datenformat (fehlende Felder = leer bzw. Standard):
-//   of = { nid, nr, ver, datum, gueltig, art, bau, fak, ansatz, rabatt, skonto, skTage, mwst, rg: [Rabattgruppe], kap: [Kapitel] }
+//   of = { nid, nr, ver, datum, gueltig, art, bau, fak, ansatz, zf, rabatt, skonto, skTage, mwst, rg: [Rabattgruppe], kap: [Kapitel] }
 //   Rabattgruppe = { id, kz, name, satz }   selbst angelegt (CJ 26.10.2026), kz = Buchstabe (z. B. R, N); satz fehlt = Gesamtrabatt, 0 = kein Rabatt, Zahl = eigener Satz in %
 //   Kapitel = { id, bkp, titel, grp: [Gruppe] }
 //   Gruppe = { id, titel, rg, pos: [Position] }   rg = ID der Rabattgruppe, fehlt = Gesamtrabatt
 //   Position = { id, titel, text, menge, eh, preis, npk, bkp, typ, form, her, enr, ek, fak, std, ic, opt, an, gl: { ogl, psl, rgl, ngl, et } }
-//     id fest (ändert sich nie), preis = Einheitspreis von Hand (fehlt = aus EK × Faktor + Zeit × Ansatz), opt = optionale Position, an = Option aktiviert.
+//     id fest (ändert sich nie), preis = Einheitspreis von Hand (fehlt = aus EK × Faktor + Zeit × Zeitfaktor × Ansatz), opt = optionale Position, an = Option aktiviert.
+//   zf = Zeitfaktor der Offerte (CJ 26.10.2026, Dateiversion 26): wirkt auf alle Zeiten ausser Regie, fehlt = 1.
 
 // BKP 23 nach EIT.swiss 2018 (BKP CRB 2017, erweitert): Kapitel 230 bis 239 mit allen Unterstufen (237 bis 239 seit CJ 26.10.2026). Eigene Nummern ergänzt die Offerte.
 export const BKP = [
@@ -86,13 +87,14 @@ export const findPos = (of, id) => { for (const k of of.kap) for (const g of k.g
 export const findGrp = (of, id) => { for (const k of of.kap) { const i = k.grp.findIndex((g) => g.id === id); if (i >= 0) return { k, g: k.grp[i], i }; } return null; };
 
 // Einheitspreis einer Position (Franken, ungerundet wie im Excel). Von Hand gesetzt gilt der Preis. Sonst Material: EK × Faktor (der Position, sonst der Offerte),
-// Arbeit: Zeit × Ansatz. Regie rechnet nur Zeit × Ansatz.
+// Arbeit: Zeit × Zeitfaktor × Ansatz. Regie rechnet nur Zeit × Ansatz (Regiestunden sind tatsächliche Stunden, ohne Zeitfaktor).
 export function unitRaw(p, of) {
   if (isNum(p.preis)) return p.preis;
-  const t = (p.std || 0) * (of.ansatz || 0);
-  return p.typ === "regie" ? t : (p.ek || 0) * (isNum(p.fak) ? p.fak : of.fak ?? DEF.fak) + t;
+  if (p.typ === "regie") return (p.std || 0) * (of.ansatz || 0);
+  return (p.ek || 0) * (isNum(p.fak) ? p.fak : of.fak ?? DEF.fak) + (p.std || 0) * zeitfaktor(of) * (of.ansatz || 0);
 }
 export const unitPrice = unitRaw;
+export const zeitfaktor = (of) => (isNum(of.zf) && of.zf > 0 ? of.zf : 1);
 // Positionsbetrag: Menge × Einheitspreis, ungerundet
 export const posAmount = (p, of) => (p.menge || 0) * unitPrice(p, of);
 // zählt die Position zur Angebotssumme? Optionen erst nach Aktivierung
@@ -139,6 +141,7 @@ export function cleanOfferte(o) {
   of.art = pick(o.art, ARTEN) || ""; of.bau = pick(o.bau, BAUARTEN) || "";
   for (const k of ["fak", "ansatz", "rabatt", "skonto", "mwst"]) { const v = num(o[k], 0, k === "fak" ? 100 : k === "ansatz" ? 10000 : 100); of[k] = v ?? DEF[k]; }
   put(of, "skTage", num(o.skTage, 0, 365));
+  const zf = num(o.zf, 0.01, 10); if (zf !== undefined && zf !== 1) of.zf = zf;
   for (const r of Array.isArray(o.rg) ? o.rg : []) { if (!r || typeof r !== "object") continue; const x = { id: id(r.id), kz: str(r.kz, 3), name: str(r.name, 80) }; put(x, "satz", num(r.satz, 0, 100)); if (x.id) of.rg.push(x); }
   const rgs = new Set(of.rg.map((r) => r.id));
   const late = []; // ohne gültige ID: neue Nummer nach dem Laden

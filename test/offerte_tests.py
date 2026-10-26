@@ -47,6 +47,7 @@ def flow(page, tag):
     check(f"{tag}: MwSt aus: Total ohne MwSt 175.40", "Total ohne MwSt" in txt(".of-end") and txt(".of-total").endswith("175.40") and not page.is_visible('[data-of="o.mwst"]'), txt(".of-total"))
     page.check('[data-of="o.mwstan"]'); page.wait_for_timeout(100)
     check(f"{tag}: MwSt wieder ein: 8.1 %", txt(".of-total").endswith("189.60") and page.input_value('[data-of="o.mwst"]') == "8.1", txt(".of-total"))
+    check(f"{tag}: Mausrad scrollt die Offerte (Zeichenfläche hält es nicht an)", not page.evaluate("(() => { const e = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }); document.querySelector('#of-view').dispatchEvent(e); return e.defaultPrevented; })()"))
     check(f"{tag}: Profil im Browser gespeichert", page.evaluate("JSON.parse(localStorage.getItem('schemacad.user.profil.v1')).data.FIRMA") == "Muster Elektro")
     # Schritt 3: Positionsdatenbank beim Benutzer (erfundene Werte)
     check(f"{tag}: Datenbank leer", "Noch keine Position" in page.inner_text("#left"))

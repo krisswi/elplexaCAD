@@ -99,7 +99,7 @@ assert.strictEqual(cl.kap[0].grp[0].rg, undefined, "Rabattgruppe fehlt: Gesamtra
 assert.strictEqual(O.cleanOfferte({ rg: [{ id: 4, kz: "R", name: "Rabatt", satz: 3 }], kap: [{ id: 5, grp: [{ id: 6, rg: 9, pos: [] }, { id: 7, rg: 4, pos: [] }] }] }).kap[0].grp.map((g) => g.rg).join(), ",4", "Verweis auf fehlende Rabattgruppe fällt weg");
 assert.ok(O.BKP.some((b) => b[0] === "239.21") && O.bkpTitle("238") === "Provisorische Installationen", "BKP 237 bis 239 vorbelegt");
 assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 25, sheets: [{ kind: "offerte", meta: {}, items: [{ id: 1, type: "text", x: 0, y: 0, text: "x" }] }] })), /keine Zeichenobjekte/);
-assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 26, sheets: [{ meta: {}, items: [] }] })), /neueren Version/);
+assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 27, sheets: [{ meta: {}, items: [] }] })), /neueren Version/);
 // v3 (dieser Prozess ohne ELPLEXA) lehnt einen Plan am Blatt ab
 assert.throws(() => parseModel(JSON.stringify({ format: "schemacad", version: 24, sheets: [{ kind: "plan", meta: {}, items: [] }] })), /Pläne öffnet nur elplexaCAD/);
 
@@ -121,6 +121,23 @@ if (fs.existsSync(xlsx)) {
   assert.strictEqual(O.fmtChf(tx.zwischensumme), "4'981.87", "Zwischensumme 4'981.87");
   console.log(`Excel-Beispiel: Zwischensumme ${O.fmtChf(tx.zwischensumme)}`);
 } else console.log("Excel-Beispiel übersprungen (Offerte.xlsx fehlt)");
+
+// ---------- Zeitfaktor der Offerte (CJ 26.10.2026): auf alle Zeiten ausser Regie, fehlt = 1, Dateiversion 26 ----------
+{
+  const F = await import("../src/offedit.js"); F.setMode({});
+  const zo = O.newOfferte(); zo.ansatz = 100; const zg = O.addKapitel(zo, "232").grp[0];
+  const a = O.addPosition(zo, zg, { menge: 1, ek: 10, std: 1 }), r = O.addPosition(zo, zg, { menge: 1, typ: "regie", std: 1 }), h = O.addPosition(zo, zg, { menge: 1, preis: 50, std: 1 });
+  const zf = (v) => F.apply(zo, { dataset: { of: "o.zf" }, value: v, type: "text" });
+  assert.deepStrictEqual([O.zeitfaktor(zo), O.unitPrice(a, zo)], [1, 114], "ohne Zeitfaktor: 1");
+  assert.ok(zf("0,7")); assert.strictEqual(zo.zf, 0.7);
+  near(O.unitPrice(a, zo), 84, "10 × 1.4 + 1 h × 0.7 × 100"); assert.strictEqual(O.unitPrice(r, zo), 100, "Regie ohne Zeitfaktor"); assert.strictEqual(O.unitPrice(h, zo), 50, "Preis von Hand bleibt");
+  assert.ok(!zf("0") && !zf("-1") && zo.zf === 0.7, "0 und negativ nicht erlaubt");
+  const zd = newDoc(), zs = newSheet("offerte"); zs.of = zo; zd.sheets.push(zs);
+  const zt = serializeModel(zd); assert.strictEqual(JSON.parse(zt).version, 26, "mit Zeitfaktor: Version 26");
+  assert.strictEqual(parseModel(zt).sheets.at(-1).of.zf, 0.7, "Zeitfaktor bleibt beim Laden");
+  zf("1"); assert.ok(!("zf" in zo), "1 = kein Zeitfaktor"); assert.strictEqual(JSON.parse(serializeModel(zd)).version, 25, "ohne Zeitfaktor bleibt Version 25");
+  zf("0.8"); zf(""); assert.ok(!("zf" in zo), "leer = 1");
+}
 
 // ---------- Teilen-Link: nur lesen, mit oder ohne Preise (CJ 26.10.2026) ----------
 // Die Datenbank (share_open, Migration 20261026_share_offerte) entfernt EK, Faktor und Zeit und setzt mit Preisen den Verkaufspreis als preis.

@@ -54,11 +54,12 @@ with sync_playwright() as p:
     check("Fenstertitel endet auf „– elplexaCAD“", page.title().endswith("– elplexaCAD"), page.title())
     check("Plus-Menü PV: nur pv und pvtab", add_entries() == ["pv", "pvtab"])
 
-    # Taste 1 ohne Schema: Übersicht mit Meldung, nichts angelegt
+    # Taste 1 im Modul (CJ 27.10.2026): Ziffern wechseln nur in der Projektansicht das Modul, im PV-Modul bleibt alles, nichts angelegt
     n0 = len(D()["sheets"])
     key("1")
-    check("Taste 1 ohne Schema öffnet die Übersicht", hub())
-    check("… mit Meldung und ohne neues Blatt", "noch nicht" in page.inner_text("body") and len(D()["sheets"]) == n0 and mods(D()) == ["pv"])
+    check("Taste 1 im Modul: bleibt im PV-Modul", not hub() and D()["sheets"][D()["active"]].get("kind") == "pv")
+    check("… ohne neues Blatt", len(D()["sheets"]) == n0 and mods(D()) == ["pv"])
+    key("0"); page.wait_for_timeout(150)
     page.screenshot(path=str(OUT / "e2_hub_pv.png"))
 
     # + Modul: alle wählbar (Prinzipschema seit 21.10.2026, Plan seit 23.10.2026), Plan nach dem Prinzipschema, Schema anlegen
@@ -85,20 +86,23 @@ with sync_playwright() as p:
     page.screenshot(path=str(OUT / "e4_liste.png"))
     page.keyboard.press("Escape"); page.wait_for_timeout(100)
 
-    # Tasten 1/2/3, 0
-    key("3")
-    check("Taste 3 öffnet PV", cur() == "pv" and not hub() and page.inner_text("#sheet-cur .of") == "1 von 1")
+    # Ziffern (CJ 27.10.2026): im Modul ohne Wirkung, in der Projektansicht die Kachel an dieser Stelle; 0 Übersicht
+    a = active(); key("3")
+    check("Taste 3 im Modul Schema: bleibt im Schema", cur() == "schema" and not hub() and active() == a)
+    tiles = lambda: page.evaluate("[...document.querySelectorAll('#el-hub .el-tile[data-modctx]')].map((t) => t.dataset.modctx)")
+    key("0"); ids = tiles()
+    key(str(ids.index("pv") + 1))
+    check("Projektansicht: Ziffer öffnet PV (Kachel an dieser Stelle)", cur() == "pv" and not hub() and page.inner_text("#sheet-cur .of") == "1 von 1", ids)
     check("Plus-Menü PV nach Wechsel: pv und pvtab", add_entries() == ["pv", "pvtab"])
-    key("1")
-    check("Taste 1 öffnet Schema (zuletzt offenes Blatt)", cur() == "schema" and page.inner_text("#sheet-cur .of") == f"{ns} von {ns}")
+    key("0"); key(str(ids.index("schema") + 1))
+    check("… und Schema (zuletzt offenes Blatt)", cur() == "schema" and page.inner_text("#sheet-cur .of") == f"{ns} von {ns}")
     check("Plus-Menü Schema nach Wechsel hin und zurück: nur sheet", add_entries() == ["sheet"])
     a = active(); key("2")
-    check("Taste 2 ohne Disposition: Übersicht, nichts angelegt", hub() and "dispo" not in mods(D()))
-    key("0")
-    check("0 schliesst die Übersicht, Schema bleibt", not hub() and active() == a)
+    check("Taste 2 im Modul: bleibt, nichts angelegt", not hub() and active() == a and "dispo" not in mods(D()))
     key("0")
     check("0 öffnet die Übersicht (PV, Schema, Legende)", hub() and page.locator("#el-hub [data-elopen]").count() == 3)
     key("0")
+    check("0 schliesst die Übersicht, Schema bleibt", not hub() and active() == a)
 
     # Entf bei offener Übersicht löscht nichts
     while D()["sheets"][active()].get("kind"): key("PageUp")  # Schemablatt mit Grundverkabelung

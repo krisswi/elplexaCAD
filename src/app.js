@@ -3233,12 +3233,11 @@ async function elProfileLogin() {
   finally { EL_S.pfBusy = false; elAcctDraw(); if (!EL_S.hub.hidden) { elHub(true); if (EL_S.pfMsg) document.getElementById("el-pf-pw")?.focus(); } }
 }
 function elHelp() { openModal("Tasten in elplexaCAD", E.keysHTML() + `<div class="actions"><button class="btn outline" data-tip>${elTipOn() ? "Tipp-Zeile ausblenden" : "Tipp-Zeile einblenden"}</button><button class="btn primary" data-c>Schliessen</button></div>`, (b, done) => { if (b.matches("[data-tip]")) { elTipSet(!elTipOn()); done(null); } else done(null); }, null, "[data-c]"); }
-// Tasten ohne ⌘: 1 bis 3 Module, 0 Übersicht, § Leisten, ? Hilfe. true = Taste gehört elplexaCAD
+// Tasten ohne ⌘: 1 bis 9 Module (nur in der Projektansicht), 0 Übersicht, § Leisten, ? Hilfe. true = Taste gehört elplexaCAD
 function elKey(e) {
-  const mods = E.MODULES.filter((m) => !m.later && !m.auto);
   if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden && !(EL_S.tab === "projekte" && EL_S.pview)) return false; // Projekte, Zeit, Profil haben keine Modulkacheln
   if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden) { const id = E.modIds(S.doc)[Number(e.key) - 1]; if (id) elOpen(id, { exact: true }); else toast(`Kein Modul an Stelle ${e.key}.`); return true; } // Übersicht: N-te Kachel (20.10.2026)
-  if (/^[1-9]$/.test(e.key)) { const n = Number(e.key); if (n <= mods.length) elOpen(mods[n - 1].id, { create: false }); else if (E.MODULES[n - 1]) toast(`${E.MODULES[n - 1].label} kommt später.`); else return false; return true; }
+  if (/^[1-9]$/.test(e.key)) return false; // im Modul gehören Ziffern dem Werkzeug (Polzahl, Linienart, Kanalbreite), CJ 27.10.2026
   if (e.key === "0") { elHub(EL_S.hub.hidden); return true; }
   if (e.key === "§" || e.key === "`" || e.code === "Backquote") { if (EL_S.hub.hidden) elBare(); return true; }
   if (e.key === "?") { elHelp(); return true; }

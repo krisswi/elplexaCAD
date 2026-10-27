@@ -163,7 +163,11 @@ with sync_playwright() as p:
     page.evaluate("document.querySelector('#btn-save').click(); document.querySelector('#btn-dxf').click(); document.querySelector('#btn-pdf').click(); document.querySelector('#btn-lists').click()"); page.wait_for_timeout(400)
     check("Empfänger: Speichern, DXF, PDF, Listen auch per Klick gesperrt", not page.is_visible(".modal") and "nur ansehen" in page.inner_text("#toasts"))
     key(page, "PageDown"); page.wait_for_timeout(200)
-    key(page, "3"); page.wait_for_timeout(400)
+    key(page, "3"); page.wait_for_timeout(200)
+    check("Empfänger: Ziffer im Modul wechselt nicht (CJ 27.10.2026)", D()["sheets"][D()["active"]].get("kind") != "pv")
+    key(page, "0"); page.wait_for_timeout(200) # Ziffern nur in der Projektansicht: Kachel an dieser Stelle
+    n = page.evaluate("[...document.querySelectorAll('#el-hub .el-tile')].map((t) => t.id)").index("el-tile-pv") + 1
+    key(page, str(n)); page.wait_for_timeout(400)
     check("Empfänger: PV-Modul mit Dachplan zu sehen", D()["sheets"][D()["active"]].get("kind") == "pv" and json.dumps(D()["sheets"]) == d0)
     page.screenshot(path=str(OUT / "t3_empfaenger_pv.png"))
     page.mouse.move(cx, cy); page.mouse.down(); page.mouse.move(cx - 60, cy, steps=4); page.mouse.up(); page.wait_for_timeout(200)
@@ -305,8 +309,8 @@ with sync_playwright() as p:
     page.screenshot(path=str(OUT / "t9_notizliste.png"))
     page.click('.modal [data-ndel="n1"]'); page.wait_for_timeout(200); page.click('.modal [data-r="1"]'); page.wait_for_timeout(300)
     check("Eigene Notiz gelöscht (Datenbank und Anzeige)", not [n for n in srv["notes"] if n["id"] == "n1"] and page.inner_text("#el-notebar .el-ncount") == "3" and not page.query_selector('#el-notes [data-note="n1"]'))
-    # anderes Blatt: Notiz auf dem Stringplan
-    key(page, "3"); page.wait_for_timeout(400)
+    # anderes Blatt: Notiz auf dem Stringplan (über die Projektansicht, Ziffern nur dort)
+    key(page, "0"); page.wait_for_timeout(200); key(page, str(page.evaluate("[...document.querySelectorAll('#el-hub .el-tile')].map((t) => t.id)").index("el-tile-pv") + 1)); page.wait_for_timeout(400)
     check("Stringplan: Notizen von Blatt 1 nicht zu sehen", not page.query_selector('#el-notes [data-note="fremd"]'))
     key(page, "n"); page.mouse.click(cx, cy); page.wait_for_timeout(200); page.fill(".modal textarea", "Dachfenster"); page.click(".modal [data-ok]"); page.wait_for_timeout(300)
     check("Stringplan: Notiz mit Kennung des Stringplans (sid 2)", srv["nadd"][-1]["p_sheet"] == "2" and srv["nadd"][-1]["p_label"].startswith("Stringplan"), srv["nadd"][-1])

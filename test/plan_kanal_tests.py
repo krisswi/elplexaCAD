@@ -36,7 +36,7 @@ with sync_playwright() as p:
     key("k")
     check("Taste K: Werkzeug Kanal", page.get_attribute('[data-tool="pl-duct"]', "aria-pressed") == "true" and "Kanal" in page.inner_text("#hint"))
     check("Vorgabe 200 mm, Kreuzschraffur", page.input_value('[data-plo="dw"]') == "200" and page.input_value('[data-plo="dhatch"]') == "kreuz")
-    page.click('[data-plact="ductlayer"]'); page.wait_for_timeout(100)
+    page.click('[data-plact="ownlayer"]'); page.wait_for_timeout(100)
     lay = M()["layers"]; act = next(l for l in lay if l["id"] == M()["alay"])
     check("Vorschlag Ebene «Kanäle»: angelegt und aktiv", act["name"] == "Kanäle", [l["name"] for l in lay])
     key("9"); check("Taste 9: 600 mm", page.input_value('[data-plo="dw"]') == "600")

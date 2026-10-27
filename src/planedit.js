@@ -3,6 +3,7 @@
 // Rückmeldungen 24.10.2026: freier Grund (Papier, Raster, Plankopf erst im Druck), Wand = Innenlinie, Ausrichtungsfang, Grundriss-Werkzeuge nur auf der Ebene Hintergrund.
 // Schritt 3 (CJ 24.10.2026): Leitung (K, auch L), Farben nach 5.100, Mehrfachwahl (Rahmen, ⌘-Klick, sonst Ctrl-Klick, oder Knopf «Mehrfachwahl»; seit 27.10.2026 nicht mehr Shift), ⌘A/⌘C/⌘V/⌘D.
 // CJ 27.10.2026: Kanal/Trasse (K, bis 27.10. abends N): Linienzug mit Breite, rote Kanten, gelbe Schraffur, Mass tippen wie bei der Wand.
+// CJ 27.10.2026: freies Zeichnen (Linie I, Rechteck Q, Kreis C; wie im Schema, O ist im Plan die Öffnung): Klick/Klick oder Ziehen, Mass tippen, eigene Ebene «Zeichnung».
 // CJ 24.10.2026: Leitung geschwungen (Form), PDF-Plan einlesen wie im Stringplan (Massstab eingeben oder messen, Fixpunkt = Nullpunkt, Plan drehen).
 // Daten und Geometrie in plan.js. Im SchemaCAD-Bau ersetzt build.mjs diese Datei durch einen Platzhalter.
 import * as P from "./plan.js";
@@ -42,8 +43,9 @@ export function makePlan(c) {
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
   const grpOpen = new Set(); // aufgeklappte Symbolgruppen links, nur für die Sitzung (Start immer zu)
-  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, dw: P.DUCT_W, dhatch: "kreuz", multi: false, free: false, ap: false, refCol: null, atxt: P.ADER_DEF }; // atxt = Text der nächsten Aderzahl; refCol = Farbe des nächsten Verweises (null = Vorgabe); sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, dw: P.DUCT_W, dhatch: "kreuz", multi: false, free: false, ap: false, refCol: null, atxt: P.ADER_DEF, scol: "#000000", slw: P.SHAPE_LW, sd: false, sfill: null }; // scol, slw, sd, sfill: Darstellung der nächsten Form // atxt = Text der nächsten Aderzahl; refCol = Farbe des nächsten Verweises (null = Vorgabe); sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
+  let shapeDraft = null; // Form im Entstehen: { k, a, v1, v2, field (1 oder 2), press (Maustaste unten seit dem Anfang), moved }
   let ductDraft = null; // Kanal im Entstehen: { pts, len, ang, field } (Länge und Winkel tippen wie bei der Wand)
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
@@ -86,6 +88,14 @@ export function makePlan(c) {
   const snapLine = (w, ortho) => { const sn = lineSnaps(); return P.snapPlan(sh(), [], [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: [...sn.pts, ...(lineDraft?.pts ?? [])], segs: sn.segs }); };
   // Kanal zeichnen: Fang wie bei der Wand (Ecken und Flächen der Wände, Ausrichtung, Raster), dazu Punkte der eigenen Kette und anderer Kanäle (skip: gezogener Kanal, seine übrigen Punkte kommen über own)
   const snapDuct = (w, ortho, own = ductDraft?.pts ?? [], skip) => { const fg = faces(), dp = visible().filter((i) => i.type === "duct" && i !== skip).flatMap((i) => i.pts); return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: fg, extra: [...own, ...dp], align: { refs: [...own, ...fg.corners, ...dp], dirs: alignDirs(own.length > 1 ? (([a, b]) => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })(own.slice(-2)) : undefined) } }); };
+  // Form zeichnen (CJ 27.10.2026): Fang an Wandecken und -flächen, Symbolen (Mitte und Randpunkte) und Ecken anderer Formen, Ausrichtung, Raster; nicht an Leitungen.
+  // skip: gezogene Form (ihre Punkte fangen nicht)
+  const shapeKey = (t) => ({ "pl-sline": "line", "pl-srect": "rect", "pl-scircle": "circle" })[t];
+  const snapShape = (w, ortho, skip) => {
+    const fg = faces(), k = den(), ys = visible().filter((i) => i.type === "sym"), sp = visible().filter((i) => i.type === "shape" && i !== skip).flatMap(P.shapeSnaps);
+    const pts = [...ys.flatMap((i) => [P.symCenter(i, k), ...P.symSnaps(i, k).pts]), ...sp, ...(shapeDraft ? [shapeDraft.a] : [])];
+    return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: fg, extra: pts, align: { refs: [...(shapeDraft ? [shapeDraft.a] : []), ...fg.corners, ...sp], dirs: AXES } });
+  };
   // Fangpunkte der Symbole nahe am Zeiger zeigen (Leitung zeichnen oder Punkt ziehen, nicht bei Fang aus)
   const pinsSVG = (z) => {
     if (!raw || S.alt || !(S.tool === "pl-line" || drag?.type === "lpt")) return "";
@@ -346,6 +356,26 @@ export function makePlan(c) {
     if (it.txt) { const b = P.ductLabel(it, k, tf); s += txt(b.at[0], b.at[1], it.txt, b.size, b.a, ec); }
     return s;
   }
+  // Form (CJ 27.10.2026): Strich lw in Papier-mm × Massstab, gestrichelt wie die Leitung «in Boden», Füllung unter dem Strich. stroke: eine Farbe ohne Füllung (Wahl, Vorschau).
+  function shapeSVG(it, k, stroke) {
+    const base = `stroke="${stroke ?? P.colOf(it)}" stroke-width="${f((it.lw ?? P.SHAPE_LW) * k)}" stroke-linecap="round" stroke-linejoin="round" fill="${!stroke && it.fill ? it.fill : "none"}"${it.d ? ` stroke-dasharray="${f(3 * k)} ${f(1.5 * k)}"` : ""}`;
+    if (it.k === "line") return `<line x1="${f(it.pts[0][0])}" y1="${f(it.pts[0][1])}" x2="${f(it.pts[1][0])}" y2="${f(it.pts[1][1])}" ${base}/>`;
+    if (it.k === "rect") return `<rect x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" ${base}/>`;
+    return `<circle cx="${f(it.x)}" cy="${f(it.y)}" r="${f(it.r)}" ${base}/>`;
+  }
+  // Form im Entstehen aus Anfang, Zeiger und Eingabe: Linie Länge (Tab Winkel), Rechteck Breite × Höhe (Seite nach dem Zeiger, Shift = Quadrat), Kreis Radius
+  function draftShape() {
+    const d = shapeDraft, a = d.a;
+    if (!mouse) return null;
+    const st = { col: opt.scol, lw: opt.slw, d: opt.sd, fill: opt.sfill ?? undefined };
+    if (d.k === "line") return P.planShape("line", a, typedEnd(a, { len: d.v1, ang: d.v2 }), sh().alay, st);
+    const m = [mouse.x, mouse.y], v1 = P.parseLen(d.v1), v2 = P.parseLen(d.v2);
+    if (d.k === "circle") return P.planShape("circle", a, Number.isFinite(v1) ? [a[0] + v1, a[1]] : m, sh().alay, st);
+    let W = Number.isFinite(v1) ? v1 : Math.abs(m[0] - a[0]), H = Number.isFinite(v2) ? v2 : Math.abs(m[1] - a[1]);
+    if (S.shift && !(Number.isFinite(v1) && Number.isFinite(v2))) { const q = Number.isFinite(v1) ? W : Number.isFinite(v2) ? H : Math.max(W, H); W = q; H = q; }
+    return P.planShape("rect", a, [a[0] + (Math.sign(m[0] - a[0]) || 1) * W, a[1] + (Math.sign(m[1] - a[1]) || 1) * H], sh().alay, st);
+  }
+  const shapeInfo = (it) => (it.k === "line" ? `${P.fmtLen(Math.hypot(it.pts[1][0] - it.pts[0][0], it.pts[1][1] - it.pts[0][1]))} mm` : it.k === "rect" ? `${P.fmtLen(it.w)} × ${P.fmtLen(it.h)} mm` : `r ${P.fmtLen(it.r)} mm`);
   // Aderzahl (CJ 27.10.2026): Querstrich senkrecht zur Leitung (Tangente), Text darüber, Farbe und Linienstärke wie die Leitung
   // ducts: Kanäle der sichtbaren Ebenen; liegt die Stelle in einem Kanal, bekommt der Text einen weissen Rand (lesbar über der Schraffur)
   function aderSVG(line, it, k, stroke = P.colOf(line), tf = P.tfOf(it, sh()), ducts = []) {
@@ -396,6 +426,7 @@ export function makePlan(c) {
       if (segs.length) s += `<path d="${segs.map(([a, b]) => `M${pt(a)}L${pt(b)}`).join("")}" fill="none" stroke="${INK}" stroke-width="${f(0.5 * k)}" stroke-linecap="round"/>`;
       for (const o of ops) if (byId.get(o.wall)?.layer === l.id) s += openingSVG(byId.get(o.wall), o, k);
       for (const d of S0.items) if (d.type === "dim" && d.layer === l.id) s += dimSVG(d, k);
+      for (const y of S0.items) if (y.type === "shape" && y.layer === l.id) s += shapeSVG(y, k); // Formen unter Kanälen, Leitungen und Symbolen
       for (const y of S0.items) if (y.type === "duct" && y.layer === l.id) s += ductSVG(y, k); // unter Leitungen und Symbolen: die dürfen darüber oder darin liegen
       for (const y of S0.items) if (y.type === "line" && y.layer === l.id) s += lineSVG(y, k);
       for (const a of S0.items) if (a.type === "ader") { const ln = S0.items.find((i) => i.id === a.line); if (ln?.layer === l.id) s += aderSVG(ln, a, k, P.colOf(ln), P.tfOf(a, S0), ducts); }
@@ -431,6 +462,7 @@ export function makePlan(c) {
       else if (it.type === "sym") s += `<g class="pl-scale">${symSVG(it, k, SEL)}</g>`;
       else if (it.type === "ader") { const ln = sh().items.find((i) => i.id === it.line); if (ln) s += `<g class="pl-scale">${aderSVG(ln, it, k, SEL)}</g>`; }
       else if (it.type === "duct") s += `<g class="pl-scale" opacity=".75">${ductSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? it.pts.map(grip).join("") : "");
+      else if (it.type === "shape") s += `<g class="pl-scale">${shapeSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? P.shapeHandles(it).map(grip).join("") : "");
       else if (it.type === "line") s += `<g class="pl-scale">${lineSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
     }
     if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, [...lineDraft.pts, [mouse.x, mouse.y]], opt.lcurve)}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
@@ -439,6 +471,16 @@ export function makePlan(c) {
       if (pts.length > 1) s += `<g class="pl-scale" opacity=".85">${ductSVG({ pts, w: opt.dw, hatch: opt.dhatch }, k, DRAFT)}</g>`;
       s += ductDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
       if (pts.length > ductDraft.pts.length) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]), deg = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI; s += label(b, `${ductDraft.field === "len" && ductDraft.len ? `[${ductDraft.len}]` : P.fmtLen(L)} mm  ${ductDraft.field === "ang" ? `[${ductDraft.ang}]` : num(((deg % 360) + 360) % 360)}°`); }
+    }
+    if (shapeDraft && mouse) {
+      const x = draftShape(), d = shapeDraft;
+      if (x && !P.shapeEmpty(x)) {
+        s += `<g class="pl-scale" opacity=".85">${shapeSVG(x, k, DRAFT)}</g>`;
+        const fld = (n, v) => (d.field === n && d[`v${n}`] ? `[${d[`v${n}`]}]` : v), end = x.k === "line" ? x.pts[1] : [mouse.x, mouse.y];
+        const L = x.k === "line" ? Math.hypot(x.pts[1][0] - x.pts[0][0], x.pts[1][1] - x.pts[0][1]) : 0, deg = x.k === "line" ? Math.atan2(x.pts[1][1] - x.pts[0][1], x.pts[1][0] - x.pts[0][0]) * 180 / Math.PI : 0;
+        s += label(end, x.k === "line" ? `${fld(1, P.fmtLen(L))} mm  ${d.field === 2 ? `[${d.v2}]` : num(((deg % 360) + 360) % 360)}°` : x.k === "rect" ? `${fld(1, P.fmtLen(x.w))} × ${fld(2, P.fmtLen(x.h))} mm` : `r ${fld(1, P.fmtLen(x.r))} mm`);
+      }
+      s += `<circle cx="${f(d.a[0])}" cy="${f(d.a[1])}" r="${px(3)}" fill="${DRAFT}"/>`;
     }
     if (drag?.type === "box" && drag.started) { const b = boxOf(drag); s += `<rect x="${f(b.x0)}" y="${f(b.y0)}" width="${f(b.x1 - b.x0)}" height="${f(b.y1 - b.y0)}" fill="rgba(47,158,88,.08)" stroke="${SEL}" stroke-width="1" stroke-dasharray="5 3"/>`; }
     if (draft && mouse) {
@@ -576,6 +618,12 @@ export function makePlan(c) {
       else ductPoint(typedEnd(ductDraft.pts.at(-1), ductDraft));
       renderOverlay(); updateHint(); return;
     }
+    if (shapeKey(T)) { // Form: Klick Anfang, Klick Ende, oder ziehen und loslassen
+      const p = snapShape(w, shapeDraft?.a); mouse = p;
+      if (!shapeDraft) { if (layerOk()) shapeDraft = { k: shapeKey(T), a: [p.x, p.y], v1: "", v2: "", field: 1, press: true, moved: false }; }
+      else finishShape();
+      renderOverlay(); updateHint(); return;
+    }
     if (T === "pl-dim") {
       const p = snapDim(w, dimDraft?.a); mouse = p;
       if (!dimDraft) { if (layerOk()) dimDraft = { a: [p.x, p.y] }; }
@@ -603,6 +651,7 @@ export function makePlan(c) {
         return;
       }
     }
+    if (one?.type === "shape") { const h = P.shapeHandles(one).findIndex(near); if (h >= 0) { drag = { type: "shp", it: one, h, o: JSON.parse(JSON.stringify(one)), snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; } }
     if (one?.type === "opening") {
       const wl = sh().items.find((i) => i.id === one.wall), g = wl && edgeGrips(wl, one).find((x) => near(x.p));
       if (g) { drag = { type: "edge", it: one, wall: wl, edge: g.edge, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; }
@@ -618,14 +667,15 @@ export function makePlan(c) {
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t), more = add || opt.multi;
     if (!hit) { if (!more) S.sel = new Set(); drag = { type: "box", sx: w.x, sy: w.y, ex: w.x, ey: w.y, add: more, started: false }; renderRight(); renderOverlay(); return; } // Rahmen ziehen
     if (more) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; renderRight(); renderOverlay(); return; } // ⌘-Klick: dazu oder weg
-    if ((S.sel.has(hit.id) && S.sel.size > 1) || hit.type === "line" || hit.type === "duct") { if (!S.sel.has(hit.id)) S.sel = new Set([hit.id]); drag = { type: "multi", items: sel(), sx: w.x, sy: w.y, dx: 0, dy: 0, started: false, snap: snapshot() }; renderRight(); renderOverlay(); return; }
+    if ((S.sel.has(hit.id) && S.sel.size > 1) || hit.type === "line" || hit.type === "duct" || hit.type === "shape") { if (!S.sel.has(hit.id)) S.sel = new Set([hit.id]); drag = { type: "multi", items: sel(), sx: w.x, sy: w.y, dx: 0, dy: 0, started: false, snap: snapshot() }; renderRight(); renderOverlay(); return; }
     S.sel = new Set([hit.id]);
     drag = { type: "move", it: hit, sx: w.x, sy: w.y, started: false, snap: snapshot(), ...(hit.type === "wall" ? { ea: P.nodeEnds(sh(), hit.a), eb: P.nodeEnds(sh(), hit.b), a0: [...hit.a], b0: [...hit.b] } : hit.type === "opening" ? { t0: hit.t } : hit.type === "sym" ? { at0: [...hit.at], r0: hit.r } : { off0: hit.off }) };
     renderRight(); renderOverlay();
   }
   function move(w, e) {
     raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
-    mouse = S.tool === "pl-measure" || S.tool === "pl-rotate" || S.tool === "pl-fix" ? snapBg(w, bgDraft ?? undefined) : S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-duct" ? snapDuct(w, ductDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
+    mouse = S.tool === "pl-measure" || S.tool === "pl-rotate" || S.tool === "pl-fix" ? snapBg(w, bgDraft ?? undefined) : S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-duct" ? snapDuct(w, ductDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : shapeKey(S.tool) ? snapShape(w, shapeDraft?.k === "line" ? shapeDraft.a : undefined) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
+    if (shapeDraft?.press && Math.hypot(w.x - shapeDraft.a[0], w.y - shapeDraft.a[1]) * S.view.z > 3) shapeDraft.moved = true;
     const d = drag;
     if (d) {
       if (!d.started && Math.hypot(w.x - d.sx, w.y - d.sy) * S.view.z > 3) d.started = true;
@@ -635,6 +685,7 @@ export function makePlan(c) {
         else if (d.type === "label") { const a = (d.it.r * Math.PI) / 180, dx = (w.x - d.sx) / den(), dy = (w.y - d.sy) / den(); const lo = P.cleanLo([d.lo0[0] + dx * Math.cos(a) + dy * Math.sin(a), d.lo0[1] - dx * Math.sin(a) + dy * Math.cos(a)]); if (lo) d.it.lo = lo; else delete d.it.lo; }
         else if (d.type === "lpt") { const o = d.it.pts[d.i > 0 ? d.i - 1 : 1], p = d.it.type === "duct" ? snapDuct(w, o, d.it.pts.filter((_, j) => j !== d.i), d.it) : snapLine(w, o); mouse = p; d.it.pts[d.i] = [p.x, p.y]; }
         else if (d.type === "node") { const skip = new Set(d.ends.map((x) => x.it.id)), p = P.snapPlan(sh(), visible().filter((i) => !skip.has(i.id)), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? otherEnd(d) : undefined }); mouse = p; P.setEnds(sh(), d.ends, [p.x, p.y]); }
+        else if (d.type === "shp") { const o = d.o, fix = o.k === "line" ? o.pts[1 - d.h] : o.k === "circle" ? [o.x, o.y] : undefined, p = snapShape(w, fix, d.it); mouse = p; P.dragShapeHandle(d.it, o, d.h, [p.x, p.y]); renderRight(); }
         else if (d.type === "edge") { P.setOpeningEdge(d.wall, d.it, d.edge, P.along(d.wall, [w.x, w.y]), S.alt ? 1 : 10); renderRight(); }
         else if (d.it.type === "wall") { const g = S.grid.on && !S.alt ? S.grid.size : 1, dx = Math.round((w.x - d.sx) / g) * g, dy = Math.round((w.y - d.sy) / g) * g; P.setEnds(sh(), d.ea, [d.a0[0] + dx, d.a0[1] + dy]); P.setEnds(sh(), d.eb, [d.b0[0] + dx, d.b0[1] + dy]); }
         else if (d.it.type === "opening") { const wl = sh().items.find((i) => i.id === d.it.wall), g = S.grid.on && !S.alt ? 10 : 1; d.it.t = d.t0 + Math.round((P.along(wl, [w.x, w.y]) - P.along(wl, [d.sx, d.sy])) / g) * g; P.clampOpening(wl, d.it); }
@@ -649,6 +700,7 @@ export function makePlan(c) {
   const otherEnd = (d) => { const it = d.ends[0]?.it; return it ? it[d.ends[0].e === "a" ? "b" : "a"] : undefined; };
   const boxOf = (d) => ({ x0: Math.min(d.sx, d.ex), y0: Math.min(d.sy, d.ey), x1: Math.max(d.sx, d.ex), y1: Math.max(d.sy, d.ey) });
   function up() {
+    if (shapeDraft?.press) { const done = shapeDraft.moved; shapeDraft.press = false; if (done) finishShape(); } // gezogen: Loslassen setzt das Ende
     const d = drag; drag = null;
     if (d?.type === "box") { if (d.started) { const ids = pickable().filter((i) => P.inBox(sh(), i, boxOf(d))).map((i) => i.id); S.sel = new Set([...(d.add ? S.sel : []), ...ids]); } renderRight(); renderOverlay(); return; }
     if (d?.type === "lpt" && d.started) { const q = d.it.pts.filter((p, i, a) => !i || !same(p, a[i - 1])); if (q.length >= 2) d.it.pts = q; }
@@ -710,6 +762,12 @@ export function makePlan(c) {
     if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "duct", layer: sh().alay, pts, w: opt.dw, hatch: opt.dhatch }, id))); }
     renderOverlay(); updateHint();
   }
+  // Form abschliessen (leer: verwerfen), das Werkzeug bleibt für die nächste
+  function finishShape() {
+    const x = shapeDraft && draftShape(); shapeDraft = null;
+    if (x && !P.shapeEmpty(x)) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj(x, id))); }
+    renderOverlay(); updateHint();
+  }
   // Kopieren, Einfügen (je Mal 5 mm auf dem Papier weiter versetzt), Duplizieren, alles wählen
   function copySel() { if (!S.sel.size) return; clip = P.copyItems(sh(), sel()); clipN = 0; toast(`${clip.filter((i) => !P.hangs(i)).length} Objekt(e) kopiert. Einfügen mit ⌘V.`); renderRight(); }
   function pasteFrom(src, n) {
@@ -721,8 +779,8 @@ export function makePlan(c) {
   function selAll() { if (S.tool !== "select") setTool("select"); S.sel = new Set(pickable().map((i) => i.id)); renderRight(); renderOverlay(); }
   // Entwurf beenden. Gibt true, wenn etwas abgebrochen wurde.
   function cancel() {
-    const had = !!(draft || dimDraft || lineDraft || bgDraft || ductDraft);
-    draft = null; dimDraft = null; lineDraft = null; bgDraft = null; ductDraft = null;
+    const had = !!(draft || dimDraft || lineDraft || bgDraft || ductDraft || shapeDraft);
+    draft = null; dimDraft = null; lineDraft = null; bgDraft = null; ductDraft = null; shapeDraft = null;
     return had;
   }
   function del() {
@@ -732,7 +790,7 @@ export function makePlan(c) {
   }
 
   // ---------- Tasten ----------
-  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", l: "pl-line", k: "pl-duct", d: "pl-ader" }; // CJ 27.10.2026: K = Kanal, Leitung nur noch L
+  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", l: "pl-line", k: "pl-duct", d: "pl-ader", i: "pl-sline", q: "pl-srect", c: "pl-scircle" }; // I, Q wie im Schema; Kreis C (O = Öffnung) // CJ 27.10.2026: K = Kanal, Leitung nur noch L
   const GRUND_TOOLS = ["pl-wall", "pl-open", "pl-dim", "pl-measure", "pl-fix", "pl-rotate"];
   // Grundriss-Werkzeuge (Wand, Tür/Fenster, Mass) gibt es nur auf der Ebene Hintergrund (ohne sie auf der einzigen Ebene)
   const grundOn = () => sh().alay === "bg" || !P.layerById(sh(), "bg");
@@ -766,6 +824,19 @@ export function makePlan(c) {
       }
       if (k === "Escape") { finishDuct(); return true; }
     }
+    if (shapeDraft) { // Mass tippen: Linie Länge (Tab Winkel), Rechteck Breite (x oder Tab) Höhe, Kreis Radius; Enter setzt, Esc bricht ab
+      const d = shapeDraft, fld = `v${d.field}`, two = d.k !== "circle";
+      if (/^[0-9.,]$/.test(k) || /^[mc ]$/i.test(k) || (d.k === "line" && d.field === 2 && k === "-")) { d[fld] += k; renderOverlay(); updateHint(); return true; }
+      if (two && (k === "Tab" || (d.k === "rect" && /^[x×*]$/i.test(k)))) { d.field = k === "Tab" ? 3 - d.field : 2; renderOverlay(); updateHint(); return true; }
+      if (k === "Backspace") { if (d[fld]) d[fld] = d[fld].slice(0, -1); else if (d.field === 2) d.field = 1; else shapeDraft = null; renderOverlay(); updateHint(); return true; }
+      if (k === "Enter") {
+        const bad = [d.v1, d.k === "line" ? "" : d.v2].find((v) => v.trim() && !(P.parseLen(v) > 0));
+        if (bad !== undefined) { toast(`„${bad}“ nicht verstanden. Beispiele: 3450, 345 cm, 3,45 m.`, "error"); return true; }
+        if (d.v1.trim() || d.v2.trim()) finishShape(); else { shapeDraft = null; renderOverlay(); updateHint(); }
+        return true;
+      }
+      if (k === "Escape") { shapeDraft = null; renderOverlay(); updateHint(); return true; }
+    }
     if (S.tool === "pl-duct" && /^[1-9]$/.test(k) && !e.altKey) { opt.dw = P.DUCT_WS[Number(k) - 1]; toast(`Kanal ${opt.dw} mm.`); renderRight(); renderOverlay(); updateHint(); return true; } // Zahlentasten: Breite (Tastenkürzel-Index)
     if (/^[1-9]$/.test(k) && !e.altKey) { // Aderzahl (CJ 27.10.2026): beim Setzen die nächste, sonst die gewählten
       const as = sel().filter((i) => i.type === "ader");
@@ -782,9 +853,9 @@ export function makePlan(c) {
     if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Links die Ebene wechseln."); return true; } setTool(t); return true; }
     if (k.toLowerCase() === "p" && !e.altKey) { bgToggle(); return true; } // PDF-Plan ein/aus (Tastenkürzel-Index)
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
-      const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym");
+      const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym"), fs = sel().filter((i) => i.type === "shape" && i.k !== "circle");
       if (S.tool === "pl-sym") { opt.symR = (opt.symR + step) % 360; renderOverlay(); return true; }
-      if (ys.length) { change(() => { for (const y of ys) y.r = (y.r + step) % 360; }); return true; }
+      if (ys.length || fs.length) { change(() => { for (const y of ys) y.r = (y.r + step) % 360; for (const x of fs) P.rotateShape(x, step); }); return true; } // Formen um die eigene Mitte
       return true;
     }
     if (k.toLowerCase() === "a" && !e.altKey) { // Aufputz/Unterputz (CJ 26.10.2026): beim Setzen für die nächsten Symbole, sonst an den gewählten (alle gleich: Mehrheit UP → AP)
@@ -794,7 +865,7 @@ export function makePlan(c) {
       if (sel().length) toast("Gewählte Symbole haben keine Aufputz-Variante (nur Schalter und Steckdosen).");
       return true;
     }
-    if ("tiqry".includes(k.toLowerCase()) && k.length === 1) return true; // Werkzeuge anderer Blätter: hier ohne Wirkung
+    if ("try".includes(k.toLowerCase()) && k.length === 1) return true; // Werkzeuge anderer Blätter: hier ohne Wirkung
     if (k.startsWith("Arrow") && S.sel.size) {
       const step = (S.grid.on ? S.grid.size : 10) * (e.shiftKey ? 5 : 1), dx = k === "ArrowLeft" ? -step : k === "ArrowRight" ? step : 0, dy = k === "ArrowUp" ? step : k === "ArrowDown" ? -step : 0;
       change(() => P.moveItems(sh(), sel(), dx, dy), { panel: true });
@@ -816,6 +887,7 @@ export function makePlan(c) {
         + (S0.bg ? `<p class="note">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "")
         + `</section><section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
       + `<section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "L") + toolBtn("pl-ader", ICON.ader, "Aderzahl", "D") + toolBtn("pl-duct", ICON.duct, "Kanal/Trasse", "K")
+      + `</section><section class="section"><h2 class="section-title">Zeichnen</h2>` + toolBtn("pl-sline", R.icons.sline, "Linie", "I") + toolBtn("pl-srect", R.icons.srect, "Rechteck", "Q") + toolBtn("pl-scircle", R.icons.scircle, "Kreis", "C")
       + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`
       + (S0.bg?.asset ? `<div class="layer-row pl-bgrow${S0.bgOff ? " off" : ""}"><span class="layer-name">PDF-Plan</span>`
         + `<input type="range" min="10" max="100" step="10" value="${S0.bgOp ?? P.BG_OP}" data-plbgop aria-label="Deckkraft PDF-Plan in %" title="Deckkraft ${S0.bgOp ?? P.BG_OP} %"${S0.bgOff ? " disabled" : ""}>`
@@ -883,11 +955,32 @@ export function makePlan(c) {
     return `<div class="field"><label>Kanten${cur ? ` (${R.esc(P.colName(cur))})` : " (verschieden)"}</label><div class="swatches">${P.PLAN_COLS.map(([c, l]) => `<button class="swatch" style="--sw:${c}" data-plecol="${c}" aria-pressed="${c === cur}" title="${R.esc(l)}" aria-label="Kanten: ${R.esc(l)}"></button>`).join("")}</div></div>`
       + `<div class="row"><button class="btn outline small" data-plact="ecoldef"${own ? "" : " disabled"}>Kanten Vorgabe (Rot)</button></div>`;
   }
-  function ductLayerHint() {
-    const l = sh().layers.find((x) => x.name === DUCT_LAYER);
+  // Vorschlag eigene Ebene (Kanäle, Formen): anlegen oder dorthin wechseln
+  function layerHint(name, what) {
+    const l = sh().layers.find((x) => x.name === name);
     if (l && l.id === sh().alay) return "";
-    return `<div class="row"><button class="btn outline small" data-plact="ductlayer">${l ? `Auf Ebene „${DUCT_LAYER}“ zeichnen` : `Ebene „${DUCT_LAYER}“ anlegen`}</button></div>`
-      + `<p class="note">Vorschlag: Kanäle auf einer eigenen Ebene, so lassen sie sich ausblenden und sperren.</p>`;
+    return `<div class="row"><button class="btn outline small" data-plact="ownlayer" data-name="${R.esc(name)}">${l ? `Auf Ebene „${name}“ zeichnen` : `Ebene „${name}“ anlegen`}</button></div>`
+      + `<p class="note">Vorschlag: ${what} auf einer eigenen Ebene, so lassen sie sich ausblenden und sperren.</p>`;
+  }
+  const ductLayerHint = () => layerHint(DUCT_LAYER, "Kanäle");
+  // Formen (CJ 27.10.2026): Strichfarbe, Linienstärke, gestrichelt, Füllung (Rechteck und Kreis, Vorgabe keine). its = gewählte Formen, sonst das Werkzeug (opt)
+  const SHAPE_LAYER = "Zeichnung";
+  function shapeFields(its) {
+    const tool = !its, vals = (f0, def) => (tool ? new Set([opt[f0] ?? def]) : new Set(its.map((i) => i[{ scol: "col", slw: "lw", sd: "d", sfill: "fill" }[f0]] ?? def)));
+    const one = (st) => (st.size === 1 ? [...st][0] : null), col = one(vals("scol", "#000000")), fill = one(vals("sfill", null)), lw = one(vals("slw", P.SHAPE_LW)), dsh = one(vals("sd", false));
+    const sw = (attr, c, cur, l) => `<button class="swatch" style="--sw:${c}" ${attr}="${c}" aria-pressed="${c === cur}" title="${R.esc(l)}" aria-label="${R.esc(l)}"></button>`;
+    const fillOk = tool ? shapeKey(S.tool) !== "line" : its.some((i) => i.k !== "line");
+    return `<div class="field"><label>Farbe${col ? ` (${R.esc(P.colName(col))})` : " (verschieden)"}</label><div class="swatches">${P.PLAN_COLS.map(([c, l]) => sw("data-plscol", c, col, l)).join("")}</div></div>`
+      + `<div class="field"><label>Linienstärke in mm (Papier)</label><select data-pls="slw">${(lw === null ? [["", "– verschieden –"]] : []).concat(P.SHAPE_LWS.map((x) => [x, num(x)])).map(([v, l]) => `<option value="${v}"${String(v) === String(lw ?? "") ? " selected" : ""}>${l}</option>`).join("")}</select></div>`
+      + `<label class="check"><input type="checkbox" data-pls="sd"${dsh ? " checked" : ""}> gestrichelt</label>`
+      + (fillOk ? `<div class="field"><label>Füllung${fill ? ` (${R.esc(P.colName(fill))})` : vals("sfill", null).size > 1 ? " (verschieden)" : " (keine)"}</label><div class="swatches">${P.PLAN_COLS.map(([c, l]) => sw("data-plsfill", c, fill, `Füllung ${l}`)).join("")}</div></div>`
+        + `<div class="row"><button class="btn outline small" data-plsfill=""${fill === null && vals("sfill", null).size === 1 ? " disabled" : ""}>Keine Füllung</button></div>` : "");
+  }
+  // Darstellung setzen: an den gewählten Formen (eine Änderung, Rückgängig) oder für die nächsten (Werkzeug)
+  function setShapeStyle(f0, v) {
+    const its = sel().filter((i) => i.type === "shape");
+    if (!its.length) { opt[f0] = v; renderRight(); renderOverlay(); return; }
+    change(() => { for (const i of its) { const o = P.cleanPlanObj({ ...i, [{ scol: "col", slw: "lw", sd: "d", sfill: "fill" }[f0]]: v }, i.id); Object.keys(i).forEach((x) => delete i[x]); Object.assign(i, o); } });
   }
   // Textgrösse (CJ 27.10.2026, wie Disposition: Prozent der Vorgabe, gespeichert als Faktor tf). Einzeln: leer = Wert des Plans.
   const pct = (f0) => Math.round(f0 * 100);
@@ -931,6 +1024,12 @@ export function makePlan(c) {
       + sel1("hatch", P.HATCHES, it.hatch ?? "kreuz", "Schraffur") + `<div class="field"><label>Beschriftung (z. B. Kabelrinne 300)</label><input type="text" data-plf="txt" value="${R.esc(it.txt ?? "")}" autocomplete="off" spellcheck="false"></div>`
       + (it.txt ? tfField([it]) : "") + colField([it]).replace("<label>Farbe", "<label>Schraffur") + ecolField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
       + note(`${it.pts.length} Punkte, Länge der Mittellinie ${P.fmtLen(P.ductLen(it))} mm. Griffe an den Punkten ziehen (Fang wie bei Wänden, Shift 0/45/90°), Ziehen am Kanal verschiebt ihn.`) + copyRow() + del1();
+    if (it?.type === "shape") return head(P.SHAPE_KINDS[it.k], shapeInfo(it))
+      + (it.k === "line" ? inp("slen", "Länge in mm", P.fmtLen(Math.hypot(it.pts[1][0] - it.pts[0][0], it.pts[1][1] - it.pts[0][1]))) : it.k === "rect" ? inp("sw", "Breite in mm", P.fmtLen(it.w)) + inp("sh", "Höhe in mm", P.fmtLen(it.h)) : inp("sr", "Radius in mm", P.fmtLen(it.r)))
+      + shapeFields([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
+      + note(`Griffe ${it.k === "line" ? "an den Enden" : it.k === "rect" ? "an den Ecken (die Gegenecke bleibt)" : "auf dem Kreis ändern den Radius"}; Fang an Wänden, Symbolen und Ecken, Alt frei. Ziehen verschiebt, R dreht um 90°. Nicht in der Stückliste.`) + copyRow() + del1();
+    if (sel0.length > 1 && sel0.every((i) => i.type === "shape")) return head(`${sel0.length} Formen`, "Linie, Rechteck, Kreis") + shapeFields(sel0) + sel1("mlayer", new Set(sel0.map((i) => i.layer)).size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], new Set(sel0.map((i) => i.layer)).size === 1 ? sel0[0].layer : "", "Ebene")
+      + note("Ziehen an einer gewählten Form verschiebt alle, R dreht jede um ihre Mitte.") + copyRow() + del1();
     if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + sel1("lc", LINE_FORMS, it.curve ? "1" : "0", "Form") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
       + note(`${it.pts.length} Punkte. Griffe an den Punkten ziehen (Fang an den Anschlusspunkten der Symbole und am Raster, Shift 0/45/90°), Ziehen an der Linie verschiebt sie.`) + copyRow() + del1();
     if (sel0.length && sel0.every((i) => i.type === "ader")) { // eine oder mehrere Aderzahlen: gemeinsam änderbar
@@ -940,10 +1039,10 @@ export function makePlan(c) {
     }
     if (it) return head(it.type) + copyRow() + del1();
     if (sel0.length > 1) {
-      const n = (t) => sel0.filter((i) => i.type === t).length, parts = [["wall", "Wände"], ["opening", "Öffnungen"], ["dim", "Masse"], ["sym", "Symbole"], ["line", "Leitungen"], ["ader", "Aderzahlen"], ["duct", "Kanäle"]].filter(([t]) => n(t)).map(([t, l]) => `${n(t)} ${l}`);
+      const n = (t) => sel0.filter((i) => i.type === t).length, parts = [["wall", "Wände"], ["opening", "Öffnungen"], ["dim", "Masse"], ["sym", "Symbole"], ["line", "Leitungen"], ["ader", "Aderzahlen"], ["duct", "Kanäle"], ["shape", "Formen"]].filter(([t]) => n(t)).map(([t, l]) => `${n(t)} ${l}`);
       const cols = sel0.filter(P.hasCol), lays = new Set(sel0.filter((i) => !P.hangs(i)).map((i) => i.layer));
       const tfs = sel0.filter((i) => i.type === "sym" || i.type === "dim" || i.type === "ader" || (i.type === "duct" && i.txt)), ds = sel0.filter((i) => i.type === "duct");
-      return head(`${sel0.length} Objekte`, parts.join(", ")) + (tfs.length ? tfField(tfs) : "") + (cols.length ? colField(cols) : note("Farbe nur für Leitungen, Symbole und Kanäle; Mauern, Öffnungen und Masse bleiben schwarz.")) + (ds.length ? ecolField(ds) : "")
+      return head(`${sel0.length} Objekte`, parts.join(", ")) + (tfs.length ? tfField(tfs) : "") + (cols.length ? colField(cols) : note("Farbe nur für Leitungen, Symbole, Kanäle und Formen; Mauern, Öffnungen und Masse bleiben schwarz.")) + (ds.length ? ecolField(ds) : "")
         + (lays.size ? sel1("mlayer", lays.size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], lays.size === 1 ? [...lays][0] : "", "Ebene") : "")
         + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. ⌘-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
     }
@@ -960,6 +1059,8 @@ export function makePlan(c) {
       + note("Kurzer Querstrich über die Leitung, die Zahl steht darüber. Ziffern 1 bis 9 wählen die Zahl, frei z. B. 5x1.5. Strich und Text in der Farbe der Leitung.");
     else if (S.tool === "pl-duct") h += head("Neuer Kanal", "Klick setzt Punkte, Enter beendet") + dwField(P.fmtLen(opt.dw), "data-plo") + sel1("dhatch", P.HATCHES, opt.dhatch, "Schraffur").replace("data-plf", "data-plo") + ductLayerHint()
       + note(`Zahlentasten 1 bis 9 wählen die Breite (${P.DUCT_WS.join(", ")} mm), solange kein Punkt gesetzt ist; danach tippen sie die Länge wie bei der Wand (Tab = Winkel, Enter setzt). Fang wie bei Wänden, Shift 0/45/90°, Alt ohne Fang. Doppelklick, Enter ohne Eingabe oder Esc beendet, Rücktaste nimmt den letzten Punkt weg. Schraffur gelb, Kanten rot, am Kanal änderbar.`);
+    else if (shapeKey(S.tool)) { const kk = shapeKey(S.tool); h += head(`Neue${kk === "line" ? " Linie" : kk === "rect" ? "s Rechteck" : "r Kreis"}`, "Klick Anfang, Klick Ende, oder ziehen") + shapeFields(null) + layerHint(SHAPE_LAYER, "Formen")
+      + note(`${kk === "line" ? "Länge tippen (Tab = Winkel)" : kk === "rect" ? "Breite tippen, x oder Tab, Höhe tippen (Seite nach dem Zeiger, Shift = Quadrat)" : "Radius tippen (Klick = Mitte)"}, Enter setzt. Echte Masse in mm (345 cm, 3,45 m). Fang an Wänden, Symbolen und Ecken, nicht an Leitungen; Shift 0/45/90°, Alt ohne Fang. Esc bricht ab.`); }
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
     if (S.tool === "select" && clip?.length) h += `<div class="row"><button class="btn outline small" data-plact="paste">Einfügen (${clip.filter((i) => !P.hangs(i)).length})</button><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
     else if (S.tool === "select") h += `<div class="row"><button class="btn outline small" data-plact="all">Alles wählen</button></div>`;
@@ -1001,12 +1102,17 @@ export function makePlan(c) {
       else if (its.length) change(() => { for (const i of its) if (v) i.tf = f0; else delete i.tf; });
       return true;
     }
+    if (t.dataset.pls !== undefined) { const k = t.dataset.pls; if (k === "sd") setShapeStyle("sd", t.checked); else if (t.value) setShapeStyle("slw", Number(t.value)); return true; } // Form: Linienstärke, gestrichelt
     if (t.dataset.plf === undefined || !it) return false;
     const k = t.dataset.plf, v = t.value;
     if (k === "mlayer") { if (P.layerById(S0, v)) change(() => { for (const x of sel()) if (!P.hangs(x)) x.layer = v; }); else renderRight(); return true; }
     if (k === "atxt") { const t0 = v.trim().slice(0, 20), as = sel().filter((i) => i.type === "ader"); if (t0 && as.length) change(() => { for (const a of as) a.txt = t0; }); else renderRight(); return true; }
     if (k === "lk") { change(() => { it.kind = v; }); return true; }
     if (k === "lc") { change(() => { if (v === "1") it.curve = true; else delete it.curve; }); return true; }
+    if (it.type === "shape" && ["slen", "sw", "sh", "sr"].includes(k)) {
+      const L0 = P.parseLen(v); if (!(L0 > 0)) { toast(`„${v}“ nicht verstanden. Beispiele: 3450, 345 cm, 3,45 m.`, "error"); renderRight(); return true; }
+      change(() => { if (k === "slen") P.setShapeLen(it, L0); else it[{ sw: "w", sh: "h", sr: "r" }[k]] = Math.round(L0 * 1000) / 1000; }); return true;
+    }
     if (it.type === "duct") {
       if (k === "dw") { const L0 = P.parseLen(v); if (!(L0 > 0 && L0 <= P.DUCT_MAX)) { toast(`Breite 1 bis ${P.DUCT_MAX} mm.`, "error"); renderRight(); return true; } change(() => { it.w = L0; opt.dw = L0; }); return true; }
       if (k === "hatch") { change(() => { if (v === "kreuz") delete it.hatch; else it.hatch = v; }); return true; }
@@ -1062,12 +1168,15 @@ export function makePlan(c) {
     if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt${opt.lcurve ? ", geschwungen" : ""}). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;
     if (S.tool === "pl-ader") return `Aderzahl: Klick auf eine Leitung setzt den Querstrich mit „${opt.atxt}“. Ziffern 1 bis 9 wählen die Zahl, rechts frei (z. B. 5x1.5). Esc beendet.`;
     if (S.tool === "pl-duct") return ductDraft ? `Kanal ${P.fmtLen(opt.dw)} mm: nächster Punkt per Klick oder Länge tippen (Tab = Winkel), Enter setzt (${ductDraft.pts.length} gesetzt). Enter ohne Eingabe, Doppelklick oder Esc beendet, Rücktaste nimmt zurück. Shift 0/45/90°, Alt ohne Fang.${ductDraft.len || ductDraft.ang ? `  Eingabe: ${ductDraft.len || "–"} mm, ${ductDraft.ang || "–"}°` : ""}` : `Kanal ${P.fmtLen(opt.dw)} mm (${P.HATCHES.find(([x]) => x === opt.dhatch)[1]}): Klick setzt den Anfang der Mittellinie. Zahlen 1–9 wählen die Breite (${P.DUCT_WS.join(", ")} mm). Fang wie bei Wänden.`;
+    if (shapeKey(S.tool)) { const kk = shapeKey(S.tool), d = shapeDraft, n = { line: "Linie", rect: "Rechteck", circle: "Kreis" }[kk];
+      return d ? `${n}: ${kk === "line" ? "Ende klicken oder Länge tippen (Tab = Winkel)" : kk === "rect" ? "Gegenecke klicken oder Breite tippen, x, Höhe tippen" : "Punkt auf dem Kreis klicken oder Radius tippen"}, Enter setzt. Shift ${kk === "rect" ? "Quadrat" : "0/45/90°"}, Alt ohne Fang, Esc bricht ab.${d.v1 || d.v2 ? `  Eingabe: ${d.v1 || "–"}${kk === "circle" ? "" : ` / ${d.v2 || "–"}`}` : ""}`
+        : `${n}: Klick setzt ${kk === "circle" ? "die Mitte" : "den Anfang"}, zweiter Klick ${kk === "circle" ? "den Radius" : "das Ende"} (oder ziehen). Fang an Wänden, Symbolen und Ecken. Farbe, Stärke, Füllung rechts.`; }
     if (S.tool === "pl-measure") return bgDraft ? "Massstab messen: Endpunkt der bekannten Strecke klicken (Shift 0/45/90°). Esc bricht ab." : "Massstab messen: Anfang einer bekannten Strecke auf dem PDF-Plan klicken (z. B. eine Masskette). Danach die Länge in mm eingeben.";
     if (S.tool === "pl-rotate") return bgDraft ? "Plan drehen: zweiten Punkt der Kante klicken. Esc bricht ab." : "Plan drehen: zwei Punkte einer Kante klicken, die waagrecht oder senkrecht liegen soll.";
     if (S.tool === "pl-fix") return "Fixpunkt: Punkt auf dem PDF-Plan klicken, der in allen Stockwerken gleich liegt (z. B. Ecke Treppenhaus). Er wird zum Nullpunkt.";
     if (S.tool === "pl-pmid") return "Druckmitte: in den Plan klicken, dort liegt die Mitte des Planfelds (Rahmen zeigt den Druckbereich). Esc bricht ab.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
-    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "⌘-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, L Leitung, D Aderzahl, K Kanal, R dreht Symbole, A Aufputz/Unterputz.`;
+    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "⌘-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, L Leitung, D Aderzahl, K Kanal, I/Q/C Linie/Rechteck/Kreis, R dreht Symbole und Formen, A Aufputz/Unterputz.`;
   }
 
   // Bedienung der Leisten (eigene Datenattribute, app.js kennt sie nicht)
@@ -1102,16 +1211,19 @@ export function makePlan(c) {
     if (sw) { change(() => { for (const it of sel()) P.setCol(it, sw.dataset.plcol); }); return; }
     const ec = e.target.closest("[data-plecol]"); // Kantenfarbe der Kanäle
     if (ec) { change(() => { for (const it of sel()) if (it.type === "duct") P.setEcol(it, ec.dataset.plecol); }); return; }
+    const sc = e.target.closest("[data-plscol]"), sf = e.target.closest("[data-plsfill]"); // Form: Strichfarbe, Füllung (leer = keine)
+    if (sc) { setShapeStyle("scol", sc.dataset.plscol); return; }
+    if (sf) { setShapeStyle("sfill", sf.dataset.plsfill || null); return; }
     const nc = e.target.closest("[data-plnewcol]"); // Farbe des nächsten Verweises
     if (nc) { opt.refCol = nc.dataset.plnewcol === P.LINE_COL ? null : nc.dataset.plnewcol; renderRight(); return; }
     const a = e.target.closest("[data-plact]")?.dataset.plact;
     if (a === "coldef") change(() => { for (const it of sel()) P.setCol(it, ""); });
     else if (a === "lores") change(() => { for (const it of sel()) delete it.lo; });
     else if (a === "ecoldef") change(() => { for (const it of sel()) if (it.type === "duct") delete it.ecol; });
-    else if (a === "ductlayer") { const S0 = sh(), l = S0.layers.find((x) => x.name === DUCT_LAYER); if (!l && S0.layers.length >= P.MAX_LAYERS) { toast(`Schon ${P.MAX_LAYERS} Ebenen.`, "error"); return; } change(() => { if (l) S0.alay = l.id; else P.addLayer(S0, DUCT_LAYER); }, { panel: false }); renderLeft(); renderRight(); }
+    else if (a === "ownlayer") { const S0 = sh(), name = e.target.closest("[data-plact]").dataset.name, l = S0.layers.find((x) => x.name === name); if (!l && S0.layers.length >= P.MAX_LAYERS) { toast(`Schon ${P.MAX_LAYERS} Ebenen.`, "error"); return; } change(() => { if (l) S0.alay = l.id; else P.addLayer(S0, name); }, { panel: false }); renderLeft(); renderRight(); }
     else if (a === "copy") copySel(); else if (a === "paste") paste(); else if (a === "dup") dup(); else if (a === "all") selAll();
   });
-  for (const el of [c.rightEl, c.popEl]) el.addEventListener("change", (e) => { if (sh().kind === "plan" && (e.target.dataset.plf !== undefined || e.target.dataset.plo !== undefined || e.target.dataset.plp !== undefined || e.target.dataset.pltf !== undefined)) panelChange(e.target); });
+  for (const el of [c.rightEl, c.popEl]) el.addEventListener("change", (e) => { if (sh().kind === "plan" && (e.target.dataset.plf !== undefined || e.target.dataset.plo !== undefined || e.target.dataset.plp !== undefined || e.target.dataset.pltf !== undefined || e.target.dataset.pls !== undefined)) panelChange(e.target); });
 
   // Alt oder Shift gedrückt oder losgelassen: Fangpunkt unter dem Zeiger neu berechnen
   const mod = () => { if (raw) move(raw, { shiftKey: S.shift, altKey: S.alt }); };

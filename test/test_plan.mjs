@@ -692,4 +692,19 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.ok(P.setShapeLen(ln, 1000) && ln.pts[1][0] === 1100, "Länge der Linie: Ende wandert");
   assert.strictEqual(P.shapeSnaps(ci).length, 5, "Fang am Kreis: Mitte und vier Punkte");
 }
+// ---------- Erdung und Blitzschutz (CJ 27.10.2026, Aufgaben Plan 20, Dateiversion 32) ----------
+{
+  const v = (its) => JSON.parse(M.serializeModel(M.parseModel(file([plan(its)], 32)))).version;
+  assert.strictEqual(v([{ id: 90, type: "sym", layer: "l1", key: "PA_SCHIENE", at: [0, 0], r: 0 }]), 32, "Erdungssymbol: Version 32");
+  assert.strictEqual(v([{ id: 90, type: "sym", layer: "l1", key: "HAK", at: [0, 0], r: 0, w: 500 }]), 32, "HAK: Version 32");
+  for (const kind of ["fund", "erdl", "blitz"]) {
+    const d = M.parseModel(file([plan([{ id: 91, type: "line", layer: "bg", pts: [[0, 0], [1000, 0]], kind }])], 32));
+    assert.strictEqual(d.sheets[0].items[0].kind, kind, `Verlegeart ${kind} bleibt`);
+    assert.strictEqual(JSON.parse(M.serializeModel(d)).version, 32, `Erdleitung ${kind}: Version 32`);
+  }
+  assert.ok(v([{ id: 91, type: "line", layer: "bg", pts: [[0, 0], [1000, 0]], kind: "flex" }]) < 32, "übrige Verlegearten: tiefer");
+  const d = M.parseModel(file([plan([{ id: 90, type: "sym", layer: "l1", key: "ERDE", at: [0, 0], r: 0 }, { id: 92, type: "sym", layer: "l1", key: "SPD", at: [0, 0], r: 90 }])], 32));
+  assert.deepStrictEqual(P.bomOf(d.sheets[0]).map((r) => [r.group, r.label]), [["Erdung/PA", "Erdung, allgemein"], ["Blitzschutz", "Überspannungsableiter (SPD)"]], "Stückliste: Gruppen Erdung/PA, Blitzschutz");
+  assert.strictEqual(P.LINE_W.blitz, 0.7, "Blitzschutzleitung dick");
+}
 console.log("test_plan: alles ok");

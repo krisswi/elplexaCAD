@@ -334,7 +334,7 @@ export function makePlan(c) {
   }
   // Leitung: Strichmuster nach Art (Papier-mm × k), flexibel mit einer Welle in der Mitte jedes Abschnitts. Geschwungen: glatte Kurve (B-Spline, P.curveSegs).
   function lineSVG(it, k, stroke = P.colOf(it), pts = it.pts, curve = it.curve) {
-    const dash = P.LINE_DASH[it.kind], w = 0.35 * k, segs = curve && pts.length > 2 ? P.curveSegs(pts) : null;
+    const dash = P.LINE_DASH[it.kind], w = (P.LINE_W[it.kind] ?? 0.35) * k, segs = curve && pts.length > 2 ? P.curveSegs(pts) : null;
     const d = segs ? `M${pt(pts[0])}${segs.map(([, b, c2, e]) => `C${pt(b)} ${pt(c2)} ${pt(e)}`).join("")}` : `M${pts.map(pt).join("L")}`;
     let s = `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${f(w)}" stroke-linejoin="round" ${dash ? `stroke-linecap="butt" stroke-dasharray="${dash.map((x) => f(x * k)).join(" ")}"` : 'stroke-linecap="round"'}/>`;
     if (it.kind === "flex") for (let i = 1; i < pts.length; i++) {

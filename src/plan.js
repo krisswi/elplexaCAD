@@ -98,8 +98,13 @@ export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang",
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
 export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct", "ader", "shape"]);
 // Leitungsarten (Symbolzusammenfassung 5.110). Strichmuster in Papier-mm (× Massstab), flex = durchgezogen mit Welle je Abschnitt.
-export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"]];
-export const LINE_DASH = { decke: null, boden: [3, 1.5], wand: [3, 1, 0.8, 1], doppel: [3, 0.8, 0.6, 0.8, 0.6, 0.8], flex: null };
+export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"],
+  ["fund", "Fundamenterder (verlegt im Beton)"], ["erdl", "Erdleiter (verlegt im Erdreich)"], ["blitz", "Blitzschutzleitung (sichtbar verlegt)"]];
+// Erdleitungen 5.130 (CJ 27.10.2026, Dateiversion 32): Fundamenterder Strich-Punkt-Punkt, Erdleiter gestrichelt, Blitzschutzleitung dick.
+// v3-Falle: der Minifier ordnet Namen nach der Häufigkeit der Buchstaben im ganzen plan.js (auch toter Code); «k» und «v» liegen fast gleichauf,
+// die Wörter «verlegt» gleichen die zusätzlichen «kind» aus (sonst ändern sich im v3-Bau Namen). Prüfen: shasum dist/schemacad.html.
+export const LINE_DASH = { decke: null, boden: [3, 1.5], wand: [3, 1, 0.8, 1], doppel: [3, 0.8, 0.6, 0.8, 0.6, 0.8], flex: null, fund: [4, 0.8, 0.25, 0.8, 0.25, 0.8], erdl: [2, 1.2], blitz: null };
+export const LINE_W = { blitz: 0.7 }; // Linienbreite in Papier-mm, wo sie von 0,35 abweicht
 // Farben (Farbcodes 5.100). Mauern, Öffnungen und Masse bleiben schwarz. Seit 27.10.2026 kräftiger (CJ: Blau zu hell), auf Weiss und im Druck
 // gut lesbar (Kontrast zu Weiss ab 4,5:1, Orange 3,3, Gelb 2,3). Bisherige Töne (aus dem PDF gemessen) in PLAN_COLS_OLD: gespeicherte Farben bleiben.
 export const PLAN_COLS = [["#0068c9", "Blau – Licht"], ["#d4141c", "Rot – Kraft, Potenzialausgleich"], ["#22862a", "Grün – Notlicht, Telefon, IT"], ["#c80a78", "Rosa – Zutritt, Alarm"],
@@ -110,7 +115,7 @@ export const colName = (c) => PLAN_COLS.find(([x]) => x === c)?.[1].split(" –"
 // Vorgabe der Leitungen: blau (CJ 24.10.2026). Später in den Einstellungen änderbar, deshalb nur hier und über lineCol() gelesen.
 export const LINE_COL = "#0068c9";
 // Vorgabe aller Symbole: blau (CJ 24.10.2026, vorher nach Kategorie: Kraft rot usw.); die Farbcodes 5.100 bleiben am Objekt wählbar
-export const CAT_COL = { licht: LINE_COL, kraft: LINE_COL, kommunikation: LINE_COL, schwach: LINE_COL, allg: LINE_COL, leitung: LINE_COL };
+export const CAT_COL = { licht: LINE_COL, kraft: LINE_COL, kommunikation: LINE_COL, erdung: LINE_COL, schwach: LINE_COL, allg: LINE_COL, leitung: LINE_COL };
 const HEX = /^#[0-9a-f]{6}$/;
 export const lineCol = () => LINE_COL;
 // Vorgabe und wirksame Farbe eines Objekts
@@ -231,8 +236,9 @@ export const planV29 = (sh) => sh.items.some((i) => i.type === "duct");
 export const planV30 = (sh) => sh.items.some((i) => i.type === "ader");
 // Dateiversion 31 (CJ 27.10.2026): Kommunikationssymbole (Telefon/EDV, Video/TV, Sonnerie); ältere Stände würden sie still verwerfen
 export const planV31 = (sh) => sh.items.some((i) => i.type === "sym" && symDef(i.key)?.cat === "kommunikation");
-// Dateiversion 32 (CJ 27.10.2026): Formen (Linie, Rechteck, Kreis); ältere Stände lehnen das Objekt ab
-export const planV32 = (sh) => sh.items.some((i) => i.type === "shape");
+// Dateiversion 32 (CJ 27.10.2026): Formen (Linie, Rechteck, Kreis; ältere Stände lehnen das Objekt ab), Erdungs- und Blitzschutzsymbole
+// und Erdleitungen (ältere Stände würden sie still verwerfen bzw. zur Leitung «in Decke» machen)
+export const planV32 = (sh) => sh.items.some((i) => i.type === "shape" || symDef(i.key)?.cat === "erdung" || LINE_KINDS.slice(5).some(([k]) => k === i.kind));
 // Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31, 32 planV32
 export const planVer = (sh) => (planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
 const VERSION_NOW = 32;

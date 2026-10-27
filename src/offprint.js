@@ -88,20 +88,20 @@ function blocks(of, prices, tot) {
     });
     if (prices) out.push({ h: 10, draw: (y) => hl(L, R, y + 1, INK) + t(C.txt.x, y + 5.2, `Total ${k.titel || ""} BKP ${O.bkpMain(k.bkp) || k.bkp}`.replace(/\s+/g, " "), { bold: true }) + num(0, y + 5.2, O.fmtChf(tot.kapSum.get(k.id) || 0), "betrag", true) });
   }
-  if (prices && of.kap.length) {
-    const { rows, notes } = O.summaryRows(of, tot), rh = 5.2;
-    out.push({ h: 14 + rows.length * rh + notes.length * 4.6 + 4, draw: (y) => {
-      let s = t(L, y + 8, "Schlusszusammenstellung", { h: 4, bold: true }) + hl(L, R, y + 9.6, INK), yy = y + 15;
+  if (prices && of.kap.length) { // Schlusszusammenstellung am Anfang, vor den Positionen: Teil nach BKP, nach Seitenumbruch Teil nach Ort; die Positionen beginnen auf neuer Seite
+    const { bkp, ort, notes } = O.summaryParts(of, tot), sm = [], rh = 5.2;
+    const part = (rows, head, last, page) => {
+      sm.push({ sum: true, page, keep: true, h: 12, draw: (y) => t(L, y + 8, head, { h: 4, bold: true }) + hl(L, R, y + 9.6, INK) });
       for (const r of rows) {
         const big = r.art === "total", strong = big || r.art === "zs";
-        if (big) s += hl(C.txt.x, R, yy - 3.8, INK);
-        s += t(C.txt.x + (r.lv || 0) * 4, yy, r.text, { bold: strong || r.art === "kn", h: big ? 3.4 : FS }) + t(R, yy, (big ? "CHF " : "") + O.fmtSigned(r.betrag), { anchor: "end", bold: strong, h: big ? 3.4 : FS });
-        yy += rh;
+        sm.push({ sum: true, h: big ? rh + 1.6 : rh, draw: (y) => (big ? hl(C.txt.x, R, y + 0.4, INK) : "") + t(C.txt.x + (r.lv || 0) * 4, y + (big ? 4.6 : 3.4), r.text, { bold: strong || r.art === "kn", h: big ? 3.4 : FS }) + t(R, y + (big ? 4.6 : 3.4), (big ? "CHF " : "") + O.fmtSigned(r.betrag), { anchor: "end", bold: strong, h: big ? 3.4 : FS }) });
       }
-      yy += 1.5;
-      for (const n of notes) { s += t(C.txt.x, yy, n, { fill: SOFT }); yy += 4.6; }
-      return s;
-    } });
+      if (last) for (const n of notes) sm.push({ sum: true, h: 4.6, draw: (y) => t(C.txt.x, y + 4, n, { fill: SOFT }) });
+    };
+    part(bkp, ort ? "Schlusszusammenstellung nach BKP" : "Schlusszusammenstellung", !ort, false);
+    if (ort) part(ort, "Schlusszusammenstellung nach Ort", true, true);
+    if (out.length) out[0].page = true;
+    out.unshift(...sm);
   }
   return out;
 }
@@ -140,15 +140,15 @@ export function offertePages(of, c = {}) {
   const ctx2 = { profil: null, kunde: {}, projekt: "", prices: true, ...c }, prices = ctx2.prices, tot = O.totals(of), bl = blocks(of, prices, tot);
   const pages = [];
   let s = "", y = 0;
-  const start = (first) => {
+  const start = (first, head = true) => { // head: Tabellenkopf (nicht über der Zusammenstellung)
     if (first) { const [h, yy] = firstHead(of, ctx2); s = h; y = yy; }
     else { s = t(L, TOP + 2, [`Offerte${of.nr ? ` ${of.nr}` : ""}`, ctx2.projekt, of.datum].filter(Boolean).join(" · "), { fill: SOFT }) + hl(L, R, TOP + 3.5); y = TOP + 7; }
-    const [th, h] = tableHead(prices, y); s += th; y += h;
+    if (head) { const [th, h] = tableHead(prices, y); s += th; y += h; }
   };
-  start(true);
+  start(true, !bl[0]?.sum);
   for (let i = 0; i < bl.length; i++) {
     let need = bl[i].h; for (let j = i; bl[j]?.keep && bl[j + 1]; j++) need += bl[j + 1].h; // Überschrift nicht allein am Seitenende
-    if (y + need > BOT && y > TOP + 30) { pages.push(s); start(false); }
+    if ((y + need > BOT || bl[i].page) && y > TOP + 30) { pages.push(s); start(false, !bl[i].sum); }
     s += bl[i].draw(y); y += bl[i].h;
   }
   pages.push(s);

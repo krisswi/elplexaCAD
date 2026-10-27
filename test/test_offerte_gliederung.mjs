@@ -64,6 +64,21 @@ assert.deepStrictEqual(rows.filter((r) => r.art === "kn" || r.art === "kap").map
   [["kap", "BKP 239.1 Demontagen, Entsorgungen", 0], ["kn", "Haus A", 0], ["kn", "1. OG", 1], ["kn", "Wohnzimmer", 2], ["kap", "BKP 232.5 Lichtinstallationen", 3],
     ["kn", "Küche", 2], ["kap", "BKP 232.5 Lichtinstallationen", 3], ["kap", "BKP 233 Leuchten und Lampen", 3], ["kn", "Haus B", 0], ["kap", "BKP 236 Schwachstrominstallationen", 1]], "Summe je Knoten in der Schlusszusammenstellung");
 near(rows.find((r) => r.art === "zs").betrag, t.zwischensumme, "Zwischensumme zählt nur die Kapitel");
+// Zusammenstellung in zwei Teilen (27.10.2026): nach BKP (gleiche Nummern über alle Orte zusammengezählt, Baum 23 › 232 › 232.5) und nach Ort
+{
+  const sp = O.summaryParts(of, t), b = sp.bkp.filter((r) => r.art === "bkp");
+  assert.deepStrictEqual(b.map((r) => [r.text, r.lv]), [["23 Elektroanlagen", 0], ["232 Starkstrominstallationen", 1], ["232.5 Lichtinstallationen", 2], ["233 Leuchten und Lampen", 1],
+    ["236 Schwachstrominstallationen", 1], ["239 Übriges", 1], ["239.1 Demontagen, Entsorgungen", 2]], "BKP-Baum");
+  near(b.find((r) => r.id === "232.5").betrag, 56 + 120.03, "232.5 = Wohnzimmer + Küche in einer Zeile");
+  near(b.find((r) => r.id === "23").betrag, 56 + 120.03 + 80 + 99.99 + 200, "Stufe 23 = alle Kapitel darunter");
+  const top = b.filter((r) => !r.lv).reduce((x, r) => x + r.betrag, 0); near(top, t.zwischensumme, "oberste Stufen = Zwischensumme");
+  const tail = (rows) => rows.slice(rows.findIndex((r) => r.art === "zs")).map((r) => [r.art, r.betrag]);
+  assert.deepStrictEqual(tail(sp.bkp), tail(sp.ort), "Zwischensumme bis Total in beiden Teilen gleich"); near(tail(sp.bkp)[0][1], t.zwischensumme, "Zwischensumme");
+  assert.ok(sp.ort.every((r) => !["kn", "kap"].includes(r.art) || Math.round(r.betrag * 100) !== 0), "Nullzeilen weg");
+  assert.strictEqual(O.summaryParts(O.newOfferte()).ort, null, "ohne Gliederung kein Teil nach Ort");
+  const o2 = O.newOfferte(); o2.ansatz = 100; const ka = O.addKapitel(o2, "231"), kb = O.addKapitel(o2, "232.71"), kc = O.addKapitel(o2, ""); O.addPosition(o2, kb.grp[0], { titel: "x", menge: 1, preis: 5 }); O.addPosition(o2, kc.grp[0], { titel: "y", menge: 1, preis: 7 });
+  assert.deepStrictEqual(O.bkpRows(o2).map((r) => r.text.split(" ")[0] + "=" + r.betrag), ["23=5", "232=5", "232.7=5", "232.71=5", "Ohne=7"], "Nullzeile 231 weg, ohne BKP am Ende"); void ka;
+}
 // Rabattgruppe bleibt an der Gruppe unter dem Kapitel
 const rg = O.addRabattgruppe(of, "N", "netto"); rg.satz = 0; of.rabatt = 10; kB.grp[0].rg = rg.id;
 near(O.totals(of).rabattTotal, (200 + 256.03) * 0.1, "Rabatt ohne die Gruppe mit Rabattgruppe N");
@@ -139,6 +154,10 @@ assert.ok(cells.includes("Haus A [OGL]") && cells.includes("Total Haus B"), "Exc
 const totKue = xr.find((row) => row[1]?.v === "Total Küche")[7];
 assert.ok(/^SUM\(H\d+,H\d+\)$/.test(totKue.f), `Excel: Total Küche = Summe der beiden Kapitel (${totKue.f})`);
 assert.ok(xr.some((row) => String(row[1]?.v).trim() === "Wohnzimmer" && /^SUM\(H\d+\)$/.test(row[7]?.f)), "Excel: Summe je Knoten in der Schlusszusammenstellung");
+assert.ok(svg.indexOf("nach BKP") < svg.indexOf("nach Ort") && svg.indexOf("nach Ort") < svg.indexOf("Steckdose"), "PDF: Zusammenstellung (BKP, dann Ort) vor den Positionen");
+{ const pg = OP.offertePages(of, { prices: true }), has = (i, x) => pg[i].includes(x), ip = pg.findIndex((p) => p.includes("Steckdose")), io = pg.findIndex((p) => p.includes("nach Ort"));
+  assert.ok(io >= 1 && ip > io, "Teil nach Ort auf eigener Seite, Positionen danach"); assert.ok(!has(0, ">Pos<") && has(ip, ">Pos<"), "Tabellenkopf erst bei den Positionen");
+  assert.ok(!svg.includes("NGL") && !svg.includes("[ET]"), "kein Kürzel im PDF"); }
 const noP = OP.offertePages(of, { prices: false }).join("");
 assert.ok(noP.includes("Haus A") && !noP.includes("Total Haus A"), "ohne Preise: Kopfzeile ja, Summe nein");
 

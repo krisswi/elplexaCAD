@@ -5,6 +5,7 @@
 import sys, tempfile, json, math, re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht, dateien_leeren
 
 def plsym(page, k):  # Symbolgruppen sind zu (CJ 26.10.2026): Gruppe aufklappen, dann Symbol wählen
     page.evaluate("k => document.querySelector(`[data-plsym='${k}']`).closest('section').querySelector('[data-plgrp][aria-expanded=false]')?.click()", k)
@@ -27,7 +28,7 @@ with sync_playwright() as p:
     page = b.new_page(viewport={"width": 1400, "height": 900}, accept_downloads=True); page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")
-    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400)
+    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400); projektansicht(page)
     D = lambda: no_auto(page.evaluate("window.__schemacad.doc"))
     M = lambda: page.evaluate("window.__schemacad.model")
     sel = lambda: page.evaluate("[...window.__schemacad.sel]")
@@ -218,7 +219,7 @@ with sync_playwright() as p:
     blur(); key("v"); page.mouse.click(*at(-2000, -2000)); page.wait_for_timeout(80)
 
     # ---------- Schritt 3: Leitungen, Farben, Mehrfachwahl ----------
-    key("k"); check("Taste K: Werkzeug Leitung", page.evaluate("window.__schemacad.view") is not None and page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true")
+    key("l"); check("Taste L: Werkzeug Leitung", page.evaluate("window.__schemacad.view") is not None and page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true")
     n0 = len(M()["items"])
     click(2600, 600); click(2600, 1200); click(3300, 1200); key("Enter")
     ln = of("line"); LN = ln[-1]["id"] if ln else None
@@ -311,6 +312,7 @@ with sync_playwright() as p:
     check("Ohne Haken: nur die Plan-Seite", pp == [(420, 297)], pp)
 
     # ---------- Speichern / Laden ohne Datenverlust ----------
+    dateien_leeren(page) # die PDFs oben hätten die Datei auf Version 30 gehoben
     d1 = D()
     check("Datei: Version 23 (Plan mit geschwungenen Leitungen, Vorgabe seit 26.10.2026)", d1["version"] == 23, d1["version"])
     blur()

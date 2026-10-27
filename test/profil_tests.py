@@ -4,6 +4,7 @@ import sys, tempfile, json, base64
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="profil_"))
@@ -39,7 +40,7 @@ with sync_playwright() as p:
     page.route("https://keqfieduhipnulpkhdbj.supabase.co/**", fake)
     vis = lambda s: page.is_visible(s)
     tabs = lambda: page.evaluate("[...document.querySelectorAll('.el-navbtn')].map((t) => t.textContent)")
-    page.goto(URL); page.wait_for_timeout(300)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page)
     check("Zeile 1: Projekte, Zeit; kein Reiter «Projekt», Profil nur über den Konto-Kreis (CJ 21.10.2026)", tabs() == ["Projekte", "Zeit"])
     check("Start: das offene Projekt direkt geöffnet, sein Tab gewählt", vis(".el-mods") and page.get_attribute("#el-tab-proj", "aria-selected") == "true" and page.inner_text("#el-tab-proj").strip() != "")
     page.click("#el-nav-projekte"); page.wait_for_timeout(250)

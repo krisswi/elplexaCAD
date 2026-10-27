@@ -5,6 +5,7 @@ import tempfile, json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 TMP = Path(tempfile.mkdtemp(prefix="elplexa_zeit_"))
@@ -22,7 +23,7 @@ with sync_playwright() as p:
         pg = ctx.new_page()
         pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-        pg.clock.install(time=t); pg.goto(URL); pg.wait_for_timeout(300)
+        pg.clock.install(time=t); pg.goto(URL); pg.wait_for_timeout(300); projektansicht(pg)
         return pg
     page = start(T0)
     D = lambda: page.evaluate("window.__schemacad.doc")

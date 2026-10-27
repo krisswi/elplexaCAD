@@ -3,6 +3,7 @@
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="modstatus_"))
@@ -25,7 +26,7 @@ with sync_playwright() as p:
     def add(kind):
         page.click("#el-addmod"); page.wait_for_timeout(150); page.click(f'#el-addmenu [data-elnew="{kind}"]'); page.wait_for_timeout(250)
         key("0")
-    page.goto(URL); page.wait_for_timeout(300)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page)
     add("dispo"); add("pv")
     check("Standardfolge Schema, Dispo, PV, Legende", tiles() == ["schema", "dispo", "pv", "legende"], tiles())
     check("Status Standard Offen, nichts in der Datei", pill(0) == "Offen" and not any("st" in v for v in mods().values()))

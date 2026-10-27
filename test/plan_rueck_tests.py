@@ -4,6 +4,7 @@
 import sys, math
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 
 def plsym(page, k):  # Symbolgruppen sind zu (CJ 26.10.2026): Gruppe aufklappen, dann Symbol wählen
     page.evaluate("k => document.querySelector(`[data-plsym='${k}']`).closest('section').querySelector('[data-plgrp][aria-expanded=false]')?.click()", k)
@@ -18,7 +19,7 @@ with sync_playwright() as p:
     page = b.new_page(viewport={"width": 1400, "height": 700}); page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")
-    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400)
+    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400); projektansicht(page)
     M = lambda: page.evaluate("window.__schemacad.model")
     of = lambda t: [x for x in M()["items"] if x["type"] == t]
     def key(k):
@@ -41,7 +42,7 @@ with sync_playwright() as p:
     check("Kein Papier und kein Plankopf auf dem Bildschirm", page.locator("#sheet .paper").count() == 0 and page.locator("#sheet .pl-printframe").count() == 1 and "Druckbereich A3 quer" in page.text_content("#sheet"))
     # Taste L und K
     key("l"); check("Taste L wählt Leitung", "Leitung" in page.inner_text("#hint") and page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true"); key("v"); key("k")
-    check("Taste K auch", page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true"); key("v")
+    check("Taste K: Kanal, nicht mehr Leitung (CJ 27.10.2026)", page.get_attribute('[data-tool="pl-duct"]', "aria-pressed") == "true"); key("Escape"); key("v")
 
     # Rechteck: Raster aus, damit nur der Ausrichtungsfang wirkt. Innenlinie ab (1000|1000) im Uhrzeigersinn (Wand links = aussen).
     page.uncheck("#grid-on"); page.wait_for_timeout(80)

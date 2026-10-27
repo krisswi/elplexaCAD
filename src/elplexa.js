@@ -2,7 +2,7 @@
 // Ein Modul ist eine Gruppe von Blattarten derselben Datei. Welches Modul offen ist, folgt aus dem aktiven Blatt.
 import { esc } from "./render.js";
 import { cell } from "./auswertung.js";
-import { modOf, modVar, modName, MOD_STATUS, projectStatus } from "./model.js";
+import { modOf, modVar, modName, MOD_STATUS, MAX_FOLDERS, projectStatus } from "./model.js";
 import { adrHTML, gwrHTML } from "./gwr.js";
 import { loadProfil, profilLines } from "./profil.js";
 
@@ -34,7 +34,9 @@ const ordNo = (doc, id) => doc.mods?.[id]?.o ?? Infinity;
 export const modIds = (doc) => [...new Set(doc.sheets.map(modOf))].sort((a, b) => (ordNo(doc, a) === ordNo(doc, b) ? 0 : ordNo(doc, a) < ordNo(doc, b) ? -1 : 1) || MODULES.indexOf(modById(a)) - MODULES.indexOf(modById(b)) || modVar(a) - modVar(b));
 // Modulstatus (CJ 20.10.2026), unabhängig vom Projektstatus (Annahme). Ohne Eintrag: Offen
 export const modStatus = (doc, id) => doc.mods?.[id]?.st || MOD_STATUS[0];
-const MST_IDS = ["of", "ia", "ge", "ve", "re", "ar"];
+const MST_IDS = ["of", "ia", "ge", "ve", "re", "ar"], ARCH = "Archiviert";
+// Module in der Übersicht: archivierte ausgeblendet, bis der Schalter an ist (CJ 27.10.2026). Kacheln, Tasten 1–9 und ⌥ ← → zählen nur diese
+export const shownModIds = (doc, showArch) => modIds(doc).filter((id) => showArch || modStatus(doc, id) !== ARCH);
 export const modPill = (doc, id, edit) => { const st = modStatus(doc, id), d = `class="el-mst" data-ms="${MST_IDS[MOD_STATUS.indexOf(st)]}"`;
   return edit ? `<span ${d} data-elmst="${id}" title="Modulstatus: ${esc(st)}. Klick, Taste S oder Rechtsklick › Status: ändern">${esc(st)}</span>` : `<span ${d} title="Modulstatus">${esc(st)}</span>`; }; // kein role=button: steht im Kachel-Knopf
 export function modStatusMenuHTML(doc, id) {
@@ -121,13 +123,15 @@ export function hubHTML(doc, o) {
   const fld = (k, label) => `<label class="el-row"><span>${label}</span><input data-elp="${k}" value="${esc(pd[k])}" placeholder="–" spellcheck="false"${roA}></label>`;
   const opts = ["Offerte", "In Arbeit", "Abgegeben", "Abgeschlossen"].map((x) => `<option${x === st ? " selected" : ""}>${x}</option>`).join("");
   const fileHint = o.file && o.suggest !== o.file ? `<p class="el-note">Datei: ${esc(o.file)}. Speichern unter (⇧⌘S) schlägt „${esc(o.suggest)}“ vor.</p>` : "";
-  const tiles = modIds(doc).map((id, n) => { // Taste N = N-te Kachel (CJ 20.10.2026, nur in der Übersicht), bis 9
+  const arch = modIds(doc).filter((id) => modStatus(doc, id) === ARCH).length;
+  const tiles = shownModIds(doc, o.showArch).map((id, n) => { // Taste N = N-te Kachel (CJ 20.10.2026, nur in der Übersicht), bis 9
     const m = modById(id), idx = modIdx(doc, id);
-    return `<button class="el-tile" id="${tileId(id)}"${ro ? "" : ` draggable="true"`} data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${ro ? "" : modPill(doc, id, true)}${ro || baseOf(id) === "offerte" ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
+    return `<button class="el-tile" id="${tileId(id)}"${ro ? "" : ` draggable="true"`} data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${ro ? "" : modPill(doc, id, true)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
   }).join("");
   // Pfad, Reiter und Zeit-Chip stehen seit Paket C in der Kopfleiste (Zeile 1 Projekte und Zeit, Zeile 2 Tabs und «Heute X h»)
   const sub = "";
-  const tip = ro || o.tip === false ? "" : `<div class="el-tip" role="note"><span class="el-tiptxt"><b>Tipp</b> 1 bis 9 öffnet die Kachel an dieser Stelle · S Status · ⌥ ← → Reihenfolge · Rechtsklick auf die Kachel: Umbenennen, Duplizieren, Löschen · ⌘S Speichern · ⇧⌘S Speichern unter · ⌘O Öffnen · ? alle Tasten</span><button class="btn icon el-tipx" data-elact="tipoff" title="Tipp-Zeile ausblenden (wieder einblenden über ?)" aria-label="Tipp-Zeile ausblenden"><span aria-hidden="true">×</span></button></div>`;
+  const list = (o.tab || "projekte") === "projekte" && !o.pview; // Liste «Projekte» (Start seit 27.10.2026): keine Modulkacheln, Ziffern ohne Wirkung
+  const tip = ro || o.tip === false ? "" : `<div class="el-tip" role="note"><span class="el-tiptxt"><b>Tipp</b> ${list ? "Klick auf eine Karte öffnet das Projekt · ⌘-Klick wählt mehrere · Rechtsklick: Öffnen, Entfernen, Teilen" : "1 bis 9 öffnet die Kachel an dieser Stelle · S Status · ⌥ ← → Reihenfolge · Rechtsklick auf die Kachel: Umbenennen, Duplizieren, Löschen"} · ⌘S Speichern · ⇧⌘S Speichern unter · ⌘O Öffnen · ? alle Tasten</span><button class="btn icon el-tipx" data-elact="tipoff" title="Tipp-Zeile ausblenden (wieder einblenden über ?)" aria-label="Tipp-Zeile ausblenden"><span aria-hidden="true">×</span></button></div>`;
   const tab = o.tab || "projekte", pan = tab === "zeit" ? `role="tabpanel" id="el-tabpanel" aria-labelledby="el-tab-zeit"` : tab === "projekte" && o.pview ? `role="tabpanel" id="el-tabpanel" aria-labelledby="el-tab-proj"` : `id="el-tabpanel" role="region" aria-label="${tab === "profil" ? "Profil" : "Projekte"}"`; // Tabs in Zeile 2 der Kopfleiste
   if (!ro && o.tab === "zeit") return `${sub}<div class="el-hubin el-pview" ${pan}>${timeTabHTML({ ...(o.zeit || {}), today: o.today })}</div>${tip}`;
   if (!ro && o.tab === "profil") return `${sub}<div class="el-hubin el-pview" ${pan}>${profileHTML({ ...(o.profil || {}), tip: o.tip !== false })}</div>${tip}`;
@@ -140,11 +144,28 @@ export function hubHTML(doc, o) {
       ${ro ? "" : `<p class="el-note">Objekt, Auftrag und Index gelten für die Schriftfelder aller Blätter und Module, Bauherr mit E-Mail und Telefon auch für Titelseite und Offerte. Einzelne Blätter lassen sich im Schriftfeld weiter ändern.</p>
       <div class="el-acts"><button class="btn primary" data-elact="pdf"><span class="ic" data-ic="pdf"></span><span>Plansatz-PDF …</span></button></div>`}</section>
     ${ro ? sharedHTML(o.shared) : o.projs?.user ? `<section class="el-projs" aria-label="Online"><div id="el-online" class="el-online"></div></section>` : ""}</div>
-    <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><span class="el-eye">Module dieses Projekts</span><div class="el-grid">${tiles}
+    <div class="el-col"><section class="el-mods" aria-label="Module dieses Projekts"><div class="el-eyerow"><span class="el-eye">Module dieses Projekts</span>${ro || !(arch || o.showArch) ? "" : `<button class="el-archtog" data-elarch aria-pressed="${!!o.showArch}">Archivierte einblenden${arch ? ` (${arch})` : ""}</button>`}</div><div class="el-grid">${tiles}
       ${ro || typeof ELPLEXA === "undefined" || !ELPLEXA ? "" : `<button class="el-tile el-hand" id="el-hand" data-elact="hand" title="Handschrift mit dem Apple Pencil. Privat auf diesem Gerät, nicht im Projekt und nicht im Teilen-Link"><span class="el-th"><span class="el-tn">Handnotizen</span></span><span class="el-ts">Mit dem Stift schreiben · PDF und Bilder importieren und exportieren</span></button>`}
       ${ro ? "" : `<button class="el-tile el-new" id="el-addmod" data-elact="addmod" aria-haspopup="menu" aria-expanded="false"><span class="el-th">+ Modul</span><span class="el-ts">${typeof ELPLEXA !== "undefined" && ELPLEXA ? "Schema, Disposition, PV, Prinzipschema, Plan, Offerte" : "Schema, Disposition, PV, Prinzipschema, Offerte · Plan später"}</span></button>`}</div>
       ${ro || o.tip === false ? `<p class="el-note">Tasten: 1 bis 9 öffnet die Kachel an dieser Stelle, ${ro ? "" : "S ändert den Status, ⌥ ← → ordnet um, "}0 die Übersicht, ? alle Tasten.</p>` : ""}</section>
-    ${ro ? "" : timeHTML(doc, o.today)}</div></div>${tip}`;
+    ${ro ? "" : timeHTML(doc, o.today)}${ro ? "" : filesHTML(doc, o)}</div></div>${tip}`;
+}
+
+// Dateien im Projekt (CJ 27.10.2026): die erzeugten PDFs, je Projekt, Filter nach Ordner (höchstens 4). Metadaten aus der Datei, das PDF im Browser (dateien.js)
+const kb = (b) => b < 1048576 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1048576).toFixed(1).replace(".", ",")} MB`;
+export function filesHTML(doc, o = {}) {
+  const fs = doc.project?.folders || [], all = doc.project?.files || [];
+  const cur = fs.some((f) => f.id === o.fFolder) ? o.fFolder : "";
+  const list = all.filter((f) => !cur || f.f === cur).sort((a, b) => b.d.localeCompare(a.d)); // neueste zuerst; gleiches Datum bleibt in Erstellungsfolge
+  const chip = (id, label, n) => `<button class="el-fchip" aria-pressed="${id === cur}" data-elffolder="${esc(id)}">${esc(label)} <span class="el-fn">${n}</span></button>`;
+  const row = (f) => `<div class="el-frow"><div class="el-fname"><b>${esc(f.n)}</b><span>${fmtD(f.d)} · ${esc(f.m || "–")} · ${kb(f.s)}</span></div>`
+    + (fs.length ? `<select class="el-fmv" data-elfmv="${esc(f.id)}" aria-label="Ordner von ${esc(f.n)}"><option value="">Ohne Ordner</option>${fs.map((g) => `<option value="${esc(g.id)}"${g.id === f.f ? " selected" : ""}>${esc(g.n)}</option>`).join("")}</select>` : "")
+    + `<button class="btn outline small" data-elfopen="${esc(f.id)}">Öffnen</button><button class="btn icon" data-elfrm="${esc(f.id)}" title="Datei löschen" aria-label="${esc(f.n)} löschen">×</button></div>`;
+  return `<section class="el-files" aria-label="Dateien"><div class="el-eyerow"><span class="el-eye">Dateien</span><span class="el-sum">${all.length} ${all.length === 1 ? "Datei" : "Dateien"}</span></div>`
+    + `<div class="el-fbar" role="group" aria-label="Ordner">${chip("", "Alle", all.length)}${fs.map((g) => chip(g.id, g.n, all.filter((f) => f.f === g.id).length)).join("")}`
+    + `${fs.length < MAX_FOLDERS ? `<button class="el-fchip el-fnew" data-elfnew>+ Ordner</button>` : ""}${cur ? `<button class="el-fchip el-fnew" data-elfdelf="${esc(cur)}">Ordner löschen</button>` : ""}</div>`
+    + (list.length ? `<div class="el-flist">${list.map(row).join("")}</div>` : `<p class="el-note">${all.length ? "In diesem Ordner liegt keine Datei." : "Noch keine Dateien. Jedes PDF aus einem Modul (Knopf PDF) landet hier."}</p>`)
+    + `<p class="el-note">Die PDFs liegen im Browser dieses Geräts. Auf einem anderen Gerät steht der Eintrag, das PDF fehlt dort.</p></section>`;
 }
 
 // Reiter „Projekte“ (Etappe 3b): Kacheln oder Liste aus „zuletzt geöffnet“ (lokal, höchstens 8) und den Online-Projekten. Filter nach Status, Sortierung.
@@ -338,10 +359,10 @@ export function crumbHTML(cur, st, name) {
 }
 
 export const keysHTML = () => `<div class="el-keys">${[
-  ["1 2 3 4", "Schema, Disposition, PV, Prinzipschema öffnen (in der Übersicht: die Kachel an dieser Stelle)"], ["0", "Projektübersicht"], ["S", "Übersicht, Kachel gewählt: Modulstatus ändern"], ["⌥ ← →", "Übersicht, Kachel gewählt: Modul nach vorn oder hinten"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
+  ["1 bis 9", "nur in der Projektansicht: das Modul an dieser Stelle öffnen (Kacheln)"], ["0", "Projektübersicht"], ["S", "Übersicht, Kachel gewählt: Modulstatus ändern"], ["⌥ ← →", "Übersicht, Kachel gewählt: Modul nach vorn oder hinten"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
   ["Bild ↑ ↓", "Blatt zurück und vor, innerhalb des Moduls"], ["G", "Liste der Blätter des Moduls (Zeile ziehen oder Alt ↑ ↓ sortiert)"], ["M", "Blatt mit ★ markieren"], ["⇧ Bild ↑ ↓", "zum vorherigen und nächsten ★-Blatt, auch über Module"],
   ["/", "Symbolsuche unten links"], ["⌘ Klick", "zur Auswahl dazu oder wieder ab"], ["⌘ O", "Öffnen"], ["⌘ S", "Speichern"], ["⇧ ⌘ S", "Speichern unter"], ["⌘ F", "Suchen und Ersetzen"], ["Esc", "schliesst Menü oder Fenster, in der Übersicht zurück ins Modul"], ["?", "diese Hilfe"],
-].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im Schema gelten 1 bis 4 beim Setzen eines Geräts oder bei einem gewählten Gerät weiter für die Polzahl.</p>`;
+].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im geöffneten Modul gehören die Zahlen dem Werkzeug, sie wechseln nie das Modul: im Schema die Polzahl (1 bis 4, beim Setzen oder am gewählten Gerät), im Prinzipschema die Striche bzw. Anzahl Leiter, im Plan die Kanalbreite (Werkzeug Kanal) und die Aderzahl (Werkzeug Aderzahl, Taste D, oder an gewählten Aderzahlen).</p>`;
 
 // Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026)
 const fmtDay = (t) => new Date(t).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });

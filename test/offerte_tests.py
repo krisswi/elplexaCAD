@@ -5,6 +5,7 @@
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="offerte_"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -155,7 +156,7 @@ def flow(page, tag):
     page.click('[data-ofact="addkap"][data-bkp="236"]'); page.wait_for_timeout(150)
     page.click('[data-ofact="addpos"]'); page.keyboard.type("Netzwerkdose"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
     d = D(); o = [x2 for x2 in d["sheets"] if x2.get("kind") == "offerte"][-1]["of"]
-    check(f"{tag}: Kapitel im Knoten, Position ohne gl und bkp", o["kap"][-1].get("kn") == kid and o["kap"][-1]["grp"][0]["pos"][0]["titel"] == "Netzwerkdose" and "gl" not in o["kap"][-1]["grp"][0]["pos"][0] and d["version"] == 27, d["version"])
+    check(f"{tag}: Kapitel im Knoten, Position ohne gl und bkp", o["kap"][-1].get("kn") == kid and o["kap"][-1]["grp"][0]["pos"][0]["titel"] == "Netzwerkdose" and "gl" not in o["kap"][-1]["grp"][0]["pos"][0] and d["version"] == (30 if d.get("project", {}).get("files") else 27), d["version"]) # PDF oben unter Dateien: 30
     v = page.inner_text("#of-view") + " ".join(page.eval_on_selector_all("#of-view input", "(l) => l.map((e) => e.value)"))
     check(f"{tag}: Hauptbereich zeigt nur den Knoten", "Netzwerkdose" in v and "Steckdose T13" not in v and "Total Wohnung 1" in v, v[:200])
     page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(100)
@@ -174,7 +175,7 @@ with sync_playwright() as p:
         page = ctx.new_page()
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-        page.goto((ROOT / "dist" / file).as_uri()); page.evaluate("localStorage.clear()"); page.reload(); page.wait_for_timeout(400)
+        page.goto((ROOT / "dist" / file).as_uri()); page.evaluate("localStorage.clear()"); page.reload(); page.wait_for_timeout(400); projektansicht(page)
         if tag == "v3": page.click('[data-start="offerte"]')
         else:
             if page.is_visible(".modal.start"): page.click('[data-start="offerte"]')

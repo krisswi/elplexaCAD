@@ -54,15 +54,16 @@ export async function makePdf(svgs, title) {
   return doc.output("blob");
 }
 
-// Knopf PDF (CJ 18.10.2026): PDF bauen und im neuen Tab öffnen. Blockiert der Browser den Tab (Bau dauerte zu lange), öffnet ein Klick im Hinweis es.
+// Knopf PDF (CJ 18.10.2026): PDF bauen und im neuen Tab öffnen. Gibt das PDF zurück (null bei Fehler). Blockiert der Browser den Tab (Bau dauerte zu lange), öffnet ein Klick im Hinweis es.
 // Die Adresse bleibt 10 min gültig, damit Neuladen und Sichern im PDF-Tab gehen.
 export async function showPdf(svgs, name, toast, confirmDialog) {
   toast("PDF wird erstellt …");
   let blob;
   try { blob = await makePdf(svgs, name); }
-  catch (err) { toast("Das PDF liess sich nicht erstellen: " + (err.message || err), "error"); return; }
+  catch (err) { toast("Das PDF liess sich nicht erstellen: " + (err.message || err), "error"); return null; }
   const url = URL.createObjectURL(new File([blob], name + ".pdf", { type: "application/pdf" }));
   setTimeout(() => URL.revokeObjectURL(url), 600000);
-  if (window.open(url, "_blank")) { toast("PDF im neuen Tab geöffnet: " + name); return; }
+  if (window.open(url, "_blank")) { toast("PDF im neuen Tab geöffnet: " + name); return blob; }
   if (await confirmDialog("PDF ist fertig", "Der Browser hat den neuen Tab blockiert. Mit einem Klick öffnet sich das PDF.", "PDF öffnen")) window.open(url, "_blank");
+  return blob; // der Aufrufer legt es unter Dateien ab
 }

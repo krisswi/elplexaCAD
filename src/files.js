@@ -132,7 +132,7 @@ export function makeFiles(c) {
     if (ELPLEXA) await S.planPrep(sheets); // PDF-Pläne im Modul Plan (planedit.js)
     buildPrint(sheets);
     document.title = baseName() + suffix;
-    if (ELPLEXA) await showPdf([...$("#printroot").children], baseName() + suffix, toast, confirmDialog);
+    if (ELPLEXA) { const blob = await showPdf([...$("#printroot").children], baseName() + suffix, toast, confirmDialog); if (blob) await S.keepPdf(blob, baseName() + suffix, sheets); } // PDF unter Dateien des Projekts
     else await new Promise((res) => { const done = () => { window.removeEventListener("afterprint", done); setTimeout(res, 0); }; window.addEventListener("afterprint", done); window.print(); });
     document.title = old; $("#printroot").innerHTML = ""; if (pvUsed) pv.resetPrintParts(); // 5av: Druckteile wieder an
   }

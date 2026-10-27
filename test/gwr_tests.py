@@ -4,6 +4,7 @@ import sys, tempfile, json
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="gwr_"))
@@ -50,7 +51,7 @@ with sync_playwright() as p:
     clear_toasts = lambda: page.evaluate("document.querySelectorAll('#toasts .toast').forEach((t) => t.remove())")
     def setp(k, v):
         page.fill(f'#el-hub [data-elp="{k}"]', v); page.press(f'#el-hub [data-elp="{k}"]', "Enter"); page.wait_for_timeout(120)
-    page.goto(URL); page.wait_for_timeout(300)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page)
 
     check("Übersicht: Adresszeilen da, GWR-Feld zu", page.is_visible('#el-hub [data-elp="adr:str"]') and page.is_visible('#el-hub [data-elp="adr:plz"]') and not page.evaluate("document.querySelector('#el-gwr').open"))
     check("GWR zu: Zusammenfassung „noch nicht abgerufen“", "noch nicht abgerufen" in page.inner_text("#el-gwr summary"))

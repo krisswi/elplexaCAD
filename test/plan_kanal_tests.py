@@ -1,10 +1,11 @@
-# UI-Test Modul «Plan», Kanal/Trasse (CJ 27.10.2026): Werkzeug N, Breite per Zahlentaste, Länge tippen, Gehrung, alle Schraffurarten
+# UI-Test Modul «Plan», Kanal/Trasse (CJ 27.10.2026): Werkzeug K (bis 27.10. abends N), Breite per Zahlentaste, Länge tippen, Gehrung, alle Schraffurarten
 # bei 200 und 600 mm, Ebene «Kanäle», Griffe, Kopieren, Beschriftung, Fang der Leitung an der Kanalkante (ohne Ausrichtungslinien),
 # Stückliste (Druck und CSV), PDF. Vorher: node build.mjs elplexa. Aufruf: python3 test/plan_kanal_tests.py [Ausgabeordner]
 # (legt plan_kanal.png, plan_kanal_zoom.png, plan_kanal_druck.png, plan_kanal_stueckliste.png und plan_kanal.pdf ab).
 import sys, tempfile, math, re, base64
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="plan_kanal_"))
@@ -18,7 +19,7 @@ with sync_playwright() as p:
     b = p.chromium.launch()
     page = b.new_page(viewport={"width": 1400, "height": 900}, accept_downloads=True); page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400)
+    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400); projektansicht(page)
     M = lambda: page.evaluate("window.__schemacad.model")
     D = lambda: page.evaluate("JSON.parse(window.__schemacad.serialize())") if page.evaluate("typeof window.__schemacad.serialize") == "function" else None
     of = lambda t: [x for x in M()["items"] if x["type"] == t]
@@ -32,8 +33,8 @@ with sync_playwright() as p:
     def move(x, y): page.mouse.move(*at(x, y)); page.wait_for_timeout(50)
 
     page.click("#el-addmod"); page.wait_for_timeout(150); page.click('[data-elnew="plan"]'); page.wait_for_timeout(300)
-    key("n")
-    check("Taste N: Werkzeug Kanal", page.get_attribute('[data-tool="pl-duct"]', "aria-pressed") == "true" and "Kanal" in page.inner_text("#hint"))
+    key("k")
+    check("Taste K: Werkzeug Kanal", page.get_attribute('[data-tool="pl-duct"]', "aria-pressed") == "true" and "Kanal" in page.inner_text("#hint"))
     check("Vorgabe 200 mm, Kreuzschraffur", page.input_value('[data-plo="dw"]') == "200" and page.input_value('[data-plo="dhatch"]') == "kreuz")
     page.click('[data-plact="ductlayer"]'); page.wait_for_timeout(100)
     lay = M()["layers"]; act = next(l for l in lay if l["id"] == M()["alay"])
@@ -42,7 +43,7 @@ with sync_playwright() as p:
     key("5"); check("Taste 5: 200 mm", page.input_value('[data-plo="dw"]') == "200")
 
     # Länge tippen wie bei der Wand: 3500 → rechts, dann 1500 mit Winkel 90°, Enter ohne Eingabe beendet
-    page.mouse.click(*at(-3000, -3000)); key("n")
+    page.mouse.click(*at(-3000, -3000)); key("k")
     page.keyboard.down("Alt"); click(0, 0); page.keyboard.up("Alt")
     move(1000, 5); keys("3500"); key("Enter")
     keys("1500"); key("Tab"); keys("90"); key("Enter"); key("Enter")
@@ -66,7 +67,7 @@ with sync_playwright() as p:
     check("Ansicht zeigt das ganze Testfeld", inside(-500, -500) and inside(10500, 12800))
     for col, (w, digit) in enumerate([(200, "5"), (600, "9")]):
         for row, h in enumerate(HATCHES):
-            key("n"); key(digit); page.select_option('[data-plo="dhatch"]', h); page.wait_for_timeout(40)
+            key("k"); key(digit); page.select_option('[data-plo="dhatch"]', h); page.wait_for_timeout(40)
             x0, y0 = col * 6000, 11000 - row * 2200
             click(x0, y0); click(x0 + 3500, y0); click(x0 + 3500, y0 + 1200); click(x0 + 3500, y0 + 1200)  # Klick auf den letzten Punkt beendet
     d = of("duct")

@@ -3,6 +3,7 @@
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="bedienung_"))
@@ -22,7 +23,7 @@ with sync_playwright() as p:
     def key(k, **o):
         page.evaluate("([k, o]) => (document.activeElement || window).dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o }))", [k, o])
         page.wait_for_timeout(150)
-    page.goto(URL); page.wait_for_timeout(300)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page)
     for kind in ("dispo", "pv"):
         page.click("#el-addmod"); page.wait_for_timeout(150); page.click(f'#el-addmenu [data-elnew="{kind}"]'); page.wait_for_timeout(250)
         page.evaluate("document.activeElement?.blur()"); key("0")
@@ -92,15 +93,15 @@ with sync_playwright() as p:
     # Projektkacheln ziehen: eigene Reihenfolge (neue Seite, drei vorbereitete Einträge ohne Dateizugriff)
     pg = b.new_context(viewport={"width": 1440, "height": 900}).new_page()
     pg.on("pageerror", lambda e: errors.append(str(e)))
-    pg.goto(URL); pg.wait_for_timeout(300)
+    pg.goto(URL); pg.wait_for_timeout(300); projektansicht(pg)
     pg.evaluate("() => new Promise((res) => { const r = indexedDB.open('elplexacad', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => { const tx = r.result.transaction('kv', 'readwrite'); tx.objectStore('kv').put([{ file: 'c.elplexa.json', name: 'Cäsar', status: 'In Arbeit', handle: null, t: 3 }, { file: 'b.elplexa.json', name: 'Berta', status: 'In Arbeit', handle: null, t: 2 }, { file: 'a.elplexa.json', name: 'Anton', status: 'In Arbeit', handle: null, t: 1 }], 'recent'); tx.oncomplete = () => res(); }; })")
-    pg.reload(); pg.wait_for_timeout(400); pg.click("#el-nav-projekte"); pg.wait_for_timeout(300)
+    pg.reload(); pg.wait_for_timeout(400); projektansicht(pg); pg.click("#el-nav-projekte"); pg.wait_for_timeout(300)
     names = lambda: pg.evaluate("[...document.querySelectorAll('.el-ptile:not(.cur) .el-pn')].map((t) => t.textContent)")
     check("Ausgangsfolge «zuletzt»: Cäsar, Berta, Anton", names() == ["Cäsar", "Berta", "Anton"], names())
     check("Sortierung bietet «Eigene Reihenfolge»", "Eigene Reihenfolge" in pg.inner_text('[data-elf="sort"]'))
     pg.drag_and_drop(".el-ptile[data-pkey='l:a.elplexa.json']", ".el-ptile[data-pkey='l:c.elplexa.json']"); pg.wait_for_timeout(300)
     check("Anton auf Cäsar ziehen: Anton vorn, Sortierung wechselt auf «Eigene Reihenfolge»", names() == ["Anton", "Cäsar", "Berta"] and pg.input_value('[data-elf="sort"]') == "eigene", [names(), pg.input_value('[data-elf="sort"]')])
-    pg.reload(); pg.wait_for_timeout(400); pg.click("#el-nav-projekte"); pg.select_option('[data-elf="sort"]', "eigene"); pg.wait_for_timeout(300)
+    pg.reload(); pg.wait_for_timeout(400); projektansicht(pg); pg.click("#el-nav-projekte"); pg.select_option('[data-elf="sort"]', "eigene"); pg.wait_for_timeout(300)
     check("Eigene Reihenfolge bleibt nach Neuladen", names() == ["Anton", "Cäsar", "Berta"], names())
     pg.select_option('[data-elf="sort"]', "name"); pg.wait_for_timeout(250)
     check("Sortierung nach Name unabhängig davon", names() == ["Anton", "Berta", "Cäsar"], names())

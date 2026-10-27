@@ -3,6 +3,7 @@
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="uebersicht_"))
@@ -17,8 +18,8 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     vis = lambda s: page.is_visible(s)
-    page.goto(URL); page.wait_for_timeout(300)
-    page.evaluate("localStorage.removeItem('elplexacad.tipp')"); page.reload(); page.wait_for_timeout(300)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page)
+    page.evaluate("localStorage.removeItem('elplexacad.tipp')"); page.reload(); page.wait_for_timeout(300); projektansicht(page)
     check("Zeile 1 nur Bereiche, die etwas tun: Projekte, Zeit; Zeile 2 Tab des Projekts gewählt; Profil nur über den Konto-Kreis", vis(".el-r2") and page.evaluate("[...document.querySelectorAll('.el-navbtn')].map((t) => t.textContent)") == ["Projekte", "Zeit"] and page.get_attribute("#el-tab-proj", "aria-selected") == "true")
     check("Tipp-Zeile da", vis(".el-tip") and "Tipp" in page.inner_text(".el-tip"))
     page.screenshot(path=str(OUT / "u2b_1440.png"))
@@ -36,14 +37,14 @@ with sync_playwright() as p:
     check("Taste ? öffnet die Liste", vis(".modal"))
     page.click("[data-tip]"); page.wait_for_timeout(250)
     check("Im Fenster: Tipp-Zeile ausblenden", not vis(".el-tip") and not vis(".modal"))
-    page.reload(); page.wait_for_timeout(300)
+    page.reload(); page.wait_for_timeout(300); projektansicht(page)
     check("Ausgeblendet bleibt nach Neuladen", not vis(".el-tip"))
     page.evaluate("document.activeElement?.blur()"); page.keyboard.press("?"); page.wait_for_timeout(200)
     check("Fenster bietet «einblenden»", "einblenden" in page.inner_text("[data-tip]")); page.click("[data-tip]"); page.wait_for_timeout(250)
     check("Wieder eingeblendet", vis(".el-tip"))
     page.click(".el-tipx"); page.wait_for_timeout(200)
     check("× blendet die Tipp-Zeile aus", not vis(".el-tip"))
-    page.evaluate("localStorage.removeItem('elplexacad.tipp')"); page.reload(); page.wait_for_timeout(300)
+    page.evaluate("localStorage.removeItem('elplexacad.tipp')"); page.reload(); page.wait_for_timeout(300); projektansicht(page)
 
     # Esc: erst Menü, dann Übersicht bleibt
     page.click("#btn-export"); page.wait_for_timeout(120); page.keyboard.press("Escape"); page.wait_for_timeout(150)

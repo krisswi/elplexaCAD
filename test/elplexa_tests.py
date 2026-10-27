@@ -3,6 +3,7 @@
 import re, sys, tempfile, json, shutil
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="elplexa_"))
@@ -37,7 +38,7 @@ with sync_playwright() as p:
         r = page.evaluate("[...document.querySelectorAll('#add-menu [data-new]')].filter((b) => !b.hidden).map((b) => b.dataset.new)")
         page.keyboard.press("Escape"); page.wait_for_timeout(100)
         return r
-    page.goto(URL); page.wait_for_timeout(300)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page)
 
     # Start ohne Projekt: immer in der Projektübersicht, keine Startauswahl (CJ 18.10.2026); dann Neues Projekt mit PV
     check("Start ohne Projekt: Projektübersicht (Tab des Projekts gewählt), keine Startauswahl", hub() and not page.is_visible(".modal") and page.get_attribute("#el-tab-proj", "aria-selected") == "true")
@@ -53,11 +54,12 @@ with sync_playwright() as p:
     check("Fenstertitel endet auf „– elplexaCAD“", page.title().endswith("– elplexaCAD"), page.title())
     check("Plus-Menü PV: nur pv und pvtab", add_entries() == ["pv", "pvtab"])
 
-    # Taste 1 ohne Schema: Übersicht mit Meldung, nichts angelegt
+    # Taste 1 im Modul (CJ 27.10.2026): Ziffern wechseln nur in der Projektansicht das Modul, im PV-Modul bleibt alles, nichts angelegt
     n0 = len(D()["sheets"])
     key("1")
-    check("Taste 1 ohne Schema öffnet die Übersicht", hub())
-    check("… mit Meldung und ohne neues Blatt", "noch nicht" in page.inner_text("body") and len(D()["sheets"]) == n0 and mods(D()) == ["pv"])
+    check("Taste 1 im Modul: bleibt im PV-Modul", not hub() and D()["sheets"][D()["active"]].get("kind") == "pv")
+    check("… ohne neues Blatt", len(D()["sheets"]) == n0 and mods(D()) == ["pv"])
+    key("0"); page.wait_for_timeout(150)
     page.screenshot(path=str(OUT / "e2_hub_pv.png"))
 
     # + Modul: alle wählbar (Prinzipschema seit 21.10.2026, Plan seit 23.10.2026), Plan nach dem Prinzipschema, Schema anlegen
@@ -84,20 +86,23 @@ with sync_playwright() as p:
     page.screenshot(path=str(OUT / "e4_liste.png"))
     page.keyboard.press("Escape"); page.wait_for_timeout(100)
 
-    # Tasten 1/2/3, 0
-    key("3")
-    check("Taste 3 öffnet PV", cur() == "pv" and not hub() and page.inner_text("#sheet-cur .of") == "1 von 1")
+    # Ziffern (CJ 27.10.2026): im Modul ohne Wirkung, in der Projektansicht die Kachel an dieser Stelle; 0 Übersicht
+    a = active(); key("3")
+    check("Taste 3 im Modul Schema: bleibt im Schema", cur() == "schema" and not hub() and active() == a)
+    tiles = lambda: page.evaluate("[...document.querySelectorAll('#el-hub .el-tile[data-modctx]')].map((t) => t.dataset.modctx)")
+    key("0"); ids = tiles()
+    key(str(ids.index("pv") + 1))
+    check("Projektansicht: Ziffer öffnet PV (Kachel an dieser Stelle)", cur() == "pv" and not hub() and page.inner_text("#sheet-cur .of") == "1 von 1", ids)
     check("Plus-Menü PV nach Wechsel: pv und pvtab", add_entries() == ["pv", "pvtab"])
-    key("1")
-    check("Taste 1 öffnet Schema (zuletzt offenes Blatt)", cur() == "schema" and page.inner_text("#sheet-cur .of") == f"{ns} von {ns}")
+    key("0"); key(str(ids.index("schema") + 1))
+    check("… und Schema (zuletzt offenes Blatt)", cur() == "schema" and page.inner_text("#sheet-cur .of") == f"{ns} von {ns}")
     check("Plus-Menü Schema nach Wechsel hin und zurück: nur sheet", add_entries() == ["sheet"])
     a = active(); key("2")
-    check("Taste 2 ohne Disposition: Übersicht, nichts angelegt", hub() and "dispo" not in mods(D()))
-    key("0")
-    check("0 schliesst die Übersicht, Schema bleibt", not hub() and active() == a)
+    check("Taste 2 im Modul: bleibt, nichts angelegt", not hub() and active() == a and "dispo" not in mods(D()))
     key("0")
     check("0 öffnet die Übersicht (PV, Schema, Legende)", hub() and page.locator("#el-hub [data-elopen]").count() == 3)
     key("0")
+    check("0 schliesst die Übersicht, Schema bleibt", not hub() and active() == a)
 
     # Entf bei offener Übersicht löscht nichts
     while D()["sheets"][active()].get("kind"): key("PageUp")  # Schemablatt mit Grundverkabelung
@@ -123,7 +128,7 @@ with sync_playwright() as p:
 
     # Wiederhergestellte Sitzung startet ebenfalls in der Übersicht (zweites Fenster, gleicher Browser-Speicher)
     page.wait_for_timeout(600)
-    p2 = ctx.new_page(); p2.goto(URL); p2.wait_for_timeout(400)
+    p2 = ctx.new_page(); p2.goto(URL); p2.wait_for_timeout(400); projektansicht(p2)
     check("Start mit wiederhergestellter Sitzung: Projektübersicht", p2.is_visible("#el-hub") and not p2.is_visible(".modal") and "wiederhergestellt" in p2.inner_text("#toasts") and len(p2.evaluate("window.__schemacad.doc")["sheets"]) == len(D()["sheets"]))
     p2.close()
 
@@ -189,7 +194,7 @@ with sync_playwright() as p:
     page = b.new_page(viewport={"width": 1400, "height": 900}, accept_downloads=True)
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker;")
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(URL); page.wait_for_timeout(300); page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page); page.keyboard.press("Escape"); page.wait_for_timeout(100)
     def open_file(path):
         page.evaluate("document.activeElement?.blur()")  # ⌘O wirkt nicht in einem Eingabefeld (wie im ganzen Editor)
         with page.expect_file_chooser() as fc: page.keyboard.press("Meta+o")
@@ -294,7 +299,7 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" and "540" not in m.text and "ERR_FAILED" not in m.text else None)
     page.route("https://keqfieduhipnulpkhdbj.supabase.co/**", fake)
-    page.goto(URL); page.wait_for_timeout(300); page.keyboard.press("Escape"); page.wait_for_timeout(100)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page); page.keyboard.press("Escape"); page.wait_for_timeout(100)
     PDF = (ROOT / "test" / "ui_out.pdf").read_bytes(); B64 = base64.b64encode(PDF).decode(); SHA = hashlib.sha256(PDF).hexdigest()
     fx = {"format": "schemacad", "version": 6, "active": 0, "nextId": 100, "pv": {"moduleTypes": []},
           "project": {"name": "PV Online", "status": "Offerte", "time": [{"d": "2026-10-17", "h": 1.5, "n": "Dach"}]},
@@ -461,7 +466,7 @@ with sync_playwright() as p:
     srv.update({"mode": "ok", "calls": []})
     page.route("https://keqfieduhipnulpkhdbj.supabase.co/**", fake)
     page.route("https://elplexa.test/**", lambda r: r.fulfill(status=200, content_type="text/html", body=HTML))
-    page.goto("https://elplexa.test/"); page.wait_for_timeout(300)
+    page.goto("https://elplexa.test/"); page.wait_for_timeout(300); projektansicht(page)
     check("Im Netz: Start in der Projektübersicht", hub() and not page.is_visible(".modal"))
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
     downloads = []; page.on("download", lambda d: downloads.append(d.suggested_filename))

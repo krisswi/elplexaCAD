@@ -3,6 +3,7 @@
 import json, re, subprocess, sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht, dateien_leeren
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="prinzip_"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -18,7 +19,7 @@ with sync_playwright() as p:
     b = p.chromium.launch()
     page = b.new_page(viewport={"width": 1400, "height": 900}); page.on("pageerror", lambda e: errors.append(str(e)))
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")
-    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400)
+    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400); projektansicht(page)
     D = lambda: page.evaluate("window.__schemacad.doc")
     M = lambda: page.evaluate("window.__schemacad.model")
     def key(k): page.evaluate("document.activeElement?.blur()"); page.keyboard.press(k); page.wait_for_timeout(120)
@@ -159,6 +160,7 @@ with sync_playwright() as p:
     check("Druckteile danach leer", page.evaluate("document.querySelector('#printroot').innerHTML === ''"))
 
     # ---------- Speichern und Laden ----------
+    key("0"); page.wait_for_timeout(200); dateien_leeren(page) # das PDF oben hätte die Datei auf Version 30 gehoben
     d = D()
     check("Datei: Version 19, Modul prinzip", d["version"] == 19 and [s.get("kind") for s in d["sheets"]].count("prinzip") == 2, d["version"])
     path = OUT / "rundlauf.elplexa.json"; path.write_text(json.dumps(d))

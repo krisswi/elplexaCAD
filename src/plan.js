@@ -741,7 +741,7 @@ export function ductGeom(it, k) {
     const fam = (sg) => { for (let c = Math.floor((lo - H) / sp) * sp; c <= hi + H; c += sp) { const x = clipSeg(loc(c - sg * H, -H), loc(c + sg * H, H), quad); if (x && len(sub(x[1], x[0])) > 1e-6) lines.push(x); } };
     if (hatch === "kreuz" || hatch === "diag") fam(1);
     if (hatch === "kreuz" || hatch === "gegen") fam(-1);
-    if (hatch === "gitter") for (let c = Math.ceil(lo / (2 * sp)) * 2 * sp; c <= hi; c += 2 * sp) { const x = clipSeg(loc(c, -H), loc(c, H), quad); if (x) lines.push(x); }
+    if (hatch === "gitter") for (let c = Math.ceil(lo / (2 * sp)) * 2 * sp; c <= hi; c += 2 * sp) { const x = clipSeg(loc(c, -H), loc(c, H), quad); if (x && len(sub(x[1], x[0])) >= it.w - 1e-6) lines.push(x); } // nur ganze Sprossen (in der Gehrung keine Stummel)
     if (hatch === "punkte") {
       const rows = Math.max(0, Math.floor((h - sp / 4) / sp)), qs = h > sp / 2 ? Array.from({ length: 2 * rows + 1 }, (_, j) => (j - rows) * sp) : [0]; // Reihen im Abstand sp, mittig
       for (let c = Math.ceil(lo / sp) * sp; c <= hi; c += sp) for (const q of qs) { const p = loc(c + (Math.abs(q / sp) % 2 ? sp / 2 : 0), q).map(r3); if (inPoly(p, quad)) dots.push(p); } // versetzt wie Mauerwerk

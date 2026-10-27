@@ -533,6 +533,8 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
     assert.ok(x.lines.every(([a, b]) => inside(a) && inside(b)) && x.dots.every(inside), `${h} ${w} mm: Schraffur bleibt im Kanal`);
     assert.strictEqual(x.lines.length > 0 || x.dots.length > 0, h !== "ohne", `${h} ${w} mm: ${h === "ohne" ? "leer" : "gezeichnet"}`);
   }
+  const gi = P.ductGeom({ pts: [[0, 0], [3000, 0], [3000, 2000]], w: 600, hatch: "gitter" }, 50).lines;
+  assert.ok(gi.length > 4 && gi.every(([a, b]) => Math.abs(Math.hypot(b[0] - a[0], b[1] - a[1]) - 600) < 1e-3), "Gitter: nur ganze Sprossen");
   assert.strictEqual(P.ductStep(20, 50), 75, "schmal: 1,5 mm Papier");
   assert.strictEqual(P.ductStep(600, 50), 300, "breit: halbe Breite");
   const n = (w) => P.ductGeom({ pts: [[0, 0], [6000, 0]], w, hatch: "diag" }, 50).lines.length;

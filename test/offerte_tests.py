@@ -20,7 +20,9 @@ def flow(page, tag):
     check(f"{tag}: Offerte offen, Zeichenfläche weg", page.evaluate("window.__schemacad.kind") == "offerte" and page.is_visible("#of-view") and not page.is_visible("#svg"))
     check(f"{tag}: nichts angelegt: Gliederung offen, BKP zu", page.get_attribute('[data-area="gl"]', "aria-expanded") == "true" and page.get_attribute('[data-area="bkp"]', "aria-expanded") == "false")
     page.click('[data-ofact="knsel"][data-n="0"]'); page.wait_for_timeout(100)  # ohne Gliederung: ganze Offerte
-    check(f"{tag}: Klick auf «Ganze Offerte»: Gliederung zu, BKP auf", page.get_attribute('[data-area="gl"]', "aria-expanded") == "false" and page.is_visible('[data-ofact="addkap"][data-bkp="232.51"]'))
+    check(f"{tag}: Klick auf «Ganze Offerte»: Gliederung bleibt offen", page.get_attribute('[data-area="gl"]', "aria-expanded") == "true")
+    page.click('[data-ofact="area"][data-area="bkp"]'); page.wait_for_timeout(100)  # Navigation klappt nicht mehr um (e47d958): BKP von Hand öffnen
+    check(f"{tag}: BKP-Katalog offen", page.is_visible('[data-ofact="addkap"][data-bkp="232.51"]'))
     page.click('[data-ofact="addkap"][data-bkp="232.51"]'); page.wait_for_timeout(100)
     check(f"{tag}: Kapitel 232.51 mit Titel aus dem BKP", page.input_value('.of-kh .of-kt') == "Lichtinstallationen allgemein")
     page.keyboard.type("Küche"); page.keyboard.press("Tab")

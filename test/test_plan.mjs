@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 30, "elplexa liest Version 30 (Aderzahl im Plan, 27.10.2026)");
+assert.strictEqual(M.VERSION, 30, "elplexa liest Version 30 (Aderzahl im Plan und Dateien im Projekt, 27.10.2026)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");

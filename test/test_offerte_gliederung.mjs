@@ -61,8 +61,8 @@ near(t.zwischensumme, 200 + 256.03 + 99.99, "Zwischensumme über alles"); near(t
 assert.strictEqual(t.total, O.round05((556.02) * 1.081), "Total auf 5 Rappen");
 const { rows } = O.summaryRows(of, t);
 assert.deepStrictEqual(rows.filter((r) => r.art === "kn" || r.art === "kap").map((r) => [r.art, r.text, r.lv]),
-  [["kap", "BKP 239.1 Demontagen, Entsorgungen", 0], ["kn", "Haus A [OGL]", 0], ["kn", "1. OG [PSL]", 1], ["kn", "Wohnzimmer [RGL]", 2], ["kap", "BKP 232.5 Lichtinstallationen", 3],
-    ["kn", "Küche [RGL]", 2], ["kap", "BKP 232.5 Lichtinstallationen", 3], ["kap", "BKP 233 Leuchten und Lampen", 3], ["kn", "Haus B [OGL]", 0], ["kap", "BKP 236 Schwachstrominstallationen", 1]], "Summe je Knoten in der Schlusszusammenstellung");
+  [["kap", "BKP 239.1 Demontagen, Entsorgungen", 0], ["kn", "Haus A", 0], ["kn", "1. OG", 1], ["kn", "Wohnzimmer", 2], ["kap", "BKP 232.5 Lichtinstallationen", 3],
+    ["kn", "Küche", 2], ["kap", "BKP 232.5 Lichtinstallationen", 3], ["kap", "BKP 233 Leuchten und Lampen", 3], ["kn", "Haus B", 0], ["kap", "BKP 236 Schwachstrominstallationen", 1]], "Summe je Knoten in der Schlusszusammenstellung");
 near(rows.find((r) => r.art === "zs").betrag, t.zwischensumme, "Zwischensumme zählt nur die Kapitel");
 // Rabattgruppe bleibt an der Gruppe unter dem Kapitel
 const rg = O.addRabattgruppe(of, "N", "netto"); rg.satz = 0; of.rabatt = 10; kB.grp[0].rg = rg.id;
@@ -99,10 +99,16 @@ assert.strictEqual(r.focus(), `n${n1.id}.titel`, "neuer Knoten: Fokus auf Titel"
 assert.ok(F.apply(e, { dataset: { of: `n${n1.id}.titel` }, value: " Wohnung 1 ", type: "text" }) && n1.titel === "Wohnung 1", "Titel umbenennen");
 assert.ok(F.apply(e, { dataset: { of: `n${n1.id}.art` }, value: "et", type: "select-one" }) && n1.art === "et", "Art wählen");
 F.apply(e, { dataset: { of: `n${n1.id}.art` }, value: "rgl", type: "select-one" }); assert.ok(!("art" in n1), "Raum = Standard, kein Feld");
+const arBefore = F.leftHTML(e).match(/data-area="(gl|bkp)" aria-expanded="(true|false)"/g).join();
 r = act({ ofact: "knsel", n: String(n1.id) }); assert.ok(r.ui && r.left);
 assert.strictEqual(F.selected(), n1.id);
-assert.ok(F.leftHTML(e).includes('data-area="gl" aria-expanded="false"') && F.leftHTML(e).includes('data-area="bkp" aria-expanded="true"'), "Klick auf Knoten: Gliederung zu, BKP auf");
-act({ ofact: "area", area: "gl" }); assert.ok(F.leftHTML(e).includes('data-area="gl" aria-expanded="true"'), "von Hand aufklappen");
+assert.strictEqual(F.leftHTML(e).match(/data-area="(gl|bkp)" aria-expanded="(true|false)"/g).join(), arBefore, "Klick auf Knoten: Bereiche links bleiben, wie sie sind");
+act({ ofact: "area", area: "bkp" }); r = act({ ofact: "bkpopen" });
+assert.ok(r.ui && F.leftHTML(e).includes('data-area="bkp" aria-expanded="true"'), "Knopf «BKP hinzufügen» öffnet Katalog mit Suche");
+act({ ofact: "knsel", n: "0" }); assert.ok(F.viewHTML(e).includes('data-ofact="bkpopen"'), "ganze Offerte mit Gliederung: Knopf BKP hinzufügen");
+act({ ofact: "knsel", n: String(n1.id) }); assert.ok(!F.viewHTML(e).includes('data-ofact="bkpopen"'), "im Knoten kein Knopf");
+assert.ok(F.leftHTML(e).includes('data-area="gl" aria-expanded="true"'), "Gliederung bleibt offen, auch nach Klick auf Knoten");
+act({ ofact: "area", area: "gl" }); assert.ok(F.leftHTML(e).includes('data-area="gl" aria-expanded="false"'), "von Hand zuklappen");
 act({ ofact: "addkap", bkp: "232.5" }).fn(); assert.strictEqual(e.kap[0].kn, n1.id, "Kapitel kommt in den angewählten Knoten");
 act({ ofact: "knadd", up: "0" }).fn(); const n2 = e.kn[1]; assert.strictEqual(F.selected(), n2.id, "neuer Knoten ist angewählt");
 act({ ofact: "addkap", bkp: "236" }).fn(); assert.strictEqual(e.kap[1].kn, n2.id);
@@ -126,14 +132,14 @@ assert.ok(!("kn" in plain.kap[0]) && F.viewHTML(plain).includes('data-kid=') && 
 
 // ---------- PDF und Excel: Knoten als Kopfzeile, Total je Knoten, Schlusszusammenstellung mit Summe je Knoten ----------
 const svg = OP.offertePages(of, { prices: true }).join("");
-for (const s of ["Haus A [OGL]", "1. OG [PSL]", "Wohnzimmer [RGL]", "Total Küche", "Total Haus A", `>${O.fmtChf(t.kn.get(hausA.id))}<`]) assert.ok(svg.includes(s), `PDF mit «${s}»`);
-assert.ok(svg.indexOf("Demontagen") < svg.indexOf("Haus A [OGL]"), "PDF: ohne Gliederung zuerst");
+for (const s of ["Haus A", "1. OG", "Wohnzimmer", "Total Küche", "Total Haus A", `>${O.fmtChf(t.kn.get(hausA.id))}<`]) assert.ok(svg.includes(s), `PDF mit «${s}»`);
+assert.ok(svg.indexOf("Demontagen") < svg.indexOf("Haus A"), "PDF: ohne Gliederung zuerst");
 const xr = sheetRows(of, { prices: true }), cells = xr.flat().map((c) => (typeof c === "string" ? c : c.v));
 assert.ok(cells.includes("Haus A [OGL]") && cells.includes("Total Haus B"), "Excel mit Knoten und Total");
 const totKue = xr.find((row) => row[1]?.v === "Total Küche")[7];
 assert.ok(/^SUM\(H\d+,H\d+\)$/.test(totKue.f), `Excel: Total Küche = Summe der beiden Kapitel (${totKue.f})`);
-assert.ok(xr.some((row) => String(row[1]?.v).trim() === "Wohnzimmer [RGL]" && /^SUM\(H\d+\)$/.test(row[7]?.f)), "Excel: Summe je Knoten in der Schlusszusammenstellung");
+assert.ok(xr.some((row) => String(row[1]?.v).trim() === "Wohnzimmer" && /^SUM\(H\d+\)$/.test(row[7]?.f)), "Excel: Summe je Knoten in der Schlusszusammenstellung");
 const noP = OP.offertePages(of, { prices: false }).join("");
-assert.ok(noP.includes("Haus A [OGL]") && !noP.includes("Total Haus A"), "ohne Preise: Kopfzeile ja, Summe nein");
+assert.ok(noP.includes("Haus A") && !noP.includes("Total Haus A"), "ohne Preise: Kopfzeile ja, Summe nein");
 
 console.log("Offerte Gliederung: alle Tests grün.");

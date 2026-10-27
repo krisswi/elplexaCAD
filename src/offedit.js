@@ -41,6 +41,7 @@ export function viewHTML(of) {
     else if (e.t === "end") { if (mode.prices && t.kn.has(e.n.id)) h += `<div class="of-knsum lv${Math.min(e.lv, 3)}"><span>Total ${esc(e.n.titel || "Ohne Titel")}</span><b>${O.fmtChf(t.kn.get(e.n.id))}</b></div>`; }
     else h += kapHTML(of, t, e.k, order.indexOf(e.k));
   }
+  if (!selKn && of.kn.length && !mode.ro) h += `<p class="of-addbkp">${btn("bkpopen", "", "Katalog und Suche links öffnen, Kapitel kommt in die ganze Offerte", "+ BKP hinzufügen", "btn outline small")}</p>`;
   return h + (mode.prices ? summaryHTML(of, t) : "") + `</div>`;
 }
 // Bezeichnung eines Kapitels in der Blattleiste: mit Knoten, wenn er nicht der angewählte ist
@@ -124,7 +125,7 @@ export function leftHTML(of) {
   const a = areas(of), cur = O.knFind(of, selKn), name = cur ? cur.titel || "Ohne Titel" : of.kn.length ? "ohne Gliederung" : "";
   return glHTML(of, a.gl, cur) + bkpHTML(of, a.bkp, name);
 }
-// Baum: «Ganze Offerte» und die Knoten mit Einzug. Klick wählt an (klappt die Gliederung zu und BKP auf). Darunter die Angaben des angewählten Knotens.
+// Baum: «Ganze Offerte» und die Knoten mit Einzug. Klick wählt an (Bereiche links bleiben, wie sie sind). Darunter die Angaben des angewählten Knotens.
 function glHTML(of, on, cur) {
   const item = (id, label, kurz, lv) => `<button type="button" class="of-kni${id === selKn ? " on" : ""}" style="--lv:${lv}" data-ofact="knsel" data-n="${id}" aria-current="${id === selKn}"><span>${esc(label)}</span>${kurz ? `<small>${kurz}</small>` : ""}</button>`;
   const tree = (up, lv) => O.knKids(of, up).map((n) => item(n.id, n.titel || "Ohne Titel", O.GL_KURZ[O.knArt(n)], lv) + tree(n.id, lv + 1)).join("");
@@ -273,8 +274,9 @@ export function action(of, b) {
   const move = (arr, i, d) => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; };
   if (a === "det") { if (open.has(pid)) open.delete(pid); else open.add(pid); return { ui: true, focus: null, keep: `[data-ofact="det"][data-p="${pid}"]` }; }
   const nid = Number(b.dataset.n);
+  if (a === "bkpopen") { areas(of).bkp = true; return { ui: true, left: true, keep: "#of-bkpfind" }; }
   if (a === "area") { const ar = areas(of), k = b.dataset.area; ar[k] = !ar[k]; return { ui: true, left: true, keep: `[data-ofact="area"][data-area="${k}"]` }; }
-  if (a === "knsel") { selKn = O.knFind(of, nid) ? nid : 0; area = { gl: false, bkp: true }; return { ui: true, left: true, top: true, keep: `[data-ofact="area"][data-area="bkp"]` }; }
+  if (a === "knsel") { selKn = O.knFind(of, nid) ? nid : 0; areas(of); return { ui: true, left: true, top: true, keep: `[data-ofact="knsel"][data-n="${selKn}"]` }; }
   if (a === "knadd") { let n; return { fn: () => { n = O.addKnoten(of, Number(b.dataset.up) || 0); selKn = n.id; }, focus: () => `n${n.id}.titel` }; }
   if (a === "kndel") return { fn: () => { const up = O.knFind(of, nid)?.up || 0; O.delKnoten(of, nid); selKn = up; } };
   if (a === "knmove") return { fn: () => { O.moveKnoten(of, nid, b.dataset.how); }, keep: `[data-ofact="knmove"][data-how="${b.dataset.how}"]` };

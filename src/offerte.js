@@ -85,6 +85,7 @@ export const knArt = (n) => n.art || "rgl";
 export const knFind = (of, id) => (id ? of.kn.find((n) => n.id === id) : undefined);
 export const knKids = (of, id = 0) => of.kn.filter((n) => (n.up || 0) === id);
 export const knLabel = (n) => `${n.titel || "Ohne Titel"} [${GL_KURZ[knArt(n)]}]`;
+export const knTitel = (n) => n.titel || "Ohne Titel"; // gedruckt ohne Kürzel (NGL, ET …)
 // Weg von oben bis zum Knoten (Haus A › 1. OG › Wohnzimmer)
 export function knPath(of, id) { const out = []; for (let n = knFind(of, id); n && out.length <= of.kn.length; n = knFind(of, n.up)) out.unshift(n); return out; }
 // IDs des Knotens und aller Knoten darunter
@@ -203,7 +204,7 @@ export const totalLabel = (of) => (of.mwst ? "Total inkl. MwSt" : "Total ohne Mw
 export function summaryRows(of, t = totals(of)) {
   const rows = [];
   for (const e of outline(of)) {
-    if (e.t === "kn") rows.push({ art: "kn", id: e.n.id, lv: e.lv, text: knLabel(e.n), betrag: t.kn.get(e.n.id) || 0 });
+    if (e.t === "kn") rows.push({ art: "kn", id: e.n.id, lv: e.lv, text: knTitel(e.n), betrag: t.kn.get(e.n.id) || 0 });
     else if (e.t === "kap") rows.push({ art: "kap", id: e.k.id, lv: e.lv, text: e.k.bkp ? `BKP ${e.k.bkp} ${e.k.titel}`.trim() : e.k.titel || "Ohne BKP", betrag: t.kapSum.get(e.k.id) || 0 });
   }
   rows.push({ art: "zs", text: "Zwischensumme", betrag: t.zwischensumme });

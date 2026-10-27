@@ -61,7 +61,7 @@ function blocks(of, prices, tot) {
   const num = (x, y, s, col, bold = false) => t(C[col].x + C[col].w, y, s, { anchor: "end", bold });
   const order = O.kapOrder(of);
   for (const e of O.outline(of)) {
-    if (e.t === "kn") { out.push({ h: 11, keep: true, draw: (y) => t(L, y + 7, O.knLabel(e.n), { h: 4, bold: true }) + hl(L, R, y + 8.8, INK) }); continue; }
+    if (e.t === "kn") { out.push({ h: 11, keep: true, draw: (y) => t(L, y + 7, O.knTitel(e.n), { h: 4, bold: true }) + hl(L, R, y + 8.8, INK) }); continue; }
     if (e.t === "end") { if (prices) out.push({ h: 11, draw: (y) => hl(L, R, y + 1, INK) + hl(L, R, y + 1.6, INK) + t(L, y + 5.6, `Total ${e.n.titel || "Ohne Titel"}`, { bold: true, h: 3.4 }) + num(0, y + 5.6, O.fmtChf(tot.kn.get(e.n.id) || 0), "betrag", true) }); continue; }
     const k = e.k, ki = order.indexOf(k);
     out.push({ h: 9, keep: true, draw: (y) => t(L, y + 6, k.bkp, { h: 3.6, bold: true }) + t(C.txt.x, y + 6, k.titel || O.bkpTitle(k.bkp), { h: 3.6, bold: true }) + hl(L, R, y + 7.6, INK) });

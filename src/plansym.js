@@ -159,3 +159,5 @@ export const PLAN_SYMS = /* @__PURE__ */ (() => [
 ])();
 export const SYM_BY_KEY = /* @__PURE__ */ (() => new Map(PLAN_SYMS.map((s) => [s.key, s])))();
 export const SYM_GROUPS = /* @__PURE__ */ (() => [...new Set(PLAN_SYMS.map((s) => s.group))])();
+// Gemeinsamer Zugriff auf ein Plansymbol (CJ 27.10.2026): Definition zum Schlüssel oder undefined
+export const symDef = (key) => SYM_BY_KEY.get(key);

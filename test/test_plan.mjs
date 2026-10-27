@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 29, "elplexa liest Version 29 (Kanal im Plan, 27.10.2026)");
+assert.strictEqual(M.VERSION, 30, "elplexa liest Version 30 (Aderzahl im Plan, 27.10.2026)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -335,7 +335,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 30)), /neueren Version/, "Version 30 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 31)), /neueren Version/, "Version 31 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#0068C9" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
@@ -553,4 +553,54 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.ok(lb.at[0] === 1000 && lb.at[1] > 150 && lb.a === 0, "Beschriftung über dem langen Abschnitt");
   assert.strictEqual(P.ductLabel({ pts: [[2000, 0], [0, 0]], w: 300 }, 50).a, 0, "nach links gezeichnet: Text nicht auf dem Kopf");
 }
+// ---------- Aderzahl an der Leitung (CJ 27.10.2026, Dateiversion 30) ----------
+{
+  const close = (p, q, e = 1e-3) => Math.hypot(p[0] - q[0], p[1] - q[1]) < e;
+  const its = [{ id: 60, type: "line", layer: "l1", pts: [[0, 0], [2000, 0]], kind: "decke" },
+    { id: 61, type: "line", layer: "bg", pts: [[0, 1000], [1000, 2000], [2000, 1000], [3000, 2000]], kind: "boden", curve: true, col: "#d4141c" },
+    { id: 62, type: "ader", line: 60, t: 0.25, txt: " 5x1.5 " }, { id: 63, type: "ader", line: 61, t: 0.5, txt: "", tf: 1.5 },
+    { id: 64, type: "ader", line: 99, t: 0.5, txt: "3" }, { id: 65, type: "ader", line: 60, t: 7, txt: "4" }];
+  const d = M.parseModel(file([plan(its)], 30)), out = JSON.parse(M.serializeModel(d)), sh = d.sheets[0];
+  assert.strictEqual(out.version, 30, "Aderzahl: Version 30");
+  assert.deepStrictEqual(out.sheets[0].items.filter((i) => i.type === "ader"), [{ id: 62, type: "ader", line: 60, t: 0.25, txt: "5x1.5" }, { id: 63, type: "ader", line: 61, t: 0.5, txt: "3", tf: 1.5 }, { id: 65, type: "ader", line: 60, t: 1, txt: "4" }],
+    "Text getrimmt, leer = 3, t auf 0 bis 1 begrenzt, ohne Leitung fällt weg");
+  assert.throws(() => M.parseModel(file([plan([{ id: 1, type: "ader", t: 0.5, txt: "3" }])], 30)), /defektes Objekt/, "Aderzahl ohne Leitung-id");
+  assert.strictEqual(M.parseModel(file([plan(its.slice(0, 2))], 29)) && JSON.parse(M.serializeModel(M.parseModel(file([plan(its.slice(0, 2))], 29)))).version < 30, true, "ohne Aderzahl bleibt die Version tiefer");
+  const [a1, a2] = sh.items.filter((i) => i.type === "ader"), l0 = sh.items.find((i) => i.id === 60), l1 = sh.items.find((i) => i.id === 61);
+  // Lage: gerade Leitung bei 25 %, Strich senkrecht (waagrechte Leitung: Strich senkrecht, Text oben), Ebene der Leitung
+  const g = P.aderGeom(l0, a1, 50);
+  assert.ok(close(g.p, [500, 0]) && close(g.a, [500, -60]) && close(g.b, [500, 60]) && g.at[0] === 500 && g.at[1] > 60 && g.ang === 0, "gerade: Strich senkrecht, Text darüber");
+  assert.strictEqual(P.itemLayer(sh, a1), "l1", "Ebene der Leitung");
+  // geschwungen: Strich senkrecht zur Tangente der Kurve
+  const g2 = P.aderGeom(l1, a2, 50, P.tfOf(a2, sh)), at = P.aderAt(l1, 0.5), v = [g2.b[0] - g2.a[0], g2.b[1] - g2.a[1]];
+  assert.ok(Math.abs(v[0] * at.u[0] + v[1] * at.u[1]) < 1e-6 && Math.abs(Math.hypot(...v) - 120) < 1e-6, "Kurve: Strich senkrecht zur Tangente");
+  assert.ok(Math.abs(g2.size - 2 * 1.5 * 50) < 1e-9, "Textgrösse einzeln (tf)");
+  const q = P.linePts(l1), mid = P.polyNear(q, at.p);
+  assert.ok(mid.d < 1e-6 && Math.abs(mid.t - 0.5) < 1e-3, "Punkt liegt auf der Kurve, Anteil zurückgerechnet");
+  // senkrechte Leitung: Text links (lesbar von rechts), nicht auf dem Kopf
+  const gv = P.aderGeom({ pts: [[0, 1000], [0, 0]] }, { t: 0.5, txt: "3" }, 50);
+  assert.ok(gv.at[0] < 0 && Math.abs(gv.ang) === 90, "senkrecht: Text links, gedreht lesbar");
+  // wandert mit: Punkt der Leitung verschieben, Anteil bleibt
+  l0.pts[1] = [4000, 0];
+  assert.ok(close(P.aderAt(l0, a1.t).p, [1000, 0]), "Leitung länger: Strich bleibt bei 25 %");
+  P.moveItems(sh, [l0], 0, 500);
+  assert.ok(close(P.aderAt(l0, a1.t).p, [1000, 500]) && a1.t === 0.25, "Leitung verschieben: Strich geht mit");
+  // Ziehen allein: gleitet entlang der Leitung
+  P.moveItems(sh, [a1], 1000, 300);
+  assert.ok(Math.abs(a1.t - 0.5) < 1e-6, "Aderzahl allein verschieben: entlang der Leitung");
+  // Treffer, Rahmen, Kopieren, Löschen
+  const g3 = P.aderGeom(l0, a1, 50);
+  assert.strictEqual(P.hitPlan(sh, sh.items, g3.b, 5)?.id, 62, "Treffer am Strich vor der Leitung");
+  assert.strictEqual(P.hitPlan(sh, sh.items, [3000, 500], 5)?.id, 60, "sonst die Leitung");
+  assert.ok(P.inBox(sh, a1, { x0: 1900, y0: 400, x1: 2100, y1: 600 }), "Rahmenwahl: Punkt auf der Leitung");
+  const clip = P.copyItems(sh, [l0]);
+  assert.deepStrictEqual(clip.map((i) => i.type).sort(), ["ader", "ader", "line"], "Leitung kopieren nimmt ihre Aderzahlen mit");
+  assert.deepStrictEqual(P.copyItems(sh, [a1]), [], "Aderzahl allein: nicht kopiert (wie Öffnung)");
+  const pc = P.pasteItems(sh, clip, 10, 0, (() => { let i = 900; return () => ++i; })()), nl = pc.find((i) => i.type === "line");
+  assert.ok(pc.filter((i) => i.type === "ader").every((i) => i.line === nl.id), "eingefügt an der neuen Leitung");
+  P.deleteItem(sh, 60);
+  assert.ok(!sh.items.some((i) => i.type === "ader" && i.line === 60), "Leitung löschen löscht ihre Aderzahlen");
+  assert.ok(!P.layerUsed({ items: [{ type: "ader", line: 1 }] }, undefined), "Aderzahl zählt nicht als Objekt einer Ebene");
+}
+
 console.log("test_plan: alles ok");

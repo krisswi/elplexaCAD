@@ -10,6 +10,8 @@
 // curve: true = geschwungen, glatte Kurve (B-Spline, Punkte = Steuerpunkte), CJ 24.10.2026, Dateiversion 23).
 // Kanal/Trasse { id, type: "duct", layer, pts: [[x, y] …] (mind. 2, Mittellinie), w, hatch?, col?, ecol?, txt?, tf? } (CJ 27.10.2026, Dateiversion 29):
 // Breite w in echten mm, zwei Aussenkanten (ecol, Vorgabe rot) mit Schraffur dazwischen (col, Vorgabe gelb), Ecken auf Gehrung.
+// Aderzahl { id, type: "ader", line, t, txt, tf? } (CJ 27.10.2026, Dateiversion 30): kurzer Querstrich senkrecht zur Leitung mit Text (z. B. 3 oder 5x1.5),
+// hängt an der Leitung wie die Öffnung an der Wand (Ebene und Farbe der Leitung), t = Anteil der Länge ab dem ersten Punkt (0 bis 1), wandert mit.
 // Hintergrund bg (CJ 24.10.2026, Dateiversion 23): PDF-Seite wie im Stringplan (pv.js: Massstab, Fixpunkt = Nullpunkt, Drehung), liegt auf der Ebene «Hintergrund».
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
@@ -46,7 +48,9 @@ export function cleanPlanLayers(raw) {
 }
 export const layerById = (sh, id) => sh.layers.find((l) => l.id === id);
 // Ebene eines Objekts: Öffnung = Ebene ihrer Wand
-export const itemLayer = (sh, it) => (it.type === "opening" ? sh.items.find((w) => w.id === it.wall)?.layer : it.layer);
+export const hangs = (it) => it.type === "opening" || it.type === "ader"; // hängt an einem anderen Objekt (host), ohne eigene Ebene
+export const hostId = (it) => (it.type === "opening" ? it.wall : it.type === "ader" ? it.line : undefined);
+export const itemLayer = (sh, it) => (hangs(it) ? sh.items.find((w) => w.id === hostId(it))?.layer : it.layer);
 export const isVisible = (sh, it) => layerById(sh, itemLayer(sh, it))?.show !== false;
 // Gesperrt = nicht wählbar, Fangpunkte bleiben
 export const isPickable = (sh, it) => { const l = layerById(sh, itemLayer(sh, it)); return !!l && l.show && !l.lock; };
@@ -62,12 +66,12 @@ export function addLayer(sh, name) {
   sh.alay = l.id;
   return l;
 }
-export const layerUsed = (sh, id) => sh.items.some((it) => it.type !== "opening" && it.layer === id);
+export const layerUsed = (sh, id) => sh.items.some((it) => !hangs(it) && it.layer === id);
 // Ebene löschen: die letzte bleibt; Objekte darauf gehen mit (Rückfrage im Editor, wenn nicht leer)
 export function deleteLayer(sh, id) {
   if (sh.layers.length <= 1 || !layerById(sh, id)) return false;
-  const gone = new Set(sh.items.filter((it) => it.type !== "opening" && it.layer === id).map((it) => it.id));
-  sh.items = sh.items.filter((it) => !gone.has(it.id) && !(it.type === "opening" && gone.has(it.wall)));
+  const gone = new Set(sh.items.filter((it) => !hangs(it) && it.layer === id).map((it) => it.id));
+  sh.items = sh.items.filter((it) => !gone.has(it.id) && !(hangs(it) && gone.has(hostId(it))));
   sh.layers = sh.layers.filter((l) => l.id !== id);
   if (sh.alay === id) sh.alay = sh.layers[sh.layers.length - 1].id;
   syncDims(sh);
@@ -89,7 +93,7 @@ export const DOPPEL = { st: 120, iso: 80 };
 export const doppelD = (st, iso) => 2 * st + iso;
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
-export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct"]);
+export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct", "ader"]);
 // Leitungsarten (Symbolzusammenfassung 5.110). Strichmuster in Papier-mm (× Massstab), flex = durchgezogen mit Welle je Abschnitt.
 export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"]];
 export const LINE_DASH = { decke: null, boden: [3, 1.5], wand: [3, 1, 0.8, 1], doppel: [3, 0.8, 0.6, 0.8, 0.6, 0.8], flex: null };
@@ -175,6 +179,12 @@ export function cleanPlanObj(it, id) {
     if (it.curve === true) o.curve = true;
     return o;
   }
+  if (it.type === "ader") {
+    if (!isNum(it.line) || !isNum(it.t)) return null;
+    const o = { id, type: "ader", line: it.line, t: r3(Math.max(0, Math.min(1, it.t))), txt: String(it.txt ?? "").trim().slice(0, 20) || ADER_DEF };
+    const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
+    return o;
+  }
   if (it.type === "duct") {
     const pts = (Array.isArray(it.pts) ? it.pts : []).filter(isPt).map((p) => [p[0], p[1]]).filter((p, i, a) => !i || !same(p, a[i - 1]));
     if (pts.length < 2 || !isNum(it.w) || it.w <= 0) return null;
@@ -198,9 +208,11 @@ export const planV24 = (sh) => sh.items.some((i) => i.lo || i.num !== undefined 
 export const planV28 = (sh) => sh.tf !== undefined || sh.items.some((i) => i.tf !== undefined);
 // Dateiversion 29 (CJ 27.10.2026): Kanal/Trasse (type "duct"); ältere Stände lehnen das Objekt ab
 export const planV29 = (sh) => sh.items.some((i) => i.type === "duct");
+// Dateiversion 30 (CJ 27.10.2026): Aderzahl an der Leitung (type "ader"); ältere Stände lehnen das Objekt ab
+export const planV30 = (sh) => sh.items.some((i) => i.type === "ader");
 // Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29
-export const planVer = (sh) => (planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
-const VERSION_NOW = 29;
+export const planVer = (sh) => (planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
+const VERSION_NOW = 30;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 // ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
 const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
@@ -219,13 +231,15 @@ export function cleanPlanSheet(rs, m, maxId, ver = VERSION_NOW) {
     maxId = Math.max(maxId, id);
     const o = it && PLAN_ITEMS.has(it.type) ? cleanPlanObj(it, id) : null;
     if (!o) throw new Error("Ein Plan enthält ein unbekanntes oder defektes Objekt (id " + id + ").");
-    if (o.type !== "opening" && !layerById(m, o.layer)) o.layer = m.alay;
+    if (!hangs(o) && !layerById(m, o.layer)) o.layer = m.alay;
     if (ver < 24 && o.type === "sym" && o.h !== undefined && o.h === OLD_H[o.key]) delete o.h;
     m.items.push(o);
   }
   const walls = new Map(m.items.filter((i) => i.type === "wall").map((w) => [w.id, w]));
   m.items = m.items.filter((i) => i.type !== "opening" || walls.has(i.wall));
   for (const o of m.items) if (o.type === "opening") clampOpening(walls.get(o.wall), o);
+  const lines = new Set(m.items.filter((i) => i.type === "line").map((i) => i.id));
+  m.items = m.items.filter((i) => i.type !== "ader" || lines.has(i.line)); // Aderzahl ohne Leitung fällt weg
   for (const d of m.items) if (d.type === "dim" && d.ref !== undefined && !walls.has(d.ref)) delete d.ref;
   syncDims(m);
   return maxId;
@@ -377,6 +391,7 @@ export function moveItem(sh, it, dx, dy) {
   if (it.type === "sym") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
   if (it.type === "line" || it.type === "duct") { it.pts = it.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); return; }
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall), u = wallDir(w); it.t += dx * u[0] + dy * u[1]; clampOpening(w, it); return; }
+  if (it.type === "ader") { const l = sh.items.find((x) => x.id === it.line); if (l) it.t = aderT(l, add(aderAt(l, it.t).p, [dx, dy])); return; } // gleitet entlang der Leitung
   const a = it.a, b = it.b, na = [a[0] + dx, a[1] + dy], nb = [b[0] + dx, b[1] + dy];
   if (it.type === "wall") { moveNode(sh, a, na, it.id); moveNode(sh, b, nb, it.id); }
   it.a = na.map(r3); it.b = nb.map(r3);
@@ -392,15 +407,15 @@ export function moveItems(sh, items, dx, dy) {
   ends.forEach((es, i) => { for (const { it, e } of es) it[e] = [r3(nodes[i][0] + dx), r3(nodes[i][1] + dy)]; });
   for (const it of items) {
     if (it.type === "sym" || it.type === "line" || it.type === "duct") moveItem(sh, it, dx, dy);
-    else if (it.type === "opening" && !ids.has(it.wall)) moveItem(sh, it, dx, dy);
+    else if (hangs(it) && !ids.has(hostId(it))) moveItem(sh, it, dx, dy);
   }
   fixOpenings(sh);
   syncDims(sh);
 }
 // Kopie für die Zwischenablage: Objekte samt Öffnungen ihrer Wände; Öffnungen ohne kopierte Wand fallen weg, Masse verlieren fremde Bezüge
 export function copyItems(sh, items) {
-  const ids = new Set(items.filter((i) => i.type !== "opening").map((i) => i.id));
-  const out = sh.items.filter((i) => (i.type === "opening" ? ids.has(i.wall) : ids.has(i.id)));
+  const ids = new Set(items.filter((i) => !hangs(i)).map((i) => i.id));
+  const out = sh.items.filter((i) => (hangs(i) ? ids.has(hostId(i)) : ids.has(i.id)));
   return JSON.parse(JSON.stringify(out)).map((i) => { if (i.type === "dim" && i.ref !== undefined && !ids.has(i.ref)) delete i.ref; return i; });
 }
 // Einfügen: neue ids (newId()), um dx/dy versetzt, unbekannte Ebene → aktive Ebene. Gibt die neuen Objekte (schon im Blatt).
@@ -409,6 +424,7 @@ export function pasteItems(sh, clip, dx, dy, newId) {
   for (const c0 of clip) {
     const c = JSON.parse(JSON.stringify(c0)); c.id = map.get(c0.id);
     if (c.type === "opening") c.wall = map.get(c0.wall);
+    else if (c.type === "ader") c.line = map.get(c0.line);
     else if (!layerById(sh, c.layer)) c.layer = sh.alay;
     if (c.type === "dim" && c.ref !== undefined) c.ref = map.get(c.ref);
     for (const k of ["a", "b", "at"]) if (c[k]) c[k] = [r3(c[k][0] + dx), r3(c[k][1] + dy)];
@@ -427,6 +443,7 @@ export function inBox(sh, it, b) {
   if (it.type === "line" || it.type === "duct") return it.pts.every(ins);
   if (it.type === "sym") return ins(symCenter(it, paperOf(sh).den));
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall); return !!w && ins(add(w.a, wallDir(w), it.t + it.w / 2)); }
+  if (it.type === "ader") { const l = sh.items.find((x) => x.id === it.line); return !!l && ins(aderAt(l, it.t).p); }
   return false;
 }
 function fixOpenings(sh) {
@@ -440,7 +457,7 @@ export function syncDims(sh) {
 }
 // Objekt löschen; mit einer Wand gehen ihre Öffnungen, Masse mit Bezug darauf werden frei
 export function deleteItem(sh, id) {
-  sh.items = sh.items.filter((i) => i.id !== id && !(i.type === "opening" && i.wall === id));
+  sh.items = sh.items.filter((i) => i.id !== id && !(hangs(i) && hostId(i) === id));
   for (const d of sh.items) if (d.type === "dim" && d.ref === id) delete d.ref;
 }
 export const dimLen = (d) => len(sub(d.b, d.a));
@@ -515,6 +532,8 @@ export function dimLine(d) { // Masslinie: a, b um off nach links (von a nach b)
 export function hitPlan(sh, items, p, tol) {
   const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w])), k = paperOf(sh).den;
   for (const it of [...items].reverse()) if (it.type === "sym") { const def = symDef(it, k); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
+  const lines = new Map(sh.items.filter((i) => i.type === "line").map((l) => [l.id, l]));
+  for (const it of [...items].reverse()) if (it.type === "ader" && lines.has(it.line)) { const g = aderGeom(lines.get(it.line), it, k, tfOf(it, sh)); if (distSeg(p, g.a, g.b) <= tol || len(sub(p, g.at)) <= g.size * Math.max(0.6, it.txt.length * 0.32) + tol) return it; } // Aderzahl vor ihrer Leitung
   for (const it of [...items].reverse()) if (it.type === "line") { const q = linePts(it); if (q.some((x, i) => i && distSeg(p, q[i - 1], x) <= tol)) return it; }
   for (const it of [...items].reverse()) if (it.type === "duct" && it.pts.some((x, i) => i && distSeg(p, it.pts[i - 1], x) <= it.w / 2 + tol)) return it; // Kanal: ganze Breite, unter Leitungen und Symbolen
   for (const o of items) {
@@ -760,3 +779,39 @@ export function ductLabel(it, k, tf = 1) {
 }
 
 export { segX, normal };
+
+// ---------- Aderzahl an der Leitung (CJ 27.10.2026) ----------
+export const ADER_DEF = "3";
+export const ADER_TXTS = ["2", "3", "4", "5", "7"]; // Vorschläge, frei eingebbar (z. B. 5x1.5)
+// Punkt und Einheitsrichtung (Tangente) beim Anteil t der Länge eines Linienzugs q
+export function polyAt(q, t) {
+  const ls = q.map((p, i) => (i ? len(sub(p, q[i - 1])) : 0)), tot = ls.reduce((a, b) => a + b, 0);
+  let s = Math.max(0, Math.min(1, t)) * tot;
+  for (let i = 1; i < q.length; i++) {
+    if (!ls[i]) continue;
+    if (s <= ls[i] || i === q.length - 1) { const v = sub(q[i], q[i - 1]), u = [v[0] / ls[i], v[1] / ls[i]], f = Math.min(1, s / ls[i]); return { p: add(q[i - 1], v, f), u }; }
+    s -= ls[i];
+  }
+  return { p: q[0], u: [1, 0] };
+}
+// Anteil t (0 bis 1) des Punkts auf dem Linienzug q, der p am nächsten liegt, und Abstand d
+export function polyNear(q, p) {
+  const ls = q.map((x, i) => (i ? len(sub(x, q[i - 1])) : 0)), tot = ls.reduce((a, b) => a + b, 0) || 1;
+  let best = { t: 0, d: Infinity }, s0 = 0;
+  for (let i = 1; i < q.length; i++) {
+    const v = sub(q[i], q[i - 1]), l2 = dot(v, v), f = l2 ? Math.max(0, Math.min(1, dot(sub(p, q[i - 1]), v) / l2)) : 0, d = len(sub(p, add(q[i - 1], v, f)));
+    if (d < best.d) best = { t: (s0 + f * ls[i]) / tot, d };
+    s0 += ls[i];
+  }
+  return { t: r3(best.t), d: best.d };
+}
+export const aderAt = (line, t) => polyAt(linePts(line), t);
+export const aderT = (line, p) => polyNear(linePts(line), p).t;
+// Zeichnung in der Welt: Strich a–b senkrecht zur Leitung (2,4 mm Papier), Text darüber (lesbar, entlang der Leitung), Grösse 2 mm × tf
+export const ADER_H = 1.2, ADER_TH = 2;
+export function aderGeom(line, it, k, tf = 1) {
+  const { p, u } = aderAt(line, it.t), ra = readable((Math.atan2(u[1], u[0]) * 180) / Math.PI).a, rad = (ra * Math.PI) / 180, n = [-Math.sin(rad), Math.cos(rad)]; // n = «oben» des Texts
+  const size = ADER_TH * tf;
+  return { p, a: add(p, n, -ADER_H * k), b: add(p, n, ADER_H * k), at: add(p, n, (ADER_H + 0.5 + size / 2) * k), size: size * k, ang: ra };
+}
+

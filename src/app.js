@@ -1038,6 +1038,7 @@ function copySheets(list) {
       if (it.bundle !== undefined) { if (!bundles.has(it.bundle)) bundles.set(it.bundle, nextId()); it.bundle = bundles.get(it.bundle); }
       if (it.type === "pvstring") it.mods = it.mods.map((id) => ids.get(id) ?? id);
       if (ELPLEXA && it.type === "opening") it.wall = ids.get(it.wall) ?? it.wall; // Plan: Öffnung an der kopierten Wand
+      if (ELPLEXA && it.type === "ader") it.line = ids.get(it.line) ?? it.line; // Plan: Aderzahl an der kopierten Leitung
       if (ELPLEXA && it.type === "dim" && it.ref !== undefined) { if (ids.has(it.ref)) it.ref = ids.get(it.ref); else delete it.ref; }
     }
     if (c.main?.r === "sheet" && sids.has(c.main.to)) c.main = { ...c.main, to: sids.get(c.main.to) };

@@ -210,9 +210,11 @@ export const planV28 = (sh) => sh.tf !== undefined || sh.items.some((i) => i.tf 
 export const planV29 = (sh) => sh.items.some((i) => i.type === "duct");
 // Dateiversion 30 (CJ 27.10.2026): Aderzahl an der Leitung (type "ader"); ältere Stände lehnen das Objekt ab
 export const planV30 = (sh) => sh.items.some((i) => i.type === "ader");
-// Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29
-export const planVer = (sh) => (planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
-const VERSION_NOW = 30;
+// Dateiversion 31 (CJ 27.10.2026): Kommunikationssymbole (Telefon/EDV, Video/TV, Sonnerie); ältere Stände würden sie still verwerfen
+export const planV31 = (sh) => sh.items.some((i) => i.type === "sym" && symDef(i.key)?.cat === "kommunikation");
+// Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31
+export const planVer = (sh) => (planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
+const VERSION_NOW = 31;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 // ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
 const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };

@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 30, "elplexa liest Version 30 (Aderzahl im Plan und Dateien im Projekt, 27.10.2026)");
+assert.strictEqual(M.VERSION, 31, "elplexa liest Version 31 (Kommunikationssymbole im Plan, 27.10.2026)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -335,7 +335,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 31)), /neueren Version/, "Version 31 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 32)), /neueren Version/, "Version 32 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#0068C9" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
@@ -552,6 +552,21 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   const lb = P.ductLabel({ pts: [[0, 0], [2000, 0], [2000, 500]], w: 300 }, 50);
   assert.ok(lb.at[0] === 1000 && lb.at[1] > 150 && lb.a === 0, "Beschriftung über dem langen Abschnitt");
   assert.strictEqual(P.ductLabel({ pts: [[2000, 0], [0, 0]], w: 300 }, 50).a, 0, "nach links gezeichnet: Text nicht auf dem Kopf");
+}
+// ---------- Kommunikationssymbole (CJ 27.10.2026, Aufgaben Plan 6, Dateiversion 31) ----------
+{
+  const its = [{ id: 70, type: "sym", layer: "l1", key: "TEL_STD", at: [1000, 0], r: 0 }, { id: 71, type: "sym", layer: "l1", key: "IT_RJ4", at: [2000, 0], r: 0, num: "8" },
+    { id: 72, type: "sym", layer: "l1", key: "KLINGEL", at: [500, 500], r: 90 }, { id: 73, type: "sym", layer: "l1", key: "IT_RJ", at: [3000, 0], r: 0, h: 30 }];
+  const d = M.parseModel(file([plan(its)], 31)), out = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(out.version, 31, "Kommunikationssymbol: Version 31");
+  assert.deepStrictEqual(out.sheets[0].items.map((i) => i.key), ["TEL_STD", "IT_RJ4", "KLINGEL", "IT_RJ"], "alle Symbole bleiben");
+  assert.strictEqual(out.sheets[0].items[1].num, "8", "Anzahl am IT-Anschluss 4-fach änderbar");
+  assert.strictEqual(out.sheets[0].items[3].h, undefined, "Standardhöhe 30 cm wird nicht gespeichert");
+  assert.ok(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 70, type: "sym", layer: "l1", key: "STD", at: [0, 0], r: 0 }])], 31)))).version < 31, "ohne Kommunikationssymbol bleibt die Version tiefer");
+  // Dateien im Projekt (30) dürfen die Version des Plans nicht senken
+  const dp = M.parseModel(file([plan(its)], 31)); dp.project = { name: "A", folders: [{ id: "ab12cd", n: "Archiv" }], files: [] };
+  assert.strictEqual(JSON.parse(M.serializeModel(dp)).version, 31, "Dateien im Projekt und Kommunikationssymbol: Version 31");
+  assert.ok(P.bomOf(d.sheets[0]).some((r) => r.key === "IT_RJ4" && r.group === "Telefon/EDV" && r.n === 1), "Stückliste: Gruppe Telefon/EDV");
 }
 // ---------- Aderzahl an der Leitung (CJ 27.10.2026, Dateiversion 30) ----------
 {

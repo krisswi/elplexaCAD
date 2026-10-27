@@ -78,6 +78,21 @@
   "KUEHL",
   "VENT",
   "BOILER",
+  "TEL_STD",
+  "TEL_ANS",
+  "IT_RJ",
+  "IT_RJ4",
+  "TEL_APP",
+  "AMTSVERT",
+  "ZWVERT",
+  "RTV_STD",
+  "RTV_VERT",
+  "KAMERA",
+  "KLINGEL",
+  "SON_TASTER",
+  "TUEROEFFNER",
+  "GEGENSPRECH",
+  "AUSSENSPRECH",
   "DOSE",
   "EINLASS",
   "VERTEILER",
@@ -95,6 +110,9 @@
   "Notlicht",
   "Melder",
   "Geräte",
+  "Telefon/EDV",
+  "Video/TV",
+  "Sonnerie",
   "Allgemein"
  ],
  "syms": {
@@ -1658,6 +1676,311 @@
    "ref": false,
    "size": null,
    "svg": "<circle cx=\"0\" cy=\"0\" r=\"2\" fill=\"none\"/><line x1=\"-1.2\" y1=\"-1.6\" x2=\"-1.2\" y2=\"1.6\"/><line x1=\"-0.6\" y1=\"-1.908\" x2=\"-0.6\" y2=\"1.908\"/><line x1=\"0\" y1=\"-2\" x2=\"0\" y2=\"2\"/><line x1=\"0.6\" y1=\"-1.908\" x2=\"0.6\" y2=\"1.908\"/><line x1=\"1.2\" y1=\"-1.6\" x2=\"1.2\" y2=\"1.6\"/>",
+   "ap": null
+  },
+  "TEL_STD": {
+   "label": "Telefon-Steckdose",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/>",
+   "ap": null
+  },
+  "TEL_ANS": {
+   "label": "Telefon-Anschlussdose",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/><line x1=\"-1.5\" y1=\"3.6\" x2=\"1.5\" y2=\"3.6\"/><circle cx=\"0\" cy=\"3.6\" r=\"0.35\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "IT_RJ": {
+   "label": "IT-Anschluss RJ (EDV)",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/><path d=\"M-0.9,2.75L0.9,2.75L0.9,3.25L-0.9,3.25Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "IT_RJ4": {
+   "label": "IT-Anschluss RJ 4-fach",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": "4",
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/><path d=\"M-0.9,2.75L0.9,2.75L0.9,3.25L-0.9,3.25Z\" fill=\"currentColor\"/><line x1=\"0.9\" y1=\"3.1\" x2=\"2.1\" y2=\"4\"/><text x=\"2.6\" y=\"-4.5\" font-size=\"1.4\" transform=\"scale(1,-1)\" data-f=\"num\">4</text>",
+   "ap": null
+  },
+  "TEL_APP": {
+   "label": "Telefonapparat",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 1.8,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.5\" y1=\"-1.5\" x2=\"1.5\" y2=\"-1.5\"/><line x1=\"1.5\" y1=\"-1.5\" x2=\"1.5\" y2=\"1.5\"/><line x1=\"1.5\" y1=\"1.5\" x2=\"-1.5\" y2=\"1.5\"/><line x1=\"-1.5\" y1=\"1.5\" x2=\"-1.5\" y2=\"-1.5\"/><circle cx=\"-0.6\" cy=\"0\" r=\"0.3\" fill=\"currentColor\"/><circle cx=\"0.6\" cy=\"0\" r=\"0.3\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "AMTSVERT": {
+   "label": "Amtsverteiler (Hauptverteiler)",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.7,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.5\" y1=\"-1\" x2=\"2.5\" y2=\"-1\"/><line x1=\"2.5\" y1=\"-1\" x2=\"2.5\" y2=\"1\"/><line x1=\"2.5\" y1=\"1\" x2=\"-2.5\" y2=\"1\"/><line x1=\"-2.5\" y1=\"1\" x2=\"-2.5\" y2=\"-1\"/><line x1=\"-2.5\" y1=\"-1\" x2=\"2.5\" y2=\"1\"/><line x1=\"-2.5\" y1=\"1\" x2=\"2.5\" y2=\"-1\"/>",
+   "ap": null
+  },
+  "ZWVERT": {
+   "label": "Zwischenverteiler",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.7,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.5\" y1=\"-1\" x2=\"2.5\" y2=\"-1\"/><line x1=\"2.5\" y1=\"-1\" x2=\"2.5\" y2=\"1\"/><line x1=\"2.5\" y1=\"1\" x2=\"-2.5\" y2=\"1\"/><line x1=\"-2.5\" y1=\"1\" x2=\"-2.5\" y2=\"-1\"/><line x1=\"-2.5\" y1=\"-1\" x2=\"2.5\" y2=\"1\"/>",
+   "ap": null
+  },
+  "RTV_STD": {
+   "label": "RTV-Steckdose (TV/Radio)",
+   "cat": "kommunikation",
+   "group": "Video/TV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/><line x1=\"-0.8\" y1=\"2.9\" x2=\"0.8\" y2=\"2.9\"/><line x1=\"-0.8\" y1=\"2.9\" x2=\"-0.8\" y2=\"3.6\"/><line x1=\"0.8\" y1=\"2.9\" x2=\"0.8\" y2=\"3.6\"/>",
+   "ap": null
+  },
+  "RTV_VERT": {
+   "label": "RTV-Verteiler",
+   "cat": "kommunikation",
+   "group": "Video/TV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 1.8,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.5\" y1=\"-1.5\" x2=\"1.5\" y2=\"-1.5\"/><line x1=\"1.5\" y1=\"-1.5\" x2=\"1.5\" y2=\"1.5\"/><line x1=\"1.5\" y1=\"1.5\" x2=\"-1.5\" y2=\"1.5\"/><line x1=\"-1.5\" y1=\"1.5\" x2=\"-1.5\" y2=\"-1.5\"/><line x1=\"0\" y1=\"-1.5\" x2=\"0\" y2=\"1.5\"/><line x1=\"0\" y1=\"0.4\" x2=\"1.5\" y2=\"1.5\"/>",
+   "ap": null
+  },
+  "KAMERA": {
+   "label": "Kamera",
+   "cat": "kommunikation",
+   "group": "Video/TV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.3,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.2\" y1=\"-0.7\" x2=\"0.8\" y2=\"-0.7\"/><line x1=\"0.8\" y1=\"-0.7\" x2=\"0.8\" y2=\"0.7\"/><line x1=\"0.8\" y1=\"0.7\" x2=\"-2.2\" y2=\"0.7\"/><line x1=\"-2.2\" y1=\"0.7\" x2=\"-2.2\" y2=\"-0.7\"/><path d=\"M0.8,0.3L2,0.8L2,-0.8L0.8,-0.3\" fill=\"none\"/>",
+   "ap": null
+  },
+  "KLINGEL": {
+   "label": "Glocke, Klingel",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0.3
+   ],
+   "r": 1.8,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<path d=\"M-1.5,0A1.5 1.5 0 0 0 1.5,0Z\" fill=\"none\"/><line x1=\"-0.7\" y1=\"0\" x2=\"-0.7\" y2=\"-0.9\"/><line x1=\"0.7\" y1=\"0\" x2=\"0.7\" y2=\"-0.9\"/>",
+   "ap": null
+  },
+  "SON_TASTER": {
+   "label": "Sonnerietaster",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": 110,
+   "c": [
+    0,
+    0
+   ],
+   "r": 1.4,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<circle cx=\"0\" cy=\"0\" r=\"1.1\" fill=\"none\"/><circle cx=\"0\" cy=\"0\" r=\"0.5\" fill=\"none\"/>",
+   "ap": null
+  },
+  "TUEROEFFNER": {
+   "label": "Türöffner",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<path d=\"M-2,-0.55L2,-0.55L0.8,0.55L-2,0.55Z\" fill=\"none\"/><line x1=\"0.8\" y1=\"0.55\" x2=\"0.8\" y2=\"-0.55\"/><path d=\"M-1.5,-0.2L-1.5,0A0.3 0.3 0 0 0 -0.9,0A0.3 0.3 0 0 0 -0.3,0L-0.3,-0.2\" fill=\"none\"/>",
+   "ap": null
+  },
+  "GEGENSPRECH": {
+   "label": "Gegensprechanlage (Innensprechstelle)",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.1\" y1=\"-1.7\" x2=\"1.1\" y2=\"-1.7\"/><line x1=\"1.1\" y1=\"-1.7\" x2=\"1.1\" y2=\"1.7\"/><line x1=\"1.1\" y1=\"1.7\" x2=\"-1.1\" y2=\"1.7\"/><line x1=\"-1.1\" y1=\"1.7\" x2=\"-1.1\" y2=\"-1.7\"/><circle cx=\"0\" cy=\"0.65\" r=\"0.5\" fill=\"none\"/><path d=\"M-0.75,-1.2L-0.15,-1.2L-0.15,-0.85L-0.75,-0.85Z\" fill=\"currentColor\"/><path d=\"M0.15,-1.2L0.75,-1.2L0.75,-0.85L0.15,-0.85Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "AUSSENSPRECH": {
+   "label": "Aussensprechstelle (Torsprechstelle)",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.1\" y1=\"-1.7\" x2=\"1.1\" y2=\"-1.7\"/><line x1=\"1.1\" y1=\"-1.7\" x2=\"1.1\" y2=\"1.7\"/><line x1=\"1.1\" y1=\"1.7\" x2=\"-1.1\" y2=\"1.7\"/><line x1=\"-1.1\" y1=\"1.7\" x2=\"-1.1\" y2=\"-1.7\"/><circle cx=\"0\" cy=\"0.65\" r=\"0.5\" fill=\"none\"/><circle cx=\"-0.55\" cy=\"-0.35\" r=\"0.12\" fill=\"currentColor\"/><circle cx=\"-0.55\" cy=\"-1\" r=\"0.12\" fill=\"currentColor\"/><line x1=\"-0.3\" y1=\"-0.55\" x2=\"0.65\" y2=\"-0.55\"/><line x1=\"0.65\" y1=\"-0.55\" x2=\"0.65\" y2=\"-0.15\"/><line x1=\"0.65\" y1=\"-0.15\" x2=\"-0.3\" y2=\"-0.15\"/><line x1=\"-0.3\" y1=\"-0.15\" x2=\"-0.3\" y2=\"-0.55\"/><line x1=\"-0.3\" y1=\"-1.2\" x2=\"0.65\" y2=\"-1.2\"/><line x1=\"0.65\" y1=\"-1.2\" x2=\"0.65\" y2=\"-0.8\"/><line x1=\"0.65\" y1=\"-0.8\" x2=\"-0.3\" y2=\"-0.8\"/><line x1=\"-0.3\" y1=\"-0.8\" x2=\"-0.3\" y2=\"-1.2\"/>",
    "ap": null
   },
   "DOSE": {

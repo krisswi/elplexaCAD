@@ -6,7 +6,7 @@
 // CJ 24.10.2026: Leitung geschwungen (Form), PDF-Plan einlesen wie im Stringplan (Massstab eingeben oder messen, Fixpunkt = Nullpunkt, Plan drehen).
 // Daten und Geometrie in plan.js. Im SchemaCAD-Bau ersetzt build.mjs diese Datei durch einen Platzhalter.
 import * as P from "./plan.js";
-import { PLAN_SYMS, SYM_BY_KEY, SYM_GROUPS } from "./plansym.js";
+import { PLAN_SYMS, SYM_GROUPS, symDef } from "./plansym.js";
 import { PAPERS, paperSize, printArea, paperLabel, fmtDen, PT_MM, mmPerPt, fixOf, bgBox, pageToWorld, worldToPage, scaleFromMeasure, nearestStd, denOf, kOfDen, parseDen, fmtPct, newBg, fixMode, rotatePlan, alignAngle, fmtDeg } from "./pv.js";
 import { openPdf, pageSize, toBase64, imageFor, imageReady } from "./pdfbg.js";
 import { pageSVG } from "./pvprint.js";
@@ -90,7 +90,7 @@ export function makePlan(c) {
   const pinsSVG = (z) => {
     if (!raw || S.alt || !(S.tool === "pl-line" || drag?.type === "lpt")) return "";
     const k = den(), r = (n) => f(n / z);
-    return visible().filter((i) => i.type === "sym" && Math.hypot(...P.symCenter(i, k).map((v, j) => v - [raw.x, raw.y][j])) <= P.symDef(i, k).r * k + 25 / z).map((i) => {
+    return visible().filter((i) => i.type === "sym" && Math.hypot(...P.symCenter(i, k).map((v, j) => v - [raw.x, raw.y][j])) <= P.itemDef(i, k).r * k + 25 / z).map((i) => {
       const sn = P.symSnaps(i, k);
       return sn.segs.map(([a, b]) => `<path d="M${pt(a)}L${pt(b)}" stroke="${PIN}" stroke-width="2" fill="none" opacity=".8"/>`).join("")
         + sn.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${r(3)}" fill="#fff" stroke="${PIN}" stroke-width="1.5"/>`).join("");
@@ -362,7 +362,7 @@ export function makePlan(c) {
   // Symbol (plansym.js): Teile in Papier-mm, in der Welt × Massstab k, gedreht um r. Texte drehen mit und bleiben lesbar (P.symTexts).
   // tf: Textgrösse (P.tfOf: einzeln, sonst Plan); Palette und Stückliste zeichnen mit 1
   function symSVG(it, k, stroke = INK, tf = P.tfOf(it, sh())) {
-    const def = P.symDef(it, k, tf);
+    const def = P.itemDef(it, k, tf);
     let g = "";
     for (const q of it.ap && def.ap ? [...def.parts, def.ap] : def.parts) {
       if (q[0] === "l") g += `<line x1="${q[1]}" y1="${q[2]}" x2="${q[3]}" y2="${q[4]}"/>`;
@@ -376,7 +376,7 @@ export function makePlan(c) {
   // Symbol beim Setzen oder Ziehen: Wandsymbole rasten an der nächsten Wandfläche ein (bis 600 mm, Alt frei), sonst Fang und Drehung symR.
   // Zuerst (CJ 27.10.2026): Symbole mit Randpunkten legen sich bündig an ein Nachbarsymbol, gleiche Drehung (P.symSnapTo; skip = gezogenes Symbol)
   function symPlace(key, p, r0, skip) {
-    const def = SYM_BY_KEY.get(key);
+    const def = symDef(key);
     if (!S.alt) { const nb = P.symSnapTo(visible().filter((i) => i.id !== skip), key, [p.x, p.y], den(), P.symRim(key) ? Math.max(P.symRim(key).hx, P.symRim(key).hy) * den() + Math.min(tol(), Math.max(P.symRim(key).hx, P.symRim(key).hy) * den()) : 0); if (nb) return { at: nb.at, r: nb.r, nb }; }
     if (def.wall && !S.alt) { const ws = P.wallSnap(visible().filter((i) => i.type === "wall"), [p.x, p.y], 600); if (ws) return { at: ws.at, r: ws.r, wall: true }; }
     const q = snapAt(p);
@@ -513,7 +513,7 @@ export function makePlan(c) {
           s += `<line x1="${f(x0)}" y1="${f(y - RH / 2)}" x2="${f(x1)}" y2="${f(y - RH / 2)}" stroke="#c8ced6" stroke-width="0.15"/>`;
           continue;
         }
-        const def = SYM_BY_KEY.get(r.key), k = Math.min(1, 2.6 / def.r);
+        const def = symDef(r.key), k = Math.min(1, 2.6 / def.r);
         s += symSVG({ key: r.key, at: [x0 + 6 - def.c[0] * k, y - def.c[1] * k], r: 0, ap: r.ap }, k, P.defCol({ type: "sym", key: r.key }), 1) + txt(x0 + 16, y, r.label, 3, 0, INK, "start") + txt(x1, y, String(r.n), 3, 0, INK, "end");
         s += `<line x1="${f(x0)}" y1="${f(y - RH / 2)}" x2="${f(x1)}" y2="${f(y - RH / 2)}" stroke="#c8ced6" stroke-width="0.15"/>`;
       }
@@ -550,7 +550,7 @@ export function makePlan(c) {
     }
     if (T === "pl-sym") {
       if (!layerOk()) return;
-      const q = symPlace(opt.sym, w, opt.symR), def = SYM_BY_KEY.get(opt.sym), id = nextId();
+      const q = symPlace(opt.sym, w, opt.symR), def = symDef(opt.sym), id = nextId();
       change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r, ap: opt.ap, ...(def.ref && opt.refCol ? { col: opt.refCol } : {}) }, id))); // ap fällt bei Symbolen ohne Aufputz-Variante weg
       if (def.ref) { setTool("select"); S.sel = new Set([id]); renderRight(); renderOverlay(); updateHint(); setTimeout(() => c.rightEl.querySelector('[data-plf="fu"]')?.focus(), 0); } // nach dem Klick, der sonst die Zeichenfläche fokussiert // Verweis: gleich beschriften
       return;
@@ -788,8 +788,8 @@ export function makePlan(c) {
       return true;
     }
     if (k.toLowerCase() === "a" && !e.altKey) { // Aufputz/Unterputz (CJ 26.10.2026): beim Setzen für die nächsten Symbole, sonst an den gewählten (alle gleich: Mehrheit UP → AP)
-      const ys = sel().filter((i) => i.type === "sym" && SYM_BY_KEY.get(i.key).ap);
-      if (S.tool === "pl-sym") { opt.ap = !opt.ap; toast(`${opt.ap ? "Aufputz (AP)" : "Unterputz (UP)"} für die nächsten Symbole${SYM_BY_KEY.get(opt.sym).ap ? "" : ". Dieses Symbol hat keine AP-Variante"}.`); renderOverlay(); renderRight(); updateHint(); return true; }
+      const ys = sel().filter((i) => i.type === "sym" && symDef(i.key).ap);
+      if (S.tool === "pl-sym") { opt.ap = !opt.ap; toast(`${opt.ap ? "Aufputz (AP)" : "Unterputz (UP)"} für die nächsten Symbole${symDef(opt.sym).ap ? "" : ". Dieses Symbol hat keine AP-Variante"}.`); renderOverlay(); renderRight(); updateHint(); return true; }
       if (ys.length) { const on = !ys.every((i) => i.ap); change(() => { for (const y of ys) { if (on) y.ap = true; else delete y.ap; } }); toast(`${ys.length} ${ys.length === 1 ? "Symbol" : "Symbole"} ${on ? "Aufputz (AP)" : "Unterputz (UP)"}.`); return true; }
       if (sel().length) toast("Gewählte Symbole haben keine Aufputz-Variante (nur Schalter und Steckdosen).");
       return true;
@@ -920,7 +920,7 @@ export function makePlan(c) {
         + inp("off", "Abstand der Masslinie in mm", P.fmtLen(it.off)) + tfField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene") + del1();
     }
     if (it?.type === "sym") {
-      const def = SYM_BY_KEY.get(it.key), tin = (k, label, v) => `<div class="field"><label>${label}</label><input type="text" data-plf="${k}" value="${R.esc(v ?? "")}" autocomplete="off" spellcheck="false"></div>`;
+      const def = symDef(it.key), tin = (k, label, v) => `<div class="field"><label>${label}</label><input type="text" data-plf="${k}" value="${R.esc(v ?? "")}" autocomplete="off" spellcheck="false"></div>`;
       return head(def.label, def.group) + (def.ref ? tin("fu", "Zeile 1 (z. B. UV EG)", it.fu) + tin("nr", "Zeile 2 (z. B. 11X4)", it.nr) + tin("txt", "Zeile 3 (z. B. Kabel 5×2,5)", it.txt) : "") + (def.num !== undefined ? tin("num", "Anzahl (Zahl am Strich)", it.num ?? def.num) : "") + (P.sizeOf(it.key) ? inp("vw", def.wall ? "Breite in mm (entlang der Wand)" : "Länge in mm", P.fmtLen(P.symSize(it).w)) + (P.symSize(it).t !== undefined ? inp("vt", def.wall ? "Tiefe in mm" : "Breite in mm", P.fmtLen(P.symSize(it).t)) : "") : "") + (def.ref ? "" : tin("txt", "Beschriftung", it.txt))
         + (def.ref ? "" : `<div class="field"><label>Höhe in cm${def.h !== undefined ? " (nur wenn abweichend)" : ""}</label><input type="text" inputmode="decimal" data-plf="sh" value="${it.h === undefined ? "" : fmtH(it.h)}" placeholder="${def.h !== undefined ? `leer = Standard ${def.h} cm` : "leer = ohne"}" autocomplete="off"></div>`) + inp("rot", "Drehung in Grad", String(it.r))
         + (def.ap ? `<label class="check"><input type="checkbox" data-plf="ap"${it.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : "") + tfField([it]) + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
@@ -952,7 +952,7 @@ export function makePlan(c) {
       + sel1("side", [["0", "automatisch (nach der ersten Kurve)"], ["1", "links der Zeichenrichtung"], ["-1", "rechts der Zeichenrichtung"]], opt.side, "Wand liegt").replace("data-plf", "data-plo")
       + note("Gezeichnet wird die Innenkante, die Wand wächst nach aussen (automatisch nach der ersten Kurve, Taste X wechselt die Seite). Eingetippte Länge = lichte Länge. Gespeichert wird die Mittellinie. Orange Hilfslinien: Ausrichtung an Anfang, Ecken und letztem Punkt (Alt ohne Fang).");
     else if (S.tool === "pl-open") h += head("Neue Öffnung", "Klick auf eine Wand") + sel1("okind", P.OPENINGS, opt.okind, "Art").replace("data-plf", "data-plo") + inp("ow", "Breite in mm", P.fmtLen(opt.ow[opt.okind]), "data-plo");
-    else if (S.tool === "pl-sym") { const def = SYM_BY_KEY.get(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`) + (def.ap ? `<label class="check"><input type="checkbox" data-plo="ap"${opt.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : "")
+    else if (S.tool === "pl-sym") { const def = symDef(opt.sym); h += head(def.label, "Klick in den Plan setzt") + note(`${def.wall ? "Nahe an einer Wand rastet das Symbol an der Wandfläche ein und zeigt in den Raum (Alt frei). " : `Drehung ${opt.symR}°, R dreht um 90°. `}Standardhöhe: ${def.h !== undefined ? `${def.h} cm (steht nur abweichend im Plan)` : "ohne"}. Beschriftung und Höhe danach rechts am gewählten Symbol.`) + (def.ap ? `<label class="check"><input type="checkbox" data-plo="ap"${opt.ap ? " checked" : ""}> Aufputz (Taste A)</label>` : "")
       + (def.ref ? colField([{ type: "sym", key: opt.sym, ...(opt.refCol ? { col: opt.refCol } : {}) }]).replaceAll("data-plcol", "data-plnewcol") + note("Nach dem Klick die Zeilen rechts eintippen. Den Kasten danach frei ziehen, der Zeiger bleibt am Ziel.") : ""); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
       + note("Fang an den Anschlusspunkten der Symbole und am Raster (nicht an Wänden und anderen Leitungen), Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
@@ -1026,11 +1026,11 @@ export function makePlan(c) {
     }
     if (it.type === "sym") {
       if (k === "vw" || k === "vt") { const f = k === "vw" ? "w" : "t", n2 = P.parseLen(v); if (!(n2 >= 10 && n2 <= 20000)) return bad(), true; change(() => { if (Math.round(n2) === P.sizeOf(it.key)[f]) delete it[f]; else it[f] = Math.round(n2); }); return true; }
-      if (k === "num") { change(() => { const t0 = v.trim().slice(0, 6); if (t0 && t0 !== SYM_BY_KEY.get(it.key).num) it.num = t0; else delete it.num; }); return true; }
+      if (k === "num") { change(() => { const t0 = v.trim().slice(0, 6); if (t0 && t0 !== symDef(it.key).num) it.num = t0; else delete it.num; }); return true; }
       if (k === "txt" || k === "fu" || k === "nr") { change(() => { const t0 = v.trim().slice(0, k === "txt" ? 60 : 20); if (t0) it[k] = t0; else delete it[k]; }); return true; }
       if (k === "ap") { change(() => { if (t.checked) it.ap = true; else delete it.ap; }); return true; }
       const n = Number(v.trim().replace(",", ".").replace("−", "-"));
-      if (k === "sh") { if (v.trim() && !(n >= 0)) return bad(), true; const d = SYM_BY_KEY.get(it.key).h; change(() => { if (v.trim() && n !== d) it.h = n; else delete it.h; }); return true; } // leer oder Standard = Standardhöhe
+      if (k === "sh") { if (v.trim() && !(n >= 0)) return bad(), true; const d = symDef(it.key).h; change(() => { if (v.trim() && n !== d) it.h = n; else delete it.h; }); return true; } // leer oder Standard = Standardhöhe
       if (k === "rot") { if (!Number.isFinite(n)) return bad(), true; change(() => { it.r = ((Math.round(n) % 360) + 360) % 360; }); return true; }
     }
     if (k === "kind") { change(() => { const o = P.cleanPlanObj({ ...it, kind: v }, it.id); S0.items[S0.items.indexOf(it)] = o; }); return true; }
@@ -1058,7 +1058,7 @@ export function makePlan(c) {
     if (S.tool === "pl-wall") return draft ? `Wand: Länge tippen (Innenkante, z. B. 3450 oder 3,45 m), Tab = Winkel tippen, Enter setzt, oder klicken. Shift 0/45/90°, orange Linie = Ausrichtung (Rechteck schliessen), Alt ohne Fang, X wechselt die Wandseite, Klick auf den Anfang schliesst, Esc beendet.${draft.len || draft.ang ? `  Eingabe: ${draft.len || "–"} mm, ${draft.ang || "–"}°` : ""}` : `Wand: Klick setzt den Anfang der Innenkante (Wandecken, Wandflächen, Ausrichtung und Raster rasten ein, Alt frei). Die Wand liegt ${opt.side === 0 ? "automatisch aussen (nach der ersten Kurve)" : opt.side > 0 ? "links der Zeichenrichtung" : "rechts der Zeichenrichtung"}, X wechselt. Dicke und Material rechts.`;
     if (S.tool === "pl-open") return `Öffnung: Klick auf eine Wand setzt ${P.OPENINGS.find(([k]) => k === opt.okind)[1]} (${P.fmtLen(opt.ow[opt.okind])} mm) mittig auf den Klick. Art und Breite rechts.`;
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
-    if (S.tool === "pl-sym") return `Symbol: Klick setzt ${SYM_BY_KEY.get(opt.sym).label}${SYM_BY_KEY.get(opt.sym).ap ? ` ${opt.ap ? "AP" : "UP"}` : ""}. ${SYM_BY_KEY.get(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."}${SYM_BY_KEY.get(opt.sym).ap ? " A wechselt AP/UP." : ""} Esc oder V beendet.`;
+    if (S.tool === "pl-sym") return `Symbol: Klick setzt ${symDef(opt.sym).label}${symDef(opt.sym).ap ? ` ${opt.ap ? "AP" : "UP"}` : ""}. ${symDef(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."}${symDef(opt.sym).ap ? " A wechselt AP/UP." : ""} Esc oder V beendet.`;
     if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt${opt.lcurve ? ", geschwungen" : ""}). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;
     if (S.tool === "pl-ader") return `Aderzahl: Klick auf eine Leitung setzt den Querstrich mit „${opt.atxt}“. Ziffern 1 bis 9 wählen die Zahl, rechts frei (z. B. 5x1.5). Esc beendet.`;
     if (S.tool === "pl-duct") return ductDraft ? `Kanal ${P.fmtLen(opt.dw)} mm: nächster Punkt per Klick oder Länge tippen (Tab = Winkel), Enter setzt (${ductDraft.pts.length} gesetzt). Enter ohne Eingabe, Doppelklick oder Esc beendet, Rücktaste nimmt zurück. Shift 0/45/90°, Alt ohne Fang.${ductDraft.len || ductDraft.ang ? `  Eingabe: ${ductDraft.len || "–"} mm, ${ductDraft.ang || "–"}°` : ""}` : `Kanal ${P.fmtLen(opt.dw)} mm (${P.HATCHES.find(([x]) => x === opt.dhatch)[1]}): Klick setzt den Anfang der Mittellinie. Zahlen 1–9 wählen die Breite (${P.DUCT_WS.join(", ")} mm). Fang wie bei Wänden.`;

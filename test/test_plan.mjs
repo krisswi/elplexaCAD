@@ -300,18 +300,18 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual([c({ key: "STD3", num: "3" }).num, c({ key: "STD3", num: " 5 " }).num, c({ key: "STD", num: "5" }).num], [undefined, "5", undefined], "num bereinigt");
   // Verteilung in echten mm (CJ 26.10.2026): Vorgabe 600 × 200, Teile in Papier-mm = Welt / Massstab
   assert.deepStrictEqual([c({ key: "VERTEILER", w: 800, t: 200 }).w, c({ key: "VERTEILER", w: 800, t: 200 }).t, c({ key: "STD", w: 800 }).w], [800, undefined, undefined], "w/t bereinigt");
-  const vd = P.symDef({ key: "VERTEILER", w: 1000, t: 250 }, 50);
+  const vd = P.itemDef({ key: "VERTEILER", w: 1000, t: 250 }, 50);
   assert.deepStrictEqual([vd.parts[0], vd.c], [["l", -10, 0, 10, 0], [0, 2.5]], "Verteilung 1000 × 250 mm bei 1:50 = 20 × 5 Papier-mm");
-  assert.strictEqual(P.symDef({ key: "VERTEILER" }, 20).parts[1][4], 10, "Vorgabe 200 mm tief bei 1:20 = 10 Papier-mm");
+  assert.strictEqual(P.itemDef({ key: "VERTEILER" }, 20).parts[1][4], 10, "Vorgabe 200 mm tief bei 1:20 = 10 Papier-mm");
   // Leuchten 5.190 (CJ 26.10.2026): Spots HV/LED/ELV, Notlicht, Balkenleuchte mit Länge in mm; neue Symbole = Version 24
   for (const k of ["EXIT_L", "EXIT_R", "EXIT_DL", "EXIT_DR", "EXIT_UL", "EXIT_UR", "EXIT_D", "HV", "HV_WEB", "LED_WEB_TR", "ELV_EB_TR", "NOTL_D", "NOTL_WEB_TR", "FL", "RASTER", "SPIEGEL", "DAUER"]) assert.ok(S2.SYM_BY_KEY.has(k), k);
-  assert.deepStrictEqual([c({ key: "FL", w: 1500 }).w, c({ key: "FL", t: 300 }).t, P.symDef({ key: "FL", w: 1500 }, 50).parts[0]], [1500, undefined, ["l", -15, 0, 15, 0]], "FL: Länge in mm, ohne Breite");
+  assert.deepStrictEqual([c({ key: "FL", w: 1500 }).w, c({ key: "FL", t: 300 }).t, P.itemDef({ key: "FL", w: 1500 }, 50).parts[0]], [1500, undefined, ["l", -15, 0, 15, 0]], "FL: Länge in mm, ohne Breite");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "NOTL", at: [0, 0], r: 0 }])], 24)))).version, 24, "Notleuchte: Version 24");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "LED", at: [0, 0], r: 0 }])], 21)))).version, 21, "alte LED bleibt Version 21");
   // Hinweis (CJ 26.10.2026): Kasten mit Zeilen oben/unten/Kabel, oben bleibt oben auch gedreht, Linie zum Ziel
   const hw = (o) => tx({ key: "VERWEIS", fu: "UV EG", nr: "11X4", ...o });
   for (const r of [0, 180]) assert.ok(hw({ r })[0].s === "UV EG" && hw({ r })[0].at[1] > hw({ r })[1].at[1], `oben bleibt oben (r ${r})`);
-  const rp = P.symDef({ key: "VERWEIS", fu: "UV EG", nr: "11X4", r: 0 }, 50).parts;
+  const rp = P.itemDef({ key: "VERWEIS", fu: "UV EG", nr: "11X4", r: 0 }, 50).parts;
   assert.ok(rp.some((q) => q[0] === "l" && q[1] === 0 && q[2] === 0) && rp.filter((q) => q[0] === "l").length === 2, "Linie zum Ziel und Trennstrich");
   // alte Pläne (bis Version 23): vorausgefüllte Höhe 110 an Steckdosen und 200 an Wandleuchten fällt weg
   const old = M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 110 }, { id: 51, type: "sym", layer: "bg", key: "LED_W", at: [0, 0], r: 0, h: 200 }, { id: 52, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 120 }])], 23)).sheets[0].items;

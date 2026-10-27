@@ -15,7 +15,7 @@
 // Hintergrund bg (CJ 24.10.2026, Dateiversion 23): PDF-Seite wie im Stringplan (pv.js: Massstab, Fixpunkt = Nullpunkt, Drehung), liegt auf der Ebene «Hintergrund».
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
-import { SYM_BY_KEY, PLAN_SYMS } from "./plansym.js";
+import { symDef, PLAN_SYMS } from "./plansym.js";
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const r3 = (n) => Math.round(n * 1000) / 1000 + 0;
@@ -111,7 +111,7 @@ export const CAT_COL = { licht: LINE_COL, kraft: LINE_COL, kommunikation: LINE_C
 const HEX = /^#[0-9a-f]{6}$/;
 export const lineCol = () => LINE_COL;
 // Vorgabe und wirksame Farbe eines Objekts
-export const defCol = (it) => (it.type === "duct" ? DUCT_COL : it.type === "line" ? lineCol() : it.type === "sym" ? (SYM_BY_KEY.get(it.key).cat === "leitung" ? lineCol() : CAT_COL[SYM_BY_KEY.get(it.key).cat] ?? "#000000") : "#000000");
+export const defCol = (it) => (it.type === "duct" ? DUCT_COL : it.type === "line" ? lineCol() : it.type === "sym" ? (symDef(it.key).cat === "leitung" ? lineCol() : CAT_COL[symDef(it.key).cat] ?? "#000000") : "#000000");
 export const colOf = (it) => it.col ?? defCol(it);
 export const hasCol = (it) => it.type === "line" || it.type === "sym" || it.type === "duct";
 // Textgrösse (CJ 27.10.2026, Muster Disposition): Faktor tf (1 = Vorgabe), gesamt am Blatt (sh.tf) und einzeln an Symbol, Verweis und Mass (it.tf).
@@ -156,7 +156,7 @@ export function cleanPlanObj(it, id) {
     return o;
   }
   if (it.type === "sym") {
-    const def = SYM_BY_KEY.get(it.key);
+    const def = symDef(it.key);
     if (!def || !isPt(it.at)) return null;
     const o = { id, type: "sym", layer: String(it.layer ?? ""), key: it.key, at: [it.at[0], it.at[1]], r: isNum(it.r) ? ((Math.round(it.r) % 360) + 360) % 360 : 0 };
     if (isNum(it.h) && it.h >= 0 && it.h !== def.h) o.h = it.h; // nur abweichend von der Standardhöhe gespeichert (CJ 26.10.2026)
@@ -203,7 +203,7 @@ export function cleanPlanObj(it, id) {
 // Dateiversion 24 (Plan Schritt 5, CJ 26.10.2026): ältere Stände kennen diese Felder nicht
 const OLD_KEYS = new Set(["SCH0", "SCH0_2", "SCH3", "SCH6", "TASTER", "DIMMER", "STOREN", "SCH_LAMPE", "STD", "STD3", "STD_T15", "STD_USB", "STD_BODEN", "KOMBI", "LEUCHTE", "LEUCHTE_EB", "LEUCHTE_W", "LEUCHTE_WEB", "LED", "LED_EB", "LED_W", "BWM", "PIR", "GERAET", "HERD", "BACKOFEN", "MIKRO", "GSP", "KUEHL", "VENT", "BOILER", "DOSE", "EINLASS", "VERTEILER", "ANSCHLUSS", "STEIG_AUF", "STEIG_AB", "STEIG_DURCH", "VERWEIS"]); // Symbole bis Dateiversion 23
 export const V24_SYMS = { has: (k) => !!k && !OLD_KEYS.has(k) }; // Symbole, die ältere Stände nicht kennen
-export const planV24 = (sh) => sh.items.some((i) => i.lo || i.num !== undefined || (i.type === "sym" && (i.w !== undefined || i.t !== undefined)) || i.mat === "doppel" || V24_SYMS.has(i.key) || (i.ap && !SYM_BY_KEY.get(i.key)?.group?.startsWith("Schalter")));
+export const planV24 = (sh) => sh.items.some((i) => i.lo || i.num !== undefined || (i.type === "sym" && (i.w !== undefined || i.t !== undefined)) || i.mat === "doppel" || V24_SYMS.has(i.key) || (i.ap && !symDef(i.key)?.group?.startsWith("Schalter")));
 // Dateiversion 28 (CJ 27.10.2026): Textgrösse gesamt (sh.tf) oder einzeln (it.tf); ältere Stände würden sie still verlieren
 export const planV28 = (sh) => sh.tf !== undefined || sh.items.some((i) => i.tf !== undefined);
 // Dateiversion 29 (CJ 27.10.2026): Kanal/Trasse (type "duct"); ältere Stände lehnen das Objekt ab
@@ -531,7 +531,7 @@ export function dimLine(d) { // Masslinie: a, b um off nach links (von a nach b)
 }
 export function hitPlan(sh, items, p, tol) {
   const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w])), k = paperOf(sh).den;
-  for (const it of [...items].reverse()) if (it.type === "sym") { const def = symDef(it, k); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
+  for (const it of [...items].reverse()) if (it.type === "sym") { const def = itemDef(it, k); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
   const lines = new Map(sh.items.filter((i) => i.type === "line").map((l) => [l.id, l]));
   for (const it of [...items].reverse()) if (it.type === "ader" && lines.has(it.line)) { const g = aderGeom(lines.get(it.line), it, k, tfOf(it, sh)); if (distSeg(p, g.a, g.b) <= tol || len(sub(p, g.at)) <= g.size * Math.max(0.6, it.txt.length * 0.32) + tol) return it; } // Aderzahl vor ihrer Leitung
   for (const it of [...items].reverse()) if (it.type === "line") { const q = linePts(it); if (q.some((x, i) => i && distSeg(p, q[i - 1], x) <= tol)) return it; }
@@ -579,13 +579,13 @@ export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, 
 }
 // Symbol: Mitte in der Welt (Papier-mm × Massstab k, gedreht um r)
 export function symCenter(it, k) {
-  const c = symDef(it, k).c, a = (it.r * Math.PI) / 180;
+  const c = itemDef(it, k).c, a = (it.r * Math.PI) / 180;
   return [it.at[0] + k * (c[0] * Math.cos(a) - c[1] * Math.sin(a)), it.at[1] + k * (c[0] * Math.sin(a) + c[1] * Math.cos(a))];
 }
 // Fang einer Leitung am Symbol (CJ 26.10.2026), in der Welt, dreht mit r: { pts, segs }. pin: vier Punkte oben, rechts, unten, links am Rand;
 // edge: alle Seiten des Kastens (Abzweigdose); sonst die Mitte.
 export function symSnaps(it, k) {
-  const def = symDef(it, k), a = (it.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
+  const def = itemDef(it, k), a = (it.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
   const w = ([x, y]) => [r3(it.at[0] + k * (x * co - y * si)), r3(it.at[1] + k * (x * si + y * co))];
   if (def.edge) { const [x0, y0, x1, y1] = def.edge, c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(w); return { pts: [], segs: c.map((p, i) => [p, c[(i + 1) % 4]]) }; }
   if (def.pin) { const [cx, cy, r] = def.pin; return { pts: [[cx, cy + r], [cx + r, cy], [cx, cy - r], [cx - r, cy]].map(w), segs: [] }; }
@@ -601,11 +601,11 @@ export function cleanLo(v) {
 }
 // Verteilung (CJ 26.10.2026): Grösse in echten mm wie Wände und Türen, Breite w entlang der Wand, Tiefe t in den Raum; das Zeichen wächst mit
 // Gilt auch für Balkenleuchten (FL …), Vorgaben und Zeichnung in plansym.js (size)
-export const sizeOf = (key) => SYM_BY_KEY.get(key)?.size ?? null;
+export const sizeOf = (key) => symDef(key)?.size ?? null;
 export const symSize = (it) => { const z = sizeOf(it.key); return z ? { w: it.w ?? z.w, ...(z.t !== undefined ? { t: it.t ?? z.t } : {}) } : null; };
 // Symboldefinition für ein Objekt: bei Verteilungen Teile, Mitte und Radius aus w und t (Papier-mm = Welt-mm / k)
-export function symDef(it, k, tf = 1) {
-  const def = SYM_BY_KEY.get(it.key), z = symSize(it);
+export function itemDef(it, k, tf = 1) {
+  const def = symDef(it.key), z = symSize(it);
   if (def.ref) return { ...def, parts: refParts(it, tf) };
   if (!z) return def;
   const W = z.w / k, T = (z.t ?? 0) / k, r = (n) => Math.round(n * 1000) / 1000;
@@ -630,12 +630,12 @@ function refParts(it, tf = 1) {
   return out;
 }
 // Höhe eines Symbols in cm: eingetragen oder Standardhöhe des Symbols (undefined = ohne)
-export const symH = (it) => it.h ?? SYM_BY_KEY.get(it.key)?.h;
+export const symH = (it) => it.h ?? symDef(it.key)?.h;
 // Texte eines Symbols in der Welt (CJ 24.10.2026): drehen mit dem Symbol, stehen nie auf dem Kopf. Zusatztexte (T15, USB, 3, LED) und Verweis
 // mittig an ihrem Ort; Beschriftung und Höhe neben der Mitte in Richtung der x-Achse des Symbols (Wandsymbol: entlang der Wand), Zeilen untereinander.
 // Gibt [{ at, s, size, a, anchor }] (size und Abstände in Papier-mm × k).
 export function symTexts(it, k, fmtH = (h) => String(h), tf = 1) {
-  const def = symDef(it, k, tf), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
+  const def = itemDef(it, k, tf), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
   const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)], out = [];
   for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[5] === "num" ? (it.num ?? q[4]) : q[4], size: q[3] * k, a, anchor: "middle" }); // num: Zahl am Symbol änderbar
   if (def.ref) { const b = refBox(it, tf); b.rows.forEach((s, i) => out.push({ at: w(b.x, b.y + ((b.rows.length - 1) / 2 - i) * b.lh * (flip ? -1 : 1)), s, size: b.th * k, a, anchor: "middle", label: true })); return out; } // Hinweis: Zeilen im Kasten, ziehbar wie eine Beschriftung
@@ -659,7 +659,7 @@ export function labelHit(it, k, p, tol, fmtH, tf = 1) {
 // Gesamtlänge m in Metern (Mittellinie, echte mm der Welt, also unabhängig vom Druckmassstab), schmal zuerst.
 export function bomOf(sh) {
   const n = new Map(), id = (key, ap) => `${key}${ap ? ":ap" : ""}`, ducts = new Map();
-  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it)) { const k = id(it.key, it.ap && SYM_BY_KEY.get(it.key).ap); n.set(k, (n.get(k) ?? 0) + 1); }
+  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it)) { const k = id(it.key, it.ap && symDef(it.key).ap); n.set(k, (n.get(k) ?? 0) + 1); }
   for (const it of sh.items) if (it.type === "duct" && isVisible(sh, it)) { const d = ducts.get(it.w) ?? { n: 0, mm: 0 }; d.n++; d.mm += ductLen(it); ducts.set(it.w, d); }
   return PLAN_SYMS.flatMap((d) => (d.ap ? [false, true] : [false]).filter((ap) => n.has(id(d.key, ap)))
     .map((ap) => ({ key: d.key, label: d.ap ? `${d.label}, ${ap ? "AP" : "UP"}` : d.label, group: d.group, n: n.get(id(d.key, ap)), ...(ap ? { ap } : {}) })))
@@ -687,7 +687,7 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(symDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(i.pts, i.w)) : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(i.pts, i.w)) : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }
@@ -820,7 +820,7 @@ export const inDuct = (ducts, p) => ducts.some((d) => d.pts.some((x, i) => i && 
 // ---------- Symbol an Symbol (CJ 27.10.2026) ----------
 // Randpunkte als Kasten im System des Symbols (Papier-mm): Mitte cx, cy, halbe Breite hx, hy. pin: Kreis bzw. Bogen, edge: Kasten. Ohne beides null.
 export function symRim(key) {
-  const d = SYM_BY_KEY.get(key);
+  const d = symDef(key);
   if (d?.pin) { const [cx, cy, r] = d.pin; return { cx, cy, hx: r, hy: r, wall: d.wall }; }
   if (d?.edge) { const [x0, y0, x1, y1] = d.edge; return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, hx: (x1 - x0) / 2, hy: (y1 - y0) / 2, wall: d.wall }; }
   return null;

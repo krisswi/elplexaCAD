@@ -53,6 +53,9 @@ const pdfOut = { name: "pdf-out", setup(b) {
   // Modul Plan (src/planedit.js, CJ 23.10.2026) nur im elplexaCAD-Bau
   if (!EL) b.onResolve({ filter: /\/planedit\.js$/ }, () => ({ path: "planedit", namespace: "planstub" }));
   b.onLoad({ filter: /.*/, namespace: "planstub" }, () => ({ contents: "export const makePlan = null;" }));
+  // Plansymbole (src/plansym.js und src/plansym/, CJ 27.10.2026) nur im elplexaCAD-Bau: v3 liest sie nicht, neue Plansymbole ändern v3 nicht
+  if (!EL) b.onResolve({ filter: /\/plansym\.js$/ }, () => ({ path: "plansym", namespace: "plansymstub" }));
+  b.onLoad({ filter: /.*/, namespace: "plansymstub" }, () => ({ contents: "export const PLAN_SYMS = [], SYM_BY_KEY = new Map(), SYM_GROUPS = [], symDef = () => undefined;" }));
 } };
 const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker, pdfOut], external: ["html2canvas", "dompurify", "canvg"], define: { ELPLEXA: String(EL), APP_BUILD: JSON.stringify(new Date().toISOString().slice(0, 16).replace("T", " ")) } });
 const css = fs.readFileSync("src/style.css", "utf8") + (EL ? "\n" + fs.readFileSync("src/elplexa.css", "utf8") : "");

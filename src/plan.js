@@ -13,6 +13,9 @@
 // Aderzahl { id, type: "ader", line, t, txt, tf? } (CJ 27.10.2026, Dateiversion 30): kurzer Querstrich senkrecht zur Leitung mit Text (z. B. 3 oder 5x1.5),
 // hängt an der Leitung wie die Öffnung an der Wand (Ebene und Farbe der Leitung), t = Anteil der Länge ab dem ersten Punkt (0 bis 1), wandert mit.
 // Hintergrund bg (CJ 24.10.2026, Dateiversion 23): PDF-Seite wie im Stringplan (pv.js: Massstab, Fixpunkt = Nullpunkt, Drehung), liegt auf der Ebene «Hintergrund».
+// Form { id, type: "shape", layer, k: "line" | "rect" | "circle", pts | x, y, w, h | x, y, r, col?, lw?, d?, fill? } (CJ 27.10.2026, Dateiversion 32): freies Zeichnen
+// wie im Schema (formen.js, gleiche Geometrie), echte mm der Welt. col Strichfarbe (Vorgabe schwarz), lw Linienstärke in Papier-mm (Vorgabe SHAPE_LW),
+// d gestrichelt, fill Füllfarbe (nur Rechteck und Kreis, fehlt = keine). Nicht in der Stückliste.
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
 import { symDef, PLAN_SYMS } from "./plansym.js";
@@ -93,7 +96,7 @@ export const DOPPEL = { st: 120, iso: 80 };
 export const doppelD = (st, iso) => 2 * st + iso;
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
-export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct", "ader"]);
+export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct", "ader", "shape"]);
 // Leitungsarten (Symbolzusammenfassung 5.110). Strichmuster in Papier-mm (× Massstab), flex = durchgezogen mit Welle je Abschnitt.
 export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"]];
 export const LINE_DASH = { decke: null, boden: [3, 1.5], wand: [3, 1, 0.8, 1], doppel: [3, 0.8, 0.6, 0.8, 0.6, 0.8], flex: null };
@@ -113,7 +116,7 @@ export const lineCol = () => LINE_COL;
 // Vorgabe und wirksame Farbe eines Objekts
 export const defCol = (it) => (it.type === "duct" ? DUCT_COL : it.type === "line" ? lineCol() : it.type === "sym" ? (symDef(it.key).cat === "leitung" ? lineCol() : CAT_COL[symDef(it.key).cat] ?? "#000000") : "#000000");
 export const colOf = (it) => it.col ?? defCol(it);
-export const hasCol = (it) => it.type === "line" || it.type === "sym" || it.type === "duct";
+export const hasCol = (it) => it.type === "line" || it.type === "sym" || it.type === "duct" || it.type === "shape";
 // Textgrösse (CJ 27.10.2026, Muster Disposition): Faktor tf (1 = Vorgabe), gesamt am Blatt (sh.tf) und einzeln an Symbol, Verweis und Mass (it.tf).
 // Der Einzelwert überschreibt den Gesamtwert. Gilt für Beschriftung, Höhe, Verweis-Zeilen und Masstext; Zusatztexte im Symbol (T15, LED, Zahl) bleiben fest.
 export const TF_MIN = 0.25, TF_MAX = 4;
@@ -129,6 +132,11 @@ export const HATCHES = [["kreuz", "Kreuzschraffur"], ["diag", "Diagonale /"], ["
 export const DUCT_COL = "#c9a800", DUCT_ECOL = "#d4141c";
 export const ecolOf = (it) => it.ecol ?? DUCT_ECOL;
 export function setEcol(it, col) { const c = String(col ?? "").toLowerCase(); if (!HEX.test(c) || c === DUCT_ECOL) delete it.ecol; else it.ecol = c; }
+
+// Formen (CJ 27.10.2026): Linienstärken in Papier-mm (wie Leitung 0,35 als Vorgabe)
+export const SHAPE_LWS = [0.18, 0.25, 0.35, 0.5, 0.7, 1];
+export const SHAPE_LW = 0.35;
+export const SHAPE_KINDS = { line: "Linie", rect: "Rechteck", circle: "Kreis" };
 
 // Ein Objekt prüfen (ohne Bezüge auf andere Objekte, die prüft cleanPlanSheet). Gibt das saubere Objekt oder null.
 export function cleanPlanObj(it, id) {
@@ -185,6 +193,17 @@ export function cleanPlanObj(it, id) {
     const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
     return o;
   }
+  if (it.type === "shape") {
+    const o = it.k === "line" && Array.isArray(it.pts) && it.pts.length === 2 && it.pts.every(isPt) && !same(it.pts[0], it.pts[1]) ? { id, type: "shape", layer: String(it.layer ?? ""), k: "line", pts: it.pts.map((p) => [p[0], p[1]]) }
+      : it.k === "rect" && [it.x, it.y, it.w, it.h].every(isNum) && it.w > 0 && it.h > 0 ? { id, type: "shape", layer: String(it.layer ?? ""), k: "rect", x: it.x, y: it.y, w: it.w, h: it.h }
+      : it.k === "circle" && [it.x, it.y, it.r].every(isNum) && it.r > 0 ? { id, type: "shape", layer: String(it.layer ?? ""), k: "circle", x: it.x, y: it.y, r: it.r } : null;
+    if (!o) return null;
+    setCol(o, it.col);
+    if (SHAPE_LWS.includes(it.lw) && it.lw !== SHAPE_LW) o.lw = it.lw;
+    if (it.d === true) o.d = true;
+    const fl = String(it.fill ?? "").toLowerCase(); if (o.k !== "line" && HEX.test(fl)) o.fill = fl;
+    return o;
+  }
   if (it.type === "duct") {
     const pts = (Array.isArray(it.pts) ? it.pts : []).filter(isPt).map((p) => [p[0], p[1]]).filter((p, i, a) => !i || !same(p, a[i - 1]));
     if (pts.length < 2 || !isNum(it.w) || it.w <= 0) return null;
@@ -212,9 +231,11 @@ export const planV29 = (sh) => sh.items.some((i) => i.type === "duct");
 export const planV30 = (sh) => sh.items.some((i) => i.type === "ader");
 // Dateiversion 31 (CJ 27.10.2026): Kommunikationssymbole (Telefon/EDV, Video/TV, Sonnerie); ältere Stände würden sie still verwerfen
 export const planV31 = (sh) => sh.items.some((i) => i.type === "sym" && symDef(i.key)?.cat === "kommunikation");
-// Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31
-export const planVer = (sh) => (planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
-const VERSION_NOW = 31;
+// Dateiversion 32 (CJ 27.10.2026): Formen (Linie, Rechteck, Kreis); ältere Stände lehnen das Objekt ab
+export const planV32 = (sh) => sh.items.some((i) => i.type === "shape");
+// Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31, 32 planV32
+export const planVer = (sh) => (planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
+const VERSION_NOW = 32;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 // ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
 const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
@@ -391,7 +412,8 @@ export function moveNode(sh, from, to, skip) {
 // Wand oder Mass als Ganzes verschieben (Ecken bleiben mit den Nachbarn verbunden: deren Enden folgen)
 export function moveItem(sh, it, dx, dy) {
   if (it.type === "sym") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
-  if (it.type === "line" || it.type === "duct") { it.pts = it.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); return; }
+  if (it.type === "line" || it.type === "duct" || (it.type === "shape" && it.k === "line")) { it.pts = it.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); return; }
+  if (it.type === "shape") { it.x = r3(it.x + dx); it.y = r3(it.y + dy); return; }
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall), u = wallDir(w); it.t += dx * u[0] + dy * u[1]; clampOpening(w, it); return; }
   if (it.type === "ader") { const l = sh.items.find((x) => x.id === it.line); if (l) it.t = aderT(l, add(aderAt(l, it.t).p, [dx, dy])); return; } // gleitet entlang der Leitung
   const a = it.a, b = it.b, na = [a[0] + dx, a[1] + dy], nb = [b[0] + dx, b[1] + dy];
@@ -408,7 +430,7 @@ export function moveItems(sh, items, dx, dy) {
   const ends = nodes.map((p) => nodeEnds(sh, p)); // erst alle Enden sammeln, dann setzen (sonst fallen verschobene Ecken auf andere)
   ends.forEach((es, i) => { for (const { it, e } of es) it[e] = [r3(nodes[i][0] + dx), r3(nodes[i][1] + dy)]; });
   for (const it of items) {
-    if (it.type === "sym" || it.type === "line" || it.type === "duct") moveItem(sh, it, dx, dy);
+    if (it.type === "sym" || it.type === "line" || it.type === "duct" || it.type === "shape") moveItem(sh, it, dx, dy);
     else if (hangs(it) && !ids.has(hostId(it))) moveItem(sh, it, dx, dy);
   }
   fixOpenings(sh);
@@ -431,6 +453,7 @@ export function pasteItems(sh, clip, dx, dy, newId) {
     if (c.type === "dim" && c.ref !== undefined) c.ref = map.get(c.ref);
     for (const k of ["a", "b", "at"]) if (c[k]) c[k] = [r3(c[k][0] + dx), r3(c[k][1] + dy)];
     if (c.pts) c.pts = c.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]);
+    if (c.type === "shape" && c.k !== "line") { c.x = r3(c.x + dx); c.y = r3(c.y + dy); }
     const o = cleanPlanObj(c, c.id);
     if (o) out.push(o);
   }
@@ -443,6 +466,7 @@ export function inBox(sh, it, b) {
   const ins = (p) => p[0] >= b.x0 && p[0] <= b.x1 && p[1] >= b.y0 && p[1] <= b.y1;
   if (it.type === "wall" || it.type === "dim") return ins(it.a) && ins(it.b);
   if (it.type === "line" || it.type === "duct") return it.pts.every(ins);
+  if (it.type === "shape") { const q = shapeBox(it); return ins([q.x0, q.y0]) && ins([q.x1, q.y1]); }
   if (it.type === "sym") return ins(symCenter(it, paperOf(sh).den));
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall); return !!w && ins(add(w.a, wallDir(w), it.t + it.w / 2)); }
   if (it.type === "ader") { const l = sh.items.find((x) => x.id === it.line); return !!l && ins(aderAt(l, it.t).p); }
@@ -537,6 +561,7 @@ export function hitPlan(sh, items, p, tol) {
   const lines = new Map(sh.items.filter((i) => i.type === "line").map((l) => [l.id, l]));
   for (const it of [...items].reverse()) if (it.type === "ader" && lines.has(it.line)) { const g = aderGeom(lines.get(it.line), it, k, tfOf(it, sh)); if (distSeg(p, g.a, g.b) <= tol || len(sub(p, g.at)) <= g.size * Math.max(0.6, it.txt.length * 0.32) + tol) return it; } // Aderzahl vor ihrer Leitung
   for (const it of [...items].reverse()) if (it.type === "line") { const q = linePts(it); if (q.some((x, i) => i && distSeg(p, q[i - 1], x) <= tol)) return it; }
+  for (const it of [...items].reverse()) if (it.type === "shape" && hitShape(it, p, tol)) return it; // Form: auf dem Strich, gefüllt auch innen
   for (const it of [...items].reverse()) if (it.type === "duct" && it.pts.some((x, i) => i && distSeg(p, it.pts[i - 1], x) <= it.w / 2 + tol)) return it; // Kanal: ganze Breite, unter Leitungen und Symbolen
   for (const o of items) {
     if (o.type !== "opening") continue;
@@ -689,7 +714,7 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(i.pts, i.w)) : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(i.pts, i.w)) : i.type === "shape" ? (({ x0, y0, x1, y1 }) => [[x0, y0], [x1, y1]])(shapeBox(i)) : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }
@@ -853,3 +878,59 @@ export function symSnapTo(items, key, p, k, reach) {
   }
   return best && { at: best.at, r: best.r, nb: best.nb, c: best.c };
 }
+
+// ---------- Formen (CJ 27.10.2026) ----------
+// Geometrie wie im Schema (formen.js), hier nachgebaut: ein Import aus formen.js würde den v3-Bau verändern (Namen beim Verkleinern).
+// Neue Form aus Anfang a und Ende b ([x, y]): Linie a → b, Rechteck mit den Ecken a und b, Kreis um a durch b. Darstellung st (col, lw, d, fill).
+export function planShape(k, a, b, layer, st = {}) {
+  const g = k === "line" ? { pts: [a.map(r3), b.map(r3)] } : k === "rect" ? { x: r3(Math.min(a[0], b[0])), y: r3(Math.min(a[1], b[1])), w: r3(Math.abs(b[0] - a[0])), h: r3(Math.abs(b[1] - a[1])) } : { x: r3(a[0]), y: r3(a[1]), r: r3(len(sub(b, a))) };
+  return { type: "shape", layer, k, ...g, ...st };
+}
+export function shapeBox(s) {
+  if (s.k === "line") { const [[x1, y1], [x2, y2]] = s.pts; return { x0: Math.min(x1, x2), y0: Math.min(y1, y2), x1: Math.max(x1, x2), y1: Math.max(y1, y2) }; }
+  if (s.k === "rect") return { x0: s.x, y0: s.y, x1: s.x + s.w, y1: s.y + s.h };
+  return { x0: s.x - s.r, y0: s.y - s.r, x1: s.x + s.r, y1: s.y + s.r };
+}
+const rectCorners = (s) => [[s.x, s.y], [s.x + s.w, s.y], [s.x + s.w, s.y + s.h], [s.x, s.y + s.h]];
+// Treffer: auf dem Strich, gefüllt auch innen
+export function hitShape(s, p, tol) {
+  if (s.k === "line") return distSeg(p, ...s.pts) <= tol;
+  if (s.k === "circle") { const d = len(sub(p, [s.x, s.y])); return Math.abs(d - s.r) <= tol || (!!s.fill && d <= s.r); }
+  if (s.fill && p[0] >= s.x && p[0] <= s.x + s.w && p[1] >= s.y && p[1] <= s.y + s.h) return true;
+  const c = rectCorners(s);
+  return c.some((q, i) => distSeg(p, q, c[(i + 1) % 4]) <= tol);
+}
+// Griffe: Linie an beiden Enden, Rechteck an den Ecken (die Gegenecke bleibt), Kreis rechts, oben, links, unten (Radius)
+export function shapeHandles(s) {
+  if (s.k === "line") return s.pts.map((p) => p.map(r3));
+  if (s.k === "rect") return rectCorners(s).map((p) => p.map(r3));
+  return [[s.r, 0], [0, s.r], [-s.r, 0], [0, -s.r]].map(([dx, dy]) => [r3(s.x + dx), r3(s.y + dy)]);
+}
+// Griff h von o (Stand beim Anfassen) auf den Punkt c ([x, y]) ziehen
+export function dragShapeHandle(s, o, h, c) {
+  if (s.k === "line") { s.pts = o.pts.map((p, i) => (i === h ? [r3(c[0]), r3(c[1])] : [...p])); return; }
+  if (s.k === "circle") { s.r = Math.max(1, r3(len(sub(c, [o.x, o.y])))); return; }
+  const [fx, fy] = rectCorners(o)[(h + 2) % 4];
+  Object.assign(s, { x: r3(Math.min(fx, c[0])), y: r3(Math.min(fy, c[1])), w: Math.max(1, r3(Math.abs(c[0] - fx))), h: Math.max(1, r3(Math.abs(c[1] - fy))) });
+}
+// Fangpunkte einer Form: Linie Enden und Mitte, Rechteck Ecken und Mitte, Kreis Mitte und vier Punkte auf dem Umfang
+export function shapeSnaps(it) {
+  const b = shapeBox(it);
+  return [...shapeHandles(it), [r3((b.x0 + b.x1) / 2), r3((b.y0 + b.y1) / 2)]];
+}
+// Drehen um 90° (step 90 oder 270) um die eigene Mitte: Linie dreht, Rechteck tauscht Breite und Höhe, Kreis bleibt
+export function rotateShape(it, step) {
+  const b = shapeBox(it), c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2], s = step === 270 ? -1 : 1;
+  const rot = (p) => [r3(c[0] - s * (p[1] - c[1])), r3(c[1] + s * (p[0] - c[0]))];
+  if (it.k === "line") it.pts = it.pts.map(rot);
+  else if (it.k === "rect") Object.assign(it, { x: r3(c[0] - it.h / 2), y: r3(c[1] - it.w / 2), w: it.h, h: it.w });
+}
+// Länge einer Linie setzen: Ende 2 wandert auf der Geraden
+export function setShapeLen(it, L) {
+  const [a, b] = it.pts, l = len(sub(b, a));
+  if (!(L > 0) || l < 1e-9) return false;
+  it.pts = [a, [r3(a[0] + (b[0] - a[0]) * L / l), r3(a[1] + (b[1] - a[1]) * L / l)]];
+  return true;
+}
+// Leere Form (Linie ohne Länge, Rechteck ohne Fläche, Kreis ohne Radius): wird nicht gesetzt
+export const shapeEmpty = (s) => (s.k === "line" ? same(s.pts[0], s.pts[1]) : s.k === "rect" ? !(s.w >= 1 && s.h >= 1) : !(s.r >= 1));

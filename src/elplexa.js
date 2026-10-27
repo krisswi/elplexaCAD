@@ -35,6 +35,8 @@ export const modIds = (doc) => [...new Set(doc.sheets.map(modOf))].sort((a, b) =
 // Modulstatus (CJ 20.10.2026), unabhängig vom Projektstatus (Annahme). Ohne Eintrag: Offen
 export const modStatus = (doc, id) => doc.mods?.[id]?.st || MOD_STATUS[0];
 const MST_IDS = ["of", "ia", "ge", "ve", "re", "ar"], ARCH = "Archiviert";
+// Module in der Übersicht: archivierte ausgeblendet, bis der Schalter an ist (CJ 27.10.2026). Kacheln, Tasten 1–9 und ⌥ ← → zählen nur diese
+export const shownModIds = (doc, showArch) => modIds(doc).filter((id) => showArch || modStatus(doc, id) !== ARCH);
 export const modPill = (doc, id, edit) => { const st = modStatus(doc, id), d = `class="el-mst" data-ms="${MST_IDS[MOD_STATUS.indexOf(st)]}"`;
   return edit ? `<span ${d} data-elmst="${id}" title="Modulstatus: ${esc(st)}. Klick, Taste S oder Rechtsklick › Status: ändern">${esc(st)}</span>` : `<span ${d} title="Modulstatus">${esc(st)}</span>`; }; // kein role=button: steht im Kachel-Knopf
 export function modStatusMenuHTML(doc, id) {
@@ -121,8 +123,8 @@ export function hubHTML(doc, o) {
   const fld = (k, label) => `<label class="el-row"><span>${label}</span><input data-elp="${k}" value="${esc(pd[k])}" placeholder="–" spellcheck="false"${roA}></label>`;
   const opts = ["Offerte", "In Arbeit", "Abgegeben", "Abgeschlossen"].map((x) => `<option${x === st ? " selected" : ""}>${x}</option>`).join("");
   const fileHint = o.file && o.suggest !== o.file ? `<p class="el-note">Datei: ${esc(o.file)}. Speichern unter (⇧⌘S) schlägt „${esc(o.suggest)}“ vor.</p>` : "";
-  const allIds = modIds(doc), arch = allIds.filter((id) => modStatus(doc, id) === ARCH).length; // archivierte Module sind ausgeblendet, bis der Schalter an ist (CJ 27.10.2026)
-  const tiles = (o.showArch ? allIds : allIds.filter((id) => modStatus(doc, id) !== ARCH)).map((id, n) => { // Taste N = N-te Kachel (CJ 20.10.2026, nur in der Übersicht), bis 9
+  const arch = modIds(doc).filter((id) => modStatus(doc, id) === ARCH).length;
+  const tiles = shownModIds(doc, o.showArch).map((id, n) => { // Taste N = N-te Kachel (CJ 20.10.2026, nur in der Übersicht), bis 9
     const m = modById(id), idx = modIdx(doc, id);
     return `<button class="el-tile" id="${tileId(id)}"${ro ? "" : ` draggable="true"`} data-elopen="${id}" data-exact${ro ? "" : ` data-modctx="${id}"`} title="${esc(modName(doc, id))}${ro ? "" : ". Rechtsklick oder gedrückt halten: Umbenennen, Duplizieren, Löschen"}"><span class="el-th">${dot(m)}<span class="el-tn">${esc(modName(doc, id))}</span>${n < 9 ? `<kbd>${n + 1}</kbd>` : ""}</span><span class="el-ts"><span>${idx.length} ${idx.length === 1 ? "Blatt" : "Blätter"}</span>${ro ? "" : modPill(doc, id, true)}${ro ? "" : `<span class="el-pdf" role="button" id="el-pdf-${tileId(id).slice(8)}" data-elpdf="${id}" title="${esc(modName(doc, id))} als PDF, alle Blätter">PDF</span>`}</span><span class="el-thumbs"><span class="el-shs">${thumbs(idx).map((i) => `<i id="el-sh-${i}" data-elsheet="${i}"${ro ? "" : ` data-ctx="${i}"`} title="${esc(o.label ? o.label(doc.sheets[i], i) : "")}${doc.sheets[i].meta.TITEL ? ` · ${esc(doc.sheets[i].meta.TITEL)}` : ""}. Klick öffnet das Blatt${ro ? "" : ". Rechtsklick oder gedrückt halten: Öffnen, Duplizieren, Löschen"}"></i>`).join("")}</span>${idx.length > THUMBS ? `<i class="el-more" id="el-more-${tileId(id).slice(8)}" data-elmore="${id}" role="button" aria-haspopup="menu" aria-expanded="false" title="Alle ${idx.length} Blätter zeigen">+${idx.length - THUMBS}</i>` : ""}</span></button>`;
   }).join("");

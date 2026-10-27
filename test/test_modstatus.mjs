@@ -2,7 +2,7 @@
 // Aufruf: node test/test_modstatus.mjs [Ausgabe.dxf]
 import assert from "node:assert";
 import { newDoc, newSheet, parseModel, serializeModel, VERSION, MOD_STATUS, cleanMods } from "../src/model.js";
-import { projSummary, onlineSummary, modIds, modMenuHTML, modStatus, modPill, modStatusMenuHTML, hubHTML, keysHTML } from "../src/elplexa.js";
+import { projSummary, onlineSummary, modIds, modMenuHTML, modStatus, modPill, modStatusMenuHTML, hubHTML, keysHTML, shownModIds } from "../src/elplexa.js";
 
 assert.deepStrictEqual(MOD_STATUS, ["Offen", "In Arbeit", "Geprüft", "Versendet", "Revision", "Archiviert"], "Reihenfolge laut CJ");
 assert.ok(VERSION >= 18);
@@ -59,6 +59,7 @@ assert.ok(h.includes("Archivierte einblenden (1)") && !h.includes('id="el-tile-d
 const hA = hubHTML(back, { name: "T", today: "2026-10-20", label: () => "B", pview: true, showArch: true });
 assert.deepStrictEqual([...hA.matchAll(/data-elopen="([^"]+)" data-exact/g)].map((m) => m[1]), ["pv", "schema:2", "schema", "dispo"], "Schalter an: alle");
 assert.ok(/id="el-tile-pv"[^]*?<kbd>1<\/kbd>/.test(hA) && /id="el-tile-dispo"[^]*?<kbd>4<\/kbd>/.test(hA));
+assert.deepStrictEqual(shownModIds(back, false), order, "Tasten 1–9 zählen wie die sichtbaren Kacheln"); assert.deepStrictEqual(shownModIds(back, true), modIds(back), "Schalter an: alle");
 const ro = hubHTML(back, { name: "T", today: "x", label: () => "B", shared: {} });
 assert.ok(!ro.includes("S ändert den Status") && ro.includes("0 die Übersicht"), "geteilte Ansicht: keine Bearbeiten-Tasten im Hinweis");
 assert.ok(!ro.includes("data-elmst") && !ro.includes("el-mst"), "geteilte Ansicht: keine Statuspille (CJ entscheidet, ob sie gezeigt wird)");

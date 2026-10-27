@@ -156,7 +156,7 @@ def flow(page, tag):
     page.click('[data-ofact="addkap"][data-bkp="236"]'); page.wait_for_timeout(150)
     page.click('[data-ofact="addpos"]'); page.keyboard.type("Netzwerkdose"); page.keyboard.press("Tab"); page.wait_for_timeout(100)
     d = D(); o = [x2 for x2 in d["sheets"] if x2.get("kind") == "offerte"][-1]["of"]
-    check(f"{tag}: Kapitel im Knoten, Position ohne gl und bkp", o["kap"][-1].get("kn") == kid and o["kap"][-1]["grp"][0]["pos"][0]["titel"] == "Netzwerkdose" and "gl" not in o["kap"][-1]["grp"][0]["pos"][0] and d["version"] == 27, d["version"])
+    check(f"{tag}: Kapitel im Knoten, Position ohne gl und bkp", o["kap"][-1].get("kn") == kid and o["kap"][-1]["grp"][0]["pos"][0]["titel"] == "Netzwerkdose" and "gl" not in o["kap"][-1]["grp"][0]["pos"][0] and d["version"] == (30 if d.get("project", {}).get("files") else 27), d["version"]) # PDF oben unter Dateien: 30
     v = page.inner_text("#of-view") + " ".join(page.eval_on_selector_all("#of-view input", "(l) => l.map((e) => e.value)"))
     check(f"{tag}: Hauptbereich zeigt nur den Knoten", "Netzwerkdose" in v and "Steckdose T13" not in v and "Total Wohnung 1" in v, v[:200])
     page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(100)

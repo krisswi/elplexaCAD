@@ -1113,6 +1113,7 @@ async function keepPdf(blob, name, sheets) {
   const id = DF.newId(), mods = [...new Set(sheets.map((sh) => E.moduleOf(sh)))].map((m) => modName(S.doc, m)).join(", ");
   try { await DF.putPdf(id, blob); } catch { toast("Das PDF liess sich nicht unter Dateien speichern.", "error"); return; }
   change(() => { const p = (S.doc.project ??= {}); p.files = [{ id, n: name + ".pdf", d: elDay(Date.now()), m: mods, s: blob.size }, ...(p.files || [])]; }, { panel: false });
+  if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); // Liste in der Übersicht sofort nachführen
 }
 async function elFolderNew() {
   if ((S.doc.project?.folders || []).length >= MAX_FOLDERS) { toast(`Höchstens ${MAX_FOLDERS} Ordner je Projekt.`, "error"); return; }
@@ -1147,12 +1148,9 @@ function setModStatus(id, st) {
   change(() => { const m = (S.doc.mods ??= {}); m[id] = { ...m[id] }; if (st === MOD_STATUS[0]) delete m[id].st; else m[id].st = st; tidyMods(); }, { panel: false });
 }
 const setModOrder = (ids) => change(() => { const m = (S.doc.mods ??= {}); ids.forEach((x, k) => { m[x] = { ...m[x], o: k + 1 }; }); }, { panel: false });
-function moveModule(id, dir) {
-  const ids = E.modIds(S.doc), i = ids.indexOf(id), j = i + dir;
-  if (i < 0 || j < 0 || j >= ids.length) return false;
-  [ids[i], ids[j]] = [ids[j], ids[i]];
-  setModOrder(ids);
-  return true;
+function moveModule(id, dir) { // Nachbar unter den sichtbaren Kacheln (archivierte evtl. ausgeblendet)
+  const vis = E.shownModIds(S.doc, EL_S.showArch), j = vis.indexOf(id) + dir;
+  return vis.includes(id) && j >= 0 && j < vis.length && moveModuleTo(id, vis[j]);
 }
 // Ziehen (Etappe 5): die gezogene Kachel nimmt den Platz der Ziel-Kachel ein
 function moveModuleTo(id, target) {
@@ -3284,7 +3282,7 @@ function elHelp() { openModal("Tasten in elplexaCAD", E.keysHTML() + `<div class
 // Tasten ohne ⌘: 1 bis 9 Module (nur in der Projektansicht), 0 Übersicht, § Leisten, ? Hilfe. true = Taste gehört elplexaCAD
 function elKey(e) {
   if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden && !(EL_S.tab === "projekte" && EL_S.pview)) return false; // Projekte, Zeit, Profil haben keine Modulkacheln
-  if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden) { const id = E.modIds(S.doc)[Number(e.key) - 1]; if (id) elOpen(id, { exact: true }); else toast(`Kein Modul an Stelle ${e.key}.`); return true; } // Übersicht: N-te Kachel (20.10.2026)
+  if (/^[1-9]$/.test(e.key) && EL_S.hub && !EL_S.hub.hidden) { const id = E.shownModIds(S.doc, EL_S.showArch)[Number(e.key) - 1]; if (id) elOpen(id, { exact: true }); else toast(`Kein Modul an Stelle ${e.key}.`); return true; } // Übersicht: N-te Kachel (20.10.2026)
   if (/^[1-9]$/.test(e.key)) return false; // im Modul gehören Ziffern dem Werkzeug (Polzahl, Linienart, Kanalbreite), CJ 27.10.2026
   if (e.key === "0") { elHub(EL_S.hub.hidden); return true; }
   if (e.key === "§" || e.key === "`" || e.code === "Backquote") { if (EL_S.hub.hidden) elBare(); return true; }

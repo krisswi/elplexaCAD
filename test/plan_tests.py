@@ -5,7 +5,7 @@
 import sys, tempfile, json, math, re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from elstart import projektansicht
+from elstart import projektansicht, dateien_leeren
 
 def plsym(page, k):  # Symbolgruppen sind zu (CJ 26.10.2026): Gruppe aufklappen, dann Symbol wählen
     page.evaluate("k => document.querySelector(`[data-plsym='${k}']`).closest('section').querySelector('[data-plgrp][aria-expanded=false]')?.click()", k)
@@ -312,6 +312,7 @@ with sync_playwright() as p:
     check("Ohne Haken: nur die Plan-Seite", pp == [(420, 297)], pp)
 
     # ---------- Speichern / Laden ohne Datenverlust ----------
+    dateien_leeren(page) # die PDFs oben hätten die Datei auf Version 30 gehoben
     d1 = D()
     check("Datei: Version 23 (Plan mit geschwungenen Leitungen, Vorgabe seit 26.10.2026)", d1["version"] == 23, d1["version"])
     blur()

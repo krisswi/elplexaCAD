@@ -371,9 +371,11 @@ export function makePlan(c) {
     return `<g transform="translate(${f(it.at[0])} ${f(it.at[1])}) rotate(${it.r}) scale(${k})" fill="none" stroke="${stroke}" stroke-width="0.18" stroke-linecap="round">${g}</g>${t}`;
   }
   const fmtH = (h) => `${String(Math.round(h * 10) / 10).replace(".", ",")}`; // Höhe in cm, ohne Einheit (wie im Plan üblich)
-  // Symbol beim Setzen oder Ziehen: Wandsymbole rasten an der nächsten Wandfläche ein (bis 600 mm, Alt frei), sonst Fang und Drehung symR
-  function symPlace(key, p, r0) {
+  // Symbol beim Setzen oder Ziehen: Wandsymbole rasten an der nächsten Wandfläche ein (bis 600 mm, Alt frei), sonst Fang und Drehung symR.
+  // Zuerst (CJ 27.10.2026): Symbole mit Randpunkten legen sich bündig an ein Nachbarsymbol, gleiche Drehung (P.symSnapTo; skip = gezogenes Symbol)
+  function symPlace(key, p, r0, skip) {
     const def = SYM_BY_KEY.get(key);
+    if (!S.alt) { const nb = P.symSnapTo(visible().filter((i) => i.id !== skip), key, [p.x, p.y], den(), P.symRim(key) ? Math.max(P.symRim(key).hx, P.symRim(key).hy) * den() + Math.min(tol(), Math.max(P.symRim(key).hx, P.symRim(key).hy) * den()) : 0); if (nb) return { at: nb.at, r: nb.r, nb }; }
     if (def.wall && !S.alt) { const ws = P.wallSnap(visible().filter((i) => i.type === "wall"), [p.x, p.y], 600); if (ws) return { at: ws.at, r: ws.r, wall: true }; }
     const q = snapAt(p);
     return { at: [q.x, q.y], r: r0 };
@@ -458,7 +460,8 @@ export function makePlan(c) {
     if (S.tool === "pl-measure" && !bgDraft && mb?.measure && bgShown(sh()) && grundOn()) s += measureSVG(pageToWorld(mb, ...mb.measure.a), pageToWorld(mb, ...mb.measure.b), `${P.fmtLen(mb.measure.mm)} mm`, z);
     if (bgDraft && mouse) s += measureSVG({ x: bgDraft[0], y: bgDraft[1] }, mouse, S.tool === "pl-rotate" ? "Kante" : "", z);
     if (S.tool === "pl-pmid" && mouse) { const { a, k: d, ox, oy } = pageAt([mouse.x, mouse.y]); s += `<rect x="${f(ox + a.x0 * d)}" y="${f(oy + a.y0 * d)}" width="${f((a.x1 - a.x0) * d)}" height="${f((a.y1 - a.y0) * d)}" fill="rgba(47,109,179,.06)" stroke="${DRAFT}" stroke-width="1.5" stroke-dasharray="6 4"/>`; } // Vorschau des Planfelds
-    if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r, ap: opt.ap }, k, DRAFT)}</g>`; }
+    if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r, ap: opt.ap }, k, DRAFT)}</g>`; if (q.nb) s += `<circle cx="${f(q.nb.c[0])}" cy="${f(q.nb.c[1])}" r="${px(5)}" fill="${PIN}"/>`; }
+    if (drag?.nb && drag.started) s += `<circle cx="${f(drag.nb.c[0])}" cy="${f(drag.nb.c[1])}" r="${px(5)}" fill="${PIN}"/>`; // Symbol liegt am Nachbarn an
     if (S.tool === "pl-ader" && raw) { const h = lineAt([raw.x, raw.y]); if (h) s += `<g class="pl-scale" opacity=".85">${aderSVG(h.line, { t: h.t, txt: opt.atxt }, k, DRAFT)}</g>`; }
     if (S.tool === "pl-open" && raw) { const pv = openPreview(); if (pv) s += `<g class="pl-scale">${openingSVG(pv.w, pv.o, k, DRAFT)}</g>`; }
     s += pinsSVG(z);
@@ -633,7 +636,7 @@ export function makePlan(c) {
         else if (d.it.type === "wall") { const g = S.grid.on && !S.alt ? S.grid.size : 1, dx = Math.round((w.x - d.sx) / g) * g, dy = Math.round((w.y - d.sy) / g) * g; P.setEnds(sh(), d.ea, [d.a0[0] + dx, d.a0[1] + dy]); P.setEnds(sh(), d.eb, [d.b0[0] + dx, d.b0[1] + dy]); }
         else if (d.it.type === "opening") { const wl = sh().items.find((i) => i.id === d.it.wall), g = S.grid.on && !S.alt ? 10 : 1; d.it.t = d.t0 + Math.round((P.along(wl, [w.x, w.y]) - P.along(wl, [d.sx, d.sy])) / g) * g; P.clampOpening(wl, d.it); }
         else if (d.it.type === "dim") d.it.off = offAt(d.it.a, d.it.b, [w.x, w.y]);
-        else if (d.it.type === "sym") { const q = symPlace(d.it.key, { x: d.at0[0] + w.x - d.sx, y: d.at0[1] + w.y - d.sy }, d.r0); d.it.at = q.at; d.it.r = q.r; }
+        else if (d.it.type === "sym") { const q = symPlace(d.it.key, { x: d.at0[0] + w.x - d.sx, y: d.at0[1] + w.y - d.sy }, d.r0, d.it.id); d.it.at = q.at; d.it.r = q.r; d.nb = q.nb; }
         else if (d.it.type === "ader") { const ln = sh().items.find((i) => i.id === d.it.line); if (ln) d.it.t = P.aderT(ln, [w.x, w.y]); } // gleitet entlang der Leitung
         renderItems();
       }

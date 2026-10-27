@@ -603,4 +603,33 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.ok(!P.layerUsed({ items: [{ type: "ader", line: 1 }] }, undefined), "Aderzahl zählt nicht als Objekt einer Ebene");
 }
 
+// ---------- Symbol an Symbol (CJ 27.10.2026) ----------
+{
+  const k = 50, sw = (id, x, r = 0, key = "SCH0") => ({ id, type: "sym", layer: "bg", key, at: [x, 0], r });
+  assert.deepStrictEqual(P.symRim("SCH0"), { cx: 0, cy: 2.2, hx: 1.5, hy: 1.5, wall: true }, "Schalter: Kreis als Rand");
+  assert.deepStrictEqual(P.symRim("DOSE"), { cx: 0, cy: 0, hx: 1.5, hy: 1.5, wall: false }, "Abzweigdose: Kasten");
+  assert.strictEqual(P.symRim("LEUCHTE"), null, "Leuchte ohne Randpunkte");
+  // zweiter Schalter rechts daneben: bündig (Kreis an Kreis, 3 mm Papier = 150 mm), auf der Wandlinie
+  const s1 = sw(1, 0), r1 = P.symSnapTo([s1], "SCH3", [170, 30], k);
+  assert.deepStrictEqual([r1.at, r1.r, r1.nb], [[150, 0], 0, 1], "rechts daneben, gleiche Linie");
+  assert.deepStrictEqual(r1.c, [75, 110], "Berührpunkt am rechten Rand");
+  // drei Schalter in einer Reihe: der dritte legt sich an den zweiten, nicht über ihn
+  const s2 = sw(2, 150, 0, "SCH3");
+  assert.deepStrictEqual(P.symSnapTo([s1, s2], "SCH6", [280, 10], k).at, [300, 0], "dritter: rechts an den zweiten");
+  assert.strictEqual(P.symSnapTo([s1, s2], "SCH6", [160, 10], k), null, "belegte Lage (über dem zweiten): kein Fang, kein Überlappen");
+  // Drehung: Nachbar gedreht (90°), das neue Symbol übernimmt sie und liegt entlang der gedrehten Wand
+  const s3 = sw(3, 0, 90), r3 = P.symSnapTo([s3], "SCH0", [10, 160], k);
+  assert.deepStrictEqual([r3.at, r3.r], [[0, 150], 90], "gedreht: gleiche Drehung, bündig");
+  // zu weit weg: kein Fang; ohne Randpunkte: kein Fang
+  assert.strictEqual(P.symSnapTo([s1], "SCH0", [400, 0], k), null, "weit weg: frei");
+  assert.strictEqual(P.symSnapTo([s1], "LEUCHTE", [150, 0], k), null, "Symbol ohne Randpunkte rastet nicht");
+  assert.strictEqual(P.symSnapTo([{ ...s1, key: "LEUCHTE" }], "SCH0", [150, 0], k), null, "Nachbar ohne Randpunkte");
+  // Steckdose an Steckdose: Bogen an Bogen; Abzweigdose an Abzweigdose: Kasten an Kasten
+  assert.deepStrictEqual(P.symSnapTo([{ ...s1, key: "STD" }], "STD2", [-140, 0], k).at, [-150, 0], "Steckdosen links daneben");
+  assert.deepStrictEqual(P.symSnapTo([{ ...s1, key: "DOSE" }], "DOSE", [0, 140], k).at, [0, 150], "Abzweigdose oben an");
+  assert.deepStrictEqual(P.symSnapTo([{ ...s1, key: "DOSE" }], "DOSE", [0, -140], k).at, [0, -150], "Abzweigdose unten an");
+  assert.strictEqual(P.symSnapTo([s1], "SCH0", [0, -110], k), null, "Wandsymbol: unten ist die Wand, kein Fang");
+  // Mischung Wand und frei: Mitten auf einer Linie
+  assert.deepStrictEqual(P.symSnapTo([s1], "DOSE", [150, 100], k).at, [150, 110], "Abzweigdose neben Schalter: Mitte auf Höhe Kreismitte");
+}
 console.log("test_plan: alles ok");

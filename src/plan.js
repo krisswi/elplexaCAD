@@ -815,3 +815,37 @@ export function aderGeom(line, it, k, tf = 1) {
   return { p, a: add(p, n, -ADER_H * k), b: add(p, n, ADER_H * k), at: add(p, n, (ADER_H + 0.5 + size / 2) * k), size: size * k, ang: ra };
 }
 
+// ---------- Symbol an Symbol (CJ 27.10.2026) ----------
+// Randpunkte als Kasten im System des Symbols (Papier-mm): Mitte cx, cy, halbe Breite hx, hy. pin: Kreis bzw. Bogen, edge: Kasten. Ohne beides null.
+export function symRim(key) {
+  const d = SYM_BY_KEY.get(key);
+  if (d?.pin) { const [cx, cy, r] = d.pin; return { cx, cy, hx: r, hy: r, wall: d.wall }; }
+  if (d?.edge) { const [x0, y0, x1, y1] = d.edge; return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, hx: (x1 - x0) / 2, hy: (y1 - y0) / 2, wall: d.wall }; }
+  return null;
+}
+// Symbol key bündig an ein Nachbarsymbol aus items legen: gleiche Drehung wie der Nachbar, Rand an Rand an einer seiner vier Seiten (rechts, links,
+// oben, unten im System des Nachbarn; Wandsymbole nicht unten, dort ist die Wand). Nebeneinander bleiben Wandsymbole auf der Wandlinie (Ursprung), sonst stehen die Mitten auf einer Linie.
+// p = freie Lage des Ursprungs, k = Massstab, reach = wie weit p von der Lage am Nachbarn weg sein darf (fehlt: halbe Grösse des Symbols).
+// Lagen, die ein drittes Symbol überdecken, fallen weg. Gibt { at, r, nb (id), c (Berührpunkt) } oder null.
+export function symSnapTo(items, key, p, k, reach) {
+  const A = symRim(key); if (!A) return null;
+  const syms = items.filter((i) => i.type === "sym" && symRim(i.key)), R0 = reach ?? Math.max(A.hx, A.hy) * k;
+  const mid = (it) => { const B = symRim(it.key), a = (it.r * Math.PI) / 180; return { c: [it.at[0] + k * (B.cx * Math.cos(a) - B.cy * Math.sin(a)), it.at[1] + k * (B.cx * Math.sin(a) + B.cy * Math.cos(a))], h: Math.min(B.hx, B.hy) * k }; };
+  let best = null;
+  for (const n of syms) {
+    const B = symRim(n.key), a = (n.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
+    const w = ([x, y]) => [r3(n.at[0] + k * (x * co - y * si)), r3(n.at[1] + k * (x * si + y * co))];
+    const dy = A.wall && B.wall ? 0 : B.cy - A.cy; // nebeneinander
+    const sides = [[B.cx + B.hx + A.hx - A.cx, dy, [B.cx + B.hx, B.cy]], [B.cx - B.hx - A.hx - A.cx, dy, [B.cx - B.hx, B.cy]],
+      [B.cx - A.cx, B.cy + B.hy + A.hy - A.cy, [B.cx, B.cy + B.hy]], [B.cx - A.cx, B.cy - B.hy - A.hy - A.cy, [B.cx, B.cy - B.hy]]];
+    for (const [x, y, cp] of sides) {
+      if (B.wall && cp[1] < B.cy) continue; // unter einem Wandsymbol liegt die Wand
+      const at = w([x, y]), d = len(sub(at, p));
+      if (d > R0 || (best && d >= best.d)) continue;
+      const cA = add(at, [k * (A.cx * co - A.cy * si), k * (A.cx * si + A.cy * co)]), hA = Math.min(A.hx, A.hy) * k;
+      if (syms.some((o) => { if (o === n) return false; const m = mid(o); return len(sub(cA, m.c)) < 0.9 * (hA + m.h); })) continue; // kein Überlappen
+      best = { at, r: n.r, nb: n.id, c: w(cp), d };
+    }
+  }
+  return best && { at: best.at, r: best.r, nb: best.nb, c: best.c };
+}

@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 28, "elplexa liest Version 28 (Textgrösse im Plan, 27.10.2026)");
+assert.strictEqual(M.VERSION, 29, "elplexa liest Version 29 (Kanal im Plan, 27.10.2026)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -335,7 +335,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 29)), /neueren Version/, "Version 29 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 30)), /neueren Version/, "Version 30 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#0068C9" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
@@ -492,5 +492,65 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   const z = M.parseModel(file([plan([{ ...its[1], tf: 0 }, { ...its[0], id: 64, tf: "2" }], { tf: 1 })], 27)).sheets[0];
   assert.deepStrictEqual([z.tf, z.items[0].tf, z.items[1].tf], [undefined, undefined, undefined], "tf 0, Text und Blatt 1 fallen weg");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan(kueche())], 24)))).version, 20, "ohne Textgrösse bleibt die Version");
+}
+// ---------- Kanal/Trasse (CJ 27.10.2026) ----------
+{
+  const near = (p, q, t = 1e-6) => Math.hypot(p[0] - q[0], p[1] - q[1]) < t;
+  // Gehrung: L-Kanal 300 mm breit, rechts dann hoch. Aussenecke rechts unten, Innenecke links oben, je 150 mm von beiden Mittellinien
+  const g = P.ductSides([[0, 0], [2000, 0], [2000, 1000]], 300);
+  assert.ok(near(g.L[1], [1850, 150]) && near(g.R[1], [2150, -150]), "Gehrung: Ecken im Schnitt der Kanten");
+  assert.ok(near(g.L[0], [0, 150]) && near(g.R[0], [0, -150]) && near(g.L[2], [1850, 1000]) && near(g.R[2], [2150, 1000]), "Enden senkrecht zur Mittellinie");
+  const g45 = P.ductSides([[0, 0], [1000, 0], [2000, 1000]], 200), d45 = Math.hypot(g45.L[1][0] - 1000, g45.L[1][1]);
+  assert.ok(Math.abs(d45 - 100 / Math.cos(Math.PI / 8)) < 1e-3, "Knick 45°: Abstand w/2 / cos 22,5°");
+  const sp = P.ductSides([[0, 0], [1000, 0], [0, 10]], 200);
+  assert.ok(Math.hypot(sp.L[1][0] - 1000, sp.L[1][1]) <= 4 * 100 + 1e-6, "sehr spitzer Knick: Ecke begrenzt");
+  assert.ok(near(P.ductSides([[0, 0], [500, 0], [1000, 0]], 100).L[1], [500, 50]), "gerade weiter: kein Knick");
+  // Länge der Mittellinie
+  assert.strictEqual(P.ductLen({ pts: [[0, 0], [2000, 0], [2000, 1000]] }), 3000, "Länge = Summe der Abschnitte");
+  // Laden und Speichern, Version 29, Vorgaben nicht gespeichert
+  const its = [{ id: 70, type: "duct", layer: "bg", pts: [[0, 0], [2000, 0], [2000, 1000]], w: 300, hatch: "kreuz", col: "#C9A800", ecol: "#d4141c", txt: " Kabelrinne 300 " },
+    { id: 71, type: "duct", layer: "l1", pts: [[0, 2000], [4000, 2000]], w: 600, hatch: "punkte", col: "#0068c9", ecol: "#000000" },
+    { id: 72, type: "duct", layer: "bg", pts: [[0, 3000], [1500, 3000]], w: 300, hatch: "quatsch" }];
+  const d = M.parseModel(file([plan(its)], 28)), out = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(out.version, 29, "Kanal: Version 29");
+  assert.deepStrictEqual(out.sheets[0].items[0], { id: 70, type: "duct", layer: "bg", pts: [[0, 0], [2000, 0], [2000, 1000]], w: 300, txt: "Kabelrinne 300" }, "Vorgaben (Kreuz, Gelb, Rot) fallen weg");
+  assert.deepStrictEqual([out.sheets[0].items[1].hatch, out.sheets[0].items[1].col, out.sheets[0].items[1].ecol], ["punkte", "#0068c9", "#000000"], "eigene Schraffur und Farben bleiben");
+  assert.strictEqual(out.sheets[0].items[2].hatch, undefined, "unbekannte Schraffur → Kreuz");
+  assert.throws(() => M.parseModel(file([plan([{ id: 73, type: "duct", layer: "bg", pts: [[0, 0]], w: 100 }])], 29)), /defektes Objekt/, "Kanal mit einem Punkt");
+  assert.throws(() => M.parseModel(file([plan([{ id: 73, type: "duct", layer: "bg", pts: [[0, 0], [1, 0]], w: 0 }])], 29)), /defektes Objekt/, "Kanal ohne Breite");
+  // Stückliste: je Breite, Länge in m, nur sichtbare Ebenen; CSV mit Spalte Länge
+  const sh = d.sheets[0];
+  assert.deepStrictEqual(P.bomOf(sh).map((r) => [r.label, r.group, r.n, r.m]), [["Kanal 300 mm", "Kanäle", 2, 4.5], ["Kanal 600 mm", "Kanäle", 1, 4]], "Kanäle je Breite, Gesamtlänge m");
+  assert.strictEqual(P.bomCsv(P.bomOf(sh)), "Gruppe;Symbol;Anzahl;Länge m\r\nKanäle;Kanal 300 mm;2;4,50\r\nKanäle;Kanal 600 mm;1;4,00\r\n", "CSV mit Länge");
+  sh.layers[1].show = false;
+  assert.deepStrictEqual(P.bomOf(sh).map((r) => r.label), ["Kanal 300 mm"], "ausgeblendete Ebene zählt nicht");
+  const mix = P.bomOf({ ...sh, items: [...sh.items, { id: 80, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0 }] });
+  assert.strictEqual(P.bomCsv(mix).split("\r\n")[1], "Steckdosen;Steckdose T13 (Schutzkontakt), UP;1;", "Symbole zuerst, Länge leer");
+  // Schraffur: alle Linien im Kanal, Abstand nie enger als 1,5 mm Papier, Arten
+  for (const [w, den] of [[200, 50], [600, 50], [20, 50], [600, 100]]) for (const [h] of P.HATCHES) {
+    const it = { pts: [[0, 0], [3000, 0], [3000, 2000]], w, hatch: h }, x = P.ductGeom(it, den);
+    const inside = (p) => p[0] >= -w / 2 - 1e-6 && p[0] <= 3000 + w / 2 + 1e-6 && p[1] >= -w / 2 - 1e-6 && p[1] <= 2000 + 1e-6 && (p[0] >= 3000 - w / 2 - 1e-6 || p[1] <= w / 2 + 1e-6);
+    assert.ok(x.lines.every(([a, b]) => inside(a) && inside(b)) && x.dots.every(inside), `${h} ${w} mm: Schraffur bleibt im Kanal`);
+    assert.strictEqual(x.lines.length > 0 || x.dots.length > 0, h !== "ohne", `${h} ${w} mm: ${h === "ohne" ? "leer" : "gezeichnet"}`);
+  }
+  const gi = P.ductGeom({ pts: [[0, 0], [3000, 0], [3000, 2000]], w: 600, hatch: "gitter" }, 50).lines;
+  assert.ok(gi.length > 4 && gi.every(([a, b]) => Math.abs(Math.hypot(b[0] - a[0], b[1] - a[1]) - 600) < 1e-3), "Gitter: nur ganze Sprossen");
+  assert.strictEqual(P.ductStep(20, 50), 75, "schmal: 1,5 mm Papier");
+  assert.strictEqual(P.ductStep(600, 50), 300, "breit: halbe Breite");
+  const n = (w) => P.ductGeom({ pts: [[0, 0], [6000, 0]], w, hatch: "diag" }, 50).lines.length;
+  assert.ok(n(600) < n(200) * 1.5 && n(200) <= n(60), "breite Kanäle nicht dichter schraffiert");
+  // Treffer, Verschieben, Kopieren, Rahmenwahl
+  const k0 = sh.items[0];
+  assert.strictEqual(P.hitPlan(sh, [k0], [1000, 140], 5)?.id, 70, "Treffer auf der ganzen Breite");
+  assert.strictEqual(P.hitPlan(sh, [k0], [1000, 200], 5), null, "daneben kein Treffer");
+  P.moveItems(sh, [k0], 100, 50);
+  assert.deepStrictEqual(k0.pts[0], [100, 50], "verschieben");
+  const pc = P.pasteItems(sh, P.copyItems(sh, [k0]), 10, 0, (() => { let i = 900; return () => ++i; })());
+  assert.deepStrictEqual([pc[0].type, pc[0].w, pc[0].pts[0], pc[0].txt], ["duct", 300, [110, 50], "Kabelrinne 300"], "kopieren");
+  assert.ok(P.inBox(sh, k0, { x0: 0, y0: 0, x1: 2200, y1: 1100 }) && !P.inBox(sh, k0, { x0: 0, y0: 0, x1: 2000, y1: 1100 }), "Rahmenwahl: alle Punkte");
+  // Beschriftung: über dem längsten Abschnitt, lesbar
+  const lb = P.ductLabel({ pts: [[0, 0], [2000, 0], [2000, 500]], w: 300 }, 50);
+  assert.ok(lb.at[0] === 1000 && lb.at[1] > 150 && lb.a === 0, "Beschriftung über dem langen Abschnitt");
+  assert.strictEqual(P.ductLabel({ pts: [[2000, 0], [0, 0]], w: 300 }, 50).a, 0, "nach links gezeichnet: Text nicht auf dem Kopf");
 }
 console.log("test_plan: alles ok");

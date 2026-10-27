@@ -42,7 +42,7 @@ with sync_playwright() as p:
     check("Kein Papier und kein Plankopf auf dem Bildschirm", page.locator("#sheet .paper").count() == 0 and page.locator("#sheet .pl-printframe").count() == 1 and "Druckbereich A3 quer" in page.text_content("#sheet"))
     # Taste L und K
     key("l"); check("Taste L wählt Leitung", "Leitung" in page.inner_text("#hint") and page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true"); key("v"); key("k")
-    check("Taste K auch", page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true"); key("v")
+    check("Taste K: Kanal, nicht mehr Leitung (CJ 27.10.2026)", page.get_attribute('[data-tool="pl-duct"]', "aria-pressed") == "true"); key("Escape"); key("v")
 
     # Rechteck: Raster aus, damit nur der Ausrichtungsfang wirkt. Innenlinie ab (1000|1000) im Uhrzeigersinn (Wand links = aussen).
     page.uncheck("#grid-on"); page.wait_for_timeout(80)

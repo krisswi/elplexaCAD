@@ -219,7 +219,7 @@ with sync_playwright() as p:
     blur(); key("v"); page.mouse.click(*at(-2000, -2000)); page.wait_for_timeout(80)
 
     # ---------- Schritt 3: Leitungen, Farben, Mehrfachwahl ----------
-    key("k"); check("Taste K: Werkzeug Leitung", page.evaluate("window.__schemacad.view") is not None and page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true")
+    key("l"); check("Taste L: Werkzeug Leitung", page.evaluate("window.__schemacad.view") is not None and page.get_attribute('[data-tool="pl-line"]', "aria-pressed") == "true")
     n0 = len(M()["items"])
     click(2600, 600); click(2600, 1200); click(3300, 1200); key("Enter")
     ln = of("line"); LN = ln[-1]["id"] if ln else None

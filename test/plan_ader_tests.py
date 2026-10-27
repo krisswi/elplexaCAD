@@ -69,7 +69,7 @@ with sync_playwright() as p:
     for d in "123456789":
         key(d)
     check("Plan: Ziffern springen nicht hinaus", not hub() and kind() == "plan", kind())
-    key("n"); key("9")
+    key("k"); key("9")
     check("Plan, Werkzeug Kanal: Ziffer 9 = 600 mm (Werkzeug bekommt die Zahl)", page.input_value('[data-plo="dw"]') == "600" and not hub())
     key("Escape"); key("v")
 
@@ -165,7 +165,7 @@ with sync_playwright() as p:
     page.click('[data-plcol="#d4141c"]'); page.wait_for_timeout(100)
     check("Leitung rot: Strich und Text rot", page.locator("#items text[fill='#d4141c']").count() == 1 and page.locator("#items path[stroke='#d4141c']").count() >= 2)
     check("ohne Kanal: Text ohne weissen Rand", page.locator("#items text.pl-halo").count() == 0)
-    key("n"); click(0, 1000); click(3000, 1000); key("Enter"); key("Enter"); key("Escape"); key("v")
+    key("k"); click(0, 1000); click(3000, 1000); key("Enter"); key("Enter"); key("Escape"); key("v")
     check("Leitung im Kanal: Aderzahl-Text mit weissem Rand (CJ 27.10.2026)", len(of("duct")) == 1 and page.locator("#items text.pl-halo").count() == 1)
     page.mouse.click(*at(-1000, -2000)); page.wait_for_timeout(80)
     # Ansicht für das Bild

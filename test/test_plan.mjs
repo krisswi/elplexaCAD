@@ -601,6 +601,8 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   P.deleteItem(sh, 60);
   assert.ok(!sh.items.some((i) => i.type === "ader" && i.line === 60), "Leitung löschen löscht ihre Aderzahlen");
   assert.ok(!P.layerUsed({ items: [{ type: "ader", line: 1 }] }, undefined), "Aderzahl zählt nicht als Objekt einer Ebene");
+  const kd = [{ pts: [[0, 0], [2000, 0]], w: 300 }];
+  assert.ok(P.inDuct(kd, [1000, 140]) && !P.inDuct(kd, [1000, 160]) && !P.inDuct([], [0, 0]), "Stelle im Kanal (halbe Breite)");
 }
 
 // ---------- Symbol an Symbol (CJ 27.10.2026) ----------

@@ -347,9 +347,11 @@ export function makePlan(c) {
     return s;
   }
   // Aderzahl (CJ 27.10.2026): Querstrich senkrecht zur Leitung (Tangente), Text darüber, Farbe und Linienstärke wie die Leitung
-  function aderSVG(line, it, k, stroke = P.colOf(line), tf = P.tfOf(it, sh())) {
-    const g = P.aderGeom(line, it, k, tf);
-    return `<path d="M${pt(g.a)}L${pt(g.b)}" stroke="${stroke}" stroke-width="${f(0.35 * k)}" stroke-linecap="round" fill="none"/>` + txt(g.at[0], g.at[1], it.txt, g.size, g.ang, stroke);
+  // ducts: Kanäle der sichtbaren Ebenen; liegt die Stelle in einem Kanal, bekommt der Text einen weissen Rand (lesbar über der Schraffur)
+  function aderSVG(line, it, k, stroke = P.colOf(line), tf = P.tfOf(it, sh()), ducts = []) {
+    const g = P.aderGeom(line, it, k, tf), t = txt(g.at[0], g.at[1], it.txt, g.size, g.ang, stroke);
+    return `<path d="M${pt(g.a)}L${pt(g.b)}" stroke="${stroke}" stroke-width="${f(0.35 * k)}" stroke-linecap="round" fill="none"/>`
+      + (P.inDuct(ducts, g.p) ? t.replace('stroke="none"', `stroke="#fff" stroke-width="${f(0.5 * k)}" stroke-linejoin="round" paint-order="stroke" class="pl-halo"`) : t);
   }
   // nächste Leitung unter p (Werkzeug Aderzahl): { line, t } oder null
   function lineAt(p) {
@@ -384,6 +386,7 @@ export function makePlan(c) {
     const k = P.paperOf(S0).den, walls = S0.items.filter((i) => i.type === "wall"), ops = S0.items.filter((i) => i.type === "opening");
     const shapes = new Map(P.wallShapes(walls, ops).map((x) => [x.id, x])), byId = new Map(walls.map((w) => [w.id, w]));
     let s = patterns(k);
+    const ducts = S0.items.filter((i) => i.type === "duct" && P.isVisible(S0, i));
     for (const l of S0.layers) {
       if (!l.show) continue;
       const ws = walls.filter((w) => w.layer === l.id);
@@ -395,7 +398,7 @@ export function makePlan(c) {
       for (const d of S0.items) if (d.type === "dim" && d.layer === l.id) s += dimSVG(d, k);
       for (const y of S0.items) if (y.type === "duct" && y.layer === l.id) s += ductSVG(y, k); // unter Leitungen und Symbolen: die dürfen darüber oder darin liegen
       for (const y of S0.items) if (y.type === "line" && y.layer === l.id) s += lineSVG(y, k);
-      for (const a of S0.items) if (a.type === "ader") { const ln = S0.items.find((i) => i.id === a.line); if (ln?.layer === l.id) s += aderSVG(ln, a, k, P.colOf(ln), P.tfOf(a, S0)); }
+      for (const a of S0.items) if (a.type === "ader") { const ln = S0.items.find((i) => i.id === a.line); if (ln?.layer === l.id) s += aderSVG(ln, a, k, P.colOf(ln), P.tfOf(a, S0), ducts); }
       for (const y of S0.items) if (y.type === "sym" && y.layer === l.id) s += symSVG(y, k, P.colOf(y));
     }
     return `<g class="pl-items">${s}</g>`;

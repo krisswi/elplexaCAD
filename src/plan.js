@@ -814,6 +814,8 @@ export function aderGeom(line, it, k, tf = 1) {
   const size = ADER_TH * tf;
   return { p, a: add(p, n, -ADER_H * k), b: add(p, n, ADER_H * k), at: add(p, n, (ADER_H + 0.5 + size / 2) * k), size: size * k, ang: ra };
 }
+// Liegt p in einem der Kanäle (Mittellinie ± halbe Breite)? Aderzahl im Kanal: Text mit weissem Rand (CJ 27.10.2026)
+export const inDuct = (ducts, p) => ducts.some((d) => d.pts.some((x, i) => i && distSeg(p, d.pts[i - 1], x) <= d.w / 2));
 
 // ---------- Symbol an Symbol (CJ 27.10.2026) ----------
 // Randpunkte als Kasten im System des Symbols (Papier-mm): Mitte cx, cy, halbe Breite hx, hy. pin: Kreis bzw. Bogen, edge: Kasten. Ohne beides null.

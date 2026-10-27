@@ -164,6 +164,9 @@ with sync_playwright() as p:
     # Farbe wie die Leitung
     page.click('[data-plcol="#d4141c"]'); page.wait_for_timeout(100)
     check("Leitung rot: Strich und Text rot", page.locator("#items text[fill='#d4141c']").count() == 1 and page.locator("#items path[stroke='#d4141c']").count() >= 2)
+    check("ohne Kanal: Text ohne weissen Rand", page.locator("#items text.pl-halo").count() == 0)
+    key("n"); click(0, 1000); click(3000, 1000); key("Enter"); key("Enter"); key("Escape"); key("v")
+    check("Leitung im Kanal: Aderzahl-Text mit weissem Rand (CJ 27.10.2026)", len(of("duct")) == 1 and page.locator("#items text.pl-halo").count() == 1)
     page.mouse.click(*at(-1000, -2000)); page.wait_for_timeout(80)
     # Ansicht für das Bild
     def zoom(x, y, n):
@@ -183,7 +186,7 @@ with sync_playwright() as p:
     raw = base64.b64decode(pdf); (OUT / "plan_ader.pdf").write_bytes(raw)
     check("PDF erzeugt", raw.startswith(b"%PDF") and len(raw) > 2000)
     pr = page.evaluate("window.__pr")
-    check("Druck: Aderzahlen als Text und Strich in Leitungsfarbe", pr.count(">3x1.5<") == 2 and "#d4141c" in pr and "--plw" in pr)
+    check("Druck: Aderzahlen als Text und Strich in Leitungsfarbe", pr.count(">3x1.5<") == 2 and "pl-halo" in pr and "#d4141c" in pr and "--plw" in pr)
     view = b.new_page(viewport={"width": 1600, "height": 1140})
     view.set_content("<!doctype html><meta charset=utf-8><style>body{margin:0;background:#fff}#printroot .pl-print [stroke-width]{stroke-width:var(--plw)!important}svg{display:block;width:1587px;height:1123px}</style><div id=printroot>" + pr + "</div>")
     view.locator("svg").nth(0).screenshot(path=str(OUT / "plan_ader_druck.png"))

@@ -115,8 +115,6 @@ export function makePlan(c) {
   function sheetSVG() {
     const { p, a, k, ox, oy } = pageAt(), v = c.viewBox(), z = S.view.z, x0 = ox + a.x0 * k, y0 = oy + a.y0 * k, h = 3 * k;
     let s = `<rect class="dispo-bg" x="-1e6" y="-1e6" width="2e6" height="2e6"/>` + bgImg(sh(), () => { if (sh().kind === "plan") c.renderSheet(); });
-    const b = sh().bg;
-    if (b?.measure && bgShown(sh()) && grundOn()) s += measureSVG(pageToWorld(b, ...b.measure.a), pageToWorld(b, ...b.measure.b), `${P.fmtLen(b.measure.mm)} mm`, z);
     if (S.grid.on && S.grid.size * z >= 7) s += `<rect x="${f(v.x0)}" y="${f(v.y0)}" width="${f(v.x1 - v.x0)}" height="${f(v.y1 - v.y0)}" fill="url(#gridpat)" stroke="none" pointer-events="none"/>`;
     s += `<g class="pl-printframe" pointer-events="none"><rect x="${f(x0)}" y="${f(y0)}" width="${f((a.x1 - a.x0) * k)}" height="${f((a.y1 - a.y0) * k)}" fill="none" stroke="${FRAME}" stroke-width="1" stroke-dasharray="8 5"/>`
       + `${txt(x0, y0 + (a.y1 - a.y0) * k + h, `Druckbereich ${paperLabel(p)}, ${fmtDen(p.den)}`, h, 0, FRAME, "start")}</g>`;
@@ -442,6 +440,8 @@ export function makePlan(c) {
       const b = dimDraft.b ?? [mouse.x, mouse.y], d = { a: dimDraft.a, b, off: dimDraft.b ? offAt(dimDraft.a, dimDraft.b, [raw.x, raw.y]) : 0, ctrl: opt.ctrl };
       if (Math.hypot(b[0] - d.a[0], b[1] - d.a[1]) > 1) s += `<g class="pl-scale">${dimSVG(d, k, DRAFT)}</g>`;
     }
+    const mb = sh().bg; // gespeicherte Messstrecke nur beim Messen zeigen (CJ 27.10.2026), der Massstab bleibt
+    if (S.tool === "pl-measure" && !bgDraft && mb?.measure && bgShown(sh()) && grundOn()) s += measureSVG(pageToWorld(mb, ...mb.measure.a), pageToWorld(mb, ...mb.measure.b), `${P.fmtLen(mb.measure.mm)} mm`, z);
     if (bgDraft && mouse) s += measureSVG({ x: bgDraft[0], y: bgDraft[1] }, mouse, S.tool === "pl-rotate" ? "Kante" : "", z);
     if (S.tool === "pl-pmid" && mouse) { const { a, k: d, ox, oy } = pageAt([mouse.x, mouse.y]); s += `<rect x="${f(ox + a.x0 * d)}" y="${f(oy + a.y0 * d)}" width="${f((a.x1 - a.x0) * d)}" height="${f((a.y1 - a.y0) * d)}" fill="rgba(47,109,179,.06)" stroke="${DRAFT}" stroke-width="1.5" stroke-dasharray="6 4"/>`; } // Vorschau des Planfelds
     if (S.tool === "pl-sym" && raw) { const q = symPlace(opt.sym, raw, opt.symR); s += `<g class="pl-scale" opacity=".8">${symSVG({ key: opt.sym, at: q.at, r: q.r, ap: opt.ap }, k, DRAFT)}</g>`; }

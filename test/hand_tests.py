@@ -3,6 +3,7 @@
 import sys, tempfile, json
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="hand_"))
@@ -32,7 +33,7 @@ with sync_playwright() as p:
     page = ctx.new_page()
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-    page.goto(URL); page.wait_for_selector("#el-hub:not([hidden])")
+    page.goto(URL); page.wait_for_selector("#el-hub:not([hidden])"); projektansicht(page)
     check("Kachel Handnotizen in der Übersicht", page.is_visible("#el-hand"))
     page.click("#el-hand"); page.wait_for_selector("#hn .hn-lib, #hn.hn-lib")
     check("Bibliothek leer mit Hinweis", "Noch keine Notiz" in page.inner_text("#hn"))
@@ -99,7 +100,7 @@ with sync_playwright() as p:
     page.locator("#modal-root .hn-pick input").first.check(); page.click("#modal-root [data-ok]"); page.wait_for_timeout(5000)
     check("Blatt aus Projekt wird Notiz", page.locator(".hn-card").count() == 5, page.inner_text("#hn .hn-grid"))
     # Löschen, Neuladen: bleibt erhalten
-    page.reload(); page.wait_for_selector("#el-hub:not([hidden])"); page.click("#el-hand"); page.wait_for_selector(".hn-card")
+    page.reload(); page.wait_for_selector("#el-hub:not([hidden])"); projektansicht(page); page.click("#el-hand"); page.wait_for_selector(".hn-card")
     check("Nach Neuladen noch da", page.locator(".hn-card").count() == 5)
     page.screenshot(path=str(OUT / "h4_projekt.png"))
     page.click(".hn-card >> nth=0"); page.wait_for_selector(".hn-page canvas"); page.wait_for_timeout(500)

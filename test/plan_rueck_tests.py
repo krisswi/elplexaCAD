@@ -4,6 +4,7 @@
 import sys, math
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 
 def plsym(page, k):  # Symbolgruppen sind zu (CJ 26.10.2026): Gruppe aufklappen, dann Symbol wählen
     page.evaluate("k => document.querySelector(`[data-plsym='${k}']`).closest('section').querySelector('[data-plgrp][aria-expanded=false]')?.click()", k)
@@ -18,7 +19,7 @@ with sync_playwright() as p:
     page = b.new_page(viewport={"width": 1400, "height": 700}); page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")
-    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400)
+    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400); projektansicht(page)
     M = lambda: page.evaluate("window.__schemacad.model")
     of = lambda t: [x for x in M()["items"] if x["type"] == t]
     def key(k):

@@ -4,6 +4,7 @@
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 URL = (ROOT / "dist" / "ElplexaCAD.html").as_uri()
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="kopf_"))
@@ -17,7 +18,7 @@ with sync_playwright() as p:
     page = b.new_context(viewport={"width": 1440, "height": 900}, accept_downloads=True).new_page()
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-    page.goto(URL); page.wait_for_timeout(300)
+    page.goto(URL); page.wait_for_timeout(300); projektansicht(page)
     vis = lambda s: page.is_visible(s)
     inr1 = lambda sel: page.evaluate(f"!!document.querySelector('.el-r1 {sel}')")
     inr2 = lambda sel: page.evaluate(f"!!document.querySelector('.el-r2 {sel}')")

@@ -5,6 +5,7 @@
 import sys, tempfile, math, re, base64
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="plan_kanal_"))
@@ -18,7 +19,7 @@ with sync_playwright() as p:
     b = p.chromium.launch()
     page = b.new_page(viewport={"width": 1400, "height": 900}, accept_downloads=True); page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400)
+    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400); projektansicht(page)
     M = lambda: page.evaluate("window.__schemacad.model")
     D = lambda: page.evaluate("JSON.parse(window.__schemacad.serialize())") if page.evaluate("typeof window.__schemacad.serialize") == "function" else None
     of = lambda t: [x for x in M()["items"] if x["type"] == t]

@@ -4,6 +4,7 @@
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(tempfile.mkdtemp(prefix="plan_import_"))
 PT_MM = 25.4 / 72
@@ -41,7 +42,7 @@ with sync_playwright() as p:
     page = b.new_page(viewport={"width": 1400, "height": 800}); page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")
-    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400)
+    page.goto((ROOT / "dist" / "ElplexaCAD.html").as_uri()); page.wait_for_timeout(400); projektansicht(page)
     M = lambda: page.evaluate("window.__schemacad.model")
     def key(k):
         page.evaluate("([k]) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }))", [k]); page.wait_for_timeout(60)

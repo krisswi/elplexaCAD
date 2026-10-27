@@ -2748,7 +2748,7 @@ function elInit() {
     const all = [...$("#el-ptabs").querySelectorAll(".el-ptab")], i = all.indexOf(t), n = e.key === "ArrowRight" ? (i + 1) % all.length : e.key === "ArrowLeft" ? (i + all.length - 1) % all.length : e.key === "Home" ? 0 : e.key === "End" ? all.length - 1 : -1;
     if (n < 0) return; e.preventDefault(); e.stopPropagation(); elTabGo(all[n].dataset.eltabgo); document.getElementById(all[n].id)?.focus();
   });
-  elZeitInit(); elSync(); elHub(true);
+  elZeitInit(); elSync(); elHub(true, S.shared ? {} : { tab: "projekte" }); // Start: Liste «Projekte» (CJ 27.10.2026), geteilte Ansicht: das Projekt
   if (S.shared) elShareLoad();
 }
 // Übersicht zeigen (show) oder schliessen; beim Schliessen bleibt das zuletzt offene Modul. keepFocus: neu zeichnen, Fokus bleibt

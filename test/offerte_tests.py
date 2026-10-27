@@ -5,6 +5,7 @@
 import sys, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="offerte_"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -174,7 +175,7 @@ with sync_playwright() as p:
         page = ctx.new_page()
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-        page.goto((ROOT / "dist" / file).as_uri()); page.evaluate("localStorage.clear()"); page.reload(); page.wait_for_timeout(400)
+        page.goto((ROOT / "dist" / file).as_uri()); page.evaluate("localStorage.clear()"); page.reload(); page.wait_for_timeout(400); projektansicht(page)
         if tag == "v3": page.click('[data-start="offerte"]')
         else:
             if page.is_visible(".modal.start"): page.click('[data-start="offerte"]')

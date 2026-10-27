@@ -5,6 +5,7 @@ import sys, tempfile, json, base64, hashlib, re
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
+from elstart import projektansicht
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="teilen_"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -90,7 +91,7 @@ with sync_playwright() as p:
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.route("https://keqfieduhipnulpkhdbj.supabase.co/**", fake)
         page.route("https://elplexa.test/**", lambda r: r.fulfill(status=200, content_type="text/html", body=HTML))
-        page.goto(url); page.wait_for_timeout(500)
+        page.goto(url); page.wait_for_timeout(500); projektansicht(page)
         return ctx, page
     def key(page, k, **o):
         page.evaluate("([k, o]) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o }))", [k, o])
@@ -177,7 +178,7 @@ with sync_playwright() as p:
     check("Empfänger: keine Zeit im Projekt", "auto" not in (D().get("project") or {}))
     rec = page.evaluate("new Promise((res) => { const r = indexedDB.open('elplexacad', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('recent'); q.onsuccess = () => res(q.result || []); }; })")
     check("Empfänger: nicht unter „zuletzt geöffnet“", rec == [], rec)
-    page.reload(); page.wait_for_timeout(600)
+    page.reload(); page.wait_for_timeout(600); projektansicht(page)
     check("Neu laden: wieder geteilte Ansicht, eigene Sicherung nicht geladen", "geteilte ansicht" in page.inner_text("#el-hub").lower() and page.input_value('#el-hub [data-elp="name"]') == "EFH Geteilt" and ls().get("schemacad.autosave.v1") == OWN)
     page.set_viewport_size({"width": 375, "height": 800}); page.wait_for_timeout(200)
     w = page.evaluate("[document.documentElement.scrollWidth, document.querySelector('#el-hub').scrollWidth, document.querySelector('#el-hub').clientWidth]")
@@ -315,7 +316,7 @@ with sync_playwright() as p:
     for k in ["z", "s", "p"]: key(page, k, metaKey=True)
     page.evaluate("document.querySelector('#btn-save').click(); document.querySelector('#btn-dxf').click(); document.querySelector('#btn-pdf').click()"); page.wait_for_timeout(300)
     check("Mit Notizen: Speichern, Drucken, Export weiterhin gesperrt, Zeichnung unverändert", not page.is_visible(".modal") and "nur ansehen" in page.inner_text("#toasts") and json.dumps(D()["sheets"]) == d0)
-    page.reload(); page.wait_for_timeout(600); page.click("#el-hub [data-elopen]"); page.wait_for_timeout(300)
+    page.reload(); page.wait_for_timeout(600); projektansicht(page); page.click("#el-hub [data-elopen]"); page.wait_for_timeout(300)
     for _ in range(4):
         if not D()["sheets"][D()["active"]].get("kind"): break
         key(page, "PageUp"); page.wait_for_timeout(150)

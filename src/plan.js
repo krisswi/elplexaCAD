@@ -7,7 +7,7 @@
 // Symbol { id, type: "sym", layer, key, at: [x, y], r, h?, txt?, ap?, fu?, nr? } (Schritt 2, plansym.js; r Drehung in Grad, h Höhe in cm,
 // txt Beschriftung, ap Aufputz, fu/nr Sicherung und Nummer am Hinweispfeil). Symbole hängen nicht an der Wand (wandern nicht mit).
 // Leitung { id, type: "line", layer, pts: [[x, y] …] (mind. 2), kind, col?, curve? } (Schritt 3, CJ 24.10.2026; kind = Verlegeart nach 5.110;
-// curve: true = geschwungen, glatte Kurve durch alle Punkte, CJ 24.10.2026, Dateiversion 23).
+// curve: true = geschwungen, glatte Kurve (B-Spline, Punkte = Steuerpunkte), CJ 24.10.2026, Dateiversion 23).
 // Hintergrund bg (CJ 24.10.2026, Dateiversion 23): PDF-Seite wie im Stringplan (pv.js: Massstab, Fixpunkt = Nullpunkt, Drehung), liegt auf der Ebene «Hintergrund».
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
@@ -91,11 +91,15 @@ export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line"]);
 // Leitungsarten (Symbolzusammenfassung 5.110). Strichmuster in Papier-mm (× Massstab), flex = durchgezogen mit Welle je Abschnitt.
 export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"]];
 export const LINE_DASH = { decke: null, boden: [3, 1.5], wand: [3, 1, 0.8, 1], doppel: [3, 0.8, 0.6, 0.8, 0.6, 0.8], flex: null };
-// Farben (Farbcodes 5.100, Hex aus dem PDF gemessen). Mauern, Öffnungen und Masse bleiben schwarz.
-export const PLAN_COLS = [["#3fbbeb", "Blau – Licht"], ["#ed3f2a", "Rot – Kraft, Potenzialausgleich"], ["#7aba4b", "Grün – Notlicht, Telefon, IT"], ["#e50981", "Rosa – Zutritt, Alarm"],
-  ["#f8a724", "Orange – Brandmelde"], ["#d37c24", "Braun – Schwachstrom, Audio"], ["#8d5995", "Violett – Radio/TV, KNX"], ["#f8f191", "Gelb – Trassen, Kanäle"], ["#000000", "Schwarz"]];
+// Farben (Farbcodes 5.100). Mauern, Öffnungen und Masse bleiben schwarz. Seit 27.10.2026 kräftiger (CJ: Blau zu hell), auf Weiss und im Druck
+// gut lesbar (Kontrast zu Weiss ab 4,5:1, Orange 3,3, Gelb 2,3). Bisherige Töne (aus dem PDF gemessen) in PLAN_COLS_OLD: gespeicherte Farben bleiben.
+export const PLAN_COLS = [["#0068c9", "Blau – Licht"], ["#d4141c", "Rot – Kraft, Potenzialausgleich"], ["#22862a", "Grün – Notlicht, Telefon, IT"], ["#c80a78", "Rosa – Zutritt, Alarm"],
+  ["#e06d00", "Orange – Brandmelde"], ["#8f5214", "Braun – Schwachstrom, Audio"], ["#7b3a96", "Violett – Radio/TV, KNX"], ["#c9a800", "Gelb – Trassen, Kanäle"], ["#000000", "Schwarz"]];
+export const PLAN_COLS_OLD = ["#3fbbeb", "#ed3f2a", "#7aba4b", "#e50981", "#f8a724", "#d37c24", "#8d5995", "#f8f191"]; // gleiche Reihenfolge, nur für den Namen
+// Name einer Farbe: Palette, bisheriger Ton mit «(bisher)», sonst Hex
+export const colName = (c) => PLAN_COLS.find(([x]) => x === c)?.[1].split(" –")[0] ?? (PLAN_COLS_OLD.includes(c) ? `${PLAN_COLS[PLAN_COLS_OLD.indexOf(c)][1].split(" –")[0]} (bisher)` : c);
 // Vorgabe der Leitungen: blau (CJ 24.10.2026). Später in den Einstellungen änderbar, deshalb nur hier und über lineCol() gelesen.
-export const LINE_COL = "#3fbbeb";
+export const LINE_COL = "#0068c9";
 // Vorgabe aller Symbole: blau (CJ 24.10.2026, vorher nach Kategorie: Kraft rot usw.); die Farbcodes 5.100 bleiben am Objekt wählbar
 export const CAT_COL = { licht: LINE_COL, kraft: LINE_COL, kommunikation: LINE_COL, schwach: LINE_COL, allg: LINE_COL, leitung: LINE_COL };
 const HEX = /^#[0-9a-f]{6}$/;
@@ -104,6 +108,11 @@ export const lineCol = () => LINE_COL;
 export const defCol = (it) => (it.type === "line" ? lineCol() : it.type === "sym" ? (SYM_BY_KEY.get(it.key).cat === "leitung" ? lineCol() : CAT_COL[SYM_BY_KEY.get(it.key).cat] ?? "#000000") : "#000000");
 export const colOf = (it) => it.col ?? defCol(it);
 export const hasCol = (it) => it.type === "line" || it.type === "sym";
+// Textgrösse (CJ 27.10.2026, Muster Disposition): Faktor tf (1 = Vorgabe), gesamt am Blatt (sh.tf) und einzeln an Symbol, Verweis und Mass (it.tf).
+// Der Einzelwert überschreibt den Gesamtwert. Gilt für Beschriftung, Höhe, Verweis-Zeilen und Masstext; Zusatztexte im Symbol (T15, LED, Zahl) bleiben fest.
+export const TF_MIN = 0.25, TF_MAX = 4;
+const cleanTf = (v) => (isNum(v) && v >= TF_MIN && v <= TF_MAX ? r3(v) : undefined);
+export const tfOf = (it, sh) => it.tf ?? sh?.tf ?? 1;
 // Farbe setzen: gleich der Vorgabe = Feld entfernen
 export function setCol(it, col) { if (!hasCol(it)) return; const c = String(col ?? "").toLowerCase(); if (!HEX.test(c) || c === defCol(it)) delete it.col; else it.col = c; }
 
@@ -129,6 +138,7 @@ export function cleanPlanObj(it, id) {
     const o = { id, type: "dim", layer: String(it.layer ?? ""), a: [it.a[0], it.a[1]], b: [it.b[0], it.b[1]], off: isNum(it.off) ? it.off : 0 };
     if (isNum(it.ref)) o.ref = it.ref;
     if (it.ctrl === true) { o.ctrl = true; if (isNum(it.soll) && it.soll > 0) o.soll = it.soll; } // Kontrollmass (Diagonale): Ist, optional Soll
+    const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf; // Textgrösse einzeln (auch 1: überschreibt den Gesamtwert)
     return o;
   }
   if (it.type === "sym") {
@@ -143,6 +153,7 @@ export function cleanPlanObj(it, id) {
     const lo = cleanLo(it.lo); if (lo) o.lo = lo;
     const z = sizeOf(it.key); if (z) for (const f of ["w", "t"]) if (z[f] !== undefined && isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && Math.round(it[f]) !== z[f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
     if (def.num !== undefined && str(it.num, 6) && str(it.num, 6) !== def.num) o.num = str(it.num, 6); // Zahl der Mehrfachsteckdose (CJ 26.10.2026)
+    const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
     setCol(o, it.col);
     return o;
   }
@@ -163,7 +174,11 @@ export function cleanPlanObj(it, id) {
 const OLD_KEYS = new Set(["SCH0", "SCH0_2", "SCH3", "SCH6", "TASTER", "DIMMER", "STOREN", "SCH_LAMPE", "STD", "STD3", "STD_T15", "STD_USB", "STD_BODEN", "KOMBI", "LEUCHTE", "LEUCHTE_EB", "LEUCHTE_W", "LEUCHTE_WEB", "LED", "LED_EB", "LED_W", "BWM", "PIR", "GERAET", "HERD", "BACKOFEN", "MIKRO", "GSP", "KUEHL", "VENT", "BOILER", "DOSE", "EINLASS", "VERTEILER", "ANSCHLUSS", "STEIG_AUF", "STEIG_AB", "STEIG_DURCH", "VERWEIS"]); // Symbole bis Dateiversion 23
 export const V24_SYMS = { has: (k) => !!k && !OLD_KEYS.has(k) }; // Symbole, die ältere Stände nicht kennen
 export const planV24 = (sh) => sh.items.some((i) => i.lo || i.num !== undefined || (i.type === "sym" && (i.w !== undefined || i.t !== undefined)) || i.mat === "doppel" || V24_SYMS.has(i.key) || (i.ap && !SYM_BY_KEY.get(i.key)?.group?.startsWith("Schalter")));
-const VERSION_NOW = 24;
+// Dateiversion 28 (CJ 27.10.2026): Textgrösse gesamt (sh.tf) oder einzeln (it.tf); ältere Stände würden sie still verlieren
+export const planV28 = (sh) => sh.tf !== undefined || sh.items.some((i) => i.tf !== undefined);
+// Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28
+export const planVer = (sh) => (planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
+const VERSION_NOW = 28;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 // ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
 const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
@@ -174,6 +189,7 @@ export function cleanPlanSheet(rs, m, maxId, ver = VERSION_NOW) {
   const pm = cleanPmid(rs.pmid); if (pm) m.pmid = pm; // Druckmitte frei gewählt (wie Stringplan 5ao)
   if (rs.bom === false) m.bom = false; // Stückliste nicht drucken (Schritt 4, fehlt = drucken)
   if (rs.bgOff === true) m.bgOff = true; // PDF-Plan ausgeblendet, unabhängig von den Ebenen (CJ 26.10.2026)
+  const tf = cleanTf(rs.tf); if (tf !== undefined && tf !== 1) m.tf = tf; // Textgrösse des ganzen Plans, fehlt = 1
   if (isNum(rs.bgOp) && rs.bgOp >= 10 && rs.bgOp <= 100 && Math.round(rs.bgOp) !== BG_OP) m.bgOp = Math.round(rs.bgOp); // Deckkraft in %, fehlt = BG_OP
   if (isNum(rs.sid) && rs.sid > 0) { m.sid = rs.sid; maxId = Math.max(maxId, rs.sid); }
   for (const it of Array.isArray(rs.items) ? rs.items : []) {
@@ -502,16 +518,18 @@ export function alignSnap(m, refs, dirs, tol) {
 }
 // Fang: Wand- und Massenden (auch gesperrte Ebenen), Mitte der Wand, Punkt auf der Mittellinie, Raster ab Nullpunkt. ortho = Bezugspunkt für
 // Shift (0/45/90°). Rückgabe { x, y, snap, guides? }. faces = faceGeom() (Wand zeichnen, Mass): statt der Mittellinie fangen Ecken und Linien der Wandflächen
-// (nur Wandenden der Liste ends: false). align = { refs, dirs }: Ausrichtungsfang vor Fläche und Raster.
-export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, extra = [], faces, align } = {}) {
+// (nur Wandenden der Liste ends: false). align = { refs, dirs }: Ausrichtungsfang vor Fläche und Raster. segs = Strecken [[a, b]] (nach den Punkten).
+export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, extra = [], segs = [], faces, align } = {}) {
   const on = (q) => (ortho ? orthoPt(ortho, q) : q.map(r3));
   const m = on(p);
   if (alt) return { x: m[0], y: m[1] };
   const walls = items.filter((i) => i.type === "wall");
   const best = (cands, kind) => { let hit = null, bd = tol; for (const c of cands) { const d = len(sub(c, m)); if (d <= bd) { bd = d; const q = on(c); hit = { x: q[0], y: q[1], snap: kind }; } } return hit; };
-  const onFace = () => { let hit = null, bd = tol; for (const [a, b] of faces.edges) { const v = sub(b, a), l2 = dot(v, v), t = l2 ? Math.max(0, Math.min(1, dot(sub(m, a), v) / l2)) : 0, c = add(a, v, t), d = len(sub(c, m)); if (d <= bd) { bd = d; hit = { x: r3(c[0]), y: r3(c[1]), snap: "edge" }; } } return hit; };
+  const onSegs = (list) => { let hit = null, bd = tol; for (const [a, b] of list) { const v = sub(b, a), l2 = dot(v, v), t = l2 ? Math.max(0, Math.min(1, dot(sub(m, a), v) / l2)) : 0, c = add(a, v, t), d = len(sub(c, m)); if (d <= bd) { bd = d; hit = { x: r3(c[0]), y: r3(c[1]), snap: "edge" }; } } return hit; };
+  const onFace = () => onSegs(faces.edges);
   const al = !ortho && align ? alignSnap(m, align.refs, align.dirs, tol) : null;
   return best([...(faces ? faces.corners : walls.flatMap((w) => [w.a, w.b])), ...items.filter((i) => i.type === "dim").flatMap((d) => [d.a, d.b]), ...extra], "end")
+    || (segs.length ? onSegs(segs) : null)
     || (al && { x: al.x, y: al.y, snap: "align", guides: al.guides })
     || (faces ? onFace() : best(walls.map((w) => [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2]), "mid"))
     || (!faces && !ortho && best(walls.map((w) => { const u = wallDir(w), t = Math.max(0, Math.min(wallLen(w), dot(sub(m, w.a), u))); return add(w.a, u, t); }), "edge"))
@@ -521,6 +539,15 @@ export function snapPlan(sh, items, p, { grid = 0, tol = 0, alt = false, ortho, 
 export function symCenter(it, k) {
   const c = symDef(it, k).c, a = (it.r * Math.PI) / 180;
   return [it.at[0] + k * (c[0] * Math.cos(a) - c[1] * Math.sin(a)), it.at[1] + k * (c[0] * Math.sin(a) + c[1] * Math.cos(a))];
+}
+// Fang einer Leitung am Symbol (CJ 26.10.2026), in der Welt, dreht mit r: { pts, segs }. pin: vier Punkte oben, rechts, unten, links am Rand;
+// edge: alle Seiten des Kastens (Abzweigdose); sonst die Mitte.
+export function symSnaps(it, k) {
+  const def = symDef(it, k), a = (it.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
+  const w = ([x, y]) => [r3(it.at[0] + k * (x * co - y * si)), r3(it.at[1] + k * (x * si + y * co))];
+  if (def.edge) { const [x0, y0, x1, y1] = def.edge, c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(w); return { pts: [], segs: c.map((p, i) => [p, c[(i + 1) % 4]]) }; }
+  if (def.pin) { const [cx, cy, r] = def.pin; return { pts: [[cx, cy + r], [cx + r, cy], [cx, cy - r], [cx - r, cy]].map(w), segs: [] }; }
+  return { pts: [symCenter(it, k)], segs: [] };
 }
 // Text lesbar halten: Winkel 0–359 → (-90, 90], flip = um 180° gekippt (sonst stünde er auf dem Kopf)
 export function readable(ang) { const a = ((ang % 360) + 360) % 360, flip = a > 90 && a <= 270; return { a: flip ? a - 180 : a > 270 ? a - 360 : a, flip }; }
@@ -535,24 +562,25 @@ export function cleanLo(v) {
 export const sizeOf = (key) => SYM_BY_KEY.get(key)?.size ?? null;
 export const symSize = (it) => { const z = sizeOf(it.key); return z ? { w: it.w ?? z.w, ...(z.t !== undefined ? { t: it.t ?? z.t } : {}) } : null; };
 // Symboldefinition für ein Objekt: bei Verteilungen Teile, Mitte und Radius aus w und t (Papier-mm = Welt-mm / k)
-export function symDef(it, k) {
+export function symDef(it, k, tf = 1) {
   const def = SYM_BY_KEY.get(it.key), z = symSize(it);
-  if (def.ref) return { ...def, parts: refParts(it) };
+  if (def.ref) return { ...def, parts: refParts(it, tf) };
   if (!z) return def;
   const W = z.w / k, T = (z.t ?? 0) / k, r = (n) => Math.round(n * 1000) / 1000;
   return { ...def, parts: def.size.parts(W, T), c: def.wall ? [0, r(T / 2)] : [0, 0], r: r(Math.max(1, Math.hypot(W / 2, def.wall ? T / 2 : T / 2))) };
 }
 // Hinweis (VERWEIS): Kasten um die Zeilen oben (fu), unten (nr) und Kabel (txt), Mitte = Vorgabe + Versatz lo (Papier-mm im System des Symbols)
 const REF_H = 2.2, REF_LH = REF_H * 1.45, REF_DEF = [-8, 4];
-export function refBox(it) {
-  const rows = [it.fu, it.nr, it.txt].filter(Boolean), lo = it.lo ?? [0, 0];
-  const w = Math.max(5, ...rows.map((s) => s.length * REF_H * 0.62)) + 2, h = Math.max(1, rows.length) * REF_LH + 0.6;
-  return { rows: rows.length ? rows : [], x: REF_DEF[0] + lo[0], y: REF_DEF[1] + lo[1], w, h };
+// tf: Textgrösse (tfOf), der Kasten wächst mit
+export function refBox(it, tf = 1) {
+  const rows = [it.fu, it.nr, it.txt].filter(Boolean), lo = it.lo ?? [0, 0], H = REF_H * tf;
+  const w = Math.max(5, ...rows.map((s) => s.length * H * 0.62)) + 2 * Math.max(1, tf), h = Math.max(1, rows.length) * REF_LH * tf + 0.6 * tf;
+  return { rows: rows.length ? rows : [], x: REF_DEF[0] + lo[0], y: REF_DEF[1] + lo[1], w, h, lh: REF_LH * tf, th: H };
 }
-function refParts(it) {
-  const b = refBox(it), r3 = (n) => Math.round(n * 1000) / 1000, x0 = b.x - b.w / 2, y0 = b.y - b.h / 2, R = 1, out = [];
+function refParts(it, tf = 1) {
+  const b = refBox(it, tf), r3 = (n) => Math.round(n * 1000) / 1000, x0 = b.x - b.w / 2, y0 = b.y - b.h / 2, R = 1, out = [];
   out.push(["p", `M${r3(x0 + R)},${r3(y0)}h${r3(b.w - 2 * R)}a${R} ${R} 0 0 1 ${R},${R}v${r3(b.h - 2 * R)}a${R} ${R} 0 0 1 ${-R},${R}h${r3(-(b.w - 2 * R))}a${R} ${R} 0 0 1 ${-R},${-R}v${r3(-(b.h - 2 * R))}a${R} ${R} 0 0 1 ${R},${-R}Z`, false]);
-  for (let i = 1; i < b.rows.length; i++) { const y = b.y + ((b.rows.length - 1) / 2 - i + 0.5) * REF_LH; out.push(["l", r3(x0), r3(y), r3(x0 + b.w), r3(y)]); } // Trennstrich zwischen den Zeilen
+  for (let i = 1; i < b.rows.length; i++) { const y = b.y + ((b.rows.length - 1) / 2 - i + 0.5) * b.lh; out.push(["l", r3(x0), r3(y), r3(x0 + b.w), r3(y)]); } // Trennstrich zwischen den Zeilen
   // Linie vom Ziel (0|0) zum nächsten Punkt auf dem Kastenrand
   const cx = Math.max(x0, Math.min(0, x0 + b.w)), cy = Math.max(y0, Math.min(0, y0 + b.h));
   const inside = cx === 0 && cy === 0, ex = inside ? b.x : cx, ey = inside ? y0 : cy;
@@ -564,31 +592,33 @@ export const symH = (it) => it.h ?? SYM_BY_KEY.get(it.key)?.h;
 // Texte eines Symbols in der Welt (CJ 24.10.2026): drehen mit dem Symbol, stehen nie auf dem Kopf. Zusatztexte (T15, USB, 3, LED) und Verweis
 // mittig an ihrem Ort; Beschriftung und Höhe neben der Mitte in Richtung der x-Achse des Symbols (Wandsymbol: entlang der Wand), Zeilen untereinander.
 // Gibt [{ at, s, size, a, anchor }] (size und Abstände in Papier-mm × k).
-export function symTexts(it, k, fmtH = (h) => String(h)) {
-  const def = symDef(it, k), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
+export function symTexts(it, k, fmtH = (h) => String(h), tf = 1) {
+  const def = symDef(it, k, tf), rad = (it.r * Math.PI) / 180, co = Math.cos(rad), si = Math.sin(rad), { a, flip } = readable(it.r);
   const w = (x, y) => [it.at[0] + k * (x * co - y * si), it.at[1] + k * (x * si + y * co)], out = [];
   for (const q of def.parts) if (q[0] === "t") out.push({ at: w(q[1], q[2]), s: q[5] === "num" ? (it.num ?? q[4]) : q[4], size: q[3] * k, a, anchor: "middle" }); // num: Zahl am Symbol änderbar
-  if (def.ref) { const b = refBox(it); b.rows.forEach((s, i) => out.push({ at: w(b.x, b.y + ((b.rows.length - 1) / 2 - i) * REF_LH * (flip ? -1 : 1)), s, size: REF_H * k, a, anchor: "middle", label: true })); return out; } // Hinweis: Zeilen im Kasten, ziehbar wie eine Beschriftung
+  if (def.ref) { const b = refBox(it, tf); b.rows.forEach((s, i) => out.push({ at: w(b.x, b.y + ((b.rows.length - 1) / 2 - i) * b.lh * (flip ? -1 : 1)), s, size: b.th * k, a, anchor: "middle", label: true })); return out; } // Hinweis: Zeilen im Kasten, ziehbar wie eine Beschriftung
   // Abstand: hinter dem Symbol und hinter Zusatztexten rechts der Mitte (Breite ca. 0,6 × Höhe je Zeichen)
   const ext = Math.max(def.r, ...def.parts.filter((q) => q[0] === "t").map((q) => q[1] - def.c[0] + q[4].length * q[3] * 0.3));
   const lines = [it.txt, it.h !== undefined && it.h !== def.h ? fmtH(it.h) : ""].filter(Boolean), c = symCenter(it, k), d = (ext + 0.6) * k, sg = flip ? -1 : 1;
   const [lx, ly] = it.lo ?? [0, 0], ox = k * (lx * co - ly * si), oy = k * (lx * si + ly * co); // Versatz dreht mit dem Symbol
-  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * k * sg; out.push({ at: [c[0] + co * d - si * o + ox, c[1] + si * d + co * o + oy].map(r3), s, size: 1.8 * k, a, anchor: flip ? "end" : "start", label: true }); });
+  lines.forEach((s, i) => { const o = ((lines.length - 1) / 2 - i) * 2.2 * tf * k * sg; out.push({ at: [c[0] + co * d - si * o + ox, c[1] + si * d + co * o + oy].map(r3), s, size: 1.8 * tf * k, a, anchor: flip ? "end" : "start", label: true }); });
   return out;
 }
 // Trifft p die Beschriftung (Bezeichnung, Höhe) eines Symbols? Kasten je Zeile: Breite ca. 0,6 × Höhe je Zeichen, ab dem Ankerpunkt.
-export function labelHit(it, k, p, tol, fmtH) {
-  return symTexts(it, k, fmtH).some((t) => {
+export function labelHit(it, k, p, tol, fmtH, tf = 1) {
+  return symTexts(it, k, fmtH, tf).some((t) => {
     if (!t.label) return false;
     const r = (t.a * Math.PI) / 180, dx = p[0] - t.at[0], dy = p[1] - t.at[1], u = dx * Math.cos(r) + dy * Math.sin(r), v = -dx * Math.sin(r) + dy * Math.cos(r), wd = t.s.length * t.size * 0.6;
     return (t.anchor === "end" ? u >= -wd - tol && u <= tol : u >= -tol && u <= wd + tol) && Math.abs(v) <= t.size / 2 + tol;
   });
 }
 // Stückliste (Schritt 4, CJ 24.10.2026): Anzahl je Symbol auf sichtbaren Ebenen, Reihenfolge wie die Palette. Leitungen zählen nicht.
+// Symbole mit Aufputz-Variante getrennt nach UP und AP (CJ 26.10.2026), UP zuerst.
 export function bomOf(sh) {
-  const n = new Map();
-  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it)) n.set(it.key, (n.get(it.key) ?? 0) + 1);
-  return PLAN_SYMS.filter((d) => n.has(d.key)).map((d) => ({ key: d.key, label: d.label, group: d.group, n: n.get(d.key) }));
+  const n = new Map(), id = (key, ap) => `${key}${ap ? ":ap" : ""}`;
+  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it)) { const k = id(it.key, it.ap && SYM_BY_KEY.get(it.key).ap); n.set(k, (n.get(k) ?? 0) + 1); }
+  return PLAN_SYMS.flatMap((d) => (d.ap ? [false, true] : [false]).filter((ap) => n.has(id(d.key, ap)))
+    .map((ap) => ({ key: d.key, label: d.ap ? `${d.label}, ${ap ? "AP" : "UP"}` : d.label, group: d.group, n: n.get(id(d.key, ap)), ...(ap ? { ap } : {}) })));
 }
 // CSV wie die übrigen Listen: Semikolon, Text in Anführungszeichen wenn nötig
 export function bomCsv(rows) {
@@ -616,13 +646,16 @@ export function contentBox(sh) {
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }
-// ---------- Geschwungene Leitung (CJ 24.10.2026) ----------
-// Glatte Kurve durch alle Punkte (Catmull-Rom als kubische Bézier): je Abschnitt [p1, c1, c2, p2]. Enden: Tangente zum Nachbarpunkt.
+// ---------- Geschwungene Leitung (CJ 24.10.2026, B-Spline CJ 26.10.2026) ----------
+// Glatte Kurve als kubischer B-Spline: die Punkte sind Steuerpunkte, die Kurve läuft durch Anfang und Ende, sonst nur in die Nähe der Punkte
+// und wird nie wellig (liegt in der Hülle der Punkte). Enden: gespiegelter Hilfspunkt, so beginnt die Kurve gerade in Richtung des zweiten Punkts
+// (zwei Punkte = Gerade). Je Abschnitt ein kubisches Bézier [p1, c1, c2, p2], Anzahl = Punkte − 1.
 export function curveSegs(pts) {
-  const out = [];
-  for (let i = 1; i < pts.length; i++) {
-    const p0 = pts[Math.max(0, i - 2)], p1 = pts[i - 1], p2 = pts[i], p3 = pts[Math.min(pts.length - 1, i + 1)];
-    out.push([p1, add(p1, sub(p2, p0), 1 / 6), add(p2, sub(p3, p1), -1 / 6), p2]);
+  const n = pts.length, q = [add(pts[0], sub(pts[0], pts[1])), ...pts, add(pts[n - 1], sub(pts[n - 1], pts[n - 2]))], out = [];
+  const mix = (a, b, c, wa, wb, wc) => [0, 1].map((j) => (wa * a[j] + wb * b[j] + wc * c[j]) / (wa + wb + wc));
+  for (let i = 1; i < n; i++) {
+    const [q0, q1, q2, q3] = q.slice(i - 1, i + 3);
+    out.push([mix(q0, q1, q2, 1, 4, 1), mix(q1, q2, q2, 2, 1, 0), mix(q1, q2, q2, 1, 2, 0), mix(q1, q2, q3, 1, 4, 1)]);
   }
   return out;
 }
@@ -635,11 +668,5 @@ export function bezAt([a, b, c, d], t) {
 const CURVE_N = 16; // Stützpunkte je Abschnitt für Treffer und Inhalt
 // Linienzug der Leitung (geschwungen: angenähert), für Treffer, Rahmen und Inhalt
 export const linePts = (it) => (it.curve && it.pts.length > 2 ? [it.pts[0], ...curveSegs(it.pts).flatMap((sg) => Array.from({ length: CURVE_N }, (_, j) => bezAt(sg, (j + 1) / CURVE_N).p.map(r3)))] : it.pts);
-// Geschwungen mit nur zwei Punkten: Zwischenpunkt in der Mitte, um ein Fünftel der Länge nach links versetzt (ergibt einen Bogen, Punkt ziehbar)
-export function bowPts(pts) {
-  if (pts.length !== 2) return pts;
-  const [a, b] = pts, v = sub(b, a), m = add(a, v, 0.5), n = normal([v[0], v[1]]);
-  return [a, add(m, n, 0.2).map(r3), b];
-}
 
 export { segX, normal };

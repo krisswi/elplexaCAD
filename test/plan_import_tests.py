@@ -92,13 +92,13 @@ with sync_playwright() as p:
     page.keyboard.press("Meta+z"); page.wait_for_timeout(150)
     check("Rückgängig: Drehung weg", "rot" not in M()["bg"])
 
-    # Geschwungene Leitung: zwei Punkte → Bogen, Kurve im SVG
-    key("l"); page.select_option('[data-plo="lcurve"]', "1"); page.wait_for_timeout(80)
-    page.keyboard.down("Alt"); click(500, 500); click(2500, 500); page.keyboard.up("Alt"); key("Enter")
+    # Geschwungene Leitung (Vorgabe, CJ 26.10.2026): drei Punkte = B-Spline, Kurve im SVG, kein Bogenpunkt dazu
+    key("l"); check("Form Vorgabe geschwungen", page.input_value('[data-plo="lcurve"]') == "1")
+    page.keyboard.down("Alt"); click(500, 500); click(1500, 1500); click(2500, 500); page.keyboard.up("Alt"); key("Enter")
     ln = [i for i in M()["items"] if i["type"] == "line"]
-    check("Leitung geschwungen mit Bogenpunkt", len(ln) == 1 and ln[0].get("curve") is True and len(ln[0]["pts"]) == 3 and ln[0]["pts"][1][1] > 800, ln)
-    check("Kurve gezeichnet (Bézier)", "C" in page.get_attribute("#items .pl-items path[stroke='#3fbbeb']", "d"))
-    key("v"); click(1500, 500 + 0.75 * (ln[0]["pts"][1][1] - 500))  # Treffer auf dem Bogen
+    check("Leitung geschwungen, Punkte wie geklickt", len(ln) == 1 and ln[0].get("curve") is True and len(ln[0]["pts"]) == 3 and ln[0]["pts"][1][1] > 1400, ln)
+    check("Kurve gezeichnet (Bézier)", "C" in page.get_attribute("#items .pl-items path[stroke='#0068c9']", "d"))
+    key("v"); click(1500, 500 + 4 * 1000 / 6)  # Treffer am Scheitel der Kurve (nicht am Steuerpunkt)
     check("Klick auf den Bogen wählt die Leitung", page.evaluate("window.__schemacad.sel") == [ln[0]["id"]])
     page.select_option('[data-plf="lc"]', "0"); page.wait_for_timeout(100)
     check("Form gerade: curve weg, Punkte bleiben", "curve" not in [i for i in M()["items"] if i["type"] == "line"][0])

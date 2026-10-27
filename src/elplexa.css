@@ -486,3 +486,11 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 /* Plan im Druck (Schritt 4, 24.10.2026): eigene Linienbreiten statt der festen 0,35 mm aus style.css (#printroot [stroke-width]) */
 #printroot .pl-print [stroke-width] { stroke-width: var(--plw) !important; }
 .pl-bgrow input[type="range"] { width: 76px; margin: 0 4px; }
+
+/* Symbolgruppen im Plan (CJ 26.10.2026): zu, Klick auf den Titel klappt auf; beim Suchen zeigen alle Gruppen ihre Treffer */
+.pl-grp { display: flex; align-items: center; gap: 6px; width: 100%; padding: 2px 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.pl-grp .caret { display: inline-block; width: 10px; transition: transform .12s; }
+.pl-grp[aria-expanded="true"] .caret { transform: rotate(90deg); }
+#left-body:not(.searching) .pl-syms.zu .sym { display: none; }
+#left-body:not(.searching) .pl-syms.zu .section-title { margin-bottom: 0; }
+#left-body.searching .pl-grp .caret { visibility: hidden; }

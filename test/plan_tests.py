@@ -5,6 +5,10 @@
 import sys, tempfile, json, math, re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+
+def plsym(page, k):  # Symbolgruppen sind zu (CJ 26.10.2026): Gruppe aufklappen, dann Symbol wählen
+    page.evaluate("k => document.querySelector(`[data-plsym='${k}']`).closest('section').querySelector('[data-plgrp][aria-expanded=false]')?.click()", k)
+    page.click(f'[data-plsym="{k}"]')
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp(prefix="plan_"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -155,17 +159,25 @@ with sync_playwright() as p:
 
     # ---------- Schritt 2: Elektrosymbole ----------
     check("Palette: ca. 30 Symbole in Gruppen", page.locator("[data-plsym]").count() >= 30 and all(g in page.inner_text("#left-body") for g in ["Schalter", "Steckdosen", "Leuchten", "Geräte"]), page.locator("[data-plsym]").count())
-    page.click('[data-plsym="STD"]'); page.wait_for_timeout(80)
+    check("Symbolgruppen zu beim Start", page.locator(".pl-syms").count() >= 8 and page.locator(".pl-syms.zu").count() == page.locator(".pl-syms").count() and not page.is_visible('[data-plsym="STD"]'))
+    page.click('[data-plgrp="Steckdosen"]'); page.wait_for_timeout(50)
+    check("Gruppe klappt auf, andere bleiben zu", page.is_visible('[data-plsym="STD"]') and not page.is_visible('[data-plsym="SCH0"]'))
+    blur(); key("/"); page.keyboard.type("Steck"); page.wait_for_timeout(50)
+    check("Suche / «Steck»: Steckdosen auch in zugeklappter Gruppe, sonst nichts", page.evaluate("document.activeElement.id") == "sym-find" and page.is_visible('[data-plsym="STD_USB"]') and not page.is_visible('[data-plsym="SCH0"]') and not page.is_visible('[data-plsym="LEUCHTE"]'))
+    page.fill("#sym-find", "zzz"); check("Suche ohne Treffer: Hinweis", "Kein Symbol" in page.inner_text("#left-body"))
+    page.keyboard.press("Escape"); page.wait_for_timeout(50)
+    check("Esc leert die Suche, Gruppen wieder zu", page.input_value("#sym-find") == "" and not page.is_visible('[data-plsym="SCH0"]') and page.is_visible('[data-plsym="STD"]'))
+    plsym(page, "STD"); page.wait_for_timeout(80)
     check("Symbol gewählt: Werkzeug Symbol, Hinweis", "Steckdose T13" in page.inner_text("#hint") and page.get_attribute('[data-plsym="STD"]', "aria-pressed") == "true")
     click(3750, 600)  # nahe an der rechten Wand: rastet an der Innenfläche ein, zeigt in den Raum
     y = of("sym")[-1]; STD = y["id"]
     check("Steckdose an der Wand: auf der Innenfläche (x 3925), Drehung 90, Standardhöhe (nicht gespeichert)", near(y["at"], [3925, y["at"][1]]) and abs(y["at"][1] - 600) <= 10 and y["r"] == 90 and "h" not in y and y["layer"] == "bg", y)
-    page.click('[data-plsym="LEUCHTE"]'); key("r"); click(2000, 2000)
+    plsym(page, "LEUCHTE"); key("r"); click(2000, 2000)
     y = of("sym")[-1]; LE = y["id"]
     check("Deckenleuchte frei, R dreht beim Setzen um 90°, ohne Höhe", y["key"] == "LEUCHTE" and y["r"] == 90 and "h" not in y and abs(y["at"][0] - 2000) <= 10, y)
-    page.click('[data-plsym="VERWEIS"]'); click(1200, 1800)
+    plsym(page, "VERWEIS"); click(1200, 1800)
     VW = of("sym")[-1]["id"]
-    page.click('[data-plsym="SCH0"]'); click(3000, 300)
+    plsym(page, "SCH0"); click(3000, 300)
     SW = of("sym")[-1]["id"]
     check("Schalter an der unteren Wand (y 75, r 0)", near(item(SW)["at"], [item(SW)["at"][0], 75]) and item(SW)["r"] == 0, item(SW))
     blur(); key("v"); c0 = page.evaluate(f"(() => {{ const i = window.__schemacad.model.items.find((x) => x.id === {STD}); return i.at; }})()")
@@ -211,20 +223,20 @@ with sync_playwright() as p:
     click(2600, 600); click(2600, 1200); click(3300, 1200); key("Enter")
     ln = of("line"); LN = ln[-1]["id"] if ln else None
     check("Leitung mit drei Punkten, Vorgabe Decke, Farbe ohne Feld (blau)", len(ln) == 1 and ln[0]["pts"] == [[2600, 600], [2600, 1200], [3300, 1200]] and ln[0]["kind"] == "decke" and "col" not in ln[0], ln)
-    check("Leitung blau gezeichnet", "#3fbbeb" in page.inner_html("#items"))
+    check("Leitung blau gezeichnet", "#0068c9" in page.inner_html("#items"))
     click(3000, 1600); click(3000, 2200); page.mouse.dblclick(*at(3400, 2200)); page.wait_for_timeout(100)
     check("Doppelklick beendet die zweite Leitung", len(of("line")) == 2 and len(of("line")[-1]["pts"]) == 3, of("line")[-1:])
     key("v"); click(2600, 900)
     check("Leitung wählbar: rechts Verlegeart und Farbe", sel() == [LN] and page.locator('[data-plf="lk"]').count() == 1 and page.locator("[data-plcol]").count() == 9, sel())
     page.select_option('[data-plf="lk"]', "boden"); page.wait_for_timeout(100)
-    page.click('[data-plcol="#ed3f2a"]'); page.wait_for_timeout(100)
-    check("Verlegeart Boden (gestrichelt), Farbe rot", item(LN)["kind"] == "boden" and item(LN).get("col") == "#ed3f2a" and "stroke-dasharray" in page.inner_html("#items"), item(LN))
+    page.click('[data-plcol="#d4141c"]'); page.wait_for_timeout(100)
+    check("Verlegeart Boden (gestrichelt), Farbe rot", item(LN)["kind"] == "boden" and item(LN).get("col") == "#d4141c" and "stroke-dasharray" in page.inner_html("#items"), item(LN))
     page.click('[data-plact="coldef"]'); page.wait_for_timeout(100)
     check("Vorgabe: Farbe wieder ohne Feld", "col" not in item(LN), item(LN))
-    page.keyboard.down("Shift"); click(2000, 2000); page.keyboard.up("Shift")
-    check("Shift-Klick: Leitung und Leuchte gewählt", sorted(sel()) == sorted([LN, LE]) and "2 Objekte" in page.inner_text("#right"), sel())
-    page.click('[data-plcol="#7aba4b"]'); page.wait_for_timeout(100)
-    check("Farbe gemeinsam: beide grün", item(LN).get("col") == "#7aba4b" and item(LE).get("col") == "#7aba4b")
+    page.keyboard.down("Meta"); click(2000, 2000); page.keyboard.up("Meta")
+    check("⌘-Klick: Leitung und Leuchte gewählt", sorted(sel()) == sorted([LN, LE]) and "2 Objekte" in page.inner_text("#right"), sel())
+    page.click('[data-plcol="#22862a"]'); page.wait_for_timeout(100)
+    check("Farbe gemeinsam: beide grün", item(LN).get("col") == "#22862a" and item(LE).get("col") == "#22862a")
     a0 = item(LE)["at"]; drag(2600, 900, 2800, 900)
     check("Ziehen verschiebt beide", item(LE)["at"] == [a0[0] + 200, a0[1]] and item(LN)["pts"][0] == [2800, 600], (item(LE)["at"], item(LN)["pts"][0]))
     page.keyboard.press("Meta+z"); page.wait_for_timeout(100); check("Rückgängig: zurück", item(LN)["pts"][0] == [2600, 600])
@@ -234,7 +246,7 @@ with sync_playwright() as p:
     page.mouse.click(*at(-1500, -1500)); page.wait_for_timeout(60)
     drag(2500, 500, 3450, 1300)
     check("Rahmen wählt die Leitung darin", sel() == [LN], sel())
-    page.click('[data-plact="multi"]'); page.wait_for_timeout(60); click(3000, 2200)
+    page.click('[data-plact="multi"]'); page.wait_for_timeout(60); click(3000, 1650)  # geschwungen: Kurve läuft nicht durch den Eckpunkt, am geraden Anfang klicken
     check("Knopf Mehrfachwahl: Klick fügt hinzu (ohne Shift)", len(sel()) == 2, sel())
     page.click('[data-plact="multi"]'); page.wait_for_timeout(60)
     page.keyboard.press("Meta+a"); page.wait_for_timeout(80); mm = M(); ok_l = {l["id"] for l in mm["layers"] if l["show"] and not l["lock"]}; wl = {i["id"]: i["layer"] for i in mm["items"] if i["type"] == "wall"}
@@ -281,7 +293,7 @@ with sync_playwright() as p:
     page.click("#el-tile-plan [data-elpdf]"); pp = pdf_pages()
     check("Knopf PDF der Plan-Kachel: Plan A3 quer und Stückliste A4 hoch", pp == [(420, 297), (210, 297)], pp)
     pr = page.evaluate("window.__pr")
-    check("Druck: Plan mit Leitung, Symbolen, Plankopf; ohne Nullpunkt und Raster", "pl-print" in pr and "#3fbbeb" in pr and "Stückliste" in pr and "pl-origin" not in pr and "gridpat" not in pr)
+    check("Druck: Plan mit Leitung, Symbolen, Plankopf; ohne Nullpunkt und Raster", "pl-print" in pr and "#0068c9" in pr and "Stückliste" in pr and "pl-origin" not in pr and "gridpat" not in pr)
     check("Linienbreiten des Plans bleiben (Mauer dicker als Mass)", page.evaluate("(() => { const d = document.createElement('div'); d.id = 'printroot'; d.style.display = 'block'; d.innerHTML = window.__pr; document.body.append(d); const w = [...d.querySelectorAll('.pl-print path[stroke-width]')].map((e) => parseFloat(getComputedStyle(e).strokeWidth)); d.remove(); return Math.max(...w) > 3 * Math.min(...w); })()"))
     (OUT / "plan_druck.html").write_text("<!doctype html><meta charset=utf-8><style>svg{display:block;width:420mm;margin:8px;border:1px solid #ccc}</style>" + pr)
     bom = page.evaluate("[...new DOMParser().parseFromString(window.__pr, 'text/html').querySelectorAll('svg')].at(-1).textContent")
@@ -292,7 +304,7 @@ with sync_playwright() as p:
     check("Haken Stückliste aus: Blattfeld bom false", M().get("bom") is False)
     with page.expect_download() as dl: page.click('[data-plact="bomcsv"]')
     csv = Path(dl.value.path()).read_text(encoding="utf-8")
-    check("Stückliste als CSV", csv.startswith("Gruppe;Symbol;Anzahl") and "Steckdosen;Steckdose T13 (Schutzkontakt);" in csv, csv[:120])
+    check("Stückliste als CSV", csv.startswith("Gruppe;Symbol;Anzahl") and "Steckdosen;Steckdose T13 (Schutzkontakt), UP;" in csv, csv[:120])
     page.keyboard.press("Escape"); page.wait_for_timeout(100)
     key("0"); page.wait_for_timeout(200)
     page.click("#el-tile-plan [data-elpdf]"); pp = pdf_pages()
@@ -300,12 +312,12 @@ with sync_playwright() as p:
 
     # ---------- Speichern / Laden ohne Datenverlust ----------
     d1 = D()
-    check("Datei: Version 22 (Plan mit Leitungen und Farben)", d1["version"] == 22, d1["version"])
+    check("Datei: Version 23 (Plan mit geschwungenen Leitungen, Vorgabe seit 26.10.2026)", d1["version"] == 23, d1["version"])
     blur()
     with page.expect_download() as dl: page.keyboard.press("Shift+Meta+s")
     out = OUT / "plan_rundlauf.elplexa.json"; dl.value.save_as(str(out)); page.wait_for_timeout(300)
     raw = json.loads(out.read_text())
-    check("Gespeichert: Version 22, zwei Pläne", raw["version"] == 22 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
+    check("Gespeichert: Version 23, zwei Pläne", raw["version"] == 23 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
     blur()
     with page.expect_file_chooser() as fc:
         page.keyboard.press("Meta+o"); page.wait_for_timeout(300)

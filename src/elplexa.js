@@ -339,10 +339,10 @@ export function crumbHTML(cur, st, name) {
 }
 
 export const keysHTML = () => `<div class="el-keys">${[
-  ["1 2 3 4", "Schema, Disposition, PV, Prinzipschema öffnen (in der Übersicht: die Kachel an dieser Stelle)"], ["0", "Projektübersicht"], ["S", "Übersicht, Kachel gewählt: Modulstatus ändern"], ["⌥ ← →", "Übersicht, Kachel gewählt: Modul nach vorn oder hinten"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
+  ["1 bis 9", "nur in der Projektansicht: das Modul an dieser Stelle öffnen (Kacheln)"], ["0", "Projektübersicht"], ["S", "Übersicht, Kachel gewählt: Modulstatus ändern"], ["⌥ ← →", "Übersicht, Kachel gewählt: Modul nach vorn oder hinten"], ["§", "Seitenleisten aus und ein (Taste links neben der 1)"],
   ["Bild ↑ ↓", "Blatt zurück und vor, innerhalb des Moduls"], ["G", "Liste der Blätter des Moduls (Zeile ziehen oder Alt ↑ ↓ sortiert)"], ["M", "Blatt mit ★ markieren"], ["⇧ Bild ↑ ↓", "zum vorherigen und nächsten ★-Blatt, auch über Module"],
   ["/", "Symbolsuche unten links"], ["⌘ Klick", "zur Auswahl dazu oder wieder ab"], ["⌘ O", "Öffnen"], ["⌘ S", "Speichern"], ["⇧ ⌘ S", "Speichern unter"], ["⌘ F", "Suchen und Ersetzen"], ["Esc", "schliesst Menü oder Fenster, in der Übersicht zurück ins Modul"], ["?", "diese Hilfe"],
-].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im Schema gelten 1 bis 4 beim Setzen eines Geräts oder bei einem gewählten Gerät weiter für die Polzahl.</p>`;
+].map(([k, t]) => `<kbd>${k}</kbd><span>${t}</span>`).join("")}</div><p>Im geöffneten Modul gehören die Zahlen dem Werkzeug, sie wechseln nie das Modul: im Schema die Polzahl (1 bis 4, beim Setzen oder am gewählten Gerät), im Prinzipschema die Striche bzw. Anzahl Leiter, im Plan die Kanalbreite (Werkzeug Kanal) und die Aderzahl (Werkzeug Aderzahl, Taste D, oder an gewählten Aderzahlen).</p>`;
 
 // Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026)
 const fmtDay = (t) => new Date(t).toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });

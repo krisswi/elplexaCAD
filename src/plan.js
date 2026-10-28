@@ -642,6 +642,7 @@ export function symSnaps(it, k) {
   const def = itemDef(it, k), a = (it.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
   const w = ([x, y]) => [r3(it.at[0] + k * (x * co - y * si)), r3(it.at[1] + k * (x * si + y * co))];
   if (def.edge) { const [x0, y0, x1, y1] = def.edge, c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(w); return { pts: [], segs: c.map((p, i) => [p, c[(i + 1) % 4]]) }; }
+  if (def.snap) return { pts: def.snap.map(w), segs: [] };
   if (def.pin) { const [cx, cy, r] = def.pin; return { pts: [[cx, cy + r], [cx + r, cy], [cx, cy - r], [cx - r, cy]].map(w), segs: [] }; }
   return { pts: [symCenter(it, k)], segs: [] };
 }
@@ -664,7 +665,7 @@ export function itemDef(it, k, tf = 1) {
   const d = def.ref ? { ...def, parts: refParts(it, tf) } : !z ? def : (({ w, t }, r) => ({ ...def, parts: def.size.parts(w / k, (t ?? 0) / k), c: def.wall ? [0, r((t ?? 0) / k / 2)] : [0, 0], r: r(Math.max(1, Math.hypot(w / k / 2, (t ?? 0) / k / 2))) }))(z, (n) => Math.round(n * 1000) / 1000);
   return it.m ? mirDef(d) : d;
 }
-const mirDef = (d) => ({ ...d, parts: d.parts.map(mirPart), ap: d.ap && mirPart(d.ap), c: [-d.c[0] + 0, d.c[1]], pin: d.pin && [-d.pin[0] + 0, d.pin[1], d.pin[2]], edge: d.edge && [-d.edge[2] + 0, d.edge[1], -d.edge[0] + 0, d.edge[3]] });
+const mirDef = (d) => ({ ...d, parts: d.parts.map(mirPart), ap: d.ap && mirPart(d.ap), c: [-d.c[0] + 0, d.c[1]], pin: d.pin && [-d.pin[0] + 0, d.pin[1], d.pin[2]], edge: d.edge && [-d.edge[2] + 0, d.edge[1], -d.edge[0] + 0, d.edge[3]], snap: d.snap && d.snap.map(([x, y]) => [-x + 0, y]) });
 // Ein Teil spiegeln: Linie, Kreis, Text (Ort wandert, Schrift bleibt lesbar), Pfad (x-Werte negiert, Bogen läuft andersherum)
 function mirPart(q) {
   if (q[0] === "l") return ["l", -q[1] + 0, q[2], -q[3] + 0, q[4]];

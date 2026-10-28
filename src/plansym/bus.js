@@ -2,11 +2,11 @@
 // Selbst gezeichnet nach der Symbolzusammenfassung (IEC 60617), Format und Masse siehe plansym.js. Farbe wie Kommunikation (gleiche Kategorie).
 import { L, C, T, S, box, tri } from "./teile.js";
 
-// ---------- BUS-Taster: Querstrich an der Wand, Stiel, Kasten zum Raum; 2-fach senkrecht geteilt, 4-fach zusätzlich waagrecht ----------
-// LED: gefülltes Dreieck in der Ecke links zum Raum wie die Quelle
-const BT = (n, led) => [L(-0.7, 0, 0.7, 0), L(0, 0, 0, 1.4), ...box(-1.2, 1.4, 1.2, 3.8),
-  ...(n > 1 ? [L(0, 1.4, 0, 3.8)] : []), ...(n > 2 ? [L(-1.2, 2.6, 1.2, 2.6)] : []), ...(led ? [tri([-1.2, 3.8], [-1.2, 2.8], [-0.2, 3.8], true)] : [])];
-const BTO = { wall: true, h: 110, c: [0, 2.6], r: 2.2, edge: [-1.2, 1.4, 1.2, 3.8] };
+// ---------- BUS-Taster: Kasten an der Wand, Stiel mit Querstrich zur Seite (CJ 28.10.2026: um 90° gedreht wie die Schalter-Fähnchen) ----------
+// Quelle um 90° gedreht: 2-fach waagrecht geteilt, 4-fach zusätzlich senkrecht, LED-Dreieck in der Ecke gegenüber dem Stiel zur Wand. S spiegelt (Stiel links).
+const BT = (n, led) => [...box(-1.2, 0.7, 1.2, 3.1), L(1.2, 1.9, 2.6, 1.9), L(2.6, 1.2, 2.6, 2.6),
+  ...(n > 1 ? [L(-1.2, 1.9, 1.2, 1.9)] : []), ...(n > 2 ? [L(0, 0.7, 0, 3.1)] : []), ...(led ? [tri([-1.2, 0.7], [-0.2, 0.7], [-1.2, 1.7], true)] : [])];
+const BTO = { wall: true, h: 110, c: [0.7, 1.9], r: 2.3, edge: [-1.2, 0.7, 1.2, 3.1] };
 // Empfang (IR, Funk): Pfeilspitze in den Kasten, zwei Wellen davor
 const RX = (x) => [tri([x - 0.75, 0.3], [x - 0.75, -0.3], [x - 0.25, 0], true), ["p", `M${x - 1},0.4A0.55 0.55 0 0 1 ${x - 1},-0.4`, false], ["p", `M${x - 1.3},0.55A0.75 0.75 0 0 1 ${x - 1.3},-0.55`, false]];
 

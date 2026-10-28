@@ -113,7 +113,7 @@ with sync_playwright() as p:
     r = R()
     check("Farbe rot, Füllung gelb, 0,7 mm, gestrichelt", [r.get("col"), r.get("fill"), r.get("lw"), r.get("d")] == ["#d4141c", "#c9a800", 0.7, True], r)
     svg = page.evaluate("document.querySelector('#svg').innerHTML")
-    check("Darstellung: Füllung und Strich im Plan", 'fill="#c9a800"' in svg and "stroke-dasharray" in svg)
+    check("Darstellung: Füllung halbtransparent und Strich im Plan", 'fill="#c9a800" fill-opacity="0.35"' in svg and "stroke-dasharray" in svg)
     click(-1500, 1000)
     check("Gefüllt: Klick innen wählt", sel() == [rid])
     page.fill('[data-plf="sw"]', "2500"); page.press('[data-plf="sw"]', "Enter"); page.wait_for_timeout(80)

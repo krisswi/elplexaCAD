@@ -357,8 +357,9 @@ export function makePlan(c) {
     return s;
   }
   // Form (CJ 27.10.2026): Strich lw in Papier-mm × Massstab, gestrichelt wie die Leitung «in Boden», Füllung unter dem Strich. stroke: eine Farbe ohne Füllung (Wahl, Vorschau).
+  // Füllung halbtransparent (CJ 28.10.2026, Plan Runde 3): Grundriss und Symbole darunter bleiben sichtbar
   function shapeSVG(it, k, stroke) {
-    const base = `stroke="${stroke ?? P.colOf(it)}" stroke-width="${f((it.lw ?? P.SHAPE_LW) * k)}" stroke-linecap="round" stroke-linejoin="round" fill="${!stroke && it.fill ? it.fill : "none"}"${it.d ? ` stroke-dasharray="${f(3 * k)} ${f(1.5 * k)}"` : ""}`;
+    const base = `stroke="${stroke ?? P.colOf(it)}" stroke-width="${f((it.lw ?? P.SHAPE_LW) * k)}" stroke-linecap="round" stroke-linejoin="round" fill="${!stroke && it.fill ? `${it.fill}" fill-opacity="0.35` : "none"}"${it.d ? ` stroke-dasharray="${f(3 * k)} ${f(1.5 * k)}"` : ""}`;
     if (it.k === "line") return `<line x1="${f(it.pts[0][0])}" y1="${f(it.pts[0][1])}" x2="${f(it.pts[1][0])}" y2="${f(it.pts[1][1])}" ${base}/>`;
     if (it.k === "rect") return `<rect x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" ${base}/>`;
     return `<circle cx="${f(it.x)}" cy="${f(it.y)}" r="${f(it.r)}" ${base}/>`;

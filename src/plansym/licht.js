@@ -55,7 +55,7 @@ export const LICHT = /* @__PURE__ */ (() => [
   S("NOTL", "Notleuchte", "licht", "Notlicht", [tri([-1.3, 0.8], [-1.3, -0.8], [0, 0], true), tri([1.3, 0.8], [1.3, -0.8], [0, 0], true)], { r: 1.6 }),
   ...[[false, false, false], [false, true, false], [true, false, false], [true, true, false], [false, false, true], [false, true, true], [true, false, true], [true, true, true]]
     .map(([w, i, t]) => S(`NOTL${i ? "_EB" : ""}${w ? "_W" : "_D"}${t ? "_TR" : ""}`.replace("_EB_W", "_WEB").replace("_EB_D", "_EB"), `Notleuchte ${i ? "in" : "an"} ${w ? "Wand" : "Decke"}${t ? " mit Trafo" : ""}`, "licht", "Notlicht", notl(w, i, t), spotO(w, t))),
-  S("NOTHAND", "Nothandleuchte", "licht", "Notlicht", [...X(-1.8, 0, 0.9), ["p", "M-1.3,0.9A1.3 1.3 0 0 1 -1.3,-0.9", false], wave(-0.6, 1.6), ["p", "M1.6,-0.3h0.8v0.6h-0.8Z", true]], { r: 2.8 }),
+  S("NOTHAND", "Nothandleuchte", "licht", "Notlicht", [...X(-1.8, 0, 0.9), tri([-2.35, 0.55], [-2.35, -0.55], [-1.55, 0], true), wave(-1.4, 1.2), L(1.2, 0, 1.6, 0), ["p", "M1.6,-0.25h0.7v0.5h-0.7Z", true]], { r: 2.8 }),
   S("BEREIT", "Bereitschaftsschaltung", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), L(-1.2, -1.8, 1.2, 1.8), L(-1.2, 1.8, 1.2, -1.8)], { r: 2.2 }),
   S("DAUER_S", "Dauerlicht geschaltet", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), L(-1.2, -1.8, 1.2, 1.8), L(-1.2, 1.8, 1.2, -1.8), tri([-1.2, -1.8], [1.2, -1.8], [0, 0], true)], { r: 2.2 }),
   S("DAUER", "Dauerlicht", "licht", "Notlicht", [...box(-1.2, -1.8, 1.2, 1.8), tri([-1.2, -1.8], [1.2, -1.8], [0, 0], true), tri([-1.2, 1.8], [1.2, 1.8], [0, 0], true)], { r: 2.2 }),

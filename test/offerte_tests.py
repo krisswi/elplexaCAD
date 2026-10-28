@@ -20,7 +20,9 @@ def flow(page, tag):
     check(f"{tag}: Offerte offen, Zeichenfläche weg", page.evaluate("window.__schemacad.kind") == "offerte" and page.is_visible("#of-view") and not page.is_visible("#svg"))
     check(f"{tag}: nichts angelegt: Gliederung offen, BKP zu", page.get_attribute('[data-area="gl"]', "aria-expanded") == "true" and page.get_attribute('[data-area="bkp"]', "aria-expanded") == "false")
     page.click('[data-ofact="knsel"][data-n="0"]'); page.wait_for_timeout(100)  # ohne Gliederung: ganze Offerte
-    check(f"{tag}: Klick auf «Ganze Offerte»: Gliederung zu, BKP auf", page.get_attribute('[data-area="gl"]', "aria-expanded") == "false" and page.is_visible('[data-ofact="addkap"][data-bkp="232.51"]'))
+    check(f"{tag}: Klick auf «Ganze Offerte»: Gliederung bleibt offen", page.get_attribute('[data-area="gl"]', "aria-expanded") == "true")
+    page.click('[data-ofact="area"][data-area="bkp"]'); page.wait_for_timeout(100)  # Navigation klappt nicht mehr um (e47d958): BKP von Hand öffnen
+    check(f"{tag}: BKP-Katalog offen", page.is_visible('[data-ofact="addkap"][data-bkp="232.51"]'))
     page.click('[data-ofact="addkap"][data-bkp="232.51"]'); page.wait_for_timeout(100)
     check(f"{tag}: Kapitel 232.51 mit Titel aus dem BKP", page.input_value('.of-kh .of-kt') == "Lichtinstallationen allgemein")
     page.keyboard.type("Küche"); page.keyboard.press("Tab")
@@ -90,7 +92,7 @@ def flow(page, tag):
     if tag == "v3":
         strip = lambda s: __import__("re").sub(r"<[^>]+>", " ", s)
         a, b = (strip(x) for x in cap) if len(cap) == 2 else ("", "")
-        check(f"{tag}: PDF mit Preisen: Kopf, Kapitelsumme, Schluss, Firma", all(x in a for x in ["Offerte", "Muster Elektro", "Total Lichtinstallationen allgemein BKP 232", "Schlusszusammenstellung", "Seite 1 von 1"]), a[:300])
+        check(f"{tag}: PDF mit Preisen: Kopf, Kapitelsumme, Schluss, Firma", all(x in a for x in ["Offerte", "Muster Elektro", "Total Lichtinstallationen allgemein BKP 232", "Schlusszusammenstellung", "Seite 1 von 2"]) and a.index("Schlusszusammenstellung") < a.index("Total Lichtinstallationen allgemein"), a[:300])
         check(f"{tag}: PDF ohne Preise ohne Beträge", "(ohne Preise)" in b and "Betrag" not in b and "175.41" not in b and "Schlusszusammenstellung" not in b, b[:300])
         check(f"{tag}: PDF ohne EK und Zeit", not any(x in a + b for x in ["9.99", "0.77"]))
     else:
@@ -107,13 +109,15 @@ def flow(page, tag):
     page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(100)
     page.click("#sheetbar [data-ofkap]"); page.wait_for_timeout(200)
     items = page.locator("#of-menu [data-ofm]").all_inner_texts()
-    check(f"{tag}: Kapitelliste mit Schlusszusammenstellung", len(items) == 3 and "BKP 236" in items[1] and items[2] == "Schlusszusammenstellung", items)
-    page.click('#of-menu [data-ofm="k:2"]'); page.wait_for_timeout(200)
+    check(f"{tag}: Kapitelliste mit Schlusszusammenstellung", len(items) == 3 and items[0] == "Schlusszusammenstellung" and "BKP 236" in items[2], items)
+    page.click('#of-menu [data-ofm="k:0"]'); page.wait_for_timeout(200)
     check(f"{tag}: Sprung zur Schlusszusammenstellung", page.evaluate("(() => { const v = document.querySelector('#of-view'), e = document.querySelector('.of-end'); return Math.abs(e.getBoundingClientRect().top - v.getBoundingClientRect().top - 8) < 3 || v.scrollTop + v.clientHeight >= v.scrollHeight - 2; })()"))
     if tag == "elplexa":
         check(f"{tag}: Leiste zeigt das Kapitel", "von 3" in page.inner_text("#sheetbar"), page.inner_text("#sheetbar"))
+        page.click('#sheetbar [data-ofstep="1"]'); page.wait_for_timeout(200)
+        check(f"{tag}: › springt zum ersten Kapitel nach der Zusammenstellung", "BKP 232.51" in page.inner_text("#sheetbar") and "2 von 3" in page.inner_text("#sheetbar"), page.inner_text("#sheetbar"))
         page.click('#sheetbar [data-ofstep="-1"]'); page.wait_for_timeout(200)
-        check(f"{tag}: ‹ springt ein Kapitel zurück", "BKP 236" in page.inner_text("#sheetbar") and "2 von 3" in page.inner_text("#sheetbar"), page.inner_text("#sheetbar"))
+        check(f"{tag}: ‹ springt zurück zur Zusammenstellung", "Schlusszusammenstellung" in page.inner_text("#sheetbar") and "1 von 3" in page.inner_text("#sheetbar"), page.inner_text("#sheetbar"))
     else: check(f"{tag}: v3 blättert weiter durch die Blätter", page.locator('#sheetbar [data-step="-1"]').count() == 1 and page.locator("#sheetbar .of-kapbtn").count() == 1)
     n0 = len([x for x in D()["sheets"] if x.get("kind") == "offerte"])
     page.click("#sheetbar [data-ofplus]"); page.wait_for_timeout(150); page.click('#of-menu [data-ofm="var"]'); page.wait_for_timeout(300)
@@ -162,10 +166,10 @@ def flow(page, tag):
     page.evaluate("document.querySelector('#of-view').scrollTop = 0"); page.wait_for_timeout(100)
     page.click("#sheetbar [data-ofkap]"); page.wait_for_timeout(200)
     items = page.locator("#of-menu [data-ofm]").all_inner_texts()
-    check(f"{tag}: Blattleiste: Kapitel des Knotens", len(items) == 2 and "BKP 236" in items[0] and items[1] == "Schlusszusammenstellung", items)
+    check(f"{tag}: Blattleiste: Kapitel des Knotens", len(items) == 2 and items[0] == "Schlusszusammenstellung" and "BKP 236" in items[1], items)
     page.keyboard.press("Escape")
     end = page.inner_text(".of-end")
-    check(f"{tag}: Schlusszusammenstellung mit Summe je Knoten", "Wohnung 1 [RGL]" in end, end[:300])
+    check(f"{tag}: Schlusszusammenstellung nach BKP und nach Ort, Knoten ohne Betrag (Wohnung 1) weggelassen", "Nach BKP" in end and "Nach Ort" in end and "Wohnung 1" not in end and "232.51" in end, end[:300])
     page.screenshot(path=str(OUT / f"{tag}.png"))
 
 with sync_playwright() as p:

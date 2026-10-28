@@ -85,6 +85,7 @@ export const knArt = (n) => n.art || "rgl";
 export const knFind = (of, id) => (id ? of.kn.find((n) => n.id === id) : undefined);
 export const knKids = (of, id = 0) => of.kn.filter((n) => (n.up || 0) === id);
 export const knLabel = (n) => `${n.titel || "Ohne Titel"} [${GL_KURZ[knArt(n)]}]`;
+export const knTitel = (n) => n.titel || "Ohne Titel"; // gedruckt ohne Kürzel (NGL, ET …)
 // Weg von oben bis zum Knoten (Haus A › 1. OG › Wohnzimmer)
 export function knPath(of, id) { const out = []; for (let n = knFind(of, id); n && out.length <= of.kn.length; n = knFind(of, n.up)) out.unshift(n); return out; }
 // IDs des Knotens und aller Knoten darunter
@@ -203,20 +204,55 @@ export const totalLabel = (of) => (of.mwst ? "Total inkl. MwSt" : "Total ohne Mw
 export function summaryRows(of, t = totals(of)) {
   const rows = [];
   for (const e of outline(of)) {
-    if (e.t === "kn") rows.push({ art: "kn", id: e.n.id, lv: e.lv, text: knLabel(e.n), betrag: t.kn.get(e.n.id) || 0 });
+    if (e.t === "kn") rows.push({ art: "kn", id: e.n.id, lv: e.lv, text: knTitel(e.n), betrag: t.kn.get(e.n.id) || 0 });
     else if (e.t === "kap") rows.push({ art: "kap", id: e.k.id, lv: e.lv, text: e.k.bkp ? `BKP ${e.k.bkp} ${e.k.titel}`.trim() : e.k.titel || "Ohne BKP", betrag: t.kapSum.get(e.k.id) || 0 });
   }
-  rows.push({ art: "zs", text: "Zwischensumme", betrag: t.zwischensumme });
+  rows.push(...closingRows(of, t));
+  return { rows, notes: summaryNotes(t) };
+}
+// Abschluss der Zusammenstellung: Zwischensumme, Rabatt, MwSt, Rundung, Total
+function closingRows(of, t) {
+  const rows = [{ art: "zs", text: "Zwischensumme", betrag: t.zwischensumme }];
   for (const r of t.rabatt) rows.push({ art: "rab", text: `Rabatt${r.kz || r.name ? ` ${[r.kz, r.name].filter(Boolean).join(" ")}` : ""} ${fmtNum(r.satz)} % auf ${fmtChf(r.basis)}`, betrag: -r.betrag, satz: r.satz, basis: r.basis });
   if (t.rabatt.length) rows.push({ art: "netto", text: "Total nach Rabatt", betrag: t.netto });
   if (of.mwst) rows.push({ art: "mwst", text: `MwSt ${fmtNum(of.mwst)} %`, betrag: t.mwst });
   const c = (x) => Math.round(x * 100), rd = c(t.total) - c(t.netto) - c(t.mwst); // Rundung auf 5 Rappen, damit die Zeilen sichtbar aufgehen
   if (rd) rows.push({ art: "rund", text: "Rundung", betrag: rd / 100 });
   rows.push({ art: "total", text: totalLabel(of), betrag: t.total });
+  return rows;
+}
+function summaryNotes(t) {
   const notes = [];
   if (t.skonto) notes.push(`Skonto ${fmtNum(t.skonto.satz)} %${t.skonto.tage ? ` bei Zahlung innert ${t.skonto.tage} Tagen` : ""}: CHF ${fmtChf(t.skonto.betrag)}`);
   if (t.optionen) notes.push(`Optionen (nicht in der Angebotssumme): CHF ${fmtChf(t.optionen)}`);
-  return { rows, notes };
+  return notes;
+}
+
+// Schlusszusammenstellung in zwei Teilen (CJ 27.10.2026, Vorlage NPK-Offerte): (bkp) alle Kapitel mit gleicher BKP-Nummer zusammengezählt, als Baum
+// 23 › 231 › 231.2 › 231.21 mit Summe je Stufe; (ort) die Gliederung nach Ort wie summaryRows, nur wenn es eine Gliederung gibt. Beide enden mit denselben
+// Zeilen Zwischensumme … Total. Nullzeilen fallen weg.
+const bkpUp = (nr) => { const m = nr.replace(/\.$/, ""); return m.includes(".") ? m.slice(0, -1).replace(/\.$/, "") : m.length > 2 ? m.slice(0, -1) : ""; }; // 232.51 → 232.5 → 232 → 23
+export function bkpRows(of, t = totals(of)) {
+  const sum = new Map(), title = new Map(), kids = new Map(), cents = (x) => Math.round(x * 100);
+  const link = (nr) => { if (kids.has(nr)) return; kids.set(nr, []); const up = bkpUp(nr); if (up) { link(up); kids.get(up).push(nr); } };
+  let rest = 0;
+  for (const k of kapOrder(of)) {
+    const b = t.kapSum.get(k.id) || 0, nr = String(k.bkp || "").trim();
+    if (!/^\d{2,3}(\.\d{1,2})?$/.test(nr)) { rest += b; continue; } // ohne gültige BKP-Nummer: am Ende unter «Ohne BKP»
+    if (!title.has(nr)) title.set(nr, bkpTitle(nr) || k.titel || "");
+    for (let n = nr; n; n = bkpUp(n)) { link(n); sum.set(n, (sum.get(n) || 0) + b); if (!title.has(n)) title.set(n, bkpTitle(n)); }
+  }
+  const rows = [], walk = (nr, lv) => {
+    if (cents(sum.get(nr) || 0)) rows.push({ art: "bkp", id: nr, lv, text: `${nr} ${title.get(nr) || ""}`.trim(), betrag: sum.get(nr) });
+    for (const c of kids.get(nr).sort()) walk(c, lv + 1);
+  };
+  for (const nr of [...kids.keys()].filter((n) => !bkpUp(n)).sort()) walk(nr, 0);
+  if (cents(rest)) rows.push({ art: "bkp", id: "", lv: 0, text: "Ohne BKP", betrag: rest });
+  return rows;
+}
+export function summaryParts(of, t = totals(of)) {
+  const { rows } = summaryRows(of, t), cl = closingRows(of, t), keep = (r) => !["kn", "kap"].includes(r.art) || Math.round(r.betrag * 100) !== 0;
+  return { bkp: [...bkpRows(of, t), ...cl], ort: of.kn.length ? rows.filter(keep) : null, notes: summaryNotes(t) };
 }
 // Betrag mit Vorzeichen für die Anzeige: − 12.50
 export const fmtSigned = (x) => (Math.round(x * 100) < 0 ? `− ${fmtChf(-x)}` : fmtChf(x));

@@ -39,12 +39,16 @@ import { userStore, posStore, cloudMenu, cloudUser, cloudSignIn, cloudOnSession,
 import * as N from "./notizen.js";
 import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
+import { makeZeit, elDay } from "./elzeit.js";
+import { makeTeilen } from "./elteilen.js";
+import { makeOnline } from "./elonline.js";
+import { makeHub } from "./elhub.js";
 import * as DF from "./dateien.js";
 import { MAX_FOLDERS } from "./model.js";
 import { openHand } from "./hand.js";
 import { makePdf } from "./pdfout.js";
 import { SHAPE_TOOLS, SHAPE_KINDS, shapeTool, shapeFrom, shapeEmpty, shapeHandles, dragShapeHandle, shapeSVG, COLORS } from "./formen.js";
-import { fetchGwr, searchAdr, adrText } from "./gwr.js";
+import { adrText } from "./gwr.js";
 import * as PZ from "./prinzip.js";
 import { setRemote } from "./ablage.js";
 import * as PD from "./positionen.js";
@@ -2639,13 +2643,6 @@ function elNavTo(k) {
   elHub(true, { keepFocus: true, tab: k }); // tab: auch aus dem Modul direkt in diesen Bereich if (EL_S.hub.contains(document.activeElement)) { /* Fokus bleibt */ } else document.getElementById(k === "zeit" ? "el-tab-zeit" : "el-nav-projekte")?.focus();
   if (reload) elOnlineList();
 }
-// Stunden heute: im Tab Zeit über alle geladenen Projekte, sonst für das offene Projekt
-function elTodayH(all) {
-  const today = elDay(Date.now()), sum = (t) => (Array.isArray(t) ? t : []).filter((e) => e.d === today).reduce((a, e) => a + (Number(e.h) || 0), 0);
-  if (!all) return Math.round(sum(S.doc.project?.time) * 100) / 100;
-  const on = S.doc.project?.online?.id, rows = (EL_S.onlist || []).filter((e) => e.id !== on);
-  return Math.round((sum(S.doc.project?.time) + rows.reduce((a, e) => a + sum(e.pt), 0)) * 100) / 100;
-}
 // Zeile 2 nachführen: Tabs, Handy-Knopf, Navigation, Tages-Chip, welche Teile sichtbar sind
 function elBarSync() {
   const hub = EL_S.hub && !EL_S.hub.hidden, zeit = hub && EL_S.tab === "zeit", tabs = elTabList(), cur = tabs.find((t) => t.on);
@@ -2797,259 +2794,15 @@ function elInit() {
   elZeitInit(); elSync(); elHub(true, S.shared ? {} : { tab: "projekte" }); // Start: Liste «Projekte» (CJ 27.10.2026), geteilte Ansicht: das Projekt
   if (S.shared) elShareLoad();
 }
-// Übersicht zeigen (show) oder schliessen; beim Schliessen bleibt das zuletzt offene Modul. keepFocus: neu zeichnen, Fokus bleibt
-function elHub(show, { keepFocus = false, tab = null } = {}) {
-  if (!show && S.shared && !EL_S.shareInfo) return; // geteilte Ansicht: Übersicht bleibt, bis das Projekt geladen ist
-  const h = EL_S.hub, f = keepFocus && document.activeElement?.closest?.("#el-hub") ? (document.activeElement.id ? "#" + document.activeElement.id : document.activeElement.dataset.elp ? `[data-elp="${document.activeElement.dataset.elp}"]` : document.activeElement.dataset.elf ? `[data-elf="${document.activeElement.dataset.elf}"]` : document.activeElement.dataset.elview ? `[data-elview="${document.activeElement.dataset.elview}"]` : null) : null;
-  if (show) {
-    if (EL_S.hub.hidden) { EL_S.tab = "projekte"; EL_S.pview = true; } // aus dem Modul zurück: das offene Projekt
-    if (tab) { EL_S.tab = tab; if (tab === "projekte") EL_S.pview = false; }
-    finishWire(); closeEditor(true); elZeitPause(); // in der Übersicht läuft keine Zeit
-    const today = elDay(Date.now());
-    const file = S.fileHandle?.name || "", suggest = `${baseName()}.elplexa.json`;
-    const gd = h.querySelector("#el-gwr"); if (gd) EL_S.gwrOpen = gd.open; // GWR-Feld bleibt beim Neuzeichnen offen oder zu
-    h.innerHTML = S.shared && !EL_S.shareInfo ? (EL_S.shareFail ? E.shareFailHTML(EL_S.shareFail.grund, EL_S.shareFail.msg) : E.shareLoadHTML())
-      : E.hubHTML(S.doc, { name: elName(), file, suggest, today, label: sheetLabel, shared: S.shared ? EL_S.shareInfo : null, gwrOpen: !!EL_S.gwrOpen, gwrBusy: !!EL_S.gwrBusy, tip: elTipOn(), tab: EL_S.tab, pview: EL_S.pview, showArch: !!EL_S.showArch, fFolder: EL_S.fFolder, curT: elCurT, profil: { user: cloudUser(), busy: EL_S.pfBusy, msg: EL_S.pfMsg, mail: EL_S.pfMail, pw: EL_S.pfPw, locked: elLocked() }, zeit: elZeitData(), projs: { recent: EL_S.recent, online: EL_S.onlist ?? null, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, ...EL_S.pf, sel: EL_S.sel, order: elProjOrder() } });
-    for (const el of h.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
-    E.recentList().then((l) => {
-      const key = (x) => JSON.stringify((x || []).map((e) => [e.file, e.t])), changed = key(EL_S.recent) !== key(l);
-      if (changed) EL_S.sel?.clear(); // Plätze in der Liste haben sich geändert
-      EL_S.recent = l; const r = h.querySelector("#el-recent"); if (r) r.innerHTML = E.recentHTML(l);
-      if (changed && EL_S.tab === "projekte" && !EL_S.pview && !EL_S.hub.hidden) elHub(true, { keepFocus: true }); // Kacheln mit den geladenen Einträgen
-    });
-    elOnlineDraw();
-    if (elTabLive() && EL_S.tab !== "profil" && !S.shared && cloudUser() && EL_S.onlist == null && !EL_S.onbusy && !EL_S.autoTried) { EL_S.autoTried = true; elOnlineList(); } // einmal je Anmeldung automatisch laden
-  }
-  h.hidden = !show; document.body.classList.toggle("el-hubopen", show);
-  elBarSync(); // Zeile 2: Tabs, Chip, sichtbare Teile je Ansicht (data-elbar)
-  $("#btn-new").title = show ? "Neues Projekt anlegen" : "Neues Dokument: Schema, Disposition oder Stringplan";
-  $("#el-crumb").innerHTML = show ? `<span class="el-hubtitle">Projektübersicht</span>${E.statusPill(E.statusOf(S.doc))}` : E.crumbHTML(elMod(), E.statusOf(S.doc), modName(S.doc, elMod()));
-  if (f) h.querySelector(f)?.focus(); else if (keepFocus) { /* Fokus nicht auf eine Kachel springen lassen */ } else if (show) h.querySelector(".el-tile")?.focus(); else svg.focus();
-}
-// Projektname: in der Datei (doc.project.name), alte Dateien ohne Namen nehmen den Dateinamen
-const elName = () => S.doc.project?.name || S.fileName;
-const elProj = () => (S.doc.project ||= {});
-// Feld der Übersicht ändern: Name, Status oder Projektdaten. Projektdaten gehen in die Schriftfelder aller Blätter
-// (und in doc.project.meta für neue Blätter), Bauherr auf die Titelseite. Ein Rückgängig-Schritt.
-function elSetProject(k, v) {
-  v = v.trim();
-  if (k === "name" && !v) { elHub(true, { keepFocus: true }); return; } // leerer Name: alter bleibt
-  change(() => {
-    const p = elProj();
-    if (k === "name") p.name = v;
-    else if (k === "status") p.status = v;
-    else if (k.startsWith("adr:")) { const a = (p.adr ||= {}); if (v) a[k.slice(4)] = v; else delete a[k.slice(4)]; if (!Object.keys(a).length) delete p.adr; }
-    else if (k.startsWith("BAUHERR")) { const info = E.bauherrInfo(S.doc) || (S.doc.info = cleanInfo({})); info[k] = v; } // Bauherr, E-Mail, Telefon
-    else { (p.meta ||= {})[k] = v; for (const sh of S.doc.sheets) sh.meta[k] = v; }
-  }, { panel: false });
-  setProjectMeta(S.doc.project?.meta);
-  if (k === "name" && !S.fileHandle) setFileName(v); // noch ohne Datei: Kopf zeigt den Projektnamen
-  elHub(true, { keepFocus: true });
-}
-// GWR abrufen (CJ 19.10.2026, gwr.js): ersetzt project.gwr, füllt leere PLZ/Ort
-async function elGwr() {
-  if (EL_S.gwrBusy) return;
-  EL_S.gwrBusy = true; EL_S.gwrOpen = true; elHub(true, { keepFocus: true });
-  try {
-    const doc = S.doc, r = await fetchGwr(doc.project?.adr);
-    if (S.doc !== doc) return; // inzwischen anderes Projekt geöffnet
-    change(() => { const p = elProj(); p.adr = r.adr; p.gwr = r.gwr; }, { panel: false });
-    toast(`GWR abgerufen: EGID ${r.gwr.egid}.`);
-  } catch (err) { toast(err.message, "error"); }
-  finally { EL_S.gwrBusy = false; if (!EL_S.hub.hidden) elHub(true, { keepFocus: true }); }
-}
-// Adresssuche beim Tippen (CJ 19.10.2026): im Feld Strasse tippen (ab 3 Zeichen), Vorschläge darunter. Pfeiltasten und Enter oder Klick wählen,
-// Esc schliesst. Die Auswahl füllt Strasse, Nr., PLZ, Ort und holt gleich das GWR. Ältere Antworten werden verworfen (seq).
-const ADR = { list: null, items: [], i: -1, seq: 0, timer: 0, input: null };
-function adrInit(hub) {
-  const l = document.createElement("div");
-  l.id = "el-adrlist"; l.className = "menu instant el-adrlist"; l.setAttribute("role", "listbox"); l.setAttribute("aria-label", "Adressvorschläge"); l.hidden = true;
-  $("#app").append(l); ADR.list = l;
-  l.addEventListener("mousedown", (e) => { e.preventDefault(); const o = e.target.closest("[data-adr]"); if (o) adrPick(Number(o.dataset.adr)); }); // Fokus bleibt im Feld
-  hub.addEventListener("input", (e) => { if (e.target.dataset?.elp === "adr:str") adrQuery(e.target); });
-  hub.addEventListener("focusout", (e) => { if (e.target === ADR.input) adrClose(); });
-  hub.addEventListener("scroll", adrClose, { passive: true });
-  hub.addEventListener("keydown", (e) => {
-    if (e.target !== ADR.input || l.hidden) return;
-    const n = ADR.items.length;
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); if (n) adrMark(e.key === "ArrowDown" ? (ADR.i + 1) % n : ADR.i <= 0 ? n - 1 : ADR.i - 1); }
-    else if (e.key === "Enter" && n) { e.preventDefault(); e.stopPropagation(); adrPick(Math.max(0, ADR.i)); } // Enter ohne Auswahl nimmt den ersten Vorschlag
-    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); adrClose(); }
-  }, true);
-}
-function adrQuery(input) {
-  ADR.input = input; clearTimeout(ADR.timer);
-  const q = input.value.trim();
-  if (q.length < 3) { ADR.seq++; adrClose(); return; }
-  ADR.timer = setTimeout(async () => {
-    const seq = ++ADR.seq;
-    let r;
-    try { r = await searchAdr(q); } catch { r = null; }
-    if (seq !== ADR.seq || document.activeElement !== input) return;
-    adrShow(r);
-  }, 200);
-}
-function adrShow(r) {
-  const l = ADR.list, inp = ADR.input;
-  ADR.items = r || []; ADR.i = -1;
-  l.innerHTML = r === null ? `<p class="el-adrnone">Suche nicht erreichbar. Adresse von Hand eingeben.</p>` : !r.length ? `<p class="el-adrnone">Keine Adresse gefunden.</p>`
-    : r.map((a, k) => `<button class="mi" role="option" id="el-adr-${k}" data-adr="${k}" tabindex="-1" aria-selected="false"><span class="mt"><span class="mh">${R.esc([a.str, a.nr].filter(Boolean).join(" "))}</span><span class="ms">${R.esc([a.plz, a.ort].filter(Boolean).join(" "))}</span></span></button>`).join("");
-  const row = inp.closest(".el-row").getBoundingClientRect();
-  Object.assign(l.style, { left: `${row.left}px`, top: `${row.bottom + 4}px`, width: `${row.width}px` });
-  l.hidden = false; inp.setAttribute("aria-expanded", "true"); inp.removeAttribute("aria-activedescendant");
-}
-function adrMark(i) {
-  ADR.i = i;
-  ADR.list.querySelectorAll("[data-adr]").forEach((b, k) => b.setAttribute("aria-selected", String(k === ADR.i)));
-  const o = ADR.i >= 0 ? $(`#el-adr-${ADR.i}`) : null;
-  if (o) { ADR.input.setAttribute("aria-activedescendant", o.id); o.scrollIntoView({ block: "nearest" }); } else ADR.input.removeAttribute("aria-activedescendant");
-}
-function adrClose() {
-  clearTimeout(ADR.timer);
-  if (!ADR.list || ADR.list.hidden) return;
-  ADR.list.hidden = true; ADR.items = []; ADR.i = -1;
-  ADR.input?.setAttribute("aria-expanded", "false"); ADR.input?.removeAttribute("aria-activedescendant");
-}
-function adrPick(k) {
-  const a = ADR.items[k];
-  if (!a) return;
-  adrClose(); ADR.seq++;
-  ADR.input.value = a.str; ADR.input.blur(); // übernimmt die Strasse statt des Suchworts (change), bevor neu gezeichnet wird
-  const adr = Object.fromEntries(Object.entries(a).filter(([, v]) => v));
-  change(() => { elProj().adr = adr; }, { panel: false });
-  elHub(true);
-  $('#el-hub [data-elp="adr:str"]')?.focus();
-  elGwr();
-}
-function elTimeAdd() {
-  const d = $("#el-td").value, h = Number($("#el-th").value.trim().replace(",", ".")), n = $("#el-tn").value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { toast("Bitte ein Datum wählen.", "error"); return; }
-  if (!(h > 0 && h <= 24)) { toast("Stunden zwischen 0 und 24 eingeben, z. B. 1,5.", "error"); $("#el-th").focus(); return; }
-  change(() => { (elProj().time ||= []).push({ d, h: Math.round(h * 100) / 100, n }); }, { panel: false });
-  elHub(true); $("#el-th")?.focus();
-}
-function elTimeDel(k) {
-  change(() => { const t = S.doc.project.time; t.splice(k, 1); if (!t.length) delete S.doc.project.time; }, { panel: false });
-  elHub(true); $("#el-th")?.focus();
-}
-// Automatische Zeit (CJ 18.10.2026): läuft in den Modulen mit, Aktivität = Maus, Taste, Klick, Scrollen, Touch. 5 min ohne Aktivität,
-// Fenster im Hintergrund oder Übersicht offen = Pause. Ein vorläufiger Eintrag je Tag in doc.project.auto, ausserhalb von Rückgängig
-// und ohne „ungespeichert“; mit der Datei und online gespeichert und laufend im Browser gesichert (localStorage je Projekt-Kennung).
-// Zeit wird nur bis zur letzten Aktivität plus 5 min gezählt (from = zuletzt abgerechnet, until = Ende der aktiven Zeit).
-const EL_IDLE = 300e3, EL_ZK = "elplexacad.zeit.", EL_Z = { doc: null, from: 0, until: 0, mod: "schema", dirty: false };
-const elDay = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-const elRid = (n) => Math.random().toString(36).slice(2, 2 + n).padEnd(n, "0");
-function elZeitSettle(t = Date.now()) {
-  if (S.shared) return; // geteilte Ansicht: keine Zeit
-  const doc = EL_Z.doc, ms = Math.min(t, EL_Z.until) - EL_Z.from;
-  EL_Z.from = t;
-  if (!doc || ms <= 0) return;
-  const p = (doc.project ||= {}), d = elDay(t);
-  p.id ||= elRid(10);
-  let e = (p.auto ||= []).find((x) => x.d === d && !x.x);
-  if (!e) p.auto.push((e = { k: elRid(8), d, s: 0, m: [] }));
-  e.s = Math.min(86400, e.s + ms / 1000);
-  if (!e.m.includes(EL_Z.mod)) e.m.push(EL_Z.mod);
-  EL_Z.dirty = true;
-}
-function elZeitBackup(doc = EL_Z.doc) {
-  if (S.shared) return;
-  const p = doc?.project;
-  if (!p?.id || !p.auto) return;
-  try { localStorage.setItem(EL_ZK + p.id, JSON.stringify({ f: S.fileName, auto: p.auto })); } catch { /* ohne Sicherung weiterzählen */ }
-}
-function elZeitPause() { elZeitDoc(); elZeitSettle(); EL_Z.until = 0; if (EL_Z.dirty) { elZeitBackup(); EL_Z.dirty = false; } }
-// Anderes Projekt offen (Öffnen, Neu, Online): altes abrechnen und sichern, beim neuen die Sicherung aus dem Browser dazunehmen.
-// file: aus einer Datei geöffnet; nur dann gilt eine Sicherung mit gleichem Dateinamen für eine Datei ohne Kennung (nie gespeichert).
-function elZeitDoc({ file = false } = {}) {
-  if (EL_Z.doc === S.doc || S.shared) return;
-  if (EL_Z.doc) { elZeitSettle(); elZeitBackup(); }
-  EL_Z.doc = S.doc; EL_Z.from = Date.now(); EL_Z.until = 0; EL_Z.dirty = false;
-  let id = S.doc.project?.id, b = null;
-  try {
-    if (id) b = JSON.parse(localStorage.getItem(EL_ZK + id) || "null");
-    else if (file) for (let i = 0; i < localStorage.length && !b; i++) {
-      const k = localStorage.key(i);
-      if (k.startsWith(EL_ZK)) { const x = JSON.parse(localStorage.getItem(k)); if (x?.f === S.fileName) { b = x; id = k.slice(EL_ZK.length); } }
-    }
-  } catch { b = null; }
-  const auto = cleanProject({ auto: b?.auto })?.auto;
-  if (auto) { const p = (S.doc.project ||= {}); p.id ||= id; p.auto = E.mergeAuto(p.auto, auto); }
-  const old = E.autoOpen(S.doc).filter((e) => e.d !== elDay(Date.now())).length;
-  if (old) toast(`Vorläufige Zeit: ${old === 1 ? "ein Eintrag" : `${old} Einträge`} in der Übersicht übernehmen oder verwerfen (Taste 0).`);
-}
-function elZeitAct() {
-  elZeitDoc();
-  if (!EL_S.hub || !EL_S.hub.hidden || document.hidden || !document.hasFocus()) return;
-  const t = Date.now();
-  elZeitSettle(t); EL_Z.until = t + EL_IDLE; EL_Z.mod = E.baseOf(elMod());
-}
-function elZeitUndo(za, zid) { // Rückgängig: vorläufige Zeit nicht zurückdrehen, übernommen/verworfen aber schon
-  if (!za) return;
-  const p = (S.doc.project ||= {});
-  p.id ||= zid; p.auto = E.mergeAuto(p.auto, za, true);
-  EL_Z.doc = S.doc; elZeitBackup();
-}
-function elZeitInit() {
-  for (const ev of ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(ev, elZeitAct, { capture: true, passive: true });
-  addEventListener("visibilitychange", elZeitPause); addEventListener("blur", elZeitPause); addEventListener("pagehide", elZeitPause);
-  setInterval(() => { elZeitDoc(); if (document.hidden || !document.hasFocus()) { elZeitPause(); return; } elZeitSettle(); if (EL_Z.dirty) { elZeitBackup(); EL_Z.dirty = false; } }, 15e3);
-  elZeitDoc();
-}
-// Vorläufigen Eintrag übernehmen (mit den Stunden und der Notiz aus der Zeile) oder verwerfen. Ein Rückgängig-Schritt.
-function elZeitResolve(k, ok) {
-  const e = S.doc.project?.auto?.find((x) => x.k === k), row = $(`#el-hub [data-elz="${k}"]`);
-  if (!e || !row) return;
-  const h = Number(row.querySelector(".el-ah").value.trim().replace(",", ".")), n = row.querySelector(".el-an").value.trim();
-  if (ok && !(h > 0 && h <= 24)) { toast("Stunden zwischen 0 und 24 eingeben, z. B. 1,5.", "error"); row.querySelector(".el-ah").focus(); return; }
-  change(() => { const a = S.doc.project.auto.find((x) => x.k === k); a.x = ok ? "ok" : "weg"; if (ok) (elProj().time ||= []).push({ d: e.d, h: Math.round(h * 100) / 100, n }); }, { panel: false });
-  EL_Z.doc = S.doc; elZeitBackup();
-  elHub(true, { keepFocus: true });
-  toast(ok ? `Übernommen: ${E.fmtH(Math.round(h * 100) / 100)} h am ${E.fmtD(e.d)}.` : `Vorläufiger Eintrag vom ${E.fmtD(e.d)} verworfen.`);
-}
-// Zeit über alle Projekte (Etappe 4): Woche und Online-Projekte; das offene, verknüpfte Projekt zählt mit dem Stand der Datei
-function elZeitData() {
-  const mon = EL_S.week || E.weekStart(elDay(Date.now())), on = S.doc.project?.online?.id;
-  const items = (EL_S.onlist || []).map((e) => e.id === on ? { id: e.id, name: e.name, time: S.doc.project?.time || [], local: true, auto: E.autoOpen(S.doc).length }
-    : { id: e.id, name: e.name, time: Array.isArray(e.pt) ? e.pt : "pt" in e ? [] : null, auto: E.autoOpenN(e.pa) }); // pt fehlt ganz = alte Abfrage: Stunden unbekannt
-  return { items, mon, user: cloudUser(), err: EL_S.onerr, busy: EL_S.onbusy, loaded: EL_S.onlist != null, at: EL_S.onAt, pick: EL_S.zp || on || "", day: EL_S.zd || "" };
-}
-// Zeit-Reiter (CJ 21.10.2026): Klick auf ein Projekt öffnet es. Das offene Projekt zeigt seine Projektseite, ein anderes wird aus der Online-Ablage geladen
-function elZeitOpen(id) {
-  if (id === S.doc.project?.online?.id) { EL_S.tab = "projekte"; EL_S.pview = true; elHub(true); return; }
-  elOnlineOpen(id);
-}
-// Zeit direkt im Reiter erfassen, ohne das Projekt zu öffnen (nur Online-Projekte). Gleich gespeichert: das offene Projekt bekommt den
-// Eintrag in die Datei (wie im Projekt, sonst hätte die Datei einen älteren Online-Stand), jedes andere direkt online.
-async function elZeitAdd() {
-  const id = $("#el-zp").value, d = $("#el-zd").value, h = Number($("#el-zh").value.trim().replace(",", ".")), n = $("#el-zn").value.trim();
-  if (!id) { toast("Bitte ein Projekt wählen.", "error"); $("#el-zp").focus(); return; }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { toast("Bitte ein Datum wählen.", "error"); return; }
-  if (!(h > 0 && h <= 24)) { toast("Stunden zwischen 0 und 24 eingeben, z. B. 1,5.", "error"); $("#el-zh").focus(); return; }
-  const e = { d, h: Math.round(h * 100) / 100, n };
-  EL_S.zp = id; // gewähltes Projekt bleibt für den nächsten Eintrag
-  if (id === S.doc.project?.online?.id) {
-    change(() => { (elProj().time ||= []).push(e); }, { panel: false });
-    elHub(true, { keepFocus: true }); $("#el-zh")?.focus();
-    toast(`${E.fmtH(e.h)} h im offenen Projekt eingetragen. Mit dem Projekt speichern (⌘S).`);
-    return;
-  }
-  if (EL_S.zbusy) return;
-  EL_S.zbusy = true; EL_S.zd = d; const btn = $("#el-zform [type=submit]"); if (btn) btn.disabled = true; // Eingaben bleiben stehen, bis es gespeichert ist
-  let ok = false;
-  try {
-    const r = await projTimeAdd(id, e);
-    if (r) {
-      const row = (EL_S.onlist || []).find((x) => x.id === id);
-      if (row) { row.pt = r.time; row.updated_at = r.at; }
-      toast(`${E.fmtH(e.h)} h bei „${row?.name || "Projekt"}“ eingetragen und online gespeichert.`); ok = true;
-    }
-  } catch (err) { toast(err.message || String(err), "error"); }
-  finally { EL_S.zbusy = false; if (btn?.isConnected) btn.disabled = false; }
-  if (ok && !EL_S.hub.hidden && EL_S.tab === "zeit") { elHub(true, { keepFocus: true }); $("#el-zh")?.focus(); } // Tabelle und Chip mit dem neuen Eintrag, Stunden und Notiz leer
-}
-function elZeitCsv() { const d = elZeitData(); download(`Zeit_Woche_${d.mon}.csv`, E.timeWeekCsv(E.timeWeek(d.items, d.mon)), "text/csv"); toast("Wochenzeit als CSV in den Download-Ordner geladen."); }
-function elCsv() { download(`${baseName()}_Zeit.csv`, E.timeCsv(S.doc), "text/csv"); toast("Zeit als CSV in den Download-Ordner geladen."); }
+// Übersicht, Projektdaten, GWR, Adresssuche (elhub.js): ELPLEXA gibt die Funktionen, v3 bekommt nichts.
+// Was weiter unten in app.js erst definiert wird (const, Verdrahtung der anderen Teile), schlägt der Hub erst beim Aufruf nach.
+const { elHub, elName, elProj, elSetProject, elGwr, adrInit } = ELPLEXA
+  ? makeHub({ S, $, EL_S, change, closeEditor, finishWire, baseName, setFileName, sheetLabel, elDay, elMod, elBarSync, curT: () => elCurT,
+    elLocked: () => elLocked(), elOnlineDraw: () => elOnlineDraw(), elOnlineList: () => elOnlineList(), elProjOrder: () => elProjOrder(),
+    elTabLive: () => elTabLive(), elTipOn: () => elTipOn(), elZeitData: () => elZeitData(), elZeitPause: () => elZeitPause() }) : {};
+// Projektzeit (elzeit.js): ELPLEXA gibt den Zeitzähler und die Zeit-Funktionen, v3 bekommt nichts
+const { elTodayH, elTimeAdd, elTimeDel, elZeitDoc, elZeitInit, elZeitPause, elZeitUndo, elZeitResolve, elZeitData, elZeitOpen, elZeitAdd, elZeitCsv, elCsv } = ELPLEXA
+  ? makeZeit({ S, $, toast, change, EL_S, elMod, elProj, elHub, elOnlineOpen, download, baseName }) : {};
 // Neues Projekt aus der Übersicht: Name, Bauherr, erstes Modul. Ungespeicherte Änderungen: nachfragen wie bei „Neu“.
 async function elNewProject() {
   const r = await formDialog("Neues Projekt", "Name und Bauherr lassen sich später in der Übersicht ändern. Weitere Module legst du mit „+ Modul“ an.", [
@@ -3083,82 +2836,9 @@ async function elOpenRecent(k) {
     await E.recentDrop(k); elHub(true);
   }
 }
-// Online-Projekte (Schritt 3, cloud.js). Datei bleibt Hauptweg; Fehler (ohne Internet, pausiert) nur als Meldung.
-function elOnlineDraw() {
-  const o = $("#el-online");
-  if (o) o.innerHTML = E.onlineHTML({ user: cloudUser(), list: EL_S.onlist ?? null, link: S.doc.project?.online, busy: EL_S.onbusy, locked: elLocked() });
-}
-// Sperre ohne Anmeldung (CJ 17.10.): nur wenn die App aus dem Netz läuft; als lokale Datei (file:) bleibt alles frei.
-// Ohne Anmeldung nur DXF. Keine echte Sicherung (Seite speichern umgeht sie), geschützt sind die Online-Daten über die Zugriffsregeln.
-const elLocked = () => !!S.shared || window.location.protocol !== "file:" && !cloudUser();
-async function elUnlock() {
-  if (S.shared) { toast("Geteilte Ansicht: nur ansehen. Speichern, Drucken und Export gehen nicht."); return false; }
-  if (!elLocked()) return true;
-  toast("Ohne Anmeldung lässt sich nur als DXF speichern. Bitte anmelden.");
-  return elLogin();
-}
-async function elLogin() {
-  let ok = false;
-  try { ok = await cloudLogin(); } catch (err) { toast(err.message || String(err), "error"); }
-  if (ok) { toast(`Angemeldet als ${cloudUser()}.`); EL_S.autoTried = false; }
-  elAcctDraw();
-  if (!EL_S.hub.hidden) elOnlineDraw();
-  return ok;
-}
-async function elOnline(fn) { // sperrt die Knöpfe während der Anfrage
-  if (EL_S.onbusy) return;
-  EL_S.onbusy = true; elOnlineDraw(); if (elTabLive() && !EL_S.hub.hidden) elHub(true, { keepFocus: true });
-  try { await fn(); } catch (err) { toast(err.message || String(err), "error"); }
-  finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) { elOnlineDraw(); if (elTabLive()) elHub(true, { keepFocus: true }); } }
-}
-const elOnlineList = () => elOnline(async () => { try { const l = await projList(); if (l) { EL_S.onlist = l; EL_S.onAt = Date.now(); } EL_S.onerr = null; } catch (err) { EL_S.onerr = err.message || String(err); throw err; } });
-const elLogout = () => elOnline(async () => { await cloudLogout(); EL_S.onlist = null; EL_S.onerr = null; EL_S.autoTried = false; toast("Abgemeldet."); elAcctDraw(); });
-const elOnlineSave = () => elOnline(() => elOnlineSaveCore(false));
-// clean: über den Speichern-Knopf; der Online-Stand gilt dann als gespeichert (sonst merkt sich erst die Datei mit ⌘S den Stand)
-async function elOnlineSaveCore(clean) {
-  {
-    closeEditor(true);
-    const doc = JSON.parse(docText()), opt = { name: elName(), status: E.statusOf(S.doc) };
-    let r = await projSave(doc, S.doc.project?.online, opt);
-    if (r?.conflict) { // online neuer als dieser Stand: nicht still überschreiben
-      const c = await chooseDialog("Online ist neuer", `Das Online-Projekt wurde am ${new Date(r.conflict).toLocaleString("de-CH")} gespeichert, nach dem Stand dieser Datei. Überschreiben ersetzt den Online-Stand.`,
-        [{ label: "Online überschreiben", v: "force" }, { label: "Als neues Online-Projekt speichern", v: "new" }]);
-      const v = c?.option?.v;
-      if (!v) return;
-      r = await projSave(doc, v === "force" ? S.doc.project.online : null, { ...opt, force: true });
-    }
-    if (!r) return; // Anmeldung abgebrochen
-    elProj().online = { id: r.id, at: r.at };
-    if (clean) markClean(); else markDirty(); // die Datei merkt sich den Online-Stand beim nächsten Speichern
-    const l = await projList().catch(() => null); if (l) EL_S.onlist = l;
-    projSaved();
-    toast(clean ? `Online gespeichert: „${opt.name}“.` : `Online gespeichert: „${opt.name}“. Mit ⌘S merkt sich auch die Datei diesen Stand.`);
-  }
-}
-// Speichern-Knopf und ⌘S (CJ 18.10.2026): angemeldet und Projekt schon online → direkt online; angemeldet, noch nicht online → Wahl online oder Datei.
-// Ohne Anmeldung und ⇧⌘S (Speichern unter) wie bisher als Datei. Fehler online: Meldung und Angebot, als Datei zu speichern.
-async function elSave(forceAs) {
-  if (forceAs || !cloudUser()) return saveJson(forceAs);
-  if (EL_S.onbusy) return;
-  closeEditor(true);
-  if (!S.doc.project?.online) {
-    const c = await chooseDialog("Speichern", "Online: auf jedem Rechner nach der Anmeldung öffnen, weitere Klicks speichern direkt online. Lokal: als Datei (.elplexa.json) auf diesem Rechner.",
-      [{ label: "Online speichern", v: "on" }, { label: "Lokal speichern", v: "file" }]);
-    const v = c?.option?.v;
-    if (v === "file") return saveJson(false);
-    if (v !== "on") return;
-  }
-  await elSaveOnline();
-}
-async function elSaveOnline() { // direkt online (Knopf Speichern bzw. sein Menü), Fehler → Angebot Datei
-  if (EL_S.onbusy || !cloudUser()) return;
-  closeEditor(true);
-  EL_S.onbusy = true; if (!EL_S.hub.hidden) elOnlineDraw();
-  let err = null;
-  try { await elOnlineSaveCore(true); } catch (e) { err = e; }
-  finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) elOnlineDraw(); }
-  if (err && (await confirmDialog("Online speichern hat nicht geklappt", `${err.message || err} Es ist nichts verloren. Jetzt als Datei auf diesem Rechner speichern?`, "Lokal speichern"))) await saveJson(false);
-}
+// Online-Projekte, Anmeldung und Speichern (elonline.js): ELPLEXA gibt die Funktionen, v3 bekommt nichts
+const { elOnlineDraw, elLocked, elUnlock, elLogin, elOnline, elOnlineList, elLogout, elOnlineSave, elSave, elSaveOnline } = ELPLEXA
+  ? makeOnline({ S, $, EL_S, closeEditor, docText, elAcctDraw, elHub, elName, elProj, elTabLive: () => elTabLive(), markClean, markDirty, saveJson }) : {}; // elTabLive ist weiter unten definiert: erst beim Aufruf nachschlagen
 // Handnotizen (Meilenstein 2, CJ 20.10.2026): eigenes Modul über der Übersicht, Daten in eigener Datenbank (hand.js). Blätter des Projekts
 // kommen über das eigene PDF (makePdf) als Hintergrund hinein, das Projekt bleibt unverändert.
 async function elHand() {
@@ -3306,196 +2986,10 @@ function elHubKey(e) {
   if (!e.altKey && elKey(e)) e.preventDefault();
   return !["Tab", "Enter", " "].includes(e.key); // Tab und Enter bedienen die Kacheln
 }
-// Teilen per Link (Meilenstein 2, Schritt 1, 18.10.2026). Ersteller: Fenster „Link teilen“ je Online-Projekt (cloud.js share*).
-// Empfänger: ?teilen=<Schlüssel> öffnet die geteilte Ansicht (S.shared): ohne Login, alles gesperrt (change, markDirty, Tasten, Zeichenfläche
-// nur verschieben und zoomen, Speichern/Drucken/Export über elUnlock), keine Absturz-Sicherung, keine Zeit, nicht unter „zuletzt geöffnet“.
-const elShareStart = () => (S.shared = new URLSearchParams(window.location.search).get("teilen") || null);
-async function elShareLoad() {
-  document.body.classList.add("el-shared", "el-sharewait"); // wait: bis geladen ohne Dateiname und Status im Kopf
-  const badge = document.createElement("span"); badge.className = "el-sharebadge"; badge.setAttribute("role", "status"); badge.textContent = "Geteilte Ansicht · nur ansehen";
-  $("#el-crumb").after(badge);
-  for (const el of document.querySelectorAll("#left, #right")) el.inert = true;
-  try {
-    const r = await shareOpen(S.shared);
-    if (r.grund) EL_S.shareFail = { grund: r.grund };
-    else {
-      EL_S.fromOnline = true;
-      OF.setMode({ ro: true, prices: r.prices }); // Offerte im Link: nur lesen, Preise nur wenn freigegeben
-      try { await loadText(JSON.stringify(r.doc), r.name || "Geteiltes Projekt", null); } finally { EL_S.fromOnline = false; }
-      EL_S.shareInfo = { at: r.at, ablauf: r.ablauf, mods: r.modules ? E.modIds(S.doc).filter((id) => !E.modById(id)?.auto).map((id) => modName(S.doc, id)) : null };
-      setTool("hand"); document.body.classList.remove("el-sharewait");
-      elNotesInit(r.doc.sheets);
-    }
-  } catch (err) { EL_S.shareFail = { msg: err.message || String(err) }; }
-  elHub(true);
-}
-function elShareKey(e) { // true = Taste gesperrt oder erledigt; erlaubt sind Ansehen und Blättern
-  if (e.metaKey || e.ctrlKey || e.altKey) { e.preventDefault(); return true; }
-  if (EL_N.keys && !e.shiftKey && ["n", "m", "l", "N", "M", "L"].includes(e.key)) { e.preventDefault(); elNoteCmd({ n: "notiz", m: "mark", l: "liste" }[e.key.toLowerCase()]); return true; }
-  if (e.key === "Escape" && (EL_N.tool || EL_N.drag)) { e.preventDefault(); elNoteTool(null); return true; }
-  if (/^[0-9?§`]$/.test(e.key)) { e.preventDefault(); if (EL_S.shareInfo) elKey(e); return true; }
-  if (["PageUp", "PageDown", "f", "F", "+", "-", "=", "g", "G", " ", "Escape", "Tab", "Enter"].includes(e.key)) return false;
-  e.preventDefault(); return true;
-}
-// Notizen und Markierungen im Teilen-Link (Meilenstein 2, Schritt 2, CJ 20.10.2026; notizen.js, cloud.js shareNote*). Empfänger setzen sie
-// auf den geteilten Blättern, die Zeichnung bleibt gesperrt (S.shared). Ebene #el-notes über der Zeichnung, nie in Datei, PDF oder DXF.
-// Alle mit dem Link sehen alle Notizen zum Link (CJ 20.10.). Gast-Name und Zufallskennung im Browser (localStorage elplexacad.gast).
-const EL_N = { list: [], keys: null, tool: null, mark: "rechteck", drag: null, off: false, bar: null, layer: null };
-function elGuest() {
-  let g = {}; try { g = JSON.parse(localStorage.getItem("elplexacad.gast")) || {}; } catch { /* ohne Speicher: Kennung gilt bis zum Schliessen */ }
-  if (!g.id) { g.id = crypto.randomUUID(); elGuestKeep(g); }
-  return g;
-}
-function elGuestKeep(g) { EL_N.guest = g; try { localStorage.setItem("elplexacad.gast", JSON.stringify(g)); } catch { /* egal */ } }
-async function elNotesInit(raw) {
-  EL_N.keys = N.sheetNoteKeys(raw, S.doc.sheets); EL_N.guest = elGuest();
-  EL_N.layer = document.createElementNS("http://www.w3.org/2000/svg", "g"); EL_N.layer.id = "el-notes"; world.appendChild(EL_N.layer);
-  EL_N.bar = document.createElement("div"); EL_N.bar.id = "el-notebar"; EL_N.bar.setAttribute("role", "toolbar"); EL_N.bar.setAttribute("aria-label", "Notizen");
-  stage.appendChild(EL_N.bar);
-  EL_N.bar.addEventListener("click", (e) => { const b = e.target.closest("[data-elnote]"); if (b && !b.disabled) elNoteCmd(b.dataset.elnote); });
-  stage.addEventListener("pointerdown", elNoteDown, true); // vor dem Verschieben der Ansicht (Zeichenfläche)
-  elNoteBar();
-  await elNotesLoad();
-}
-async function elNotesLoad() {
-  try { const r = await shareNotes(S.shared, EL_N.guest.id); if (r.grund) return elNoteDead(); EL_N.list = r.notes || []; }
-  catch (err) { toast("Notizen: " + (err.message || err), "error"); }
-  elNoteBar(); elNotesDraw();
-}
-function elNoteDead() { EL_N.off = true; elNoteTool(null); toast(N.NOTE_GRUND.link.replace(" Die Notiz wurde nicht gespeichert.", ""), "error"); }
-const elNoteKey = () => EL_N.keys?.get(S.model);
-function elNoteBar() { if (EL_N.bar) EL_N.bar.innerHTML = N.noteBarHTML(EL_N.tool, EL_N.list.length, EL_N.off); }
-function elNotesDraw() { if (EL_N.layer) EL_N.layer.innerHTML = N.notesSVG(EL_N.list, elNoteKey(), S.view.z, EL_N.drag?.box ? { kind: EL_N.tool, ...EL_N.drag.box } : null); }
-function elNoteTool(t) {
-  EL_N.tool = EL_N.off ? null : t; EL_N.drag = null;
-  svg.classList.toggle("el-noting", !!EL_N.tool);
-  elNoteBar(); elNotesDraw();
-}
-function elNoteCmd(c) {
-  if (c === "liste") return elNoteList();
-  if (EL_N.off) return toast(N.NOTE_GRUND.link.replace(" Die Notiz wurde nicht gespeichert.", ""), "error");
-  if (!EL_N.keys.get(S.model)) return toast("Auf diesem Blatt gehen keine Notizen.");
-  if (c === "mark") { if (EL_N.tool === "kreis" || EL_N.tool === "rechteck") EL_N.mark = EL_N.tool === "kreis" ? "rechteck" : "kreis"; return elNoteTool(EL_N.mark); } // nochmals M wechselt Kreis und Rechteck
-  elNoteTool(EL_N.tool === c ? null : c);
-}
-function elNoteDown(e) {
-  const pin = e.target.closest?.("[data-note]");
-  if (pin && !EL_N.tool) { e.stopPropagation(); e.preventDefault(); window.addEventListener("pointerup", () => setTimeout(() => elNoteView(pin.dataset.note)), { once: true }); return; }
-  if (!EL_N.tool || e.button !== 0 || !e.target.closest("#svg")) return;
-  e.stopPropagation(); e.preventDefault();
-  const { sx, sy } = pointerPos(e), a = toWorld(sx, sy);
-  if (EL_N.tool === "notiz") { // Fenster erst nach dem Loslassen, sonst trifft der Klick ein Feld oder „Abbrechen“ im Fenster
-    window.addEventListener("pointerup", () => setTimeout(() => elNoteForm({ kind: "notiz", x: a.x, y: a.y, w: 0, h: 0 })), { once: true });
-    return;
-  }
-  EL_N.drag = { a, box: null };
-  const move = (ev) => { const p = pointerPos(ev); EL_N.drag.box = N.boxOf(a, toWorld(p.sx, p.sy)); elNotesDraw(); };
-  const up = (ev) => {
-    window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
-    const p = pointerPos(ev), box = N.boxOf(a, toWorld(p.sx, p.sy)), d = EL_N.drag; EL_N.drag = null;
-    if (!d) return;
-    if (Math.max(box.w, box.h) * S.view.z < 8) { elNotesDraw(); toast("Markierung aufziehen: Maus gedrückt halten und ziehen."); return; } // nur geklickt
-    const kind = EL_N.tool; setTimeout(() => elNoteForm({ kind, ...box })); // nach dem Klick, siehe Notiz
-  };
-  window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-}
-// Text eingeben und speichern; bei Fehler bleibt das Fenster mit dem Text offen (zum Kopieren oder nochmals Versuchen)
-async function elNoteForm(pos, text = "", msg = "", author = "") {
-  const kind = pos.kind, drawBox = kind !== "notiz" ? { ...pos } : null;
-  if (drawBox) { EL_N.drag = { box: drawBox }; elNotesDraw(); } // Markierung bleibt sichtbar, solange das Fenster offen ist
-  const name = EL_N.guest.name || "";
-  const r = await openModal(kind === "notiz" ? "Notiz" : "Markierung", N.noteFormHTML(kind, name, text, msg, author), (b, done) => {
-    if (b.dataset.c !== undefined) done(null);
-    else if (b.dataset.ok !== undefined) { const f = (k) => $(`#modal-root [data-nf="${k}"]`)?.value; done({ text: f("text") ?? "", author: name || f("author") || "" }); }
-  }, null, name || author ? "textarea" : "input");
-  EL_N.drag = null; elNotesDraw();
-  if (!r) return;
-  const sheet = elNoteKey(), c = N.cleanNote({ ...pos, ...r, sheet, sheet_label: elShName(S.model) });
-  const again = (m) => elNoteForm(pos, r.text, m, r.author); // Fenster wieder mit Text und Name
-  if (c.error) return again(c.error);
-  if (!name) elGuestKeep({ ...EL_N.guest, name: c.note.author });
-  let res;
-  try { res = await shareNoteAdd(S.shared, EL_N.guest.id, c.note); } catch (err) { return again(err.message || String(err)); }
-  if (res.grund === "link") { elNoteDead(); return again(N.NOTE_GRUND.link); }
-  if (res.grund) return again(N.NOTE_GRUND[res.grund] || N.NOTE_GRUND.eingabe);
-  EL_N.list.push({ ...c.note, id: res.id, created_at: res.created_at, status: "offen", mine: true });
-  elNoteTool(null); toast(`${kind === "notiz" ? "Notiz" : "Markierung"} ${EL_N.list.length} gespeichert.`);
-}
-const elNoteSheet = (n) => S.doc.sheets.find((sh) => EL_N.keys.get(sh) === n.sheet);
-const elShName = (sh) => sheetLabel(sh, S.doc.sheets.indexOf(sh));
-function elNoteView(id) {
-  const i = EL_N.list.findIndex((n) => n.id === id), n = EL_N.list[i];
-  if (!n) return;
-  openModal(`${n.kind === "notiz" ? "Notiz" : "Markierung"} ${i + 1}`, N.noteViewHTML(n, i + 1, elNoteSheet(n) ? elShName(elNoteSheet(n)) : n.sheet_label), (b, done) => {
-    if (b.dataset.c !== undefined) done();
-    else if (b.dataset.ndel) { done(); elNoteDelete(b.dataset.ndel); }
-  }, null, "[data-c]");
-}
-async function elNoteDelete(id) {
-  if (!(await confirmDialog("Notiz löschen", "Die eigene Notiz wird für alle mit diesem Link gelöscht.", "Löschen"))) return;
-  let r;
-  try { r = await shareNoteDelete(S.shared, EL_N.guest.id, id); } catch (err) { toast(err.message || String(err), "error"); return; }
-  if (r.grund === "link") return elNoteDead();
-  if (r.grund) { toast(N.NOTE_GRUND[r.grund] || N.NOTE_GRUND.fehlt); return elNotesLoad(); }
-  EL_N.list = EL_N.list.filter((n) => n.id !== id); elNoteBar(); elNotesDraw(); toast("Notiz gelöscht.");
-}
-function elNoteList() {
-  openModal("Notizen zu diesem Link", N.noteListHTML(EL_N.list, (n) => { const sh = elNoteSheet(n); return sh ? elShName(sh) : null; }), (b, done) => {
-    if (b.dataset.c !== undefined) done();
-    else if (b.dataset.ngo) { done(); elNoteGo(b.dataset.ngo); }
-    else if (b.dataset.ndel) { done(); elNoteDelete(b.dataset.ndel); }
-  }, null, "[data-ngo],[data-c]", "el-nlistmodal");
-}
-function elNoteGo(id) { // zum Blatt springen, Notiz in die Mitte
-  const n = EL_N.list.find((x) => x.id === id), sh = n && elNoteSheet(n);
-  if (!sh) return;
-  if (EL_S.hub && !EL_S.hub.hidden) elHub(false);
-  switchSheet(S.doc.sheets.indexOf(sh));
-  const r = stage.getBoundingClientRect(), cx = n.x + n.w / 2, cy = n.y + n.h / 2;
-  S.view = { ...S.view, x: r.width / 2 - cx * S.view.z, y: r.height / 2 - (H - cy) * S.view.z };
-  applyView(); renderSheet();
-}
-// Fenster „Link teilen“ (Ersteller): gültige Links zeigen, kopieren, widerrufen, neuen Link (30 Tage, Vorgabe der Datenbank) erstellen.
-// Ist es das offene Projekt, wählen Häkchen die Module (CJ 18.10.2026); only = Vorwahl ein Modul (Exportieren › Modul teilen). Alle Häkchen = ganzes Projekt.
-async function elShareDialog(id, only = null) {
-  const name = EL_S.onlist?.find((x) => x.id === id)?.name || elName(), mine = S.doc.project?.online?.id === id;
-  const ids = mine ? E.modIds(S.doc).filter((m) => !E.modById(m)?.auto) : [], pick = mine ? { ids, on: new Set(only ? [only] : ids), prices: false } : null, nm = (m) => modName(mine ? S.doc : {}, m);
-  let links = null;
-  const draw = () => { const m = $("#modal-root .modal"); if (m) m.querySelector(".el-shbody").innerHTML = E.shareDialogHTML(name, links, shareUrl, pick, nm); };
-  const load = async (fn) => { try { const l = await fn(); if (l) links = l; } catch (err) { toast(err.message || String(err), "error"); } draw(); };
-  const copy = async (token) => {
-    const url = shareUrl(token);
-    try { await navigator.clipboard.writeText(url); toast("Link kopiert. Gültig 30 Tage, nur zum Ansehen."); }
-    catch { const i = [...document.querySelectorAll("#modal-root .el-shurl")].find((x) => x.value === url); i?.select(); toast("Kopieren ging nicht automatisch: Link ist markiert, mit ⌘C kopieren."); }
-  };
-  const tick = (e) => { if (pick && e.target.matches?.("[data-shprices]")) { pick.prices = e.target.checked; return; } const b = e.target.closest("[data-shmod]"); if (!b || !pick) return; if (b.checked) pick.on.add(b.dataset.shmod); else pick.on.delete(b.dataset.shmod); draw(); };
-  const shown = openModal("Link teilen", `<div class="el-shbody">${E.shareDialogHTML(name, null, shareUrl, pick, nm)}</div>`, async (b, done) => {
-    if (b.dataset.c !== undefined) done(null);
-    else if (b.dataset.shnew !== undefined) {
-      b.disabled = true; let n = null;
-      // Mit Offerte immer als Liste: «ganzes Projekt» (ohne Liste) zeigt die Datenbank ohne Offerte (Migration 20261026_share_offerte)
-      const mods = pick && (pick.on.size < ids.length || ids.some((m) => E.baseOf(m) === "offerte")) ? ids.filter((m) => pick.on.has(m)) : null;
-      const prices = !!(pick?.prices && mods?.some((m) => E.baseOf(m) === "offerte"));
-      await load(async () => { n = await shareCreate(id, mods, prices); return n ? [n, ...links] : null; }); if (n) copy(n.token);
-    }
-    else if (b.dataset.shcopy) copy(b.dataset.shcopy);
-    else if (b.dataset.shrev) { b.disabled = true; const n0 = links.length; await load(async () => ((await shareRevoke(b.dataset.shrev))?.length ? links.filter((l) => l.id !== b.dataset.shrev) : null)); if (links.length < n0) toast("Link widerrufen. Wer ihn öffnet, sieht nur noch einen Hinweis."); }
-  }, null, "[data-c]", "el-sharemodal");
-  const root = $("#modal-root"); root.addEventListener("change", tick);
-  await load(() => shareList(id));
-  try { return await shown; } finally { root.removeEventListener("change", tick); }
-}
-// Exportieren › Modul teilen (CJ 18.10.2026): Link nur für das offene Modul. Geteilt wird der Online-Stand, darum vorher online speichern.
-async function elShareModule() {
-  if (S.shared) return;
-  if (!cloudUser() && !(await elLogin())) return;
-  if (!S.doc.project?.online || S.dirty) {
-    if (!(await confirmDialog("Zuerst online speichern", "Geteilt wird der online gespeicherte Stand. Jetzt online speichern und dann den Link erstellen?", "Online speichern"))) return;
-    await elSaveOnline();
-    if (!S.doc.project?.online || S.dirty) return;
-  }
-  return elShareDialog(S.doc.project.online.id, elMod());
-}
+
+// Teilen per Link und Notizen (elteilen.js): ELPLEXA gibt die Funktionen, v3 bekommt nichts
+const { elShareStart, elShareLoad, elShareKey, elNotesDraw, elShareDialog, elShareModule } = ELPLEXA
+  ? makeTeilen({ S, $, EL_S, stage, applyView, elHub, elKey, elLogin, elMod, elName, elSaveOnline, loadText, pointerPos, renderSheet, setTool, sheetLabel, switchSheet, toWorld }) : {};
 
 // ---------- Start ----------
 function init() {

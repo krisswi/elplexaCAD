@@ -41,6 +41,8 @@ import { snapSvg, feedbackDialog } from "./feedback.js";
 import * as E from "./elplexa.js";
 import { makeZeit, elDay } from "./elzeit.js";
 import { makeTeilen } from "./elteilen.js";
+import { makeMonteurPlaner } from "./elmonteur.js";
+import { startMonteur } from "./monteur.js";
 import { makeOnline } from "./elonline.js";
 import { makeHub } from "./elhub.js";
 import * as DF from "./dateien.js";
@@ -124,6 +126,7 @@ const { placeDown, placeGhost, draftFinish, draftEsc, draftCancel, dimDown, dimC
 const isOff = () => S.model.kind === "offerte"; // Offerte (offedit.js, CJ 26.10.2026): Tabelle in #of-view statt Zeichenfläche
 const isPlan = () => S.model.kind === "plan"; // Plan (planedit.js, nur elplexaCAD, CJ 23.10.2026): immer als ELPLEXA && isPlan(), fällt im v3-Bau weg
 // Plan (nur elplexaCAD): eigene Bedienung, app.js leitet Zeiger, Tasten und Leisten weiter
+let MP = null; // Pläne für den Monteur (elmonteur.js), wird unten bei den elplexaCAD-Teilen angelegt
 const PL = ELPLEXA ? makePlan({ S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, renderSheet, updateHint, fitView, applyView, pushUndo, snapshot, markDirty, nextId, formDialog, confirmDialog, chooseDialog, openModal, sheetLabel, workCount: () => workCount(), download: (...a) => download(...a),
   leftEl, rightEl, popEl: $("#pv-pop"), hidePop: () => pvPop?.hide(false), viewBox: () => { const r = stage.getBoundingClientRect(), a = toWorld(0, r.height), b = toWorld(r.width, 0); return { x0: a.x, y0: a.y, x1: b.x, y1: b.y }; } }) : null;
 function toWorld(sx, sy) { return { x: (sx - S.view.x) / S.view.z, y: H - (sy - S.view.y) / S.view.z }; }
@@ -227,6 +230,7 @@ function applyView() {
   world.setAttribute("transform", `matrix(${z} 0 0 ${-z} ${x} ${y + H * z})`);
   $("#zoom-val").textContent = Math.round((z / PX_PER_MM) * 100) + "%";
   if (ELPLEXA && S.shared) elNotesDraw(); // Notizen im Teilen-Link: gleich grosse Stecknadeln bei jedem Zoom, auch nach Blattwechsel
+  if (ELPLEXA) MP?.drawNotes(); // Notizen für den Monteur im Plan (elmonteur.js), gleich gross bei jedem Zoom
 }
 // Sichtbarer Bereich: beim Schema das Blatt, bei der Disposition der Inhalt mit Rand
 function viewBounds() {
@@ -262,7 +266,7 @@ function renderSheet() {
   gSheet.innerHTML = ELPLEXA && isPlan() ? PL.sheetSVG() : S.model.kind === "legend" ? L.screenSVG(S.doc, S.model, S.legSel) : isDeck() ? (S.model.kind === "title" ? T.titleSVG(S.model, adrText(S.doc.project?.adr)) : T.tocScreenSVG(S.doc, S.model)) : isPv() ? PV.sheetSVG() : isDispo() ? D.sheetSVG(S.grid, S.view.z) : isPrinzip() ? PZ.sheetSVG(S.model, S.grid, S.view.z) : R.sheetSVG(S.model.meta, S.grid, S.view.z);
 }
 // Offerte: nach dem Neuzeichnen auch die linke Spalte (Gliederung, Kapitel des Knotens) und die Leiste (Kapitel der Offerte)
-function renderItems() { $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); ofLeft(); renderSheetBar(); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
+function renderItems() { if (ELPLEXA) MP?.draw(); $("#dims-on").checked = S.model.dims !== false; if (isOff()) { gItems.innerHTML = ""; ofView.innerHTML = OF.viewHTML(S.model.of); ofLeft(); renderSheetBar(); return; } gItems.innerHTML = isDeck() ? "" : ELPLEXA && isPlan() ? PL.itemsSVG() : isPv() ? PV.itemsSVG() : R.itemsSVG(S.model.items, S.model.kind, isDispo() ? D.planOpts(S.model) : {}); }
 const pickable = () => (ELPLEXA && isPlan() ? PL.pickable() : isPv() ? PV.pickable() : S.model.items); // Stringplan: ohne ausgeblendete und gesperrte Ebenen
 
 function railMap() {
@@ -1862,6 +1866,7 @@ window.addEventListener("keydown", (e) => {
   const typing = t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA");
   const mod = e.metaKey || e.ctrlKey;
   if (isOff() && !mod && t instanceof HTMLElement && t.closest("#of-view, #left, #right")) return; // Offerte: Tasten gehören den Feldern und Knöpfen
+  if (ELPLEXA && isPlan() && !typing && !mod && MP?.key(e)) { e.preventDefault(); return; } // Notiz für den Monteur (N), vor den Plan-Werkzeugen
   if (ELPLEXA && isPlan() && !typing && PL.key(e, mod)) { e.preventDefault(); return; } // Plan: Werkzeuge, Länge tippen, Pfeiltasten (planedit.js)
   if (mod && !typing) {
     const k = e.key.toLowerCase();
@@ -2645,6 +2650,7 @@ function elNavTo(k) {
 }
 // Zeile 2 nachführen: Tabs, Handy-Knopf, Navigation, Tages-Chip, welche Teile sichtbar sind
 function elBarSync() {
+  MP?.draw(); // Leiste «Veröffentlichen» nur im Plan-Modul, nicht in der Übersicht
   const hub = EL_S.hub && !EL_S.hub.hidden, zeit = hub && EL_S.tab === "zeit", tabs = elTabList(), cur = tabs.find((t) => t.on);
   document.body.dataset.elbar = !hub ? "modul" : zeit ? "zeit" : EL_S.tab === "projekte" && EL_S.pview ? "projekt" : EL_S.tab === "profil" ? "profil" : "liste";
   $("#el-ptabs").innerHTML = tabs.map((t) => `<button class="el-ptab${t.k === "zeit" ? " el-ptab-zeit" : ""}" role="tab" id="el-tab-${t.k === "zeit" ? "zeit" : "proj"}" data-eltabgo="${t.k}" aria-controls="el-tabpanel" aria-selected="${t.on}" tabindex="${t.on || (!cur && t.k === "proj") ? 0 : -1}" title="${R.esc(t.name)}"><span class="el-ptn">${R.esc(t.name)}</span></button>`).join("");
@@ -2780,6 +2786,7 @@ function elInit() {
   hub.addEventListener("keydown", (e) => { const r = e.key === "Enter" && e.target.closest?.("[data-elz]"); if (r) { e.preventDefault(); elZeitResolve(r.dataset.elz, true); } }); // Enter in der Zeile übernimmt
   hub.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches?.("input[data-elp]")) { e.preventDefault(); e.target.blur(); } }); // Enter übernimmt
   hub.addEventListener("click", (e) => { const b = e.target.closest("[data-elshare]"); if (b && !b.disabled) elShareDialog(b.dataset.elshare); });
+  hub.addEventListener("click", (e) => { const b = e.target.closest("[data-elmshare]"); if (b && !b.disabled) MP?.dialog(); }); // Link für Monteur (elmonteur.js)
   addEventListener("el-file", (e) => { // files.js: gespeichert oder geöffnet
     elZeitDoc({ file: !EL_S.fromOnline });
     if (EL_S.fromOnline) { elCurT = null; return; } // aus der Online-Ablage geöffnet: keine Datei, nicht unter „zuletzt geöffnet“
@@ -2990,9 +2997,12 @@ function elHubKey(e) {
 // Teilen per Link und Notizen (elteilen.js): ELPLEXA gibt die Funktionen, v3 bekommt nichts
 const { elShareStart, elShareLoad, elShareKey, elNotesDraw, elShareDialog, elShareModule } = ELPLEXA
   ? makeTeilen({ S, $, EL_S, stage, applyView, elHub, elKey, elLogin, elMod, elName, elSaveOnline, loadText, pointerPos, renderSheet, setTool, sheetLabel, switchSheet, toWorld }) : {};
+// Pläne für den Monteur, Seite Planer (elmonteur.js, CJ 28.10.2026): Veröffentlichen, Fenster «Link für Monteur», Notizen im Plan (MP oben bei PL)
+if (ELPLEXA && !new URLSearchParams(window.location.search).get("monteur")) MP = makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, switchSheet, sheetLabel, pointerPos, toWorld, elLogin, elSaveOnline, isPlan });
 
 // ---------- Start ----------
 function init() {
+  if (ELPLEXA && startMonteur(new URLSearchParams(window.location.search).get("monteur"))) return; // Monteur-Ansicht (monteur.js): eigene Seite, ohne Editor
   for (const el of document.querySelectorAll(".ic[data-ic]")) el.innerHTML = R.icons[el.dataset.ic];
   $("#btn-undo").innerHTML = R.icons.undo; $("#btn-redo").innerHTML = R.icons.redo;
   $("#btn-left").innerHTML = R.icons.panelL; $("#btn-right").innerHTML = R.icons.panelR;

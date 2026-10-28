@@ -56,9 +56,12 @@ const pdfOut = { name: "pdf-out", setup(b) {
   // Plansymbole (src/plansym.js und src/plansym/, CJ 27.10.2026) nur im elplexaCAD-Bau: v3 liest sie nicht, neue Plansymbole ändern v3 nicht
   if (!EL) b.onResolve({ filter: /\/plansym\.js$/ }, () => ({ path: "plansym", namespace: "plansymstub" }));
   b.onLoad({ filter: /.*/, namespace: "plansymstub" }, () => ({ contents: "export const PLAN_SYMS = [], SYM_BY_KEY = new Map(), SYM_GROUPS = [], symDef = () => undefined;" }));
+  // Pläne für den Monteur (src/monteur.js, src/elmonteur.js, CJ 28.10.2026) nur im elplexaCAD-Bau: v3 bekommt Platzhalter, kein QR-Code-Paket
+  if (!EL) b.onResolve({ filter: /\/(el)?monteur\.js$/ }, () => ({ path: "monteur", namespace: "monteurstub" }));
+  b.onLoad({ filter: /.*/, namespace: "monteurstub" }, () => ({ contents: "export const startMonteur = () => false, makeMonteurPlaner = null;" }));
 } };
 const js = await esbuild.build({ entryPoints: ["src/app.js"], bundle: true, format: "iife", minify: true, write: false, target: "chrome110", legalComments: "none", plugins: [pdfWorker, pdfOut], external: ["html2canvas", "dompurify", "canvg"], define: { ELPLEXA: String(EL), APP_BUILD: JSON.stringify(new Date().toISOString().slice(0, 16).replace("T", " ")) } });
-const css = fs.readFileSync("src/style.css", "utf8") + (EL ? "\n" + fs.readFileSync("src/elplexa.css", "utf8") : "");
+const css = fs.readFileSync("src/style.css", "utf8") + (EL ? "\n" + fs.readFileSync("src/elplexa.css", "utf8") + "\n" + fs.readFileSync("src/monteur.css", "utf8") : "");
 let html = fs.readFileSync("src/index.template.html", "utf8");
 // elplexaCAD: Elplexa-CI (Handbuch 1.0, 17.10.2026): Figur als Logo und Favicon, Schrift Source Sans 3 für die Oberfläche.
 const elFonts = EL ? ["400", "500", "600"].map((w) => face("Source Sans 3", w, `node_modules/@fontsource/source-sans-3/files/source-sans-3-latin-${w}-normal.woff2`)).join("\n") : "";
@@ -75,4 +78,16 @@ html = html.replace("/*CSS*/", () => fonts + "\n" + (EL ? elFonts + "\n" : "") +
 fs.mkdirSync("dist", { recursive: true });
 const out = EL ? "dist/ElplexaCAD.html" : "dist/schemacad.html";
 fs.writeFileSync(out, html);
+// Monteur-Ansicht offline öffnen (CJ 28.10.2026): Service Worker neben der Seite, nur die Monteur-Ansicht meldet ihn an (monteur.js).
+// Netz zuerst, ohne Netz die zuletzt geladene Seite (Pläne und Notizen liegen in IndexedDB). Online legt ci.yml sw.js neben index.html.
+if (EL) fs.writeFileSync("dist/sw.js", `// elplexaCAD: Seite offline für die Monteur-Ansicht. Netz zuerst, sonst Kopie aus dem Cache.
+const C = "elplexacad-seite";
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("fetch", (e) => {
+  if (e.request.mode !== "navigate") return;
+  e.respondWith(fetch(e.request).then((r) => { if (r.ok) { const c = r.clone(); caches.open(C).then((x) => x.put(new URL(e.request.url).pathname, c)); } return r; })
+    .catch(() => caches.open(C).then((x) => x.match(new URL(e.request.url).pathname)).then((r) => r || Response.error())));
+});
+`);
 console.log(out, (html.length / 1024).toFixed(0) + " KB");

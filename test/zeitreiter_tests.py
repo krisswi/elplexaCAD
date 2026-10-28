@@ -44,6 +44,7 @@ def fake(route):
         body = json.loads(req.post_data); r["data"] = body["data"]; r["updated_at"] = body["updated_at"]
         J([{"updated_at": r["updated_at"]}]); return
     if path in ("/rest/v1/user_settings", "/rest/v1/user_positions"): route.fulfill(status=200 if route.request.method == "GET" else 201, content_type="application/json", body="[]" if route.request.method == "GET" else ""); return  # Firmenprofil und Positionsdatenbank (Offerte Schritt 2, 3): leer
+    if path in ("/rest/v1/shares", "/rest/v1/share_releases"): J([]); return  # Pläne für den Monteur (Status in der Übersicht, PDF-Aufräumen): noch kein Link
     J({"message": "nicht gefunden"}, 404)
 def weeks_back(today, target):  # Schritte «‹» von der heutigen Woche bis zur Zielwoche (negativ = vor)
     mon = lambda d: d - datetime.timedelta(days=d.weekday())

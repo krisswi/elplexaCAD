@@ -40,7 +40,7 @@ export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, s
   const pickKey = () => `elplexacad.mpick.${M.share?.id}`;
   const picked = () => { const p = M.share ? ls.get(pickKey()) : null; const all = planSheets(); return Array.isArray(p) ? all.filter((sh) => p.includes(sid(sh))) : all; };
   const seenKey = () => `elplexacad.mseen.${M.share?.id}`;
-  const active = () => isPlan() && !S.shared && !(EL_S.hub && !EL_S.hub.hidden);
+  const active = () => isPlan() && !S.shared && !!cloudUser() && !(EL_S.hub && !EL_S.hub.hidden); // nur angemeldet: ohne Konto gibt es keinen Link, die Leiste läge nur über der Zeichnung
   const myName = () => String(cloudUser() || "").split("@")[0] || "Planer"; // Annahme: Name der Planer-Notiz = Konto ohne @…
   const vis = () => M.notes.filter((n) => !M.hidden.has(n.id));
 

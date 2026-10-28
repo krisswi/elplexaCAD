@@ -1,4 +1,4 @@
--- Entwurf, noch NICHT angewendet (wartet auf OK von CJ).
+-- Angewendet 28.10.2026 (Freigabe CJ im Auftrag Monteur-Ansicht Bau).
 -- Teilen neu (CJ 28.10.2026): Link mit veröffentlichtem Stand je Modul, Monteur-Ansicht, Notizen mit fester Nummer.
 -- Eigene Tabellen, der alte Teilen-Link (project_shares, project_notes, share_open) bleibt unverändert, bis der neue geprüft ist.
 -- Entscheide 28.10.: «Veröffentlichen» füllt den Link, Stand-Nummer = Revisionsindex; eine Nummernreihe je Plan, Kollision = nächste
@@ -261,3 +261,6 @@ grant execute on function public.m_open(text, uuid, int), public.m_notes(text, u
   public.m_note_delete(text, uuid) to anon, authenticated;
 grant execute on function public.p_publish(uuid, text, jsonb), public.p_note_add(uuid, text, text, real, real, text, text),
   public.p_note_edit(uuid, text, real, real), public.p_note_confirm(uuid, boolean, text) to authenticated;
+-- Nachtrag (angewendet als 20261028_monteur_p_ohne_anon): Supabase gibt anon standardmässig Ausführungsrecht, Planer-Funktionen nur mit Login
+revoke execute on function public.p_publish(uuid, text, jsonb), public.p_note_add(uuid, text, text, real, real, text, text),
+  public.p_note_edit(uuid, text, real, real), public.p_note_confirm(uuid, boolean, text) from anon;

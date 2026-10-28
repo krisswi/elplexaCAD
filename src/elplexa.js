@@ -5,6 +5,7 @@ import { cell } from "./auswertung.js";
 import { modOf, modVar, modName, MOD_STATUS, MAX_FOLDERS, projectStatus } from "./model.js";
 import { adrHTML, gwrHTML } from "./gwr.js";
 import { loadProfil, profilLines } from "./profil.js";
+import { shareStatus } from "./monteur-kern.js";
 
 export const MODULES = [
   { id: "schema", label: "Schema", sub: "Stromlaufschema mit Grundverkabelung", color: "#2f6db3" },
@@ -178,7 +179,7 @@ export function projItems(o) {
   // k = Platz in der ungefilterten Liste „zuletzt geöffnet“ (EL_S.recent): öffnen und entfernen arbeiten damit, also vor dem Filtern vergeben
   const loc = (o.recent || []).map((e, k) => ({ src: "lokal", k, file: e.file, name: e.name || e.file, status: e.status || "", obj: e.sum?.obj || "", mods: e.sum?.mods || null, n: e.sum?.n ?? null, h: e.sum?.h ?? null, t: e.t || 0, hint: e.handle ? "" : "Datei wählen" }))
     .filter((x) => !(o.cur?.t != null && x.t === o.cur.t)); // das offene Projekt steht als eigene Kachel; gleichnamige andere Dateien bleiben
-  const onl = (o.online || []).filter((e) => !(o.cur?.onlineId && e.id === o.cur.onlineId)).map((e) => { const s = onlineSummary(e); return { src: "online", id: e.id, name: e.name, status: e.status || "", obj: s?.obj || "", mods: null, n: null, h: s ? s.h : null, t: Date.parse(e.updated_at) || 0, hint: "" }; });
+  const onl = (o.online || []).filter((e) => !(o.cur?.onlineId && e.id === o.cur.onlineId)).map((e) => { const s = onlineSummary(e); return { src: "online", id: e.id, name: e.name, status: e.status || "", obj: s?.obj || "", mods: null, n: null, h: s ? s.h : null, t: Date.parse(e.updated_at) || 0, hint: "", share: o.shares ? shareStatus(o.shares.get(e.id)) : null }; });
   let all = [...loc, ...onl];
   if (o.filter && o.filter !== "Alle") all = all.filter((x) => x.status === o.filter);
   if (o.sort === "name") return all.sort((a, b) => a.name.localeCompare(b.name, "de"));
@@ -197,10 +198,10 @@ export function projectsHTML(o) {
     const attr = x.src === "online" ? `data-elonline="${esc(x.id)}"` : `data-elrecent="${x.k}"`;
     const meta = [x.n !== null ? `${x.n} ${x.n === 1 ? "Blatt" : "Blätter"}` : "", x.h !== null ? `${fmtH(x.h)} h` : "", x.t ? projWhen(x.t) : ""].filter(Boolean).join(" · ");
     const key = x.src === "online" ? `o:${x.id}` : `l:${x.k}`, on = !!o.sel?.has(key); // key = Auswahl (Platz in der Liste), pkey = Ziehen (stabil)
-    return `<button class="el-ptile${on ? " sel" : ""}" id="el-pt-${esc(key.replace(":", "-"))}" draggable="true" ${attr} data-projctx="${esc(key)}" data-selkey="${esc(key)}" data-pkey="${esc(projKey(x))}" title="${x.src === "online" ? "Online-Projekt öffnen" : x.hint ? "Dieser Browser merkt sich nur den Namen: Datei wählen" : "Öffnen"}"><span class="el-ph"><span class="el-pn">${esc(x.name)}</span>${x.status ? statusPill(x.status) : ""}</span><span class="el-po">${esc(x.obj) || "–"}</span><span class="el-pm">${dots(x)}${esc(meta)}</span><span class="el-pw">${x.src === "online" ? "online" : "lokal"}${x.hint ? " · " + x.hint : ""}${on ? `<span class="sr"> (gewählt)</span>` : ""}</span></button>`;
+    return `<button class="el-ptile${on ? " sel" : ""}" id="el-pt-${esc(key.replace(":", "-"))}" draggable="true" ${attr} data-projctx="${esc(key)}" data-selkey="${esc(key)}" data-pkey="${esc(projKey(x))}" title="${x.src === "online" ? "Online-Projekt öffnen" : x.hint ? "Dieser Browser merkt sich nur den Namen: Datei wählen" : "Öffnen"}"><span class="el-ph"><span class="el-pn">${esc(x.name)}</span>${x.status ? statusPill(x.status) : ""}</span><span class="el-po">${esc(x.obj) || "–"}</span><span class="el-pm">${dots(x)}${esc(meta)}</span><span class="el-pw">${x.src === "online" ? "online" : "lokal"}${x.hint ? " · " + x.hint : ""}${x.share ? `<span class="el-mst${x.share.on ? " on" : ""}">${esc(x.share.text)}</span>` : ""}${on ? `<span class="sr"> (gewählt)</span>` : ""}</span></button>`;
   };
   const cur = o.cur && (!o.filter || o.filter === "Alle" || o.filter === o.cur.status) ? o.cur : null;
-  const curCard = cur ? `<button class="el-ptile cur" id="el-pt-cur" data-elact="projview" title="Dieses Projekt ist geöffnet: Projektdaten und Module"><span class="el-ph"><span class="el-pn">${esc(cur.name)}</span>${cur.status ? statusPill(cur.status) : ""}</span><span class="el-po">${esc(cur.obj) || "–"}</span><span class="el-pm">${cur.mods.map(([b, s]) => { const m = MODULES.find((q) => q.id === b); return `<i class="el-pd" style="background:${m?.color || "#999"}" title="${esc(m?.label || b)}: ${esc(s)}"></i>`; }).join("")}${cur.n} ${cur.n === 1 ? "Blatt" : "Blätter"}${cur.h ? ` · ${fmtH(cur.h)} h` : ""}</span><span class="el-pw"><b class="el-open">geöffnet</b></span></button>` : "";
+  const curCard = cur ? `<button class="el-ptile cur" id="el-pt-cur" data-elact="projview" title="Dieses Projekt ist geöffnet: Projektdaten und Module"><span class="el-ph"><span class="el-pn">${esc(cur.name)}</span>${cur.status ? statusPill(cur.status) : ""}</span><span class="el-po">${esc(cur.obj) || "–"}</span><span class="el-pm">${cur.mods.map(([b, s]) => { const m = MODULES.find((q) => q.id === b); return `<i class="el-pd" style="background:${m?.color || "#999"}" title="${esc(m?.label || b)}: ${esc(s)}"></i>`; }).join("")}${cur.n} ${cur.n === 1 ? "Blatt" : "Blätter"}${cur.h ? ` · ${fmtH(cur.h)} h` : ""}</span><span class="el-pw"><b class="el-open">geöffnet</b>${cur.onlineId && o.shares ? (() => { const st = shareStatus(o.shares.get(cur.onlineId)); return `<span class="el-mst${st.on ? " on" : ""}">${esc(st.text)}</span>`; })() : ""}</span></button>` : "";
   let body;
   if (!items.length && !cur) body = `<p class="el-note el-empty">${((o.filter && o.filter !== "Alle") || o.recent?.length || o.online?.length) ? "Kein Projekt mit diesem Status." : "Noch keine Projekte. Gespeicherte und geöffnete Projekte erscheinen hier."}</p>`;
   else body = view === "liste" ? `<div class="el-plist">${curCard}${items.map(card).join("")}</div>` : `<div class="el-pgrid">${curCard}${items.map(card).join("")}</div>`;
@@ -325,7 +326,7 @@ export function onlineHTML(o) {
   if (!o.user) return "";
   const head = `<div class="el-eyerow"><span class="el-eye">Online</span><span class="el-acct">${esc(o.user)}</span></div>`;
   const state = o.link ? `<p class="el-note">Online gespeichert am ${when2(o.link.at)}. Die Datei bleibt der Hauptweg.</p>` : `<p class="el-note">Eine Kopie online speichern, um sie auf einem anderen Rechner zu öffnen. Die Datei bleibt der Hauptweg.</p>`;
-  return `${head}${state}<div class="el-acts"><button class="btn outline" data-elact="onsave"${o.busy ? " disabled" : ""}><span>Online speichern</span></button>${o.link ? `<button class="btn outline" data-elshare="${esc(o.link.id)}"${o.busy ? " disabled" : ""}><span>Link teilen …</span></button><button class="btn outline" data-elodel="${esc(o.link.id)}" title="Nur die Online-Kopie, die Datei bleibt"${o.busy ? " disabled" : ""}><span>Online löschen</span></button>` : ""}</div>`;
+  return `${head}${state}<div class="el-acts"><button class="btn outline" data-elact="onsave"${o.busy ? " disabled" : ""}><span>Online speichern</span></button>${o.link ? `<button class="btn outline" data-elshare="${esc(o.link.id)}"${o.busy ? " disabled" : ""}><span>Link teilen …</span></button><button class="btn outline" data-elmshare${o.busy ? " disabled" : ""} title="Pläne für den Monteur: Link, QR-Code, Notizen"><span>Link für Monteur …</span></button><button class="btn outline" data-elodel="${esc(o.link.id)}" title="Nur die Online-Kopie, die Datei bleibt"${o.busy ? " disabled" : ""}><span>Online löschen</span></button>` : ""}</div>`;
 }
 
 // Übersicht aller Blätter eines Moduls (Knopf „+N“ der Modulkarte, CJ 18.10.2026): Mini-Kachel, Blattname, Titel; Klick öffnet das Blatt

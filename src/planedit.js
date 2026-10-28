@@ -576,6 +576,27 @@ export function makePlan(c) {
     toast("Stückliste als CSV in den Download-Ordner geladen.");
   }
   S.planPages = printPages; // files.js buildPrint (nur elplexaCAD)
+  // Veröffentlichen für den Monteur (CJ 28.10.2026, elmonteur.js): Planseite wie im Druck, Schriftfeld mit Index = Stand und Datum des Stands.
+  // PDF-Plan nur als Verweis (data-msha, data-mpage): die Monteur-Ansicht setzt das Bild aus der PDF in der Offline-Kopie ein. tr: Welt ↔ Seite.
+  // Stückliste wie im Druck (bomOf), mit kleinem Symbol. Ohne Zeit, Preise und andere Module.
+  function releaseSheet(S0, i, meta) {
+    const p = P.paperOf(S0), a = printArea(p), [mx, my] = centerOf(S0), cx = (a.x0 + a.x1) / 2, cy = (a.y0 + a.y1) / 2, id = `mclip${i}`, [w, h] = paperSize(p);
+    let bg = "", ref = null;
+    if (bgShown(S0)) {
+      const b = S0.bg, k = mmPerPt(b), [fu, fv] = fixOf(b), tr = `${b.rot ? `rotate(${b.rot}) ` : ""}translate(${f(-fu * k)} ${f(fv * k)}) scale(${k} ${-k})`, as = S.doc.assets?.[b.asset];
+      ref = { asset: b.asset, page: b.page, name: as?.name || "plan.pdf" };
+      bg = `<g transform="${tr}" opacity="${bgOp(S0)}"><image data-masset="${R.esc(b.asset)}" data-mpage="${b.page}" x="0" y="0" width="${b.w}" height="${b.h}" preserveAspectRatio="none"/></g>`;
+    }
+    const inner = `<clipPath id="${id}"><rect x="${f(a.x0)}" y="${f(a.y0)}" width="${f(a.x1 - a.x0)}" height="${f(a.y1 - a.y0)}"/></clipPath>`
+      + `<g clip-path="url(#${id})"><g class="pl-print" transform="translate(${f(cx)} ${f(cy)}) scale(${1 / p.den}) translate(${f(-mx)} ${f(-my)})">${bg}${keepW(itemsSVG(S0))}</g></g>`;
+    const bom = P.bomOf(S0).map((r) => {
+      if (r.duct) return { group: r.group, label: `${r.label} (${r.n} Stück)`, m: r.m, sym: `<svg viewBox="0 -3 12 6">${ductSVG({ pts: [[1, 0], [11, 0]], w: 3 }, 1, undefined, 1)}</svg>` };
+      const def = symDef(r.key), k = Math.min(1, 2.6 / def.r);
+      return { group: r.group, label: r.label, n: r.n, sym: `<svg viewBox="-3 -3 6 6"><g transform="scale(1 -1)">${symSVG({ key: r.key, at: [-def.c[0] * k, -def.c[1] * k], r: 0, ap: r.ap }, k, P.defCol({ type: "sym", key: r.key }), 1)}</g></svg>` };
+    });
+    return { svg: pageSVG(p, meta, info(p), inner), w, h, tr: { cx, cy, den: p.den, mx, my }, bg: ref, bom };
+  }
+  S.planRelease = releaseSheet;
 
   // ---------- Zeiger ----------
   async function placeText(at) {

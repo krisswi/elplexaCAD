@@ -356,6 +356,8 @@ export function makePlan(c) {
     if (it.txt) { const b = P.ductLabel(it, k, tf); s += txt(b.at[0], b.at[1], it.txt, b.size, b.a, ec); }
     return s;
   }
+  // Freier Text (CJ 28.10.2026, Plan Runde 3): Mitte at, Höhe TEXT_H Papier-mm × tf, lesbar gedreht
+  const textSVG = (it, k, fill = P.colOf(it)) => txt(it.at[0], it.at[1], it.txt, P.TEXT_H * P.tfOf(it, sh()) * k, it.r ?? 0, fill);
   // Form (CJ 27.10.2026): Strich lw in Papier-mm × Massstab, gestrichelt wie die Leitung «in Boden», Füllung unter dem Strich. stroke: eine Farbe ohne Füllung (Wahl, Vorschau).
   // Füllung halbtransparent (CJ 28.10.2026, Plan Runde 3): Grundriss und Symbole darunter bleiben sichtbar
   function shapeSVG(it, k, stroke) {
@@ -433,6 +435,7 @@ export function makePlan(c) {
       for (const y of S0.items) if (y.type === "line" && y.layer === l.id) s += lineSVG(y, k);
       for (const a of S0.items) if (a.type === "ader") { const ln = S0.items.find((i) => i.id === a.line); if (ln?.layer === l.id) s += aderSVG(ln, a, k, P.colOf(ln), P.tfOf(a, S0), ducts); }
       for (const y of S0.items) if (y.type === "sym" && y.layer === l.id) s += symSVG(y, k, P.colOf(y));
+      for (const y of S0.items) if (y.type === "text" && y.layer === l.id) s += textSVG(y, k);
     }
     return `<g class="pl-items">${s}</g>`;
   }
@@ -462,6 +465,7 @@ export function makePlan(c) {
       else if (it.type === "opening") { const w = sh().items.find((i) => i.id === it.wall); if (w) s += `<g class="pl-scale">${openingSVG(w, it, k, SEL)}</g>` + edgeGrips(w, it).map((g) => grip(g.p)).join(""); }
       else if (it.type === "dim") { s += `<g class="pl-scale">${dimSVG(it, k, SEL)}</g>`; if (it.ref === undefined) s += grip(it.a) + grip(it.b); }
       else if (it.type === "sym") s += `<g class="pl-scale">${symSVG(it, k, SEL)}</g>`;
+      else if (it.type === "text") s += textSVG(it, k, SEL);
       else if (it.type === "ader") { const ln = sh().items.find((i) => i.id === it.line); if (ln) s += `<g class="pl-scale">${aderSVG(ln, it, k, SEL)}</g>`; }
       else if (it.type === "duct") s += `<g class="pl-scale" opacity=".75">${ductSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
       else if (it.type === "shape") s += `<g class="pl-scale">${shapeSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? P.shapeHandles(it).map(grip).join("") : "");
@@ -574,6 +578,11 @@ export function makePlan(c) {
   S.planPages = printPages; // files.js buildPrint (nur elplexaCAD)
 
   // ---------- Zeiger ----------
+  async function placeText(at) {
+    const r = await c.formDialog("Text", "Text an dieser Stelle. Grösse, Farbe und Drehung danach rechts.", [{ label: "Text", value: "" }], "Setzen");
+    if (!r || !r[0].trim()) return;
+    const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "text", layer: sh().alay, at, txt: r[0] }, id)));
+  }
   function down(w, e) {
     raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
     const T = S.tool;
@@ -597,6 +606,10 @@ export function makePlan(c) {
       const q = symPlace(opt.sym, w, opt.symR, undefined, opt.m), def = symDef(opt.sym), id = nextId();
       change(() => sh().items.push(P.cleanPlanObj({ type: "sym", layer: sh().alay, key: opt.sym, at: q.at, r: q.r, ap: opt.ap, m: opt.m, ...(def.ref && opt.refCol ? { col: opt.refCol } : {}) }, id))); // ap fällt bei Symbolen ohne Aufputz-Variante weg
       if (def.ref) { setTool("select"); S.sel = new Set([id]); renderRight(); renderOverlay(); updateHint(); setTimeout(() => c.rightEl.querySelector('[data-plf="fu"]')?.focus(), 0); } // nach dem Klick, der sonst die Zeichenfläche fokussiert // Verweis: gleich beschriften
+      return;
+    }
+    if (T === "pl-text") { // Text (CJ 28.10.2026): Klick setzt die Mitte, danach den Text eingeben
+      if (layerOk()) { const p = snapShape(w); placeText([p.x, p.y]); }
       return;
     }
     if (T === "pl-ader") { // Klick auf eine Leitung setzt die Aderzahl an der Stelle (CJ 27.10.2026)
@@ -669,7 +682,7 @@ export function makePlan(c) {
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t), more = add || opt.multi;
     if (!hit) { if (!more) S.sel = new Set(); drag = { type: "box", sx: w.x, sy: w.y, ex: w.x, ey: w.y, add: more, started: false }; renderRight(); renderOverlay(); return; } // Rahmen ziehen
     if (more) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; renderRight(); renderOverlay(); return; } // ⌘-Klick: dazu oder weg
-    if ((S.sel.has(hit.id) && S.sel.size > 1) || hit.type === "line" || hit.type === "duct" || hit.type === "shape") { if (!S.sel.has(hit.id)) S.sel = new Set([hit.id]); drag = { type: "multi", items: sel(), sx: w.x, sy: w.y, dx: 0, dy: 0, started: false, snap: snapshot() }; renderRight(); renderOverlay(); return; }
+    if ((S.sel.has(hit.id) && S.sel.size > 1) || hit.type === "line" || hit.type === "duct" || hit.type === "shape" || hit.type === "text") { if (!S.sel.has(hit.id)) S.sel = new Set([hit.id]); drag = { type: "multi", items: sel(), sx: w.x, sy: w.y, dx: 0, dy: 0, started: false, snap: snapshot() }; renderRight(); renderOverlay(); return; }
     S.sel = new Set([hit.id]);
     drag = { type: "move", it: hit, sx: w.x, sy: w.y, started: false, snap: snapshot(), ...(hit.type === "wall" ? { ea: P.nodeEnds(sh(), hit.a), eb: P.nodeEnds(sh(), hit.b), a0: [...hit.a], b0: [...hit.b] } : hit.type === "opening" ? { t0: hit.t } : hit.type === "sym" ? { at0: [...hit.at], r0: hit.r } : { off0: hit.off }) };
     renderRight(); renderOverlay();
@@ -792,7 +805,7 @@ export function makePlan(c) {
   }
 
   // ---------- Tasten ----------
-  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", l: "pl-line", k: "pl-duct", d: "pl-ader", i: "pl-sline", q: "pl-srect", c: "pl-scircle" }; // I, Q wie im Schema; Kreis C (O = Öffnung) // CJ 27.10.2026: K = Kanal, Leitung nur noch L
+  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", l: "pl-line", k: "pl-duct", d: "pl-ader", i: "pl-sline", q: "pl-srect", c: "pl-scircle", t: "pl-text" }; // I, Q wie im Schema; Kreis C (O = Öffnung) // CJ 27.10.2026: K = Kanal, Leitung nur noch L
   const GRUND_TOOLS = ["pl-wall", "pl-open", "pl-dim", "pl-measure", "pl-fix", "pl-rotate"];
   // Grundriss-Werkzeuge (Wand, Tür/Fenster, Mass) gibt es nur auf der Ebene Hintergrund (ohne sie auf der einzigen Ebene)
   const grundOn = () => sh().alay === "bg" || !P.layerById(sh(), "bg");
@@ -855,9 +868,9 @@ export function makePlan(c) {
     if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Links die Ebene wechseln."); return true; } setTool(t); return true; }
     if (k.toLowerCase() === "p" && !e.altKey) { bgToggle(); return true; } // PDF-Plan ein/aus (Tastenkürzel-Index)
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
-      const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym"), fs = sel().filter((i) => i.type === "shape" && i.k !== "circle");
+      const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym" || i.type === "text"), fs = sel().filter((i) => i.type === "shape" && i.k !== "circle");
       if (S.tool === "pl-sym") { opt.symR = (opt.symR + step) % 360; renderOverlay(); return true; }
-      if (ys.length || fs.length) { change(() => { for (const y of ys) y.r = (y.r + step) % 360; for (const x of fs) P.rotateShape(x, step); }); return true; } // Formen um die eigene Mitte
+      if (ys.length || fs.length) { change(() => { for (const y of ys) { const r = ((y.r ?? 0) + step) % 360; if (r || y.type === "sym") y.r = r; else delete y.r; } for (const x of fs) P.rotateShape(x, step); }); return true; } // Formen um die eigene Mitte
       return true;
     }
     if (k.toLowerCase() === "a" && !e.altKey) { // Aufputz/Unterputz (CJ 26.10.2026): beim Setzen für die nächsten Symbole, sonst an den gewählten (alle gleich: Mehrheit UP → AP)
@@ -873,7 +886,7 @@ export function makePlan(c) {
       if (ys.length) { const on = !ys.every((i) => i.m); change(() => { for (const y of ys) { if (on) y.m = true; else delete y.m; } }); toast(`${ys.length} ${ys.length === 1 ? "Symbol" : "Symbole"} ${on ? "gespiegelt" : "nicht gespiegelt"}.`); return true; }
       return true;
     }
-    if ("try".includes(k.toLowerCase()) && k.length === 1) return true; // Werkzeuge anderer Blätter: hier ohne Wirkung
+    if ("ry".includes(k.toLowerCase()) && k.length === 1) return true; // Werkzeuge anderer Blätter: hier ohne Wirkung
     if (k.startsWith("Arrow") && S.sel.size) {
       const step = (S.grid.on ? S.grid.size : 10) * (e.shiftKey ? 5 : 1), dx = k === "ArrowLeft" ? -step : k === "ArrowRight" ? step : 0, dy = k === "ArrowUp" ? step : k === "ArrowDown" ? -step : 0;
       change(() => P.moveItems(sh(), sel(), dx, dy), { panel: true });
@@ -895,7 +908,7 @@ export function makePlan(c) {
         + (S0.bg ? `<p class="note">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "")
         + `</section><section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
       + `<section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "L") + toolBtn("pl-ader", ICON.ader, "Aderzahl", "D") + toolBtn("pl-duct", ICON.duct, "Kanal/Trasse", "K")
-      + `</section><section class="section"><h2 class="section-title">Zeichnen</h2>` + toolBtn("pl-sline", R.icons.sline, "Linie", "I") + toolBtn("pl-srect", R.icons.srect, "Rechteck", "Q") + toolBtn("pl-scircle", R.icons.scircle, "Kreis", "C")
+      + `</section><section class="section"><h2 class="section-title">Zeichnen</h2>` + toolBtn("pl-sline", R.icons.sline, "Linie", "I") + toolBtn("pl-srect", R.icons.srect, "Rechteck", "Q") + toolBtn("pl-scircle", R.icons.scircle, "Kreis", "C") + toolBtn("pl-text", R.icons.text, "Text", "T")
       + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`
       + (S0.bg?.asset ? `<div class="layer-row pl-bgrow${S0.bgOff ? " off" : ""}"><span class="layer-name">PDF-Plan</span>`
         + `<input type="range" min="10" max="100" step="10" value="${S0.bgOp ?? P.BG_OP}" data-plbgop aria-label="Deckkraft PDF-Plan in %" title="Deckkraft ${S0.bgOp ?? P.BG_OP} %"${S0.bgOff ? " disabled" : ""}>`
@@ -1038,6 +1051,8 @@ export function makePlan(c) {
       + note(`Griffe ${it.k === "line" ? "an den Enden" : it.k === "rect" ? "an den Ecken (die Gegenecke bleibt)" : "auf dem Kreis ändern den Radius"}; Fang an Wänden, Symbolen und Ecken, Alt frei. Ziehen verschiebt, R dreht um 90°. Nicht in der Stückliste.`) + copyRow() + del1();
     if (sel0.length > 1 && sel0.every((i) => i.type === "shape")) return head(`${sel0.length} Formen`, "Linie, Rechteck, Kreis") + shapeFields(sel0) + sel1("mlayer", new Set(sel0.map((i) => i.layer)).size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], new Set(sel0.map((i) => i.layer)).size === 1 ? sel0[0].layer : "", "Ebene")
       + note("Ziehen an einer gewählten Form verschiebt alle, R dreht jede um ihre Mitte.") + copyRow() + del1();
+    if (it?.type === "text") return head("Text", `${it.r ?? 0}°`) + `<div class="field"><label>Text</label><input type="text" data-plf="ttxt" value="${R.esc(it.txt)}" autocomplete="off"></div>`
+      + tfField([it]) + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Ziehen verschiebt den Text, R dreht um 90° (Shift+R zurück), er bleibt lesbar. Pfeiltasten schieben.") + copyRow() + del1();
     if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + sel1("lc", LINE_FORMS, it.curve ? "1" : "0", "Form") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
       + note(`${it.pts.length} Punkte. Griffe an den Punkten ziehen (Fang an den Anschlusspunkten der Symbole und am Raster, Shift 0/45/90°), Ziehen an der Linie verschiebt sie.`) + copyRow() + del1();
     if (sel0.length && sel0.every((i) => i.type === "ader")) { // eine oder mehrere Aderzahlen: gemeinsam änderbar
@@ -1047,10 +1062,10 @@ export function makePlan(c) {
     }
     if (it) return head(it.type) + copyRow() + del1();
     if (sel0.length > 1) {
-      const n = (t) => sel0.filter((i) => i.type === t).length, parts = [["wall", "Wände"], ["opening", "Öffnungen"], ["dim", "Masse"], ["sym", "Symbole"], ["line", "Leitungen"], ["ader", "Aderzahlen"], ["duct", "Kanäle"], ["shape", "Formen"]].filter(([t]) => n(t)).map(([t, l]) => `${n(t)} ${l}`);
+      const n = (t) => sel0.filter((i) => i.type === t).length, parts = [["wall", "Wände"], ["opening", "Öffnungen"], ["dim", "Masse"], ["sym", "Symbole"], ["line", "Leitungen"], ["ader", "Aderzahlen"], ["duct", "Kanäle"], ["shape", "Formen"], ["text", "Texte"]].filter(([t]) => n(t)).map(([t, l]) => `${n(t)} ${l}`);
       const cols = sel0.filter(P.hasCol), lays = new Set(sel0.filter((i) => !P.hangs(i)).map((i) => i.layer));
-      const tfs = sel0.filter((i) => i.type === "sym" || i.type === "dim" || i.type === "ader" || (i.type === "duct" && i.txt)), ds = sel0.filter((i) => i.type === "duct");
-      return head(`${sel0.length} Objekte`, parts.join(", ")) + (tfs.length ? tfField(tfs) : "") + (cols.length ? colField(cols) : note("Farbe nur für Leitungen, Symbole, Kanäle und Formen; Mauern, Öffnungen und Masse bleiben schwarz.")) + (ds.length ? ecolField(ds) : "")
+      const tfs = sel0.filter((i) => i.type === "sym" || i.type === "dim" || i.type === "ader" || i.type === "text" || (i.type === "duct" && i.txt)), ds = sel0.filter((i) => i.type === "duct");
+      return head(`${sel0.length} Objekte`, parts.join(", ")) + (tfs.length ? tfField(tfs) : "") + (cols.length ? colField(cols) : note("Farbe nur für Leitungen, Symbole, Kanäle, Formen und Texte; Mauern, Öffnungen und Masse bleiben schwarz.")) + (ds.length ? ecolField(ds) : "")
         + (lays.size ? sel1("mlayer", lays.size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], lays.size === 1 ? [...lays][0] : "", "Ebene") : "")
         + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. ⌘-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
     }
@@ -1063,6 +1078,7 @@ export function makePlan(c) {
       + (def.ref ? colField([{ type: "sym", key: opt.sym, ...(opt.refCol ? { col: opt.refCol } : {}) }]).replaceAll("data-plcol", "data-plnewcol") + note("Nach dem Klick die Zeilen rechts eintippen. Den Kasten danach frei ziehen. Ein Zeiger zum Ziel nur auf Wunsch (Haken am gewählten Verweis).") : ""); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
       + note("Fang an den Anschlusspunkten der Symbole und am Raster (nicht an Wänden und anderen Leitungen), Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
+    else if (S.tool === "pl-text") h += head("Neuer Text", "Klick in den Plan") + note("Nach dem Klick den Text eingeben. Am gewählten Text rechts: Text, Grösse (wie die Beschriftungen, Prozent), Farbe (Vorgabe Schwarz), Ebene; R dreht um 90°.");
     else if (S.tool === "pl-ader") h += head("Neue Aderzahl", "Klick auf eine Leitung") + aderField(opt.atxt, "data-plo")
       + note("Kurzer Querstrich über die Leitung, die Zahl steht darüber. Ziffern 1 bis 9 wählen die Zahl, frei z. B. 5x1.5. Strich und Text in der Farbe der Leitung.");
     else if (S.tool === "pl-duct") h += head("Neuer Kanal", "Klick setzt Punkte, Enter beendet") + dwField(P.fmtLen(opt.dw), "data-plo") + sel1("dhatch", P.HATCHES, opt.dhatch, "Schraffur").replace("data-plf", "data-plo") + sel1("dcurve", DUCT_FORMS, opt.dcurve ? "1" : "0", "Form").replace("data-plf", "data-plo") + ductLayerHint()
@@ -1106,7 +1122,7 @@ export function makePlan(c) {
     if (t.dataset.pltf !== undefined) { // Textgrösse: gesamt (plan) oder an der Wahl (sel)
       const v = t.value.trim(), n = Number(v.replace(",", ".").replace("%", "")) / 100, plan = t.dataset.pltf === "plan";
       if ((v || plan) && !(n >= P.TF_MIN && n <= P.TF_MAX)) { toast(`Textgrösse ${pct(P.TF_MIN)} bis ${pct(P.TF_MAX)} %.`, "error"); renderRight(); return true; }
-      const f0 = Math.round(n * 100) / 100, its = sel().filter((i) => i.type === "sym" || i.type === "dim" || i.type === "duct" || i.type === "ader");
+      const f0 = Math.round(n * 100) / 100, its = sel().filter((i) => i.type === "sym" || i.type === "dim" || i.type === "duct" || i.type === "ader" || i.type === "text");
       if (plan) change(() => { if (f0 === 1) delete S0.tf; else S0.tf = f0; });
       else if (its.length) change(() => { for (const i of its) if (v) i.tf = f0; else delete i.tf; });
       return true;
@@ -1117,6 +1133,7 @@ export function makePlan(c) {
     if (k === "mlayer") { if (P.layerById(S0, v)) change(() => { for (const x of sel()) if (!P.hangs(x)) x.layer = v; }); else renderRight(); return true; }
     if (k === "atxt") { const t0 = v.trim().slice(0, 20), as = sel().filter((i) => i.type === "ader"); if (t0 && as.length) change(() => { for (const a of as) a.txt = t0; }); else renderRight(); return true; }
     if (k === "lk") { change(() => { it.kind = v; }); return true; }
+    if (k === "ttxt") { const t0 = v.trim().slice(0, 200); if (t0) change(() => { it.txt = t0; }); else renderRight(); return true; }
     if (k === "lc") { change(() => { if (v === "1") it.curve = true; else delete it.curve; }); return true; }
     if (it.type === "shape" && ["slen", "sw", "sh", "sr"].includes(k)) {
       const L0 = P.parseLen(v); if (!(L0 > 0)) { toast(`„${v}“ nicht verstanden. Beispiele: 3450, 345 cm, 3,45 m.`, "error"); renderRight(); return true; }
@@ -1175,6 +1192,7 @@ export function makePlan(c) {
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
     if (S.tool === "pl-sym") return `Symbol: Klick setzt ${symDef(opt.sym).label}${symDef(opt.sym).ap ? ` ${opt.ap ? "AP" : "UP"}` : ""}. ${symDef(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."}${symDef(opt.sym).ap ? " A wechselt AP/UP." : ""} S spiegelt. Esc oder V beendet.`;
     if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt${opt.lcurve ? ", geschwungen" : ""}). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;
+    if (S.tool === "pl-text") return "Text: Klick setzt die Mitte, danach den Text eingeben. Fang an Wänden, Symbolen und Raster, Alt ohne Fang. Esc oder V beendet.";
     if (S.tool === "pl-ader") return `Aderzahl: Klick auf eine Leitung setzt den Querstrich mit „${opt.atxt}“. Ziffern 1 bis 9 wählen die Zahl, rechts frei (z. B. 5x1.5). Esc beendet.`;
     if (S.tool === "pl-duct") return ductDraft ? `Kanal ${P.fmtLen(opt.dw)} mm: nächster Punkt per Klick oder Länge tippen (Tab = Winkel), Enter setzt (${ductDraft.pts.length} gesetzt). Enter ohne Eingabe, Doppelklick oder Esc beendet, Rücktaste nimmt zurück. Shift 0/45/90°, Alt ohne Fang.${ductDraft.len || ductDraft.ang ? `  Eingabe: ${ductDraft.len || "–"} mm, ${ductDraft.ang || "–"}°` : ""}` : `Kanal ${P.fmtLen(opt.dw)} mm (${P.HATCHES.find(([x]) => x === opt.dhatch)[1]}): Klick setzt den Anfang der Mittellinie. Zahlen 1–9 wählen die Breite (${P.DUCT_WS.join(", ")} mm). Fang wie bei Wänden.`;
     if (shapeKey(S.tool)) { const kk = shapeKey(S.tool), d = shapeDraft, n = { line: "Linie", rect: "Rechteck", circle: "Kreis" }[kk];

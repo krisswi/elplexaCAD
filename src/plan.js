@@ -17,6 +17,8 @@
 // Form { id, type: "shape", layer, k: "line" | "rect" | "circle", pts | x, y, w, h | x, y, r, col?, lw?, d?, fill? } (CJ 27.10.2026, Dateiversion 32): freies Zeichnen
 // wie im Schema (formen.js, gleiche Geometrie), echte mm der Welt. col Strichfarbe (Vorgabe schwarz), lw Linienstärke in Papier-mm (Vorgabe SHAPE_LW),
 // d gestrichelt, fill Füllfarbe (nur Rechteck und Kreis, fehlt = keine). Nicht in der Stückliste.
+// Text { id, type: "text", layer, at: [x, y], txt, r?, col?, tf? } (CJ 28.10.2026, Plan Runde 3, Dateiversion 33): freier Text (Taste T), Mitte at,
+// Grösse TEXT_H Papier-mm × tf, r Drehung in Grad (lesbar, steht nie auf dem Kopf), col Vorgabe schwarz. Nicht in der Stückliste.
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
 import { symDef, PLAN_SYMS } from "./plansym.js";
@@ -97,7 +99,8 @@ export const DOPPEL = { st: 120, iso: 80 };
 export const doppelD = (st, iso) => 2 * st + iso;
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
-export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct", "ader", "shape"]);
+export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct", "ader", "shape", "text"]);
+export const TEXT_H = 2.5; // freier Text: Höhe in Papier-mm (× tf)
 // Leitungsarten (Symbolzusammenfassung 5.110). Strichmuster in Papier-mm (× Massstab), flex = durchgezogen mit Welle je Abschnitt.
 export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"],
   ["fund", "Fundamenterder (verlegt im Beton)"], ["erdl", "Erdleiter (verlegt im Erdreich)"], ["blitz", "Blitzschutzleitung (sichtbar verlegt)"]];
@@ -122,7 +125,7 @@ export const lineCol = () => LINE_COL;
 // Vorgabe und wirksame Farbe eines Objekts
 export const defCol = (it) => (it.type === "duct" ? DUCT_COL : it.type === "line" ? lineCol() : it.type === "sym" ? (symDef(it.key).cat === "leitung" ? lineCol() : CAT_COL[symDef(it.key).cat] ?? "#000000") : "#000000");
 export const colOf = (it) => it.col ?? defCol(it);
-export const hasCol = (it) => it.type === "line" || it.type === "sym" || it.type === "duct" || it.type === "shape";
+export const hasCol = (it) => it.type === "line" || it.type === "sym" || it.type === "duct" || it.type === "shape" || it.type === "text";
 // Textgrösse (CJ 27.10.2026, Muster Disposition): Faktor tf (1 = Vorgabe), gesamt am Blatt (sh.tf) und einzeln an Symbol, Verweis und Mass (it.tf).
 // Der Einzelwert überschreibt den Gesamtwert. Gilt für Beschriftung, Höhe, Verweis-Zeilen und Masstext; Zusatztexte im Symbol (T15, LED, Zahl) bleiben fest.
 export const TF_MIN = 0.25, TF_MAX = 4;
@@ -211,6 +214,15 @@ export function cleanPlanObj(it, id) {
     const fl = String(it.fill ?? "").toLowerCase(); if (o.k !== "line" && HEX.test(fl)) o.fill = fl;
     return o;
   }
+  if (it.type === "text") {
+    const t = String(it.txt ?? "").trim().slice(0, 200);
+    if (!t || !isPt(it.at)) return null;
+    const o = { id, type: "text", layer: String(it.layer ?? ""), at: [it.at[0], it.at[1]], txt: t };
+    const r = isNum(it.r) ? ((Math.round(it.r) % 360) + 360) % 360 : 0; if (r) o.r = r;
+    setCol(o, it.col);
+    const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
+    return o;
+  }
   if (it.type === "duct") {
     const pts = (Array.isArray(it.pts) ? it.pts : []).filter(isPt).map((p) => [p[0], p[1]]).filter((p, i, a) => !i || !same(p, a[i - 1]));
     if (pts.length < 2 || !isNum(it.w) || it.w <= 0) return null;
@@ -244,7 +256,7 @@ export const planV31 = (sh) => sh.items.some((i) => i.type === "sym" && symDef(i
 export const planV32 = (sh) => sh.items.some((i) => i.type === "shape" || symDef(i.key)?.cat === "erdung" || LINE_KINDS.slice(5).some(([k]) => k === i.kind));
 // Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31, 32 planV32, 33 planV33
 // Dateiversion 33 (CJ 28.10.2026): gespiegelte Symbole (m), Verweis mit Zeiger (zg); ältere Stände würden beides still verlieren
-export const planV33 = (sh) => sh.items.some((i) => i.m === true || i.zg === true || (i.type === "duct" && i.curve === true));
+export const planV33 = (sh) => sh.items.some((i) => i.m === true || i.zg === true || (i.type === "duct" && i.curve === true) || i.type === "text");
 export const planVer = (sh) => (planV33(sh) ? 33 : planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
 const VERSION_NOW = 33;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
@@ -422,7 +434,7 @@ export function moveNode(sh, from, to, skip) {
 }
 // Wand oder Mass als Ganzes verschieben (Ecken bleiben mit den Nachbarn verbunden: deren Enden folgen)
 export function moveItem(sh, it, dx, dy) {
-  if (it.type === "sym") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
+  if (it.type === "sym" || it.type === "text") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
   if (it.type === "line" || it.type === "duct" || (it.type === "shape" && it.k === "line")) { it.pts = it.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); return; }
   if (it.type === "shape") { it.x = r3(it.x + dx); it.y = r3(it.y + dy); return; }
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall), u = wallDir(w); it.t += dx * u[0] + dy * u[1]; clampOpening(w, it); return; }
@@ -441,7 +453,7 @@ export function moveItems(sh, items, dx, dy) {
   const ends = nodes.map((p) => nodeEnds(sh, p)); // erst alle Enden sammeln, dann setzen (sonst fallen verschobene Ecken auf andere)
   ends.forEach((es, i) => { for (const { it, e } of es) it[e] = [r3(nodes[i][0] + dx), r3(nodes[i][1] + dy)]; });
   for (const it of items) {
-    if (it.type === "sym" || it.type === "line" || it.type === "duct" || it.type === "shape") moveItem(sh, it, dx, dy);
+    if (it.type === "sym" || it.type === "line" || it.type === "duct" || it.type === "shape" || it.type === "text") moveItem(sh, it, dx, dy);
     else if (hangs(it) && !ids.has(hostId(it))) moveItem(sh, it, dx, dy);
   }
   fixOpenings(sh);
@@ -479,6 +491,7 @@ export function inBox(sh, it, b) {
   if (it.type === "line" || it.type === "duct") return it.pts.every(ins);
   if (it.type === "shape") { const q = shapeBox(it); return ins([q.x0, q.y0]) && ins([q.x1, q.y1]); }
   if (it.type === "sym") return ins(symCenter(it, paperOf(sh).den));
+  if (it.type === "text") return ins(it.at);
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall); return !!w && ins(add(w.a, wallDir(w), it.t + it.w / 2)); }
   if (it.type === "ader") { const l = sh.items.find((x) => x.id === it.line); return !!l && ins(aderAt(l, it.t).p); }
   return false;
@@ -566,11 +579,14 @@ export function dimLine(d) { // Masslinie: a, b um off nach links (von a nach b)
   const v = sub(d.b, d.a), l = len(v) || 1, n = normal([v[0] / l, v[1] / l]);
   return [add(d.a, n, d.off), add(d.b, n, d.off), n];
 }
+// Treffer auf einem freien Text: Kasten um die Mitte, Breite geschätzt (0,6 × Höhe je Zeichen), entlang der Drehung
+const hitText = (it, p, h, tol) => { const a = ((it.r ?? 0) * Math.PI) / 180, u = [Math.cos(a), Math.sin(a)], d = sub(p, it.at); return Math.abs(dot(d, u)) <= h * 0.3 * it.txt.length + tol && Math.abs(dot(d, normal(u))) <= h / 2 + tol; };
 export function hitPlan(sh, items, p, tol) {
   const walls = new Map(sh.items.filter((i) => i.type === "wall").map((w) => [w.id, w])), k = paperOf(sh).den;
   for (const it of [...items].reverse()) if (it.type === "sym") { const def = itemDef(it, k); if (len(sub(p, symCenter(it, k))) <= def.r * k + tol) return it; } // zuletzt gesetzt zuerst
   const lines = new Map(sh.items.filter((i) => i.type === "line").map((l) => [l.id, l]));
   for (const it of [...items].reverse()) if (it.type === "ader" && lines.has(it.line)) { const g = aderGeom(lines.get(it.line), it, k, tfOf(it, sh)); if (distSeg(p, g.a, g.b) <= tol || len(sub(p, g.at)) <= g.size * Math.max(0.6, it.txt.length * 0.32) + tol) return it; } // Aderzahl vor ihrer Leitung
+  for (const it of [...items].reverse()) if (it.type === "text" && hitText(it, p, k * TEXT_H * tfOf(it, sh), tol)) return it;
   for (const it of [...items].reverse()) if (it.type === "line") { const q = linePts(it); if (q.some((x, i) => i && distSeg(p, q[i - 1], x) <= tol)) return it; }
   for (const it of [...items].reverse()) if (it.type === "shape" && hitShape(it, p, tol)) return it; // Form: auf dem Strich, gefüllt auch innen
   for (const it of [...items].reverse()) if (it.type === "duct" && linePts(it).some((x, i, q) => i && distSeg(p, q[i - 1], x) <= it.w / 2 + tol)) return it; // Kanal: ganze Breite, unter Leitungen und Symbolen
@@ -739,7 +755,7 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(linePts(i), i.w)) : i.type === "shape" ? (({ x0, y0, x1, y1 }) => [[x0, y0], [x1, y1]])(shapeBox(i)) : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(linePts(i), i.w)) : i.type === "shape" ? (({ x0, y0, x1, y1 }) => [[x0, y0], [x1, y1]])(shapeBox(i)) : i.type === "text" ? [i.at] : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }

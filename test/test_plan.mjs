@@ -761,4 +761,20 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual([out.sheets[0].items[0].curve, out.sheets[0].items[1].curve], [true, undefined], "curve nur true bleibt");
   assert.ok(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ ...bo, curve: undefined }])], 33)))).version < 33, "ohne Bogen tiefer");
 }
+// ---------- Plan Runde 3 (CJ 28.10.2026): freier Text (Taste T) ----------
+{
+  const tx = { id: 95, type: "text", layer: "bg", at: [1000, 500], txt: "  Küche  ", r: 450, col: "#000000", tf: 1.5 };
+  const d = M.parseModel(file([plan([tx])], 33)), out = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(out.version, 33, "Text: Dateiversion 33");
+  assert.deepStrictEqual(out.sheets[0].items[0], { id: 95, type: "text", layer: "bg", at: [1000, 500], txt: "Küche", r: 90, tf: 1.5 }, "Text getrimmt, Drehung 0–359, Schwarz = Vorgabe fällt weg");
+  assert.strictEqual(P.cleanPlanObj({ type: "text", layer: "bg", at: [0, 0], txt: "  " }, 1), null, "leerer Text fällt weg");
+  assert.strictEqual(P.cleanPlanObj({ type: "text", layer: "bg", at: [0, 0], txt: "A", r: 0 }, 1).r, undefined, "r 0 nicht gespeichert");
+  const sh = d.sheets[0], it = sh.items[0];
+  assert.strictEqual(P.hitPlan(sh, [it], [1000, 650], 10)?.id, 95, "Treffer entlang des gedrehten Texts");
+  assert.strictEqual(P.hitPlan(sh, [it], [1300, 500], 10), null, "quer daneben kein Treffer");
+  P.moveItems(sh, [it], 100, -50); assert.deepStrictEqual(it.at, [1100, 450], "verschieben");
+  assert.ok(P.inBox(sh, it, { x0: 1000, y0: 400, x1: 1200, y1: 500 }), "Rahmenwahl: Mitte im Rechteck");
+  assert.deepStrictEqual(P.bomOf(sh), [], "nicht in der Stückliste");
+  assert.ok(P.hasCol(it) && P.colOf(it) === "#000000", "Farbe wählbar, Vorgabe schwarz");
+}
 console.log("test_plan: alles ok");

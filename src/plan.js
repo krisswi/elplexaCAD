@@ -176,6 +176,7 @@ export function cleanPlanObj(it, id) {
     const str = (v, n) => String(v ?? "").trim().slice(0, n);
     if (str(it.txt, 60)) o.txt = str(it.txt, 60);
     if (def.ap && it.ap === true) o.ap = true;
+    if (it.m === true) o.m = true; // gespiegelt (Taste S, CJ 28.10.2026), nur gespeichert, wenn gespiegelt
     if (def.ref) { if (str(it.fu, 20)) o.fu = str(it.fu, 20); if (str(it.nr, 20)) o.nr = str(it.nr, 20); }
     const lo = cleanLo(it.lo); if (lo) o.lo = lo;
     const z = sizeOf(it.key); if (z) for (const f of ["w", "t"]) if (z[f] !== undefined && isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && Math.round(it[f]) !== z[f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
@@ -239,9 +240,11 @@ export const planV31 = (sh) => sh.items.some((i) => i.type === "sym" && symDef(i
 // Dateiversion 32 (CJ 27.10.2026): Formen (Linie, Rechteck, Kreis; ältere Stände lehnen das Objekt ab), Erdungs- und Blitzschutzsymbole
 // und Erdleitungen (ältere Stände würden sie still verwerfen bzw. zur Leitung «in Decke» machen)
 export const planV32 = (sh) => sh.items.some((i) => i.type === "shape" || symDef(i.key)?.cat === "erdung" || LINE_KINDS.slice(5).some(([k]) => k === i.kind));
-// Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31, 32 planV32
-export const planVer = (sh) => (planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
-const VERSION_NOW = 32;
+// Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31, 32 planV32, 33 planV33
+// Dateiversion 33 (CJ 28.10.2026): gespiegelte Symbole (m); ältere Stände würden das Spiegeln still verlieren
+export const planV33 = (sh) => sh.items.some((i) => i.m === true);
+export const planVer = (sh) => (planV33(sh) ? 33 : planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
+const VERSION_NOW = 33;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 // ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
 const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
@@ -637,12 +640,25 @@ export function cleanLo(v) {
 export const sizeOf = (key) => symDef(key)?.size ?? null;
 export const symSize = (it) => { const z = sizeOf(it.key); return z ? { w: it.w ?? z.w, ...(z.t !== undefined ? { t: it.t ?? z.t } : {}) } : null; };
 // Symboldefinition für ein Objekt: bei Verteilungen Teile, Mitte und Radius aus w und t (Papier-mm = Welt-mm / k)
+// Gespiegelt (it.m, Taste S): links/rechts im System des Symbols (x → −x) vor der Drehung, mit Aufputz-Hälfte, Mitte und Fangpunkten
 export function itemDef(it, k, tf = 1) {
   const def = symDef(it.key), z = symSize(it);
-  if (def.ref) return { ...def, parts: refParts(it, tf) };
-  if (!z) return def;
-  const W = z.w / k, T = (z.t ?? 0) / k, r = (n) => Math.round(n * 1000) / 1000;
-  return { ...def, parts: def.size.parts(W, T), c: def.wall ? [0, r(T / 2)] : [0, 0], r: r(Math.max(1, Math.hypot(W / 2, def.wall ? T / 2 : T / 2))) };
+  const d = def.ref ? { ...def, parts: refParts(it, tf) } : !z ? def : (({ w, t }, r) => ({ ...def, parts: def.size.parts(w / k, (t ?? 0) / k), c: def.wall ? [0, r((t ?? 0) / k / 2)] : [0, 0], r: r(Math.max(1, Math.hypot(w / k / 2, (t ?? 0) / k / 2))) }))(z, (n) => Math.round(n * 1000) / 1000);
+  return it.m ? mirDef(d) : d;
+}
+const mirDef = (d) => ({ ...d, parts: d.parts.map(mirPart), ap: d.ap && mirPart(d.ap), c: [-d.c[0] + 0, d.c[1]], pin: d.pin && [-d.pin[0] + 0, d.pin[1], d.pin[2]], edge: d.edge && [-d.edge[2] + 0, d.edge[1], -d.edge[0] + 0, d.edge[3]] });
+// Ein Teil spiegeln: Linie, Kreis, Text (Ort wandert, Schrift bleibt lesbar), Pfad (x-Werte negiert, Bogen läuft andersherum)
+function mirPart(q) {
+  if (q[0] === "l") return ["l", -q[1] + 0, q[2], -q[3] + 0, q[4]];
+  if (q[0] === "c" || q[0] === "t") return [q[0], -q[1] + 0, ...q.slice(2)];
+  if (q[0] !== "p") return q;
+  let cmd = "", n = 0;
+  const d = q[1].replace(/([MLHVCSQTAZmlhvcsqtaz])|(-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?)/g, (all, c, v) => {
+    if (c) { cmd = c.toUpperCase(); n = 0; return c; }
+    const i = n++, x = cmd === "H" || (cmd === "A" ? i % 7 === 5 : cmd !== "V" && i % 2 === 0); // x-Werte (beim Bogen nur der Endpunkt)
+    return cmd === "A" && i % 7 === 4 ? String(1 - Number(v)) : cmd === "A" && i % 7 === 2 ? String(-Number(v) + 0) : x ? String(-Number(v) + 0) : v;
+  });
+  return ["p", d, ...q.slice(2)];
 }
 // Hinweis (VERWEIS): Kasten um die Zeilen oben (fu), unten (nr) und Kabel (txt), Mitte = Vorgabe + Versatz lo (Papier-mm im System des Symbols)
 const REF_H = 2.2, REF_LH = REF_H * 1.45, REF_DEF = [-8, 4];
@@ -852,23 +868,25 @@ export const inDuct = (ducts, p) => ducts.some((d) => d.pts.some((x, i) => i && 
 
 // ---------- Symbol an Symbol (CJ 27.10.2026) ----------
 // Randpunkte als Kasten im System des Symbols (Papier-mm): Mitte cx, cy, halbe Breite hx, hy. pin: Kreis bzw. Bogen, edge: Kasten. Ohne beides null.
-export function symRim(key) {
-  const d = symDef(key);
-  if (d?.pin) { const [cx, cy, r] = d.pin; return { cx, cy, hx: r, hy: r, wall: d.wall }; }
-  if (d?.edge) { const [x0, y0, x1, y1] = d.edge; return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, hx: (x1 - x0) / 2, hy: (y1 - y0) / 2, wall: d.wall }; }
+// m = gespiegelt: Mitte links/rechts getauscht
+export function symRim(key, m) {
+  const d = symDef(key), s = m ? -1 : 1;
+  if (d?.pin) { const [cx, cy, r] = d.pin; return { cx: s * cx + 0, cy, hx: r, hy: r, wall: d.wall }; }
+  if (d?.edge) { const [x0, y0, x1, y1] = d.edge; return { cx: (s * (x0 + x1)) / 2 + 0, cy: (y0 + y1) / 2, hx: (x1 - x0) / 2, hy: (y1 - y0) / 2, wall: d.wall }; }
   return null;
 }
 // Symbol key bündig an ein Nachbarsymbol aus items legen: gleiche Drehung wie der Nachbar, Rand an Rand an einer seiner vier Seiten (rechts, links,
 // oben, unten im System des Nachbarn; Wandsymbole nicht unten, dort ist die Wand). Nebeneinander bleiben Wandsymbole auf der Wandlinie (Ursprung), sonst stehen die Mitten auf einer Linie.
 // p = freie Lage des Ursprungs, k = Massstab, reach = wie weit p von der Lage am Nachbarn weg sein darf (fehlt: halbe Grösse des Symbols).
-// Lagen, die ein drittes Symbol überdecken, fallen weg. Gibt { at, r, nb (id), c (Berührpunkt) } oder null.
-export function symSnapTo(items, key, p, k, reach) {
-  const A = symRim(key); if (!A) return null;
+// Lagen, die ein drittes Symbol überdecken, fallen weg. m = neues Symbol gespiegelt (übernimmt nur die Drehung, nicht das Spiegeln des Nachbarn).
+// Gibt { at, r, nb (id), c (Berührpunkt) } oder null.
+export function symSnapTo(items, key, p, k, reach, m) {
+  const A = symRim(key, m); if (!A) return null;
   const syms = items.filter((i) => i.type === "sym" && symRim(i.key)), R0 = reach ?? Math.max(A.hx, A.hy) * k;
-  const mid = (it) => { const B = symRim(it.key), a = (it.r * Math.PI) / 180; return { c: [it.at[0] + k * (B.cx * Math.cos(a) - B.cy * Math.sin(a)), it.at[1] + k * (B.cx * Math.sin(a) + B.cy * Math.cos(a))], h: Math.min(B.hx, B.hy) * k }; };
+  const mid = (it) => { const B = symRim(it.key, it.m), a = (it.r * Math.PI) / 180; return { c: [it.at[0] + k * (B.cx * Math.cos(a) - B.cy * Math.sin(a)), it.at[1] + k * (B.cx * Math.sin(a) + B.cy * Math.cos(a))], h: Math.min(B.hx, B.hy) * k }; };
   let best = null;
   for (const n of syms) {
-    const B = symRim(n.key), a = (n.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
+    const B = symRim(n.key, n.m), a = (n.r * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
     const w = ([x, y]) => [r3(n.at[0] + k * (x * co - y * si)), r3(n.at[1] + k * (x * si + y * co))];
     const dy = A.wall && B.wall ? 0 : B.cy - A.cy; // nebeneinander
     const sides = [[B.cx + B.hx + A.hx - A.cx, dy, [B.cx + B.hx, B.cy]], [B.cx - B.hx - A.hx - A.cx, dy, [B.cx - B.hx, B.cy]],

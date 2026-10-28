@@ -8,13 +8,18 @@ export const box = (x0, y0, x1, y1) => [L(x0, y0, x1, y0), L(x1, y0, x1, y1), L(
 export const X = (cx, cy, s) => [L(cx - s, cy - s, cx + s, cy + s), L(cx - s, cy + s, cx + s, cy - s)];
 
 // Schalterkreis (Masse siehe schalter.js): S() und der Aufputz-Halbkreis brauchen sie
-export const SC = [0, 2.2], SR = 1.5, LEV = 3.7, CY3 = 2.9, CY6 = 3.5; // LEV = SR + 2.2 (als Zahl, sonst bleibt die Rechnung im v3-Bau)
+export const SC = [0, 2.2], SR = 1.5, LEV = 3.7; // LEV = SR + 2.2 (als Zahl, sonst bleibt die Rechnung im v3-Bau)
 export const dir = (deg) => [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
 // Aufputz: rechte Hälfte des Kreises gefüllt wie die Quelle (CJ 26.10.2026; Feld «Aufputz»)
 export const apHalf = (cy, r = SR) => ["p", `M0,${cy + r}A${r} ${r} 0 0 0 0,${cy - r}Z`, true];
 export const lpt = (deg, t, cy) => { const u = dir(deg); return [u[0] * t, cy + u[1] * t]; };
 export const tri = (a, b, c, fill = false) => ["p", `M${[a, b, c].map((p) => p.map(r3).join(",")).join("L")}Z`, fill];
 export const add2 = (p, x, y) => [p[0] + x, p[1] + y];
+
+// Leitung/Verbindung nach oben und unten 5.110/5.130 (gleiche Zeichen): Ring im Ursprung, Linie unter 45°, halber Pfeil (offenes Dreieck links der Linie, Spitze bei t1)
+const DG = Math.SQRT1_2, at45 = (t) => [t * DG, t * DG];
+export const half45 = (t0, t1) => { const a = at45(t0), b = at45(t1), q = [a[0] - 0.75 * DG, a[1] + 0.75 * DG]; return [L(a[0], a[1], b[0], b[1]), L(b[0], b[1], q[0], q[1]), L(q[0], q[1], a[0], a[1])]; };
+export const seg45 = (t0, t1) => L(...at45(t0), ...at45(t1));
 
 // Bogen und Halbkreis (Leuchten, Wand-Einbau)
 export const halfC = (r) => ["p", `M${-r},0A${r} ${r} 0 0 0 ${r},0Z`, false];

@@ -455,9 +455,9 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   // Schalter und Steckdosen: vier Fangpunkte oben, rechts, unten, links am Rand (Kreis bzw. Bogen), drehen mit R
   const sw = P.symSnaps({ key: "SCH0", at: [1000, 0], r: 0 }, 50);
   assert.deepStrictEqual(sw, { pts: [[1000, 185], [1075, 110], [1000, 35], [925, 110]], segs: [] }, "Schalter: vier Punkte am Kreis (r 1,5 mm × 50, CJ 27.10.2026)");
-  // Schalter so gross wie Steckdosen (CJ 27.10.2026): Kreis so breit wie der Bogen, alle Schalter-Varianten gleich, KOMBI bleibt
+  // Schalter so gross wie Steckdosen (CJ 27.10.2026): Kreis so breit wie der Bogen, alle Schalter-Varianten gleich; KOMBI seit 28.10.2026 auch
   for (const d of S2.PLAN_SYMS.filter((x) => x.group === "Schalter")) { const c = d.parts.find((q) => q[0] === "c"); assert.ok(c[3] === 1.5 && d.pin[2] === 1.5 && (!d.ap || d.ap[1].includes("A1.5 1.5")), `${d.key}: Kreis, Fang und Aufputz r 1,5`); }
-  assert.strictEqual(S2.SYM_BY_KEY.get("KOMBI").parts.find((q) => q[0] === "c")[3], 1, "KOMBI (Steckdosen) unverändert");
+  assert.strictEqual(S2.SYM_BY_KEY.get("KOMBI").parts.find((q) => q[0] === "c")[3], 1.5, "KOMBI: Kreis so gross wie bei den Schaltern");
   const sw90 = P.symSnaps({ key: "SCH0", at: [1000, 0], r: 90 }, 50);
   sw90.pts.forEach((q, i) => near(q, [1000 - (sw.pts[i][1] - 0), sw.pts[i][0] - 1000], `Schalter um 90° gedreht, Punkt ${i}`));
   const so = P.symSnaps({ key: "STD", at: [0, 0], r: 0 }, 50);

@@ -1,5 +1,5 @@
 // Plansymbole Steckdosen 5.160 (aus plansym.js herausgelöst, CJ 27.10.2026)
-import { L, C, T, S, box, tri, apHalf } from "./teile.js";
+import { L, C, T, S, box, tri, SC, SR } from "./teile.js";
 
 // ---------- Steckdosen 5.160: Stiel von der Wand, Bogen am Ende (Öffnung zum Raum), Querstrich = Schutzkontakt ----------
 // Aufputz Steckdose (CJ 26.10.2026): rechte Hälfte der Fläche im Bogen gefüllt, wie beim Schalter
@@ -15,9 +15,9 @@ export const STECKDOSEN = /* @__PURE__ */ (() => [
   S("STD2", "Steckdose 2-fach", "kraft", "Steckdosen", [...SOCK(), ...multi("2")], { wall: true, h: 30, ap: apSock() }),
   S("STD3", "Steckdose 3-fach", "kraft", "Steckdosen", [...SOCK(), ...multi("3")], { wall: true, h: 30, ap: apSock() }),
   S("STD_T15", "Steckdose T15", "kraft", "Steckdosen", [...SOCK(), T(2.9, 1.0, 1.4, "T15")], { wall: true, h: 30, ap: apSock() }),
-  // T13 mit USB wie Quelle: T13 über dem Bogen, USB-Zeichen im Bogen, Schrägstrich zur Anzahl (änderbar)
-  S("STD_USB", "Steckdose T13 mit USB", "kraft", "Steckdosen", [...SOCK(), ...multi("2"), T(0, 5.1, 1.1, "T13"), L(-0.85, 3.35, 0.75, 3.35), C(-0.85, 3.35, 0.18, true), tri([0.75, 3.12], [1.1, 3.35], [0.75, 3.58], true), L(-0.35, 3.35, -0.1, 3.7), L(-0.1, 3.7, 0.3, 3.7), L(0.05, 3.35, 0.3, 3.05), L(0.3, 3.05, 0.55, 3.05)], { wall: true, h: 30, ap: apSock() }),
+  // T13 mit USB wie Quelle: T13 und USB-Zeichen über dem Bogen (CJ 28.10.2026: höher, sonst deckt Aufputz sie zu), Schrägstrich zur Anzahl (änderbar)
+  S("STD_USB", "Steckdose T13 mit USB", "kraft", "Steckdosen", [...SOCK(), ...multi("2"), T(0, 5.9, 1.1, "T13"), L(-0.85, 4.65, 0.75, 4.65), C(-0.85, 4.65, 0.18, true), tri([0.75, 4.42], [1.1, 4.65], [0.75, 4.88], true), L(-0.35, 4.65, -0.1, 5), L(-0.1, 5, 0.3, 5), L(0.05, 4.65, 0.3, 4.35), L(0.3, 4.35, 0.55, 4.35)], { wall: true, h: 30, ap: apSock() }),
   S("STD_BODEN", "Bodensteckdose", "kraft", "Steckdosen", [...box(-1.8, -1.8, 1.8, 1.8), ...SOCK(0.75, -1.4625)], { pin: [0, 0, 1.8] }), // Steckdose mittig im Kasten (CJ 26.10.2026)
-  // KOMBI wie Quelle: Schalterkreis an der Wand, kurzer Stiel (halb so lang) zur Steckdose, Hebel waagrecht mit Querstrich zum Raum
-  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [C(0, 1.2, 1), L(0, 2.2, 0, 3.4), L(-1.5, 3.4, 1.5, 3.4), ["p", "M-1.5,4.9A1.5 1.5 0 0 1 1.5,4.9", false], L(0.95, 1.5, 2.6, 1.5), L(2.6, 1.5, 2.6, 2.3)], { pin: [0, 4.9, 1.5], wall: true, h: 110, ap: apHalf(1.2, 1), c: [0, 2.6], r: 3 }),
+  // KOMBI wie Quelle (CJ 28.10.2026): Schalterkreis so gross wie bei den Schaltern, Steckdose ohne Stiel direkt auf dem Kreis, Hebel waagrecht mit Querstrich zur Wand
+  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [C(0, SC[1], SR), L(-1.5, 3.7, 1.5, 3.7), ["p", "M-1.5,5.2A1.5 1.5 0 0 1 1.5,5.2", false], L(SR, SC[1], 3.7, SC[1]), L(3.7, SC[1], 3.7, SC[1] - 0.9)], { pin: [0, 5.2, 1.5], wall: true, h: 110, ap: true, c: [0, 3.7], r: 3.8 }),
 ])();

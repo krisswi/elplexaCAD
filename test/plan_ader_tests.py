@@ -102,7 +102,8 @@ with sync_playwright() as p:
     ys = of("sym")
     check("drei Schalter in einer Reihe, bündig (150 mm = 3 mm Papier bei 1:50)", [y["at"] for y in ys] == [[1000, 3000], [1150, 3000], [1300, 3000]] and all(y["r"] == 0 for y in ys), [(y["key"], y["at"]) for y in ys])
     sym("SCH0", 1160, 3010)
-    check("über einem belegten Platz: kein Fang (liegt am Raster)", of("sym")[-1]["at"] == [1160, 3010], of("sym")[-1]["at"])
+    # Schalter mit Fähnchen zur Seite sind flach (CJ 28.10.2026): statt am belegten Platz rastet er am freien Platz über dem Sch. 3 ein
+    check("über einem belegten Platz: kein Überlappen, rastet darüber ein", of("sym")[-1]["at"] == [1150, 3150], of("sym")[-1]["at"])
     page.keyboard.press("Meta+z"); page.wait_for_timeout(100)
     sym("TASTER", 1460, 3010, alt=True)
     check("Alt: frei, kein Fang am Nachbarn", max(abs(u - v) for u, v in zip(of("sym")[-1]["at"], [1460, 3010])) < 0.5, of("sym")[-1]["at"])

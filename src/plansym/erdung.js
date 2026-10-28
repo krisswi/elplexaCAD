@@ -1,21 +1,16 @@
 // Plansymbole Erdung und Blitzschutz (CJ 27.10.2026, Aufgaben Plan 20): Erdung/Potenzialausgleich 5.120, Blitzschutz 5.130, Hausanschlusskasten.
 // Selbst gezeichnet nach der Symbolzusammenfassung (IEC 60617), Format und Masse siehe plansym.js. Auswahl CJ 27.10.2026: alles aus 5.120,
 // PA-Schiene, Erder, Tiefenerder, Mess-Trennstelle, Verbindungen und Geräte aus 5.130, HAK. Erdleitungen sind Leitungsarten (plan.js LINE_KINDS).
-import { r3, L, C, S, box, tri, wave } from "./teile.js";
+import { r3, L, C, S, box, tri, wave, half45, seg45 } from "./teile.js";
 
 // Erdzeichen: drei kürzer werdende Striche unter y, Stiel von y bis top
 const earth = (y, top) => [L(0, y, 0, top), L(-1.5, y, 1.5, y), L(-1, y - 0.5, 1, y - 0.5), L(-0.5, y - 1, 0.5, y - 1)];
 // Leitungsstummel links und rechts (Geräte in der Leitung): Fang an den Enden über edge auf der Mittellinie
 const stubs = (a, b) => [L(-b, 0, -a, 0), L(a, 0, b, 0)];
-// Verbindung nach oben/unten 5.130: Ring, Linie unter 45°, Pfeilspitze aussen (nach aussen = nach oben, nach innen = nach unten)
-const DG = Math.SQRT1_2, p45 = (t) => [r3(t * DG), r3(t * DG)];
-const head = (t, out) => { const s = p45(t), b = p45(out ? t - 0.9 : t + 0.9), n = [-0.45 * DG, 0.45 * DG]; return tri(s, [b[0] + n[0], b[1] + n[1]], [b[0] - n[0], b[1] - n[1]], true); };
-const verb = (t0, t1) => L(...p45(t0), ...p45(t1));
-
 // Tabelle als /* @__PURE__ */-Aufruf: fällt im SchemaCAD-Bau ganz weg (v3 byte-gleich), obwohl plan.js sie über plansym.js importiert
 export const ERDUNG = /* @__PURE__ */ (() => [
-  // Hausanschlusskasten: Kasten an der Wand, Grösse in echten mm wie der Verteiler, «HAK» in der Mitte
-  S("HAK", "Hausanschlusskasten (HAK)", "erdung", "Erdung/PA", [], { wall: true, c: [0, 1.5], r: 3, size: { w: 400, t: 150, parts: (W, T) => [...box(-W / 2, 0, W / 2, T), ["t", 0, r3(T / 2), 1.2, "HAK"]] } }),
+  // Hausanschlusskasten: Kasten an der Wand, Grösse in echten mm wie der Verteiler; wie Quelle (CJ 28.10.2026): gefülltes Kreissegment auf der Raumseite statt «HAK»
+  S("HAK", "Hausanschlusskasten (HAK)", "erdung", "Erdung/PA", [], { wall: true, c: [0, 1.5], r: 3, size: { w: 400, t: 150, parts: (W, T) => { const c = 0.8 * W, s = 0.35 * T, R = (c * c / 4 + s * s) / (2 * s); return [...box(-W / 2, 0, W / 2, T), ["p", `M${r3(-c / 2)},${r3(T)}A${r3(R)} ${r3(R)} 0 0 1 ${r3(c / 2)},${r3(T)}Z`, true]]; } } }),
   // Erdung und Potenzialausgleich 5.120
   S("ERDE", "Erdung, allgemein", "erdung", "Erdung/PA", earth(0, 1.6), { r: 1.9, c: [0, 0.3] }),
   S("PA", "Potenzialausgleich", "erdung", "Erdung/PA", [L(0, 1.6, 0, 0.6), tri([-1.4, 0.6], [1.4, 0.6], [0, -1.4])], { r: 1.9, c: [0, 0.1] }),
@@ -31,10 +26,11 @@ export const ERDUNG = /* @__PURE__ */ (() => [
   S("VERB_ANS", "Verbindung oder Anschluss", "erdung", "Erdung/PA", [L(0, -2, 0, 2), L(-1.8, 0, 0, 0), C(0, 0, 0.3, true)], { r: 2.1 }),
   // Blitzschutz 5.130: Geräte in der Leitung und Verbindungen
   S("SPD", "Überspannungsableiter (SPD)", "erdung", "Blitzschutz", [...box(-2, -0.9, 2, 0.9), ...stubs(2, 3), ["t", 0, 0, 1.1, "SPD"]], { r: 3.1, edge: [-3, 0, 3, 0] }),
-  S("FUNKEN", "Trennfunkenstrecke", "erdung", "Blitzschutz", [...box(-2, -0.9, 2, 0.9), ...stubs(2, 3), tri([-1.5, 0.6], [-1.5, -0.6], [-0.2, 0], true), tri([1.5, 0.6], [1.5, -0.6], [0.2, 0], true)], { r: 3.1, edge: [-3, 0, 3, 0] }),
+  S("FUNKEN", "Trennfunkenstrecke", "erdung", "Blitzschutz", [...box(-2, -0.9, 2, 0.9), ...stubs(1.5, 3), tri([-1.5, 0.55], [-1.5, -0.55], [-0.3, 0], true), tri([1.5, 0.55], [1.5, -0.55], [0.3, 0], true)], { r: 3.1, edge: [-3, 0, 3, 0] }),
   S("DEHNBOGEN", "Dehnungsbogen", "erdung", "Blitzschutz", [...stubs(1, 2.5), ["p", "M-1,0A1 1 0 0 0 1,0", false], C(-1, 0, 0.25, true), C(1, 0, 0.25, true)], { r: 2.6, edge: [-2.5, 0, 2.5, 0] }),
   S("FLEXVERB", "Flexible Verbindung", "erdung", "Blitzschutz", [...stubs(1.2, 2.5), wave(-1.2, 1.2)], { r: 2.6, edge: [-2.5, 0, 2.5, 0] }),
-  S("VERB_AUF", "Verbindung nach oben", "erdung", "Blitzschutz", [C(0, 0, 0.4), verb(0.4, 4), head(4, true)], { r: 2.4, c: [1.4, 1.4] }),
-  S("VERB_AB", "Verbindung nach unten", "erdung", "Blitzschutz", [C(0, 0, 0.4), verb(0.4, 4), head(0.5, false)], { r: 2.4, c: [1.4, 1.4] }),
-  S("VERB_DURCH", "Verbindung nach oben und unten", "erdung", "Blitzschutz", [C(0, 0, 0.4), verb(-4, -0.4), verb(0.4, 4), head(4, true), head(-4, false)], { r: 3.2 }),
+  // Verbindungen nach oben/unten wie Quelle (CJ 28.10.2026): gleiche Zeichen wie die Steigleitungen 5.110 (halber Pfeil, Ring am Ende)
+  S("VERB_AUF", "Verbindung nach oben", "erdung", "Blitzschutz", [C(0, 0, 0.4), seg45(0.4, 4.2), ...half45(3.2, 4.2)], { r: 2.4, c: [1.5, 1.5] }),
+  S("VERB_AB", "Verbindung nach unten", "erdung", "Blitzschutz", [C(0, 0, 0.4), seg45(-4.2, -0.4), ...half45(-1.5, -0.5)], { r: 2.4, c: [-1.5, -1.5] }),
+  S("VERB_DURCH", "Verbindung nach oben und unten", "erdung", "Blitzschutz", [C(0, 0, 0.4), seg45(-4.2, -0.4), seg45(0.4, 4.2), ...half45(-1.5, -0.5), ...half45(3.2, 4.2)], { r: 3.2 }),
 ])();

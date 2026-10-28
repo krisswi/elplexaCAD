@@ -44,7 +44,7 @@ with sync_playwright() as p:
     page.reload(); page.wait_for_timeout(300)
     check("Nach Wiederherstellen keine Startauswahl", page.locator(".modal").count() == 0 and D()["sheets"][2]["meta"].get("TITEL") == "Test")
     page.set_viewport_size({"width": 400, "height": 800})
-    page.evaluate("localStorage.clear()"); page.reload(); page.wait_for_timeout(300)
+    page.evaluate("localStorage.clear()"); page.reload(); page.wait_for_selector(".modal.start"); page.wait_for_timeout(300)  # auf dem CI-Rechner kam das Fenster teils erst nach 300 ms
     w = page.evaluate("(()=>{const m=document.querySelector('.modal.start');return m && m.scrollWidth <= m.clientWidth})()")
     check("Schmales Fenster: Kacheln untereinander, nichts läuft über", w)
     page.screenshot(path=str(OUT / "s2_schmal.png"))

@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 30, "elplexa liest Version 30 (Aderzahl im Plan und Dateien im Projekt, 27.10.2026)");
+assert.strictEqual(M.VERSION, 33, "elplexa liest Version 33 (gespiegelte Symbole, 28.10.2026)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -312,7 +312,11 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   const hw = (o) => tx({ key: "VERWEIS", fu: "UV EG", nr: "11X4", ...o });
   for (const r of [0, 180]) assert.ok(hw({ r })[0].s === "UV EG" && hw({ r })[0].at[1] > hw({ r })[1].at[1], `oben bleibt oben (r ${r})`);
   const rp = P.itemDef({ key: "VERWEIS", fu: "UV EG", nr: "11X4", r: 0 }, 50).parts;
-  assert.ok(rp.some((q) => q[0] === "l" && q[1] === 0 && q[2] === 0) && rp.filter((q) => q[0] === "l").length === 2, "Linie zum Ziel und Trennstrich");
+  assert.ok(!rp.some((q) => q[0] === "l" && q[1] === 0 && q[2] === 0) && rp.filter((q) => q[0] === "l").length === 1, "ohne Zeiger (Vorgabe seit 28.10.2026): nur Trennstrich");
+  const rz = P.itemDef({ key: "VERWEIS", fu: "UV EG", nr: "11X4", r: 0, zg: true }, 50).parts;
+  assert.ok(rz.some((q) => q[0] === "l" && q[1] === 0 && q[2] === 0) && rz.filter((q) => q[0] === "l").length === 2, "mit Zeiger (zg): Linie zum Ziel und Trennstrich");
+  assert.deepStrictEqual([c({ key: "VERWEIS", zg: true }).zg, c({ key: "VERWEIS", zg: false }).zg, c({ key: "STD", zg: true }).zg], [true, undefined, undefined], "zg nur am Verweis, nur wenn an");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "VERWEIS", at: [0, 0], r: 0, zg: true }])], 33)))).version, 33, "Verweis mit Zeiger: Version 33");
   // alte Pläne (bis Version 23): vorausgefüllte Höhe 110 an Steckdosen und 200 an Wandleuchten fällt weg
   const old = M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 110 }, { id: 51, type: "sym", layer: "bg", key: "LED_W", at: [0, 0], r: 0, h: 200 }, { id: 52, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 120 }])], 23)).sheets[0].items;
   assert.deepStrictEqual(old.map((i) => i.h), [undefined, undefined, 120], "alte Vorgabehöhen weg, eigene bleibt");
@@ -335,7 +339,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 31)), /neueren Version/, "Version 31 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 34)), /neueren Version/, "Version 34 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#0068C9" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");
@@ -455,13 +459,17 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   // Schalter und Steckdosen: vier Fangpunkte oben, rechts, unten, links am Rand (Kreis bzw. Bogen), drehen mit R
   const sw = P.symSnaps({ key: "SCH0", at: [1000, 0], r: 0 }, 50);
   assert.deepStrictEqual(sw, { pts: [[1000, 185], [1075, 110], [1000, 35], [925, 110]], segs: [] }, "Schalter: vier Punkte am Kreis (r 1,5 mm × 50, CJ 27.10.2026)");
-  // Schalter so gross wie Steckdosen (CJ 27.10.2026): Kreis so breit wie der Bogen, alle Schalter-Varianten gleich, KOMBI bleibt
+  // Schalter so gross wie Steckdosen (CJ 27.10.2026): Kreis so breit wie der Bogen, alle Schalter-Varianten gleich; KOMBI seit 28.10.2026 auch
   for (const d of S2.PLAN_SYMS.filter((x) => x.group === "Schalter")) { const c = d.parts.find((q) => q[0] === "c"); assert.ok(c[3] === 1.5 && d.pin[2] === 1.5 && (!d.ap || d.ap[1].includes("A1.5 1.5")), `${d.key}: Kreis, Fang und Aufputz r 1,5`); }
-  assert.strictEqual(S2.SYM_BY_KEY.get("KOMBI").parts.find((q) => q[0] === "c")[3], 1, "KOMBI (Steckdosen) unverändert");
+  assert.strictEqual(S2.SYM_BY_KEY.get("KOMBI").parts.find((q) => q[0] === "c")[3], 1.5, "KOMBI: Kreis so gross wie bei den Schaltern");
   const sw90 = P.symSnaps({ key: "SCH0", at: [1000, 0], r: 90 }, 50);
   sw90.pts.forEach((q, i) => near(q, [1000 - (sw.pts[i][1] - 0), sw.pts[i][0] - 1000], `Schalter um 90° gedreht, Punkt ${i}`));
   const so = P.symSnaps({ key: "STD", at: [0, 0], r: 0 }, 50);
-  assert.deepStrictEqual(so.pts, [[0, 270], [75, 195], [0, 120], [-75, 195]], "Steckdose: Scheitel, Bogenenden, Querstrich");
+  assert.deepStrictEqual(so.pts, [[0, 0], [75, 195], [0, 120], [-75, 195]], "Steckdose: hinten am Stiel (CJ 28.10.2026), Bogenenden, Querstrich");
+  assert.deepStrictEqual(P.symSnaps({ key: "STD", at: [0, 0], r: 0, m: true }, 50).pts, [[0, 0], [-75, 195], [0, 120], [75, 195]], "Steckdose gespiegelt");
+  assert.deepStrictEqual(P.symSnaps({ key: "IT_RJ", at: [0, 0], r: 0 }, 50).pts, [[0, 0], [75, 180], [0, 120], [-75, 180]], "IT-Dose: hinten am Stiel wie die Steckdose");
+  assert.deepStrictEqual(P.symSnaps({ key: "KOMBI", at: [0, 0], r: 0 }, 50).pts, [[0, 35], [75, 260], [0, 185], [-75, 260]], "KOMBI: hinten am Schalterkreis");
+  assert.deepStrictEqual(P.symSnaps({ key: "ANSCHLUSS", at: [0, 0], r: 0 }, 50).pts, [[-70, -70]], "Anschluss Elektro: Fang am Kreis (CJ 28.10.2026)");
   for (const d of S2.PLAN_SYMS.filter((x) => ["Schalter", "Steckdosen"].includes(x.group))) assert.strictEqual(P.symSnaps({ key: d.key, at: [0, 0], r: 0 }, 50).pts.length, 4, `${d.key}: vier Fangpunkte`);
   assert.deepStrictEqual(P.symSnaps({ key: "LEUCHTE", at: [500, 500], r: 30 }, 50), { pts: [[500, 500]], segs: [] }, "Leuchte: Fang an der Mitte");
   // Abzweigdose: alle Seiten fangen
@@ -553,6 +561,21 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.ok(lb.at[0] === 1000 && lb.at[1] > 150 && lb.a === 0, "Beschriftung über dem langen Abschnitt");
   assert.strictEqual(P.ductLabel({ pts: [[2000, 0], [0, 0]], w: 300 }, 50).a, 0, "nach links gezeichnet: Text nicht auf dem Kopf");
 }
+// ---------- Kommunikationssymbole (CJ 27.10.2026, Aufgaben Plan 6, Dateiversion 31) ----------
+{
+  const its = [{ id: 70, type: "sym", layer: "l1", key: "TEL_STD", at: [1000, 0], r: 0 }, { id: 71, type: "sym", layer: "l1", key: "IT_RJ4", at: [2000, 0], r: 0, num: "8" },
+    { id: 72, type: "sym", layer: "l1", key: "KLINGEL", at: [500, 500], r: 90 }, { id: 73, type: "sym", layer: "l1", key: "IT_RJ", at: [3000, 0], r: 0, h: 30 }];
+  const d = M.parseModel(file([plan(its)], 31)), out = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(out.version, 31, "Kommunikationssymbol: Version 31");
+  assert.deepStrictEqual(out.sheets[0].items.map((i) => i.key), ["TEL_STD", "IT_RJ4", "KLINGEL", "IT_RJ"], "alle Symbole bleiben");
+  assert.strictEqual(out.sheets[0].items[1].num, "8", "Anzahl am IT-Anschluss 4-fach änderbar");
+  assert.strictEqual(out.sheets[0].items[3].h, undefined, "Standardhöhe 30 cm wird nicht gespeichert");
+  assert.ok(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 70, type: "sym", layer: "l1", key: "STD", at: [0, 0], r: 0 }])], 31)))).version < 31, "ohne Kommunikationssymbol bleibt die Version tiefer");
+  // Dateien im Projekt (30) dürfen die Version des Plans nicht senken
+  const dp = M.parseModel(file([plan(its)], 31)); dp.project = { name: "A", folders: [{ id: "ab12cd", n: "Archiv" }], files: [] };
+  assert.strictEqual(JSON.parse(M.serializeModel(dp)).version, 31, "Dateien im Projekt und Kommunikationssymbol: Version 31");
+  assert.ok(P.bomOf(d.sheets[0]).some((r) => r.key === "IT_RJ4" && r.group === "Telefon/EDV" && r.n === 1), "Stückliste: Gruppe Telefon/EDV");
+}
 // ---------- Aderzahl an der Leitung (CJ 27.10.2026, Dateiversion 30) ----------
 {
   const close = (p, q, e = 1e-3) => Math.hypot(p[0] - q[0], p[1] - q[1]) < e;
@@ -633,5 +656,129 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.strictEqual(P.symSnapTo([s1], "SCH0", [0, -110], k), null, "Wandsymbol: unten ist die Wand, kein Fang");
   // Mischung Wand und frei: Mitten auf einer Linie
   assert.deepStrictEqual(P.symSnapTo([s1], "DOSE", [150, 100], k).at, [150, 110], "Abzweigdose neben Schalter: Mitte auf Höhe Kreismitte");
+}
+// ---------- Formen: Linie, Rechteck, Kreis (CJ 27.10.2026, Aufgaben Plan 21, Dateiversion 32) ----------
+{
+  const its = [{ id: 80, type: "shape", layer: "l1", k: "line", pts: [[0, 0], [3000, 0]], col: "#000000", lw: 0.35 },
+    { id: 81, type: "shape", layer: "bg", k: "rect", x: 1000, y: 500, w: 2000, h: 1000, col: "#D4141C", lw: 0.7, d: true, fill: "#C9A800" },
+    { id: 82, type: "shape", layer: "bg", k: "circle", x: 0, y: 0, r: 500, fill: "quatsch", lw: 0.33 },
+    { id: 83, type: "shape", layer: "fremd", k: "line", pts: [[0, 0], [100, 100]], fill: "#0068c9" }];
+  const d = M.parseModel(file([plan(its)], 32)), out = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(out.version, 32, "Form im Plan: Version 32");
+  assert.deepStrictEqual(out.sheets[0].items, [{ id: 80, type: "shape", layer: "l1", k: "line", pts: [[0, 0], [3000, 0]] },
+    { id: 81, type: "shape", layer: "bg", k: "rect", x: 1000, y: 500, w: 2000, h: 1000, col: "#d4141c", lw: 0.7, d: true, fill: "#c9a800" },
+    { id: 82, type: "shape", layer: "bg", k: "circle", x: 0, y: 0, r: 500 },
+    { id: 83, type: "shape", layer: "bg", k: "line", pts: [[0, 0], [100, 100]] }], "Vorgaben (schwarz, 0,35) fallen weg, unbekannte Stärke und Füllung weg, Linie ohne Füllung, fremde Ebene → aktive");
+  assert.ok(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 70, type: "sym", layer: "l1", key: "STD", at: [0, 0], r: 0 }])], 32)))).version < 32, "ohne Form bleibt die Version tiefer");
+  assert.throws(() => M.parseModel(file([plan([{ id: 84, type: "shape", layer: "bg", k: "rect", x: 0, y: 0, w: 0, h: 10 }])], 32)), /defektes Objekt/, "Rechteck ohne Breite");
+  assert.throws(() => M.parseModel(file([plan([{ id: 84, type: "shape", layer: "bg", k: "line", pts: [[5, 5], [5, 5]] }])], 32)), /defektes Objekt/, "Linie ohne Länge");
+  assert.throws(() => M.parseModel(file([plan([{ id: 84, type: "shape", layer: "bg", k: "circle", x: 0, y: 0 }])], 32)), /defektes Objekt/, "Kreis ohne Radius");
+  const S0 = d.sheets[0], [ln, rc, ci] = S0.items;
+  // neue Formen aus zwei Punkten (echte mm)
+  assert.deepStrictEqual(P.planShape("rect", [3000, 2000], [1000, 500], "bg"), { type: "shape", layer: "bg", k: "rect", x: 1000, y: 500, w: 2000, h: 1500 }, "Rechteck aus Gegenecken");
+  assert.deepStrictEqual(P.planShape("circle", [100, 100], [400, 500], "bg").r, 500, "Kreis: Radius bis zum Zeiger");
+  assert.ok(P.shapeEmpty(P.planShape("rect", [0, 0], [0, 900], "bg")) && !P.shapeEmpty(ci), "leer: Rechteck ohne Fläche");
+  // Treffer: Strich, gefüllt auch innen
+  assert.strictEqual(P.hitPlan(S0, S0.items, [2000, 1000], 10), rc, "gefülltes Rechteck innen getroffen");
+  assert.strictEqual(P.hitPlan(S0, [ci], [0, 0], 10), null, "Kreis ohne Füllung: innen nicht");
+  assert.strictEqual(P.hitPlan(S0, [ci], [0, 505], 10), ci, "Kreis auf dem Umfang");
+  assert.strictEqual(P.hitPlan(S0, [ln], [1500, 8], 10), ln, "Linie");
+  // Rahmenwahl, Inhalt, Stückliste
+  assert.ok(P.inBox(S0, rc, { x0: 900, y0: 400, x1: 3100, y1: 1600 }) && !P.inBox(S0, rc, { x0: 1100, y0: 400, x1: 3100, y1: 1600 }), "Rahmenwahl: ganz drin");
+  assert.deepStrictEqual(P.contentBox({ ...S0, items: [rc, ci] }), { x0: -500, y0: -500, x1: 3000, y1: 1500 }, "Inhalt");
+  assert.strictEqual(P.bomOf(S0).length, 0, "Formen nicht in der Stückliste");
+  // verschieben, kopieren, drehen, Griffe, Länge
+  P.moveItems(S0, [ln, rc, ci], 100, -50);
+  assert.deepStrictEqual([ln.pts, [rc.x, rc.y], [ci.x, ci.y]], [[[100, -50], [3100, -50]], [1100, 450], [100, -50]], "verschieben");
+  const pc = P.pasteItems(S0, P.copyItems(S0, [rc, ci]), 10, 20, (() => { let n = 200; return () => ++n; })());
+  assert.deepStrictEqual(pc.map((i) => [i.id, i.x, i.y, i.fill]), [[201, 1110, 470, "#c9a800"], [202, 110, -30, undefined]], "kopieren mit Versatz");
+  P.rotateShape(rc, 90); assert.deepStrictEqual([rc.x, rc.y, rc.w, rc.h], [1600, -50, 1000, 2000], "Rechteck dreht um die Mitte: Breite und Höhe getauscht");
+  P.rotateShape(ln, 90); assert.deepStrictEqual(ln.pts, [[1600, -1550], [1600, 1450]], "Linie dreht um die Mitte");
+  P.rotateShape(ln, 270); assert.deepStrictEqual(ln.pts, [[100, -50], [3100, -50]], "Shift+R zurück");
+  const o = JSON.parse(JSON.stringify(rc)); P.dragShapeHandle(rc, o, 2, [3000, 3000]); assert.deepStrictEqual([rc.x, rc.y, rc.w, rc.h], [1600, -50, 1400, 3050], "Ecke ziehen, Gegenecke bleibt");
+  P.dragShapeHandle(ci, JSON.parse(JSON.stringify(ci)), 0, [800, -50]); assert.strictEqual(ci.r, 700, "Kreis: Griff ändert den Radius");
+  assert.ok(P.setShapeLen(ln, 1000) && ln.pts[1][0] === 1100, "Länge der Linie: Ende wandert");
+  assert.strictEqual(P.shapeSnaps(ci).length, 5, "Fang am Kreis: Mitte und vier Punkte");
+}
+// ---------- Erdung und Blitzschutz (CJ 27.10.2026, Aufgaben Plan 20, Dateiversion 32) ----------
+{
+  const v = (its) => JSON.parse(M.serializeModel(M.parseModel(file([plan(its)], 32)))).version;
+  assert.strictEqual(v([{ id: 90, type: "sym", layer: "l1", key: "PA_SCHIENE", at: [0, 0], r: 0 }]), 32, "Erdungssymbol: Version 32");
+  assert.strictEqual(v([{ id: 90, type: "sym", layer: "l1", key: "HAK", at: [0, 0], r: 0, w: 500 }]), 32, "HAK: Version 32");
+  for (const kind of ["fund", "erdl", "blitz"]) {
+    const d = M.parseModel(file([plan([{ id: 91, type: "line", layer: "bg", pts: [[0, 0], [1000, 0]], kind }])], 32));
+    assert.strictEqual(d.sheets[0].items[0].kind, kind, `Verlegeart ${kind} bleibt`);
+    assert.strictEqual(JSON.parse(M.serializeModel(d)).version, 32, `Erdleitung ${kind}: Version 32`);
+  }
+  assert.ok(v([{ id: 91, type: "line", layer: "bg", pts: [[0, 0], [1000, 0]], kind: "flex" }]) < 32, "übrige Verlegearten: tiefer");
+  const d = M.parseModel(file([plan([{ id: 90, type: "sym", layer: "l1", key: "ERDE", at: [0, 0], r: 0 }, { id: 92, type: "sym", layer: "l1", key: "SPD", at: [0, 0], r: 90 }])], 32));
+  assert.deepStrictEqual(P.bomOf(d.sheets[0]).map((r) => [r.group, r.label]), [["Erdung/PA", "Erdung, allgemein"], ["Blitzschutz", "Überspannungsableiter (SPD)"]], "Stückliste: Gruppen Erdung/PA, Blitzschutz");
+  assert.strictEqual(P.LINE_W.blitz, 0.7, "Blitzschutzleitung dick");
+}
+// ---------- Spiegeln (Taste S, CJ 28.10.2026, Dateiversion 33) ----------
+{
+  const k = 50, sw = (key, m, r = 0, at = [0, 0]) => ({ id: 1, type: "sym", layer: "l1", key, at, r, ...(m ? { m: true } : {}) });
+  const n = P.itemDef(sw("SCH0"), k), g = P.itemDef(sw("SCH0", true), k);
+  assert.deepStrictEqual(g.parts.filter((q) => q[0] === "l"), n.parts.filter((q) => q[0] === "l").map((q) => ["l", -q[1] + 0, q[2], -q[3] + 0, q[4]]), "Schalter: Hebel nach links");
+  assert.strictEqual(P.itemDef(sw("STD", true), k).ap[1], "M0,3.9L-1.5,3.9A1.5 1.5 0 0 1 0,2.4Z", "Aufputz-Hälfte links, Bogen andersherum");
+  assert.strictEqual(P.itemDef(sw("STD", true), k).parts[0][1], "M1.5,3.9A1.5 1.5 0 0 0 -1.5,3.9", "Bogen der Steckdose gespiegelt");
+  const t = P.symTexts({ ...sw("STD2", true), r: 90 }, k).find((x) => x.s === "2"), t0 = P.symTexts({ ...sw("STD2"), r: 90 }, k).find((x) => x.s === "2");
+  const z = P.symTexts(sw("STD2", true), k).find((x) => x.s === "2"), z0 = P.symTexts(sw("STD2"), k).find((x) => x.s === "2");
+  near(z.at, [-z0.at[0], z0.at[1]], "Zahl wandert mit");
+  assert.strictEqual(t.a, t0.a, "Zahl bleibt lesbar (gleicher Winkel)");
+  near(P.symTexts(sw("STD_T15", true), k).find((x) => x.s === "T15").at, [-2.9 * k, P.symTexts(sw("STD_T15"), k).find((x) => x.s === "T15").at[1]], "T15 links");
+  // Fang: pin und Mitte spiegeln mit, dreht danach
+  const pn = P.symSnaps(sw("SCH0", true, 90), k).pts, p0 = P.symSnaps(sw("SCH0", false, 90), k).pts;
+  assert.strictEqual(pn.length, 4, "vier Fangpunkte");
+  assert.deepStrictEqual(P.symCenter(sw("SCH0", true), k), P.symCenter(sw("SCH0"), k), "Schalterkreis auf der Mitte bleibt");
+  near(P.symCenter(sw("VERWEIS", true), k), [-P.symCenter(sw("VERWEIS"), k)[0], P.symCenter(sw("VERWEIS"), k)[1]], "Mitte gespiegelt");
+  assert.ok(p0.every((q) => pn.some((x) => Math.hypot(x[0] - q[0], x[1] - q[1]) < 1e-6)), "Kreis: dieselben vier Punkte");
+  const e = P.symSnaps(sw("DOSE", true), k).segs.flat(), e0 = P.symSnaps(sw("DOSE"), k).segs.flat();
+  assert.deepStrictEqual(e.map((q) => q[0]).sort((a, b) => a - b), e0.map((q) => -q[0] + 0).sort((a, b) => a - b), "Kasten gespiegelt");
+  assert.deepStrictEqual(P.symRim("STD", true), P.symRim("STD"), "Rand auf der Mittellinie gleich");
+  // Symbol an Symbol: übernimmt die Drehung, nicht das Spiegeln
+  const s1 = { ...sw("SCH0", true, 90), id: 5 }, r1 = P.symSnapTo([s1], "SCH0", [0, 150], k);
+  assert.strictEqual(r1.r, 90, "Drehung vom Nachbarn");
+  const d = M.parseModel(file([plan([{ ...s1 }, { id: 6, type: "sym", layer: "l1", key: "SCH0", at: r1.at, r: r1.r }])], 33));
+  assert.deepStrictEqual(d.sheets[0].items.map((i) => i.m), [true, undefined], "nur der gespiegelte hat m");
+  // Datei: m nur gespeichert, wenn gespiegelt; Version 33; Stückliste zählt gleich
+  const out = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(out.version, 33, "gespiegelt: Version 33");
+  assert.ok(!("m" in out.sheets[0].items[1]), "nicht gespiegelt: kein Feld");
+  assert.strictEqual(M.parseModel(file([plan([{ ...sw("STD"), m: false }])], 33)).sheets[0].items[0].m, undefined, "m: false fällt weg");
+  assert.ok(JSON.parse(M.serializeModel(M.parseModel(file([plan([sw("STD")])], 33)))).version < 33, "ohne Spiegeln tiefer");
+  assert.deepStrictEqual(P.bomOf(d.sheets[0]).map((r) => r.n), [2], "Stückliste: gespiegelt zählt gleich");
+}
+// ---------- Plan Runde 3 (CJ 28.10.2026): Kanal mit Querstrich an den Enden und im Bogen ----------
+{
+  const g = P.ductGeom({ pts: [[0, 0], [2000, 0], [2000, 1000]], w: 300 }, 50);
+  assert.deepStrictEqual(g.ends, [[[0, 150], [0, -150]], [[1850, 1000], [2150, 1000]]], "Querstrich an beiden Enden über die ganze Breite");
+  const bo = { id: 90, type: "duct", layer: "bg", pts: [[0, 0], [2000, 0], [2000, 2000]], w: 300, curve: true };
+  assert.ok(P.linePts(bo).length > 3 && P.ductLen(bo) < 4000 && P.ductLen(bo) > 2828, "Bogen: Mittellinie als Kurve, kürzer als die Ecke");
+  const gb = P.ductGeom(bo, 50);
+  assert.ok(gb.L.length === P.linePts(bo).length && gb.quads.length === gb.L.length - 1, "Bogen: Kanten folgen der Kurve");
+  assert.ok(gb.ends[0].every((q, i) => Math.hypot(q[0], q[1] - (i ? -150 : 150)) < 0.5), "Bogen: Anfang (fast) gerade, Querstrich quer zur Kurve");
+  assert.strictEqual(P.hitPlan(plan([bo]), [bo], [2000, 0], 10), null, "Bogen: die Ecke liegt ausserhalb");
+  assert.strictEqual(P.hitPlan(plan([bo]), [bo], P.linePts(bo)[Math.floor(P.linePts(bo).length / 2)], 10)?.id, 90, "Bogen: Treffer auf der Kurve");
+  const out = JSON.parse(M.serializeModel(M.parseModel(file([plan([bo, { ...bo, id: 91, curve: "ja" }])], 33))));
+  assert.strictEqual(out.version, 33, "Kanal im Bogen: Dateiversion 33");
+  assert.deepStrictEqual([out.sheets[0].items[0].curve, out.sheets[0].items[1].curve], [true, undefined], "curve nur true bleibt");
+  assert.ok(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ ...bo, curve: undefined }])], 33)))).version < 33, "ohne Bogen tiefer");
+}
+// ---------- Plan Runde 3 (CJ 28.10.2026): freier Text (Taste T) ----------
+{
+  const tx = { id: 95, type: "text", layer: "bg", at: [1000, 500], txt: "  Küche  ", r: 450, col: "#000000", tf: 1.5 };
+  const d = M.parseModel(file([plan([tx])], 33)), out = JSON.parse(M.serializeModel(d));
+  assert.strictEqual(out.version, 33, "Text: Dateiversion 33");
+  assert.deepStrictEqual(out.sheets[0].items[0], { id: 95, type: "text", layer: "bg", at: [1000, 500], txt: "Küche", r: 90, tf: 1.5 }, "Text getrimmt, Drehung 0–359, Schwarz = Vorgabe fällt weg");
+  assert.strictEqual(P.cleanPlanObj({ type: "text", layer: "bg", at: [0, 0], txt: "  " }, 1), null, "leerer Text fällt weg");
+  assert.strictEqual(P.cleanPlanObj({ type: "text", layer: "bg", at: [0, 0], txt: "A", r: 0 }, 1).r, undefined, "r 0 nicht gespeichert");
+  const sh = d.sheets[0], it = sh.items[0];
+  assert.strictEqual(P.hitPlan(sh, [it], [1000, 650], 10)?.id, 95, "Treffer entlang des gedrehten Texts");
+  assert.strictEqual(P.hitPlan(sh, [it], [1300, 500], 10), null, "quer daneben kein Treffer");
+  P.moveItems(sh, [it], 100, -50); assert.deepStrictEqual(it.at, [1100, 450], "verschieben");
+  assert.ok(P.inBox(sh, it, { x0: 1000, y0: 400, x1: 1200, y1: 500 }), "Rahmenwahl: Mitte im Rechteck");
+  assert.deepStrictEqual(P.bomOf(sh), [], "nicht in der Stückliste");
+  assert.ok(P.hasCol(it) && P.colOf(it) === "#000000", "Farbe wählbar, Vorgabe schwarz");
 }
 console.log("test_plan: alles ok");

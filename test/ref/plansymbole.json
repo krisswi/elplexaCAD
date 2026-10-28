@@ -78,6 +78,32 @@
   "KUEHL",
   "VENT",
   "BOILER",
+  "TEL_STD",
+  "TEL_ANS",
+  "IT_RJ",
+  "IT_RJ4",
+  "TEL_APP",
+  "AMTSVERT",
+  "ZWVERT",
+  "RTV_STD",
+  "RTV_VERT",
+  "KAMERA",
+  "KLINGEL",
+  "SON_TASTER",
+  "TUEROEFFNER",
+  "GEGENSPRECH",
+  "AUSSENSPRECH",
+  "BUS_T1",
+  "BUS_T2",
+  "BUS_T4",
+  "BUS_T1L",
+  "BUS_T2L",
+  "BUS_T4L",
+  "BUS_PIR",
+  "BUS_IR",
+  "BUS_FUNK",
+  "BUS_INFO",
+  "BUS_TABLEAU",
   "DOSE",
   "EINLASS",
   "VERTEILER",
@@ -85,7 +111,29 @@
   "STEIG_AUF",
   "STEIG_AB",
   "STEIG_DURCH",
-  "VERWEIS"
+  "VERWEIS",
+  "HAK",
+  "ERDE",
+  "PA",
+  "ERDE_ANS",
+  "ERDE_KK",
+  "SCHUTZERDE",
+  "ERDBAND",
+  "PA_SCHIENE",
+  "ERDER",
+  "TIEFENERDER",
+  "MESSTRENN",
+  "VERB_ANS",
+  "SPD",
+  "FUNKEN",
+  "DEHNBOGEN",
+  "FLEXVERB",
+  "VERB_AUF",
+  "VERB_AB",
+  "DACHST",
+  "ANTENNE",
+  "FANGST",
+  "VERB_DURCH"
  ],
  "groups": [
   "Schalter",
@@ -95,7 +143,13 @@
   "Notlicht",
   "Melder",
   "Geräte",
-  "Allgemein"
+  "Telefon/EDV",
+  "Video/TV",
+  "Sonnerie",
+  "BUS/KNX",
+  "Allgemein",
+  "Erdung/PA",
+  "Blitzschutz"
  ],
  "syms": {
   "SCH0": {
@@ -118,7 +172,7 @@
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.061\" y1=\"3.261\" x2=\"2.616\" y2=\"4.816\"/><line x1=\"2.616\" y1=\"4.816\" x2=\"3.253\" y2=\"4.18\"/>",
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.5\" y1=\"2.2\" x2=\"3.7\" y2=\"2.2\"/><line x1=\"3.7\" y1=\"2.2\" x2=\"3.7\" y2=\"1.3\"/>",
    "ap": "<path d=\"M0,3.7A1.5 1.5 0 0 0 0,0.7000000000000002Z\" fill=\"currentColor\"/>"
   },
   "SCH0_2": {
@@ -141,7 +195,7 @@
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.061\" y1=\"3.261\" x2=\"2.616\" y2=\"4.816\"/><line x1=\"2.616\" y1=\"4.816\" x2=\"3.253\" y2=\"4.18\"/><line x1=\"2.227\" y1=\"4.427\" x2=\"2.864\" y2=\"3.791\"/>",
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.5\" y1=\"2.2\" x2=\"3.7\" y2=\"2.2\"/><line x1=\"3.7\" y1=\"2.2\" x2=\"3.7\" y2=\"1.3\"/><line x1=\"3.15\" y1=\"2.2\" x2=\"3.15\" y2=\"1.3\"/>",
    "ap": "<path d=\"M0,3.7A1.5 1.5 0 0 0 0,0.7000000000000002Z\" fill=\"currentColor\"/>"
   },
   "SCH3": {
@@ -152,20 +206,20 @@
    "h": 110,
    "c": [
     0,
-    2.9
+    2.2
    ],
-   "r": 3.6,
+   "r": 3.7,
    "pin": [
     0,
-    2.9,
+    2.2,
     1.5
    ],
    "edge": null,
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"2.9\" r=\"1.5\" fill=\"none\"/><line x1=\"1.061\" y1=\"3.961\" x2=\"2.616\" y2=\"5.516\"/><line x1=\"2.616\" y1=\"5.516\" x2=\"3.253\" y2=\"4.88\"/><line x1=\"-1.061\" y1=\"1.839\" x2=\"-2.616\" y2=\"0.284\"/><line x1=\"-2.616\" y1=\"0.284\" x2=\"-3.253\" y2=\"0.92\"/>",
-   "ap": "<path d=\"M0,4.4A1.5 1.5 0 0 0 0,1.4Z\" fill=\"currentColor\"/>"
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.5\" y1=\"2.2\" x2=\"3.7\" y2=\"2.2\"/><line x1=\"3.7\" y1=\"2.2\" x2=\"3.7\" y2=\"1.3\"/><line x1=\"-1.5\" y1=\"2.2\" x2=\"-3.7\" y2=\"2.2\"/><line x1=\"-3.7\" y1=\"2.2\" x2=\"-3.7\" y2=\"3.1\"/>",
+   "ap": "<path d=\"M0,3.7A1.5 1.5 0 0 0 0,0.7000000000000002Z\" fill=\"currentColor\"/>"
   },
   "SCH6": {
    "label": "Schalter Sch. 6 (Kreuz)",
@@ -175,20 +229,20 @@
    "h": 110,
    "c": [
     0,
-    3.5
+    2.2
    ],
    "r": 3.9,
    "pin": [
     0,
-    3.5,
+    2.2,
     1.5
    ],
    "edge": null,
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"3.5\" r=\"1.5\" fill=\"none\"/><line x1=\"1.061\" y1=\"4.561\" x2=\"2.616\" y2=\"6.116\"/><line x1=\"2.616\" y1=\"6.116\" x2=\"3.516\" y2=\"6.116\"/><line x1=\"-1.061\" y1=\"4.561\" x2=\"-2.616\" y2=\"6.116\"/><line x1=\"-2.616\" y1=\"6.116\" x2=\"-3.516\" y2=\"6.116\"/><line x1=\"-1.061\" y1=\"2.439\" x2=\"-2.616\" y2=\"0.884\"/><line x1=\"-2.616\" y1=\"0.884\" x2=\"-3.516\" y2=\"0.884\"/><line x1=\"1.061\" y1=\"2.439\" x2=\"2.616\" y2=\"0.884\"/><line x1=\"2.616\" y1=\"0.884\" x2=\"3.516\" y2=\"0.884\"/>",
-   "ap": "<path d=\"M0,5A1.5 1.5 0 0 0 0,2Z\" fill=\"currentColor\"/>"
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.359\" y1=\"2.834\" x2=\"3.353\" y2=\"3.764\"/><line x1=\"3.353\" y1=\"3.764\" x2=\"3.797\" y2=\"2.812\"/><line x1=\"-1.359\" y1=\"2.834\" x2=\"-3.353\" y2=\"3.764\"/><line x1=\"-3.353\" y1=\"3.764\" x2=\"-3.797\" y2=\"2.812\"/><line x1=\"-1.359\" y1=\"1.566\" x2=\"-3.353\" y2=\"0.636\"/><line x1=\"-3.353\" y1=\"0.636\" x2=\"-3.797\" y2=\"1.588\"/><line x1=\"1.359\" y1=\"1.566\" x2=\"3.353\" y2=\"0.636\"/><line x1=\"3.353\" y1=\"0.636\" x2=\"3.797\" y2=\"1.588\"/>",
+   "ap": "<path d=\"M0,3.7A1.5 1.5 0 0 0 0,0.7000000000000002Z\" fill=\"currentColor\"/>"
   },
   "TASTER": {
    "label": "Drucktaster",
@@ -210,7 +264,7 @@
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.061\" y1=\"3.261\" x2=\"2.758\" y2=\"4.958\"/><line x1=\"2.158\" y1=\"5.558\" x2=\"3.358\" y2=\"4.358\"/>",
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.5\" y1=\"2.2\" x2=\"3.9\" y2=\"2.2\"/><line x1=\"3.9\" y1=\"3.05\" x2=\"3.9\" y2=\"1.35\"/>",
    "ap": "<path d=\"M0,3.7A1.5 1.5 0 0 0 0,0.7000000000000002Z\" fill=\"currentColor\"/>"
   },
   "DIMMER": {
@@ -233,7 +287,7 @@
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.061\" y1=\"3.261\" x2=\"2.616\" y2=\"4.816\"/><path d=\"M1.556,3.756L3.156,4.556L3.156,3.756Z\" fill=\"none\"/>",
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.5\" y1=\"2.2\" x2=\"3.7\" y2=\"2.2\"/><path d=\"M2.2,2.2L3.9,1.63L3.33,1.07Z\" fill=\"none\"/>",
    "ap": "<path d=\"M0,3.7A1.5 1.5 0 0 0 0,0.7000000000000002Z\" fill=\"currentColor\"/>"
   },
   "STOREN": {
@@ -256,7 +310,7 @@
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.061\" y1=\"3.261\" x2=\"2.616\" y2=\"4.816\"/><path d=\"M1.966,5.766L2.966,5.766L2.466,4.966Z\" fill=\"none\"/><path d=\"M2.966,4.366L3.966,4.366L3.466,5.166Z\" fill=\"none\"/>",
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"1.5\" y1=\"2.2\" x2=\"2.7\" y2=\"2.2\"/><line x1=\"2.7\" y1=\"1.75\" x2=\"2.7\" y2=\"2.65\"/><path d=\"M1.95,2.65L3.45,2.65L2.7,3.7Z\" fill=\"none\"/><path d=\"M1.95,1.75L3.45,1.75L2.7,0.7Z\" fill=\"none\"/>",
    "ap": "<path d=\"M0,3.7A1.5 1.5 0 0 0 0,0.7000000000000002Z\" fill=\"currentColor\"/>"
   },
   "SCH_LAMPE": {
@@ -279,7 +333,7 @@
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"-1.05\" y1=\"1.15\" x2=\"1.05\" y2=\"3.25\"/><line x1=\"-1.05\" y1=\"3.25\" x2=\"1.05\" y2=\"1.15\"/><line x1=\"1.061\" y1=\"3.261\" x2=\"2.616\" y2=\"4.816\"/><line x1=\"2.616\" y1=\"4.816\" x2=\"3.253\" y2=\"4.18\"/>",
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"-1.05\" y1=\"1.15\" x2=\"1.05\" y2=\"3.25\"/><line x1=\"-1.05\" y1=\"3.25\" x2=\"1.05\" y2=\"1.15\"/><line x1=\"1.5\" y1=\"2.2\" x2=\"3.7\" y2=\"2.2\"/><line x1=\"3.7\" y1=\"2.2\" x2=\"3.7\" y2=\"1.3\"/>",
    "ap": null
   },
   "STD": {
@@ -394,7 +448,7 @@
    "num": "2",
    "ref": false,
    "size": null,
-   "svg": "<path d=\"M-1.5,3.9A1.5 1.5 0 0 1 1.5,3.9\" fill=\"none\"/><line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-0.7\" y1=\"2.95\" x2=\"1.3\" y2=\"1.45\"/><text x=\"2\" y=\"-1.2\" font-size=\"1.4\" transform=\"scale(1,-1)\" data-f=\"num\">2</text><text x=\"0\" y=\"-5.1\" font-size=\"1.1\" transform=\"scale(1,-1)\">T13</text><line x1=\"-0.85\" y1=\"3.35\" x2=\"0.75\" y2=\"3.35\"/><circle cx=\"-0.85\" cy=\"3.35\" r=\"0.18\" fill=\"currentColor\"/><path d=\"M0.75,3.12L1.1,3.35L0.75,3.58Z\" fill=\"currentColor\"/><line x1=\"-0.35\" y1=\"3.35\" x2=\"-0.1\" y2=\"3.7\"/><line x1=\"-0.1\" y1=\"3.7\" x2=\"0.3\" y2=\"3.7\"/><line x1=\"0.05\" y1=\"3.35\" x2=\"0.3\" y2=\"3.05\"/><line x1=\"0.3\" y1=\"3.05\" x2=\"0.55\" y2=\"3.05\"/>",
+   "svg": "<path d=\"M-1.5,3.9A1.5 1.5 0 0 1 1.5,3.9\" fill=\"none\"/><line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-0.7\" y1=\"2.95\" x2=\"1.3\" y2=\"1.45\"/><text x=\"2\" y=\"-1.2\" font-size=\"1.4\" transform=\"scale(1,-1)\" data-f=\"num\">2</text><text x=\"0\" y=\"-5.9\" font-size=\"1.1\" transform=\"scale(1,-1)\">T13</text><line x1=\"-0.85\" y1=\"4.65\" x2=\"0.75\" y2=\"4.65\"/><circle cx=\"-0.85\" cy=\"4.65\" r=\"0.18\" fill=\"currentColor\"/><path d=\"M0.75,4.42L1.1,4.65L0.75,4.88Z\" fill=\"currentColor\"/><line x1=\"-0.35\" y1=\"4.65\" x2=\"-0.1\" y2=\"5\"/><line x1=\"-0.1\" y1=\"5\" x2=\"0.3\" y2=\"5\"/><line x1=\"0.05\" y1=\"4.65\" x2=\"0.3\" y2=\"4.35\"/><line x1=\"0.3\" y1=\"4.35\" x2=\"0.55\" y2=\"4.35\"/>",
    "ap": "<path d=\"M0,3.9L1.5,3.9A1.5 1.5 0 0 0 0,2.4Z\" fill=\"currentColor\"/>"
   },
   "STD_BODEN": {
@@ -428,20 +482,20 @@
    "h": 110,
    "c": [
     0,
-    2.6
+    3.7
    ],
-   "r": 3,
+   "r": 3.8,
    "pin": [
     0,
-    4.9,
+    5.2,
     1.5
    ],
    "edge": null,
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"0\" cy=\"1.2\" r=\"1\" fill=\"none\"/><line x1=\"0\" y1=\"2.2\" x2=\"0\" y2=\"3.4\"/><line x1=\"-1.5\" y1=\"3.4\" x2=\"1.5\" y2=\"3.4\"/><path d=\"M-1.5,4.9A1.5 1.5 0 0 1 1.5,4.9\" fill=\"none\"/><line x1=\"0.95\" y1=\"1.5\" x2=\"2.6\" y2=\"1.5\"/><line x1=\"2.6\" y1=\"1.5\" x2=\"2.6\" y2=\"2.3\"/>",
-   "ap": "<path d=\"M0,2.2A1 1 0 0 0 0,0.19999999999999996Z\" fill=\"currentColor\"/>"
+   "svg": "<circle cx=\"0\" cy=\"2.2\" r=\"1.5\" fill=\"none\"/><line x1=\"-1.5\" y1=\"3.7\" x2=\"1.5\" y2=\"3.7\"/><path d=\"M-1.5,5.2A1.5 1.5 0 0 1 1.5,5.2\" fill=\"none\"/><line x1=\"1.5\" y1=\"2.2\" x2=\"3.7\" y2=\"2.2\"/><line x1=\"3.7\" y1=\"2.2\" x2=\"3.7\" y2=\"1.3\"/>",
+   "ap": "<path d=\"M0,3.7A1.5 1.5 0 0 0 0,0.7000000000000002Z\" fill=\"currentColor\"/>"
   },
   "LEUCHTE": {
    "label": "Leuchte an Decke",
@@ -1277,7 +1331,7 @@
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<line x1=\"-2.7\" y1=\"-0.9\" x2=\"-0.9\" y2=\"0.9\"/><line x1=\"-2.7\" y1=\"0.9\" x2=\"-0.9\" y2=\"-0.9\"/><path d=\"M-1.3,0.9A1.3 1.3 0 0 1 -1.3,-0.9\" fill=\"none\"/><path d=\"M-0.6,0q0.275,-0.6 0.55,0t0.55,0q0.275,-0.6 0.55,0t0.55,0\" fill=\"none\"/><path d=\"M1.6,-0.3h0.8v0.6h-0.8Z\" fill=\"currentColor\"/>",
+   "svg": "<line x1=\"-2.7\" y1=\"-0.9\" x2=\"-0.9\" y2=\"0.9\"/><line x1=\"-2.7\" y1=\"0.9\" x2=\"-0.9\" y2=\"-0.9\"/><path d=\"M-2.35,0.55L-2.35,-0.55L-1.55,0Z\" fill=\"currentColor\"/><path d=\"M-1.4,0q0.32499999999999996,-0.6 0.6499999999999999,0t0.6499999999999999,0q0.32499999999999996,-0.6 0.6499999999999999,0t0.6499999999999999,0\" fill=\"none\"/><line x1=\"1.2\" y1=\"0\" x2=\"1.6\" y2=\"0\"/><path d=\"M1.6,-0.25h0.7v0.5h-0.7Z\" fill=\"currentColor\"/>",
    "ap": null
   },
   "BEREIT": {
@@ -1486,7 +1540,7 @@
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<line x1=\"-0.5\" y1=\"-0.5\" x2=\"0.5\" y2=\"0.5\"/><line x1=\"-0.5\" y1=\"0.5\" x2=\"0.5\" y2=\"-0.5\"/><line x1=\"0.8\" y1=\"0\" x2=\"1.9\" y2=\"0\"/><line x1=\"0.566\" y1=\"0.566\" x2=\"1.344\" y2=\"1.344\"/><line x1=\"0\" y1=\"0.8\" x2=\"0\" y2=\"1.9\"/><line x1=\"-0.566\" y1=\"0.566\" x2=\"-1.344\" y2=\"1.344\"/><line x1=\"-0.8\" y1=\"0\" x2=\"-1.9\" y2=\"0\"/><line x1=\"-0.566\" y1=\"-0.566\" x2=\"-1.344\" y2=\"-1.344\"/><line x1=\"0\" y1=\"-0.8\" x2=\"0\" y2=\"-1.9\"/><line x1=\"0.566\" y1=\"-0.566\" x2=\"1.344\" y2=\"-1.344\"/>",
+   "svg": "<path d=\"M-0.974,-0.726L0.726,0.974L0.974,0.726L-0.726,-0.974Z\" fill=\"currentColor\"/><path d=\"M-0.726,0.974L0.974,-0.726L0.726,-0.974L-0.974,0.726Z\" fill=\"currentColor\"/><line x1=\"1.2\" y1=\"0\" x2=\"1.9\" y2=\"0\"/><line x1=\"1.039\" y1=\"0.6\" x2=\"1.645\" y2=\"0.95\"/><line x1=\"0.6\" y1=\"1.039\" x2=\"0.95\" y2=\"1.645\"/><line x1=\"0\" y1=\"1.2\" x2=\"0\" y2=\"1.9\"/><line x1=\"-0.6\" y1=\"1.039\" x2=\"-0.95\" y2=\"1.645\"/><line x1=\"-1.039\" y1=\"0.6\" x2=\"-1.645\" y2=\"0.95\"/><line x1=\"-1.2\" y1=\"0\" x2=\"-1.9\" y2=\"0\"/><line x1=\"-1.039\" y1=\"-0.6\" x2=\"-1.645\" y2=\"-0.95\"/><line x1=\"-0.6\" y1=\"-1.039\" x2=\"-0.95\" y2=\"-1.645\"/><line x1=\"0\" y1=\"-1.2\" x2=\"0\" y2=\"-1.9\"/><line x1=\"0.6\" y1=\"-1.039\" x2=\"0.95\" y2=\"-1.645\"/><line x1=\"1.039\" y1=\"-0.6\" x2=\"1.645\" y2=\"-0.95\"/>",
    "ap": null
   },
   "PIR": {
@@ -1660,6 +1714,550 @@
    "svg": "<circle cx=\"0\" cy=\"0\" r=\"2\" fill=\"none\"/><line x1=\"-1.2\" y1=\"-1.6\" x2=\"-1.2\" y2=\"1.6\"/><line x1=\"-0.6\" y1=\"-1.908\" x2=\"-0.6\" y2=\"1.908\"/><line x1=\"0\" y1=\"-2\" x2=\"0\" y2=\"2\"/><line x1=\"0.6\" y1=\"-1.908\" x2=\"0.6\" y2=\"1.908\"/><line x1=\"1.2\" y1=\"-1.6\" x2=\"1.2\" y2=\"1.6\"/>",
    "ap": null
   },
+  "TEL_STD": {
+   "label": "Telefon-Steckdose",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/>",
+   "ap": null
+  },
+  "TEL_ANS": {
+   "label": "Telefon-Anschlussdose",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/><line x1=\"-1.5\" y1=\"3.6\" x2=\"1.5\" y2=\"3.6\"/><circle cx=\"0\" cy=\"3.6\" r=\"0.35\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "IT_RJ": {
+   "label": "IT-Anschluss RJ (EDV)",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/><path d=\"M-0.9,2.75L0.9,2.75L0.9,3.25L-0.9,3.25Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "IT_RJ4": {
+   "label": "IT-Anschluss RJ 4-fach",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": "4",
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/><path d=\"M-0.9,2.75L0.9,2.75L0.9,3.25L-0.9,3.25Z\" fill=\"currentColor\"/><line x1=\"0.9\" y1=\"3.1\" x2=\"2.1\" y2=\"4\"/><text x=\"2.6\" y=\"-4.5\" font-size=\"1.4\" transform=\"scale(1,-1)\" data-f=\"num\">4</text>",
+   "ap": null
+  },
+  "TEL_APP": {
+   "label": "Telefonapparat",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 1.8,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.5\" y1=\"-1.5\" x2=\"1.5\" y2=\"-1.5\"/><line x1=\"1.5\" y1=\"-1.5\" x2=\"1.5\" y2=\"1.5\"/><line x1=\"1.5\" y1=\"1.5\" x2=\"-1.5\" y2=\"1.5\"/><line x1=\"-1.5\" y1=\"1.5\" x2=\"-1.5\" y2=\"-1.5\"/><circle cx=\"-0.6\" cy=\"0\" r=\"0.3\" fill=\"currentColor\"/><circle cx=\"0.6\" cy=\"0\" r=\"0.3\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "AMTSVERT": {
+   "label": "Amtsverteiler (Hauptverteiler)",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.7,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.5\" y1=\"-1\" x2=\"2.5\" y2=\"-1\"/><line x1=\"2.5\" y1=\"-1\" x2=\"2.5\" y2=\"1\"/><line x1=\"2.5\" y1=\"1\" x2=\"-2.5\" y2=\"1\"/><line x1=\"-2.5\" y1=\"1\" x2=\"-2.5\" y2=\"-1\"/><line x1=\"-2.5\" y1=\"-1\" x2=\"2.5\" y2=\"1\"/><line x1=\"-2.5\" y1=\"1\" x2=\"2.5\" y2=\"-1\"/>",
+   "ap": null
+  },
+  "ZWVERT": {
+   "label": "Zwischenverteiler",
+   "cat": "kommunikation",
+   "group": "Telefon/EDV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.7,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.5\" y1=\"-1\" x2=\"2.5\" y2=\"-1\"/><line x1=\"2.5\" y1=\"-1\" x2=\"2.5\" y2=\"1\"/><line x1=\"2.5\" y1=\"1\" x2=\"-2.5\" y2=\"1\"/><line x1=\"-2.5\" y1=\"1\" x2=\"-2.5\" y2=\"-1\"/><line x1=\"-2.5\" y1=\"-1\" x2=\"2.5\" y2=\"1\"/>",
+   "ap": null
+  },
+  "RTV_STD": {
+   "label": "RTV-Steckdose (TV/Radio)",
+   "cat": "kommunikation",
+   "group": "Video/TV",
+   "wall": true,
+   "h": 30,
+   "c": [
+    0,
+    2
+   ],
+   "r": 2.6,
+   "pin": [
+    0,
+    3.6,
+    1.5
+   ],
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"2.4\"/><line x1=\"-1.5\" y1=\"2.4\" x2=\"-1.5\" y2=\"3.6\"/><line x1=\"1.5\" y1=\"2.4\" x2=\"1.5\" y2=\"3.6\"/><line x1=\"-0.8\" y1=\"2.9\" x2=\"0.8\" y2=\"2.9\"/><line x1=\"-0.8\" y1=\"2.9\" x2=\"-0.8\" y2=\"3.6\"/><line x1=\"0.8\" y1=\"2.9\" x2=\"0.8\" y2=\"3.6\"/>",
+   "ap": null
+  },
+  "RTV_VERT": {
+   "label": "RTV-Verteiler",
+   "cat": "kommunikation",
+   "group": "Video/TV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 1.8,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.5\" y1=\"-1.5\" x2=\"1.5\" y2=\"-1.5\"/><line x1=\"1.5\" y1=\"-1.5\" x2=\"1.5\" y2=\"1.5\"/><line x1=\"1.5\" y1=\"1.5\" x2=\"-1.5\" y2=\"1.5\"/><line x1=\"-1.5\" y1=\"1.5\" x2=\"-1.5\" y2=\"-1.5\"/><line x1=\"0\" y1=\"-1.5\" x2=\"0\" y2=\"1.5\"/><line x1=\"0\" y1=\"0.4\" x2=\"1.5\" y2=\"1.5\"/>",
+   "ap": null
+  },
+  "KAMERA": {
+   "label": "Kamera",
+   "cat": "kommunikation",
+   "group": "Video/TV",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.3,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.2\" y1=\"-0.7\" x2=\"0.8\" y2=\"-0.7\"/><line x1=\"0.8\" y1=\"-0.7\" x2=\"0.8\" y2=\"0.7\"/><line x1=\"0.8\" y1=\"0.7\" x2=\"-2.2\" y2=\"0.7\"/><line x1=\"-2.2\" y1=\"0.7\" x2=\"-2.2\" y2=\"-0.7\"/><path d=\"M0.8,0.3L2,0.8L2,-0.8L0.8,-0.3\" fill=\"none\"/>",
+   "ap": null
+  },
+  "KLINGEL": {
+   "label": "Glocke, Klingel",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0.3
+   ],
+   "r": 1.8,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<path d=\"M-1.5,0A1.5 1.5 0 0 0 1.5,0Z\" fill=\"none\"/><line x1=\"-0.7\" y1=\"0\" x2=\"-0.7\" y2=\"-0.9\"/><line x1=\"0.7\" y1=\"0\" x2=\"0.7\" y2=\"-0.9\"/>",
+   "ap": null
+  },
+  "SON_TASTER": {
+   "label": "Sonnerietaster",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": 110,
+   "c": [
+    0,
+    0
+   ],
+   "r": 1.4,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<circle cx=\"0\" cy=\"0\" r=\"1.1\" fill=\"none\"/><circle cx=\"0\" cy=\"0\" r=\"0.5\" fill=\"none\"/>",
+   "ap": null
+  },
+  "TUEROEFFNER": {
+   "label": "Türöffner",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<path d=\"M-2,-0.55L2,-0.55L0.8,0.55L-2,0.55Z\" fill=\"none\"/><line x1=\"0.8\" y1=\"0.55\" x2=\"0.8\" y2=\"-0.55\"/><path d=\"M-1.5,-0.2L-1.5,0A0.3 0.3 0 0 0 -0.9,0A0.3 0.3 0 0 0 -0.3,0L-0.3,-0.2\" fill=\"none\"/>",
+   "ap": null
+  },
+  "GEGENSPRECH": {
+   "label": "Gegensprechanlage (Innensprechstelle)",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.1\" y1=\"-1.7\" x2=\"1.1\" y2=\"-1.7\"/><line x1=\"1.1\" y1=\"-1.7\" x2=\"1.1\" y2=\"1.7\"/><line x1=\"1.1\" y1=\"1.7\" x2=\"-1.1\" y2=\"1.7\"/><line x1=\"-1.1\" y1=\"1.7\" x2=\"-1.1\" y2=\"-1.7\"/><circle cx=\"0\" cy=\"0.65\" r=\"0.5\" fill=\"none\"/><path d=\"M-0.75,-1.2L-0.15,-1.2L-0.15,-0.85L-0.75,-0.85Z\" fill=\"currentColor\"/><path d=\"M0.15,-1.2L0.75,-1.2L0.75,-0.85L0.15,-0.85Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "AUSSENSPRECH": {
+   "label": "Aussensprechstelle (Torsprechstelle)",
+   "cat": "kommunikation",
+   "group": "Sonnerie",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.1\" y1=\"-1.7\" x2=\"1.1\" y2=\"-1.7\"/><line x1=\"1.1\" y1=\"-1.7\" x2=\"1.1\" y2=\"1.7\"/><line x1=\"1.1\" y1=\"1.7\" x2=\"-1.1\" y2=\"1.7\"/><line x1=\"-1.1\" y1=\"1.7\" x2=\"-1.1\" y2=\"-1.7\"/><circle cx=\"0\" cy=\"0.65\" r=\"0.5\" fill=\"none\"/><circle cx=\"-0.55\" cy=\"-0.35\" r=\"0.12\" fill=\"currentColor\"/><circle cx=\"-0.55\" cy=\"-1\" r=\"0.12\" fill=\"currentColor\"/><line x1=\"-0.3\" y1=\"-0.55\" x2=\"0.65\" y2=\"-0.55\"/><line x1=\"0.65\" y1=\"-0.55\" x2=\"0.65\" y2=\"-0.15\"/><line x1=\"0.65\" y1=\"-0.15\" x2=\"-0.3\" y2=\"-0.15\"/><line x1=\"-0.3\" y1=\"-0.15\" x2=\"-0.3\" y2=\"-0.55\"/><line x1=\"-0.3\" y1=\"-1.2\" x2=\"0.65\" y2=\"-1.2\"/><line x1=\"0.65\" y1=\"-1.2\" x2=\"0.65\" y2=\"-0.8\"/><line x1=\"0.65\" y1=\"-0.8\" x2=\"-0.3\" y2=\"-0.8\"/><line x1=\"-0.3\" y1=\"-0.8\" x2=\"-0.3\" y2=\"-1.2\"/>",
+   "ap": null
+  },
+  "BUS_T1": {
+   "label": "BUS-Taster 1-fach ohne LED",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": true,
+   "h": 110,
+   "c": [
+    0.7,
+    1.9
+   ],
+   "r": 2.3,
+   "pin": null,
+   "edge": [
+    -1.2,
+    0.7,
+    1.2,
+    3.1
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"3.1\"/><line x1=\"1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"3.1\"/><line x1=\"-1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"1.9\" x2=\"2.6\" y2=\"1.9\"/><line x1=\"2.6\" y1=\"1.2\" x2=\"2.6\" y2=\"2.6\"/>",
+   "ap": null
+  },
+  "BUS_T2": {
+   "label": "BUS-Taster 2-fach ohne LED",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": true,
+   "h": 110,
+   "c": [
+    0.7,
+    1.9
+   ],
+   "r": 2.3,
+   "pin": null,
+   "edge": [
+    -1.2,
+    0.7,
+    1.2,
+    3.1
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"3.1\"/><line x1=\"1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"3.1\"/><line x1=\"-1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"1.9\" x2=\"2.6\" y2=\"1.9\"/><line x1=\"2.6\" y1=\"1.2\" x2=\"2.6\" y2=\"2.6\"/><line x1=\"-1.2\" y1=\"1.9\" x2=\"1.2\" y2=\"1.9\"/>",
+   "ap": null
+  },
+  "BUS_T4": {
+   "label": "BUS-Taster 4-fach ohne LED",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": true,
+   "h": 110,
+   "c": [
+    0.7,
+    1.9
+   ],
+   "r": 2.3,
+   "pin": null,
+   "edge": [
+    -1.2,
+    0.7,
+    1.2,
+    3.1
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"3.1\"/><line x1=\"1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"3.1\"/><line x1=\"-1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"1.9\" x2=\"2.6\" y2=\"1.9\"/><line x1=\"2.6\" y1=\"1.2\" x2=\"2.6\" y2=\"2.6\"/><line x1=\"-1.2\" y1=\"1.9\" x2=\"1.2\" y2=\"1.9\"/><line x1=\"0\" y1=\"0.7\" x2=\"0\" y2=\"3.1\"/>",
+   "ap": null
+  },
+  "BUS_T1L": {
+   "label": "BUS-Taster 1-fach mit LED",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": true,
+   "h": 110,
+   "c": [
+    0.7,
+    1.9
+   ],
+   "r": 2.3,
+   "pin": null,
+   "edge": [
+    -1.2,
+    0.7,
+    1.2,
+    3.1
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"3.1\"/><line x1=\"1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"3.1\"/><line x1=\"-1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"1.9\" x2=\"2.6\" y2=\"1.9\"/><line x1=\"2.6\" y1=\"1.2\" x2=\"2.6\" y2=\"2.6\"/><path d=\"M-1.2,0.7L-0.2,0.7L-1.2,1.7Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "BUS_T2L": {
+   "label": "BUS-Taster 2-fach mit LED",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": true,
+   "h": 110,
+   "c": [
+    0.7,
+    1.9
+   ],
+   "r": 2.3,
+   "pin": null,
+   "edge": [
+    -1.2,
+    0.7,
+    1.2,
+    3.1
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"3.1\"/><line x1=\"1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"3.1\"/><line x1=\"-1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"1.9\" x2=\"2.6\" y2=\"1.9\"/><line x1=\"2.6\" y1=\"1.2\" x2=\"2.6\" y2=\"2.6\"/><line x1=\"-1.2\" y1=\"1.9\" x2=\"1.2\" y2=\"1.9\"/><path d=\"M-1.2,0.7L-0.2,0.7L-1.2,1.7Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "BUS_T4L": {
+   "label": "BUS-Taster 4-fach mit LED",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": true,
+   "h": 110,
+   "c": [
+    0.7,
+    1.9
+   ],
+   "r": 2.3,
+   "pin": null,
+   "edge": [
+    -1.2,
+    0.7,
+    1.2,
+    3.1
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"0.7\" x2=\"1.2\" y2=\"3.1\"/><line x1=\"1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"3.1\"/><line x1=\"-1.2\" y1=\"3.1\" x2=\"-1.2\" y2=\"0.7\"/><line x1=\"1.2\" y1=\"1.9\" x2=\"2.6\" y2=\"1.9\"/><line x1=\"2.6\" y1=\"1.2\" x2=\"2.6\" y2=\"2.6\"/><line x1=\"-1.2\" y1=\"1.9\" x2=\"1.2\" y2=\"1.9\"/><line x1=\"0\" y1=\"0.7\" x2=\"0\" y2=\"3.1\"/><path d=\"M-1.2,0.7L-0.2,0.7L-1.2,1.7Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "BUS_PIR": {
+   "label": "BUS-PIR-Melder",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-0.4\" y1=\"-0.8\" x2=\"2\" y2=\"-0.8\"/><line x1=\"2\" y1=\"-0.8\" x2=\"2\" y2=\"0.8\"/><line x1=\"2\" y1=\"0.8\" x2=\"-0.4\" y2=\"0.8\"/><line x1=\"-0.4\" y1=\"0.8\" x2=\"-0.4\" y2=\"-0.8\"/><line x1=\"-0.4\" y1=\"0\" x2=\"-2\" y2=\"0.8\"/><line x1=\"-0.4\" y1=\"0\" x2=\"-2\" y2=\"0\"/><line x1=\"-0.4\" y1=\"0\" x2=\"-2\" y2=\"-0.8\"/><line x1=\"0\" y1=\"0\" x2=\"0.6\" y2=\"0\"/><path d=\"M0.6,0.3L0.6,-0.3L1.1,0Z\" fill=\"currentColor\"/><path d=\"M1.3,0.35A0.5 0.5 0 0 0 1.3,-0.35\" fill=\"none\"/><path d=\"M1.55,0.45A0.65 0.65 0 0 0 1.55,-0.45\" fill=\"none\"/>",
+   "ap": null
+  },
+  "BUS_IR": {
+   "label": "Infrarotempfänger",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": false,
+   "h": null,
+   "c": [
+    0.2,
+    0
+   ],
+   "r": 2.2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<path d=\"M-1.35,0.3L-1.35,-0.3L-0.85,0Z\" fill=\"currentColor\"/><path d=\"M-1.6,0.4A0.55 0.55 0 0 1 -1.6,-0.4\" fill=\"none\"/><path d=\"M-1.9,0.55A0.75 0.75 0 0 1 -1.9,-0.55\" fill=\"none\"/><line x1=\"-0.6\" y1=\"-0.8\" x2=\"1.8\" y2=\"-0.8\"/><line x1=\"1.8\" y1=\"-0.8\" x2=\"1.8\" y2=\"0.8\"/><line x1=\"1.8\" y1=\"0.8\" x2=\"-0.6\" y2=\"0.8\"/><line x1=\"-0.6\" y1=\"0.8\" x2=\"-0.6\" y2=\"-0.8\"/><text x=\"0.6\" y=\"0\" font-size=\"1\" transform=\"scale(1,-1)\">IR</text>",
+   "ap": null
+  },
+  "BUS_FUNK": {
+   "label": "Funkempfänger",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": false,
+   "h": null,
+   "c": [
+    -0.2,
+    0
+   ],
+   "r": 1.9,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<path d=\"M-1.35,0.3L-1.35,-0.3L-0.85,0Z\" fill=\"currentColor\"/><path d=\"M-1.6,0.4A0.55 0.55 0 0 1 -1.6,-0.4\" fill=\"none\"/><path d=\"M-1.9,0.55A0.75 0.75 0 0 1 -1.9,-0.55\" fill=\"none\"/><line x1=\"-0.6\" y1=\"-0.8\" x2=\"1\" y2=\"-0.8\"/><line x1=\"1\" y1=\"-0.8\" x2=\"1\" y2=\"0.8\"/><line x1=\"1\" y1=\"0.8\" x2=\"-0.6\" y2=\"0.8\"/><line x1=\"-0.6\" y1=\"0.8\" x2=\"-0.6\" y2=\"-0.8\"/>",
+   "ap": null
+  },
+  "BUS_INFO": {
+   "label": "BUS-Info-Display",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 1.4,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-1\" y1=\"-1\" x2=\"1\" y2=\"-1\"/><line x1=\"1\" y1=\"-1\" x2=\"1\" y2=\"1\"/><line x1=\"1\" y1=\"1\" x2=\"-1\" y2=\"1\"/><line x1=\"-1\" y1=\"1\" x2=\"-1\" y2=\"-1\"/><line x1=\"-0.6\" y1=\"-0.05\" x2=\"0.6\" y2=\"-0.05\"/><line x1=\"0.6\" y1=\"-0.05\" x2=\"0.6\" y2=\"0.55\"/><line x1=\"0.6\" y1=\"0.55\" x2=\"-0.6\" y2=\"0.55\"/><line x1=\"-0.6\" y1=\"0.55\" x2=\"-0.6\" y2=\"-0.05\"/>",
+   "ap": null
+  },
+  "BUS_TABLEAU": {
+   "label": "BUS-Anzeige, Bedientableau",
+   "cat": "kommunikation",
+   "group": "BUS/KNX",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 3.3,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-3\" y1=\"-1.3\" x2=\"3\" y2=\"-1.3\"/><line x1=\"3\" y1=\"-1.3\" x2=\"3\" y2=\"1.3\"/><line x1=\"3\" y1=\"1.3\" x2=\"-3\" y2=\"1.3\"/><line x1=\"-3\" y1=\"1.3\" x2=\"-3\" y2=\"-1.3\"/><line x1=\"-2.6\" y1=\"-0.9\" x2=\"2.6\" y2=\"-0.9\"/><line x1=\"2.6\" y1=\"-0.9\" x2=\"2.6\" y2=\"0.9\"/><line x1=\"2.6\" y1=\"0.9\" x2=\"-2.6\" y2=\"0.9\"/><line x1=\"-2.6\" y1=\"0.9\" x2=\"-2.6\" y2=\"-0.9\"/><text x=\"0\" y=\"0\" font-size=\"1\" transform=\"scale(1,-1)\">121.22</text>",
+   "ap": null
+  },
   "DOSE": {
    "label": "Abzweigdose",
    "cat": "allg",
@@ -1736,13 +2334,13 @@
     0,
     0
    ],
-   "r": 2.1,
+   "r": 2.4,
    "pin": null,
    "edge": null,
    "num": null,
    "ref": false,
    "size": null,
-   "svg": "<circle cx=\"-1.4\" cy=\"-1.4\" r=\"0.4\" fill=\"none\"/><path d=\"M-1.1,-1.1L0.4,0.4L-0.2,0.7L1.4,1.9\" fill=\"none\"/><line x1=\"-1.1\" y1=\"-1.1\" x2=\"-0.45\" y2=\"-0.95\"/><line x1=\"-1.1\" y1=\"-1.1\" x2=\"-0.95\" y2=\"-0.45\"/>",
+   "svg": "<circle cx=\"-1.4\" cy=\"-1.4\" r=\"0.4\" fill=\"none\"/><line x1=\"-1.1\" y1=\"-1.1\" x2=\"-0.7\" y2=\"-0.8\"/><path d=\"M-0.7,-0.8L0.44,0.07L-0.61,0.4L1.87,1.4L0.35,0.37L1.35,0.05Z\" fill=\"currentColor\"/><line x1=\"-1.1\" y1=\"-1.1\" x2=\"-0.45\" y2=\"-0.95\"/><line x1=\"-1.1\" y1=\"-1.1\" x2=\"-0.95\" y2=\"-0.45\"/>",
    "ap": null
   },
   "STEIG_AUF": {
@@ -1818,7 +2416,469 @@
    "num": null,
    "ref": true,
    "size": null,
-   "svg": "<path d=\"M-11,1.6h6.4a1 1 0 0 1 1,1v3.6a1 1 0 0 1 -1,1h-6.4a1 1 0 0 1 -1,-1v-3.6a1 1 0 0 1 1,-1Z\" fill=\"none\"/><line x1=\"-11.4\" y1=\"4.4\" x2=\"-3.6\" y2=\"4.4\"/><line x1=\"-3.6\" y1=\"1.6\" x2=\"0\" y2=\"0\"/>",
+   "svg": "<path d=\"M-11,1.6h6.4a1 1 0 0 1 1,1v3.6a1 1 0 0 1 -1,1h-6.4a1 1 0 0 1 -1,-1v-3.6a1 1 0 0 1 1,-1Z\" fill=\"none\"/><line x1=\"-11.4\" y1=\"4.4\" x2=\"-3.6\" y2=\"4.4\"/>",
+   "ap": null
+  },
+  "HAK": {
+   "label": "Hausanschlusskasten (HAK)",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": true,
+   "h": null,
+   "c": [
+    0,
+    1.5
+   ],
+   "r": 3,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": {
+    "w": 400,
+    "t": 150,
+    "alt": "<line x1=\"-15\" y1=\"0\" x2=\"15\" y2=\"0\"/><line x1=\"15\" y1=\"0\" x2=\"15\" y2=\"4\"/><line x1=\"15\" y1=\"4\" x2=\"-15\" y2=\"4\"/><line x1=\"-15\" y1=\"4\" x2=\"-15\" y2=\"0\"/><path d=\"M-12,4A52.129 52.129 0 0 1 12,4Z\" fill=\"currentColor\"/>"
+   },
+   "svg": "<line x1=\"-4\" y1=\"0\" x2=\"4\" y2=\"0\"/><line x1=\"4\" y1=\"0\" x2=\"4\" y2=\"3\"/><line x1=\"4\" y1=\"3\" x2=\"-4\" y2=\"3\"/><line x1=\"-4\" y1=\"3\" x2=\"-4\" y2=\"0\"/><path d=\"M-3.2,3A5.401 5.401 0 0 1 3.2,3Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "ERDE": {
+   "label": "Erdung, allgemein",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0.3
+   ],
+   "r": 1.9,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1.6\"/><line x1=\"-1.5\" y1=\"0\" x2=\"1.5\" y2=\"0\"/><line x1=\"-1\" y1=\"-0.5\" x2=\"1\" y2=\"-0.5\"/><line x1=\"-0.5\" y1=\"-1\" x2=\"0.5\" y2=\"-1\"/>",
+   "ap": null
+  },
+  "PA": {
+   "label": "Potenzialausgleich",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0.1
+   ],
+   "r": 1.9,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"1.6\" x2=\"0\" y2=\"0.6\"/><path d=\"M-1.4,0.6L1.4,0.6L0,-1.4Z\" fill=\"none\"/>",
+   "ap": null
+  },
+  "ERDE_ANS": {
+   "label": "Erdungs-Anschluss",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0.4
+   ],
+   "r": 2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1.4\"/><line x1=\"-1.5\" y1=\"0\" x2=\"1.5\" y2=\"0\"/><line x1=\"-1\" y1=\"-0.5\" x2=\"1\" y2=\"-0.5\"/><line x1=\"-0.5\" y1=\"-1\" x2=\"0.5\" y2=\"-1\"/><circle cx=\"0\" cy=\"1.7\" r=\"0.35\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "ERDE_KK": {
+   "label": "Erdungs-Klemmkasten",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.6,
+   "pin": null,
+   "edge": [
+    -2.2,
+    -1.4,
+    2.2,
+    1.4
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.2\" y1=\"-1.4\" x2=\"2.2\" y2=\"-1.4\"/><line x1=\"2.2\" y1=\"-1.4\" x2=\"2.2\" y2=\"1.4\"/><line x1=\"2.2\" y1=\"1.4\" x2=\"-2.2\" y2=\"1.4\"/><line x1=\"-2.2\" y1=\"1.4\" x2=\"-2.2\" y2=\"-1.4\"/><line x1=\"0\" y1=\"0.9\" x2=\"0\" y2=\"0.3\"/><line x1=\"-1.2\" y1=\"0.3\" x2=\"1.2\" y2=\"0.3\"/><line x1=\"-0.8\" y1=\"-0.2\" x2=\"0.8\" y2=\"-0.2\"/><line x1=\"-0.4\" y1=\"-0.7\" x2=\"0.4\" y2=\"-0.7\"/>",
+   "ap": null
+  },
+  "SCHUTZERDE": {
+   "label": "Schutzerde",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<circle cx=\"0\" cy=\"0\" r=\"1.8\" fill=\"none\"/><line x1=\"0\" y1=\"1.1\" x2=\"0\" y2=\"0.3\"/><line x1=\"-1.1\" y1=\"0.3\" x2=\"1.1\" y2=\"0.3\"/><line x1=\"-0.7\" y1=\"-0.2\" x2=\"0.7\" y2=\"-0.2\"/><line x1=\"-0.35\" y1=\"-0.7\" x2=\"0.35\" y2=\"-0.7\"/>",
+   "ap": null
+  },
+  "ERDBAND": {
+   "label": "Erdband Fe 30 × 3 mm",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.5,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<text x=\"0\" y=\"-0.7\" font-size=\"1.1\" transform=\"scale(1,-1)\">Fe 30/3</text><line x1=\"-2.4\" y1=\"-0.4\" x2=\"-1.4\" y2=\"-0.4\"/><line x1=\"-0.9\" y1=\"-0.4\" x2=\"0.1\" y2=\"-0.4\"/><line x1=\"0.6\" y1=\"-0.4\" x2=\"1.6\" y2=\"-0.4\"/><line x1=\"2.1\" y1=\"-0.4\" x2=\"2.4\" y2=\"-0.4\"/>",
+   "ap": null
+  },
+  "PA_SCHIENE": {
+   "label": "Potenzialausgleichsschiene (HPAS)",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 3.2,
+   "pin": null,
+   "edge": [
+    -3,
+    -0.7,
+    3,
+    0.9
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-3\" y1=\"-0.7\" x2=\"3\" y2=\"-0.7\"/><line x1=\"3\" y1=\"-0.7\" x2=\"3\" y2=\"0.9\"/><line x1=\"3\" y1=\"0.9\" x2=\"-3\" y2=\"0.9\"/><line x1=\"-3\" y1=\"0.9\" x2=\"-3\" y2=\"-0.7\"/><circle cx=\"-1.8\" cy=\"0.2\" r=\"0.35\" fill=\"none\"/><line x1=\"-1.8\" y1=\"-0.15\" x2=\"-1.8\" y2=\"-1.7\"/><circle cx=\"-0.6\" cy=\"0.2\" r=\"0.35\" fill=\"none\"/><line x1=\"-0.6\" y1=\"-0.15\" x2=\"-0.6\" y2=\"-1.7\"/><circle cx=\"0.6\" cy=\"0.2\" r=\"0.35\" fill=\"none\"/><line x1=\"0.6\" y1=\"-0.15\" x2=\"0.6\" y2=\"-1.7\"/><circle cx=\"1.8\" cy=\"0.2\" r=\"0.35\" fill=\"none\"/><line x1=\"1.8\" y1=\"-0.15\" x2=\"1.8\" y2=\"-1.7\"/>",
+   "ap": null
+  },
+  "ERDER": {
+   "label": "Erder, allgemein",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0.2
+   ],
+   "r": 2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"-0.4\" x2=\"0\" y2=\"1.8\"/><line x1=\"-1.5\" y1=\"-0.4\" x2=\"1.5\" y2=\"-0.4\"/><line x1=\"-1\" y1=\"-0.9\" x2=\"1\" y2=\"-0.9\"/><line x1=\"-0.5\" y1=\"-1.4\" x2=\"0.5\" y2=\"-1.4\"/>",
+   "ap": null
+  },
+  "TIEFENERDER": {
+   "label": "Tiefenerder (vertikaler Erder)",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0.4
+   ],
+   "r": 2.2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"-0.6\" x2=\"0\" y2=\"1.2\"/><line x1=\"-1.5\" y1=\"-0.6\" x2=\"1.5\" y2=\"-0.6\"/><line x1=\"-1\" y1=\"-1.1\" x2=\"1\" y2=\"-1.1\"/><line x1=\"-0.5\" y1=\"-1.6\" x2=\"0.5\" y2=\"-1.6\"/><circle cx=\"0\" cy=\"1.6\" r=\"0.4\" fill=\"none\"/>",
+   "ap": null
+  },
+  "MESSTRENN": {
+   "label": "Mess-Trennstelle",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.7,
+   "pin": null,
+   "edge": [
+    -2.6,
+    0,
+    2.6,
+    0
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.6\" y1=\"0\" x2=\"-1.1\" y2=\"0\"/><line x1=\"1.1\" y1=\"0\" x2=\"2.6\" y2=\"0\"/><circle cx=\"-0.55\" cy=\"0\" r=\"0.55\" fill=\"none\"/><circle cx=\"0.55\" cy=\"0\" r=\"0.55\" fill=\"none\"/>",
+   "ap": null
+  },
+  "VERB_ANS": {
+   "label": "Verbindung oder Anschluss",
+   "cat": "erdung",
+   "group": "Erdung/PA",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.1,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"-2\" x2=\"0\" y2=\"2\"/><line x1=\"-1.8\" y1=\"0\" x2=\"0\" y2=\"0\"/><circle cx=\"0\" cy=\"0\" r=\"0.3\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "SPD": {
+   "label": "Überspannungsableiter (SPD)",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 3.1,
+   "pin": null,
+   "edge": [
+    -3,
+    0,
+    3,
+    0
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2\" y1=\"-0.9\" x2=\"2\" y2=\"-0.9\"/><line x1=\"2\" y1=\"-0.9\" x2=\"2\" y2=\"0.9\"/><line x1=\"2\" y1=\"0.9\" x2=\"-2\" y2=\"0.9\"/><line x1=\"-2\" y1=\"0.9\" x2=\"-2\" y2=\"-0.9\"/><line x1=\"-3\" y1=\"0\" x2=\"-2\" y2=\"0\"/><line x1=\"2\" y1=\"0\" x2=\"3\" y2=\"0\"/><text x=\"0\" y=\"0\" font-size=\"1.1\" transform=\"scale(1,-1)\">SPD</text>",
+   "ap": null
+  },
+  "FUNKEN": {
+   "label": "Trennfunkenstrecke",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 3.1,
+   "pin": null,
+   "edge": [
+    -3,
+    0,
+    3,
+    0
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2\" y1=\"-0.9\" x2=\"2\" y2=\"-0.9\"/><line x1=\"2\" y1=\"-0.9\" x2=\"2\" y2=\"0.9\"/><line x1=\"2\" y1=\"0.9\" x2=\"-2\" y2=\"0.9\"/><line x1=\"-2\" y1=\"0.9\" x2=\"-2\" y2=\"-0.9\"/><line x1=\"-3\" y1=\"0\" x2=\"-1.5\" y2=\"0\"/><line x1=\"1.5\" y1=\"0\" x2=\"3\" y2=\"0\"/><path d=\"M-1.5,0.55L-1.5,-0.55L-0.3,0Z\" fill=\"currentColor\"/><path d=\"M1.5,0.55L1.5,-0.55L0.3,0Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "DEHNBOGEN": {
+   "label": "Dehnungsbogen",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.6,
+   "pin": null,
+   "edge": [
+    -2.5,
+    0,
+    2.5,
+    0
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.5\" y1=\"0\" x2=\"-1\" y2=\"0\"/><line x1=\"1\" y1=\"0\" x2=\"2.5\" y2=\"0\"/><path d=\"M-1,0A1 1 0 0 0 1,0\" fill=\"none\"/><circle cx=\"-1\" cy=\"0\" r=\"0.25\" fill=\"currentColor\"/><circle cx=\"1\" cy=\"0\" r=\"0.25\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "FLEXVERB": {
+   "label": "Flexible Verbindung",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.6,
+   "pin": null,
+   "edge": [
+    -2.5,
+    0,
+    2.5,
+    0
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"-2.5\" y1=\"0\" x2=\"-1.2\" y2=\"0\"/><line x1=\"1.2\" y1=\"0\" x2=\"2.5\" y2=\"0\"/><path d=\"M-1.2,0q0.3,-0.6 0.6,0t0.6,0q0.3,-0.6 0.6,0t0.6,0\" fill=\"none\"/>",
+   "ap": null
+  },
+  "VERB_AUF": {
+   "label": "Verbindung nach oben",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    1.5,
+    1.5
+   ],
+   "r": 2.4,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<circle cx=\"0\" cy=\"0\" r=\"0.4\" fill=\"none\"/><line x1=\"0.283\" y1=\"0.283\" x2=\"2.97\" y2=\"2.97\"/><line x1=\"2.263\" y1=\"2.263\" x2=\"2.97\" y2=\"2.97\"/><line x1=\"2.97\" y1=\"2.97\" x2=\"1.732\" y2=\"2.793\"/><line x1=\"1.732\" y1=\"2.793\" x2=\"2.263\" y2=\"2.263\"/>",
+   "ap": null
+  },
+  "VERB_AB": {
+   "label": "Verbindung nach unten",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    -1.5,
+    -1.5
+   ],
+   "r": 2.4,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<circle cx=\"0\" cy=\"0\" r=\"0.4\" fill=\"none\"/><line x1=\"-2.97\" y1=\"-2.97\" x2=\"-0.283\" y2=\"-0.283\"/><line x1=\"-1.061\" y1=\"-1.061\" x2=\"-0.354\" y2=\"-0.354\"/><line x1=\"-0.354\" y1=\"-0.354\" x2=\"-1.591\" y2=\"-0.53\"/><line x1=\"-1.591\" y1=\"-0.53\" x2=\"-1.061\" y2=\"-1.061\"/>",
+   "ap": null
+  },
+  "DACHST": {
+   "label": "Dachständer",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2.7,
+   "pin": null,
+   "edge": [
+    -2.6,
+    0,
+    2.6,
+    0
+   ],
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<circle cx=\"0\" cy=\"0\" r=\"1.1\" fill=\"none\"/><line x1=\"-2.6\" y1=\"0\" x2=\"2.6\" y2=\"0\"/>",
+   "ap": null
+  },
+  "ANTENNE": {
+   "label": "Antenne",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<line x1=\"0\" y1=\"-1.8\" x2=\"0\" y2=\"0.4\"/><line x1=\"0\" y1=\"0.4\" x2=\"-1.1\" y2=\"1.8\"/><line x1=\"0\" y1=\"0.4\" x2=\"1.1\" y2=\"1.8\"/>",
+   "ap": null
+  },
+  "FANGST": {
+   "label": "Fangstange",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 1.5,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<circle cx=\"0\" cy=\"0\" r=\"1.2\" fill=\"none\"/><path d=\"M-0.55,-0.45L0.55,-0.45L0,0.75Z\" fill=\"currentColor\"/>",
+   "ap": null
+  },
+  "VERB_DURCH": {
+   "label": "Verbindung nach oben und unten",
+   "cat": "erdung",
+   "group": "Blitzschutz",
+   "wall": false,
+   "h": null,
+   "c": [
+    0,
+    0
+   ],
+   "r": 3.2,
+   "pin": null,
+   "edge": null,
+   "num": null,
+   "ref": false,
+   "size": null,
+   "svg": "<circle cx=\"0\" cy=\"0\" r=\"0.4\" fill=\"none\"/><line x1=\"-2.97\" y1=\"-2.97\" x2=\"-0.283\" y2=\"-0.283\"/><line x1=\"0.283\" y1=\"0.283\" x2=\"2.97\" y2=\"2.97\"/><line x1=\"-1.061\" y1=\"-1.061\" x2=\"-0.354\" y2=\"-0.354\"/><line x1=\"-0.354\" y1=\"-0.354\" x2=\"-1.591\" y2=\"-0.53\"/><line x1=\"-1.591\" y1=\"-0.53\" x2=\"-1.061\" y2=\"-1.061\"/><line x1=\"2.263\" y1=\"2.263\" x2=\"2.97\" y2=\"2.97\"/><line x1=\"2.97\" y1=\"2.97\" x2=\"1.732\" y2=\"2.793\"/><line x1=\"1.732\" y1=\"2.793\" x2=\"2.263\" y2=\"2.263\"/>",
    "ap": null
   }
  }

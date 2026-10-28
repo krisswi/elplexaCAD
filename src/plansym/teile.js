@@ -8,13 +8,18 @@ export const box = (x0, y0, x1, y1) => [L(x0, y0, x1, y0), L(x1, y0, x1, y1), L(
 export const X = (cx, cy, s) => [L(cx - s, cy - s, cx + s, cy + s), L(cx - s, cy + s, cx + s, cy - s)];
 
 // Schalterkreis (Masse siehe schalter.js): S() und der Aufputz-Halbkreis brauchen sie
-export const SC = [0, 2.2], SR = 1.5, LEV = 3.7, CY3 = 2.9, CY6 = 3.5; // LEV = SR + 2.2 (als Zahl, sonst bleibt die Rechnung im v3-Bau)
+export const SC = [0, 2.2], SR = 1.5, LEV = 3.7; // LEV = SR + 2.2 (als Zahl, sonst bleibt die Rechnung im v3-Bau)
 export const dir = (deg) => [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
 // Aufputz: rechte Hälfte des Kreises gefüllt wie die Quelle (CJ 26.10.2026; Feld «Aufputz»)
 export const apHalf = (cy, r = SR) => ["p", `M0,${cy + r}A${r} ${r} 0 0 0 0,${cy - r}Z`, true];
 export const lpt = (deg, t, cy) => { const u = dir(deg); return [u[0] * t, cy + u[1] * t]; };
 export const tri = (a, b, c, fill = false) => ["p", `M${[a, b, c].map((p) => p.map(r3).join(",")).join("L")}Z`, fill];
 export const add2 = (p, x, y) => [p[0] + x, p[1] + y];
+
+// Leitung/Verbindung nach oben und unten 5.110/5.130 (gleiche Zeichen): Ring im Ursprung, Linie unter 45°, halber Pfeil (offenes Dreieck links der Linie, Spitze bei t1)
+const DG = Math.SQRT1_2, at45 = (t) => [t * DG, t * DG];
+export const half45 = (t0, t1) => { const a = at45(t0), b = at45(t1), q = [a[0] - 0.75 * DG, a[1] + 0.75 * DG]; return [L(a[0], a[1], b[0], b[1]), L(b[0], b[1], q[0], q[1]), L(q[0], q[1], a[0], a[1])]; };
+export const seg45 = (t0, t1) => L(...at45(t0), ...at45(t1));
 
 // Bogen und Halbkreis (Leuchten, Wand-Einbau)
 export const halfC = (r) => ["p", `M${-r},0A${r} ${r} 0 0 0 ${r},0Z`, false];
@@ -25,5 +30,6 @@ export const wave = (x0, x1, y = 0) => { const n = 2, w = (x1 - x0) / n; let d =
 // size: Grösse in echten mm (w Breite/Länge, t Tiefe), parts(W, T) zeichnet in Papier-mm; parts der Tabelle = Vorgabe bei 1:50 (Palette)
 // pin = [cx, cy, r]: vier Fangpunkte für Leitungen oben, rechts, unten, links am Rand (Schalter: Kreis, Steckdosen: Bogen; CJ 26.10.2026).
 // edge = [x0, y0, x1, y1]: Fang auf allen Seiten des Kastens (Abzweigdose). Ohne beides fängt die Leitung an der Mitte c.
+// snap = [[x, y] …]: Fangpunkte für Leitungen statt pin (CJ 28.10.2026: Steckdose hinten am Stiel, Anschluss am Kreis); pin bleibt für Symbol an Symbol.
 // c = Mitte (Treffer, Fang); Schalter: Mitte des Kreises (CJ 26.10.2026: vorher [0, 2], Leitung rastete 0,2 mm Papier unter dem Kreis ein)
-export const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (group === "Schalter" ? [0, o.cy ?? SC[1]] : o.wall ? [0, 2] : [0, 0]), pin: o.pin ?? (group === "Schalter" ? [0, o.cy ?? SC[1], SR] : group === "Steckdosen" ? [0, 3.9, 1.5] : null), edge: o.edge ?? null, r: o.r ?? (group === "Schalter" ? 3 : 2.6), ref: !!o.ref });
+export const S = (key, label, cat, group, parts, o = {}) => ({ key, label, cat, group, parts: o.size ? o.size.parts(o.size.w / 50, (o.size.t ?? 0) / 50) : parts, size: o.size, wall: !!o.wall, h: o.h, ap: o.ap === true ? apHalf(o.cy ?? SC[1]) : o.ap || false, num: parts.find((q) => q[0] === "t" && q[5] === "num")?.[4], c: o.c ?? (group === "Schalter" ? [0, o.cy ?? SC[1]] : o.wall ? [0, 2] : [0, 0]), pin: o.pin ?? (group === "Schalter" ? [0, o.cy ?? SC[1], SR] : group === "Steckdosen" ? [0, 3.9, 1.5] : null), edge: o.edge ?? null, snap: o.snap ?? null, r: o.r ?? (group === "Schalter" ? 3 : 2.6), ref: !!o.ref });

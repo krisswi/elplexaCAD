@@ -2,6 +2,11 @@
 
 Neueste oben. Versionen nach dem Schema `Haupt.Neu.Fehler`: neue Funktionen erhöhen die mittlere Zahl, reine Fehlerbehebungen die letzte. Die Dateiversion (Feld `v` in der Projektdatei) zählt getrennt.
 
+## Unveröffentlicht
+
+### Umbau
+- **Umbau `app.js`** (Zweig `umbau/app-aufteilen`, nichts ändert sich für dich): Projektzeit, Teilen/Notizen, Online/Anmeldung und Projektübersicht liegen in eigenen Dateien (`elzeit.js`, `elteilen.js`, `elonline.js`, `elhub.js`). `app.js` ist von ~3'530 auf ~3'020 Zeilen geschrumpft, die v3-Datei um 41 KB kleiner. Dateiformat unverändert. Neu: Karte «Wunsch → Dateien» in `docs/spec.md`.
+
 ## 1.2.0 – 2026-10-27
 Dateiversion 30 in elplexaCAD (Plan mit Aderzahl, Dateien im Projekt), 27 in SchemaCAD v3. Seit 1.1.0: Modul Offerte (Schritte 1–5, Gliederung, Teilen mit Preisen), Firmenprofil, Positionsdatenbank und Sollwerte beim Benutzer; Plan mit Fang, Symbolleiste, Darstellung, Kanal/Trasse, Aderzahl und Symbol an Symbol; Start in der Liste «Projekte»; Dateien im Projekt; Plansymbole je Kategorie.
 - **Start und Ziffern** (Wunsch CJ 27.10.2026, Zweig `wunsch/plan-startseite-aderzahl`, nur elplexaCAD): elplexaCAD startet in der Liste «Projekte» statt im leeren Projekt (angemeldet mit der Online-Liste; geteilte Ansicht unverändert). Ziffern 1–9 öffnen Module nur noch in der Projektansicht mit den Modulkacheln; im geöffneten Modul springen sie nie mehr hinaus (vorher öffnete z. B. eine 5 im Schema das fünfte Modul), die Zahl gehört dem Werkzeug. Hilfe (?) nachgeführt.

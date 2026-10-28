@@ -8,8 +8,9 @@
 // txt Beschriftung, ap Aufputz, fu/nr Sicherung und Nummer am Hinweispfeil). Symbole hängen nicht an der Wand (wandern nicht mit).
 // Leitung { id, type: "line", layer, pts: [[x, y] …] (mind. 2), kind, col?, curve? } (Schritt 3, CJ 24.10.2026; kind = Verlegeart nach 5.110;
 // curve: true = geschwungen, glatte Kurve (B-Spline, Punkte = Steuerpunkte), CJ 24.10.2026, Dateiversion 23).
-// Kanal/Trasse { id, type: "duct", layer, pts: [[x, y] …] (mind. 2, Mittellinie), w, hatch?, col?, ecol?, txt?, tf? } (CJ 27.10.2026, Dateiversion 29):
-// Breite w in echten mm, zwei Aussenkanten (ecol, Vorgabe rot) mit Schraffur dazwischen (col, Vorgabe gelb), Ecken auf Gehrung.
+// Kanal/Trasse { id, type: "duct", layer, pts: [[x, y] …] (mind. 2, Mittellinie), w, hatch?, col?, ecol?, txt?, tf?, curve? } (CJ 27.10.2026, Dateiversion 29):
+// Breite w in echten mm, zwei Aussenkanten (ecol, Vorgabe rot) mit Schraffur dazwischen (col, Vorgabe gelb), Ecken auf Gehrung, Querstrich an beiden Enden.
+// curve: true = Bogen wie die geschwungene Leitung (CJ 28.10.2026, Plan Runde 3, Dateiversion 33).
 // Aderzahl { id, type: "ader", line, t, txt, tf? } (CJ 27.10.2026, Dateiversion 30): kurzer Querstrich senkrecht zur Leitung mit Text (z. B. 3 oder 5x1.5),
 // hängt an der Leitung wie die Öffnung an der Wand (Ebene und Farbe der Leitung), t = Anteil der Länge ab dem ersten Punkt (0 bis 1), wandert mit.
 // Hintergrund bg (CJ 24.10.2026, Dateiversion 23): PDF-Seite wie im Stringplan (pv.js: Massstab, Fixpunkt = Nullpunkt, Drehung), liegt auf der Ebene «Hintergrund».
@@ -218,6 +219,7 @@ export function cleanPlanObj(it, id) {
     setCol(o, it.col); setEcol(o, it.ecol);
     const t = String(it.txt ?? "").trim().slice(0, 60); if (t) o.txt = t;
     const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
+    if (it.curve === true) o.curve = true;
     return o;
   }
   return null;
@@ -242,7 +244,7 @@ export const planV31 = (sh) => sh.items.some((i) => i.type === "sym" && symDef(i
 export const planV32 = (sh) => sh.items.some((i) => i.type === "shape" || symDef(i.key)?.cat === "erdung" || LINE_KINDS.slice(5).some(([k]) => k === i.kind));
 // Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31, 32 planV32, 33 planV33
 // Dateiversion 33 (CJ 28.10.2026): gespiegelte Symbole (m), Verweis mit Zeiger (zg); ältere Stände würden beides still verlieren
-export const planV33 = (sh) => sh.items.some((i) => i.m === true || i.zg === true);
+export const planV33 = (sh) => sh.items.some((i) => i.m === true || i.zg === true || (i.type === "duct" && i.curve === true));
 export const planVer = (sh) => (planV33(sh) ? 33 : planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
 const VERSION_NOW = 33;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
@@ -571,7 +573,7 @@ export function hitPlan(sh, items, p, tol) {
   for (const it of [...items].reverse()) if (it.type === "ader" && lines.has(it.line)) { const g = aderGeom(lines.get(it.line), it, k, tfOf(it, sh)); if (distSeg(p, g.a, g.b) <= tol || len(sub(p, g.at)) <= g.size * Math.max(0.6, it.txt.length * 0.32) + tol) return it; } // Aderzahl vor ihrer Leitung
   for (const it of [...items].reverse()) if (it.type === "line") { const q = linePts(it); if (q.some((x, i) => i && distSeg(p, q[i - 1], x) <= tol)) return it; }
   for (const it of [...items].reverse()) if (it.type === "shape" && hitShape(it, p, tol)) return it; // Form: auf dem Strich, gefüllt auch innen
-  for (const it of [...items].reverse()) if (it.type === "duct" && it.pts.some((x, i) => i && distSeg(p, it.pts[i - 1], x) <= it.w / 2 + tol)) return it; // Kanal: ganze Breite, unter Leitungen und Symbolen
+  for (const it of [...items].reverse()) if (it.type === "duct" && linePts(it).some((x, i, q) => i && distSeg(p, q[i - 1], x) <= it.w / 2 + tol)) return it; // Kanal: ganze Breite, unter Leitungen und Symbolen
   for (const o of items) {
     if (o.type !== "opening") continue;
     const w = walls.get(o.wall), u = wallDir(w), s = dot(sub(p, w.a), u), q = Math.abs(dot(sub(p, w.a), normal(u)));
@@ -737,7 +739,7 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(i.pts, i.w)) : i.type === "shape" ? (({ x0, y0, x1, y1 }) => [[x0, y0], [x1, y1]])(shapeBox(i)) : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(linePts(i), i.w)) : i.type === "shape" ? (({ x0, y0, x1, y1 }) => [[x0, y0], [x1, y1]])(shapeBox(i)) : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }
@@ -778,7 +780,8 @@ export function ductSides(pts, w) {
   }
   return { L, R };
 }
-export const ductLen = (it) => it.pts.reduce((s, p, i) => (i ? s + len(sub(p, it.pts[i - 1])) : s), 0);
+// Mittellinie zum Zeichnen: Punkte, im Bogen die Kurve als Linienzug (wie die geschwungene Leitung)
+export const ductLen = (it) => linePts(it).reduce((s, p, i, q) => (i ? s + len(sub(p, q[i - 1])) : s), 0);
 // Abstand der Schraffur in Welt-mm: halbe Breite, aber nie enger als 1,5 mm auf dem Papier (k = Massstab), so bleibt sie im Druck und beim
 // Zoomen ruhig (eigene Linien statt Füllmuster, kein Moiré). Gitter: Sprossen im doppelten Abstand.
 export const ductStep = (w, k) => Math.max(w / 2, 1.5 * k);
@@ -800,10 +803,10 @@ const inPoly = (p, poly) => { let s0 = 0; for (let i = 0; i < poly.length; i++) 
 // Zeichnung eines Kanals in der Welt: { L, R, quads, lines: Schraffurlinien [[p, q] …], dots: Punkte, r: Punktradius }. Je Abschnitt ein Viereck
 // (Gehrung an den Knicken), die Schraffur läuft über die Länge weiter (Lage ab dem Anfang des Kanals) und wird je Viereck beschnitten.
 export function ductGeom(it, k) {
-  const { L, R } = ductSides(it.pts, it.w), h = it.w / 2, hatch = it.hatch ?? "kreuz", sp = ductStep(it.w, k), lines = [], dots = [], quads = [];
+  const q0 = linePts(it), { L, R } = ductSides(q0, it.w), h = it.w / 2, hatch = it.hatch ?? "kreuz", sp = ductStep(it.w, k), lines = [], dots = [], quads = [];
   let s0 = 0;
-  for (let i = 1; i < it.pts.length; i++) {
-    const a = it.pts[i - 1], v = sub(it.pts[i], a), l = len(v), u = [v[0] / l, v[1] / l], nl = normal(u), quad = [L[i - 1], L[i], R[i], R[i - 1]];
+  for (let i = 1; i < q0.length; i++) {
+    const a = q0[i - 1], v = sub(q0[i], a), l = len(v), u = [v[0] / l, v[1] / l], nl = normal(u), quad = [L[i - 1], L[i], R[i], R[i - 1]];
     quads.push(quad);
     const loc = (s, q) => add(add(a, u, s - s0), nl, q); // s ab Anfang des Kanals, q quer (links +)
     const ss = quad.map((p) => dot(sub(p, a), u) + s0), lo = Math.min(...ss), hi = Math.max(...ss), H = 2 * h;
@@ -817,13 +820,13 @@ export function ductGeom(it, k) {
     }
     s0 += l;
   }
-  return { L, R, quads, lines, dots, r: r3(Math.min(0.3 * k, it.w / 6)) };
+  return { L, R, quads, lines, dots, r: r3(Math.min(0.3 * k, it.w / 6)), ends: [[L[0], R[0]], [L.at(-1), R.at(-1)]] }; // ends: Querstrich an den Enden (CJ 28.10.2026)
 }
 // Beschriftung: Mitte des längsten Abschnitts, links neben dem Kanal (gegen den Uhrzeigersinn gedreht = über dem Kanal bei Zeichnung nach rechts)
 export function ductLabel(it, k, tf = 1) {
-  let i0 = 1, best = -1;
-  for (let i = 1; i < it.pts.length; i++) { const l = len(sub(it.pts[i], it.pts[i - 1])); if (l > best) { best = l; i0 = i; } }
-  const a = it.pts[i0 - 1], b = it.pts[i0], u = [(b[0] - a[0]) / best, (b[1] - a[1]) / best], { a: ang, flip } = readable(Math.atan2(u[1], u[0]) * 180 / Math.PI);
+  const q = linePts(it); let i0 = 1, best = -1;
+  for (let i = 1; i < q.length; i++) { const l = len(sub(q[i], q[i - 1])); if (l > best) { best = l; i0 = i; } }
+  const a = q[i0 - 1], b = q[i0], u = [(b[0] - a[0]) / best, (b[1] - a[1]) / best], { a: ang, flip } = readable(Math.atan2(u[1], u[0]) * 180 / Math.PI);
   const size = 2 * tf * k, off = it.w / 2 + 0.6 * k + size / 2, m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], nl = normal(u);
   return { at: add(m, nl, flip ? -off : off).map(r3), a: ang, size };
 }
@@ -865,7 +868,7 @@ export function aderGeom(line, it, k, tf = 1) {
   return { p, a: add(p, n, -ADER_H * k), b: add(p, n, ADER_H * k), at: add(p, n, (ADER_H + 0.5 + size / 2) * k), size: size * k, ang: ra };
 }
 // Liegt p in einem der Kanäle (Mittellinie ± halbe Breite)? Aderzahl im Kanal: Text mit weissem Rand (CJ 27.10.2026)
-export const inDuct = (ducts, p) => ducts.some((d) => d.pts.some((x, i) => i && distSeg(p, d.pts[i - 1], x) <= d.w / 2));
+export const inDuct = (ducts, p) => ducts.some((d) => linePts(d).some((x, i, q) => i && distSeg(p, q[i - 1], x) <= d.w / 2));
 
 // ---------- Symbol an Symbol (CJ 27.10.2026) ----------
 // Randpunkte als Kasten im System des Symbols (Papier-mm): Mitte cx, cy, halbe Breite hx, hy. pin: Kreis bzw. Bogen, edge: Kasten. Ohne beides null.

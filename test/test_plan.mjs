@@ -745,4 +745,20 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.ok(JSON.parse(M.serializeModel(M.parseModel(file([plan([sw("STD")])], 33)))).version < 33, "ohne Spiegeln tiefer");
   assert.deepStrictEqual(P.bomOf(d.sheets[0]).map((r) => r.n), [2], "Stückliste: gespiegelt zählt gleich");
 }
+// ---------- Plan Runde 3 (CJ 28.10.2026): Kanal mit Querstrich an den Enden und im Bogen ----------
+{
+  const g = P.ductGeom({ pts: [[0, 0], [2000, 0], [2000, 1000]], w: 300 }, 50);
+  assert.deepStrictEqual(g.ends, [[[0, 150], [0, -150]], [[1850, 1000], [2150, 1000]]], "Querstrich an beiden Enden über die ganze Breite");
+  const bo = { id: 90, type: "duct", layer: "bg", pts: [[0, 0], [2000, 0], [2000, 2000]], w: 300, curve: true };
+  assert.ok(P.linePts(bo).length > 3 && P.ductLen(bo) < 4000 && P.ductLen(bo) > 2828, "Bogen: Mittellinie als Kurve, kürzer als die Ecke");
+  const gb = P.ductGeom(bo, 50);
+  assert.ok(gb.L.length === P.linePts(bo).length && gb.quads.length === gb.L.length - 1, "Bogen: Kanten folgen der Kurve");
+  assert.ok(gb.ends[0].every((q, i) => Math.hypot(q[0], q[1] - (i ? -150 : 150)) < 0.5), "Bogen: Anfang (fast) gerade, Querstrich quer zur Kurve");
+  assert.strictEqual(P.hitPlan(plan([bo]), [bo], [2000, 0], 10), null, "Bogen: die Ecke liegt ausserhalb");
+  assert.strictEqual(P.hitPlan(plan([bo]), [bo], P.linePts(bo)[Math.floor(P.linePts(bo).length / 2)], 10)?.id, 90, "Bogen: Treffer auf der Kurve");
+  const out = JSON.parse(M.serializeModel(M.parseModel(file([plan([bo, { ...bo, id: 91, curve: "ja" }])], 33))));
+  assert.strictEqual(out.version, 33, "Kanal im Bogen: Dateiversion 33");
+  assert.deepStrictEqual([out.sheets[0].items[0].curve, out.sheets[0].items[1].curve], [true, undefined], "curve nur true bleibt");
+  assert.ok(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ ...bo, curve: undefined }])], 33)))).version < 33, "ohne Bogen tiefer");
+}
 console.log("test_plan: alles ok");

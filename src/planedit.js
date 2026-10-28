@@ -43,7 +43,7 @@ export function makePlan(c) {
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
   const grpOpen = new Set(); // aufgeklappte Symbolgruppen links, nur für die Sitzung (Start immer zu)
-  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, dw: P.DUCT_W, dhatch: "kreuz", multi: false, free: false, ap: false, m: false, refCol: null, atxt: P.ADER_DEF, scol: "#000000", slw: P.SHAPE_LW, sd: false, sfill: null }; // scol, slw, sd, sfill: Darstellung der nächsten Form // atxt = Text der nächsten Aderzahl; refCol = Farbe des nächsten Verweises (null = Vorgabe); sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A), m = gespiegelt (Taste S); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, dcurve: false, dw: P.DUCT_W, dhatch: "kreuz", multi: false, free: false, ap: false, m: false, refCol: null, atxt: P.ADER_DEF, scol: "#000000", slw: P.SHAPE_LW, sd: false, sfill: null }; // scol, slw, sd, sfill: Darstellung der nächsten Form // atxt = Text der nächsten Aderzahl; refCol = Farbe des nächsten Verweises (null = Vorgabe); sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A), m = gespiegelt (Taste S); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let shapeDraft = null; // Form im Entstehen: { k, a, v1, v2, field (1 oder 2), press (Maustaste unten seit dem Anfang), moved }
   let ductDraft = null; // Kanal im Entstehen: { pts, len, ang, field } (Länge und Winkel tippen wie bei der Wand)
@@ -81,7 +81,7 @@ export function makePlan(c) {
   // Kein Fang an Wänden, Massen oder anderen Leitungen, keine Ausrichtungslinien.
   // Kanäle (CJ 27.10.2026): Leitungen fangen auch an den Kanten und Enden der Kanäle (ohne Ausrichtungslinien)
   const lineSnaps = () => {
-    const o = visible().filter((i) => i.type === "sym").map((i) => P.symSnaps(i, den())), ds = visible().filter((i) => i.type === "duct").map((i) => ({ it: i, ...P.ductSides(i.pts, i.w) }));
+    const o = visible().filter((i) => i.type === "sym").map((i) => P.symSnaps(i, den())), ds = visible().filter((i) => i.type === "duct").map((i) => ({ it: i, ...P.ductSides(P.linePts(i), i.w) }));
     const edge = (q) => q.slice(1).map((x, j) => [q[j], x]);
     return { pts: [...o.flatMap((x) => x.pts), ...ds.flatMap((d) => [d.L[0], d.R[0], d.it.pts[0], d.L.at(-1), d.R.at(-1), d.it.pts.at(-1)])], segs: [...o.flatMap((x) => x.segs), ...ds.flatMap((d) => [...edge(d.L), ...edge(d.R)])] };
   };
@@ -352,7 +352,7 @@ export function makePlan(c) {
     const g = P.ductGeom(it, k), hc = stroke ?? P.colOf(it), ec = stroke ?? P.ecolOf(it);
     let s = g.lines.length ? `<path d="${g.lines.map(([a, b]) => `M${pt(a)}L${pt(b)}`).join("")}" fill="none" stroke="${hc}" stroke-width="${f(0.18 * k)}" stroke-linecap="butt"/>` : "";
     if (g.dots.length) s += `<g fill="${hc}" stroke="none">${g.dots.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(g.r)}"/>`).join("")}</g>`;
-    s += `<path d="M${g.L.map(pt).join("L")}M${g.R.map(pt).join("L")}" fill="none" stroke="${ec}" stroke-width="${f(0.35 * k)}" stroke-linejoin="miter" stroke-linecap="butt"/>`;
+    s += `<path d="M${g.L.map(pt).join("L")}M${g.R.map(pt).join("L")}${g.ends.map(([a, b]) => `M${pt(a)}L${pt(b)}`).join("")}" fill="none" stroke="${ec}" stroke-width="${f(0.35 * k)}" stroke-linejoin="miter" stroke-linecap="butt"/>`;
     if (it.txt) { const b = P.ductLabel(it, k, tf); s += txt(b.at[0], b.at[1], it.txt, b.size, b.a, ec); }
     return s;
   }
@@ -463,14 +463,14 @@ export function makePlan(c) {
       else if (it.type === "dim") { s += `<g class="pl-scale">${dimSVG(it, k, SEL)}</g>`; if (it.ref === undefined) s += grip(it.a) + grip(it.b); }
       else if (it.type === "sym") s += `<g class="pl-scale">${symSVG(it, k, SEL)}</g>`;
       else if (it.type === "ader") { const ln = sh().items.find((i) => i.id === it.line); if (ln) s += `<g class="pl-scale">${aderSVG(ln, it, k, SEL)}</g>`; }
-      else if (it.type === "duct") s += `<g class="pl-scale" opacity=".75">${ductSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? it.pts.map(grip).join("") : "");
+      else if (it.type === "duct") s += `<g class="pl-scale" opacity=".75">${ductSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
       else if (it.type === "shape") s += `<g class="pl-scale">${shapeSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? P.shapeHandles(it).map(grip).join("") : "");
       else if (it.type === "line") s += `<g class="pl-scale">${lineSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
     }
     if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, [...lineDraft.pts, [mouse.x, mouse.y]], opt.lcurve)}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
     if (ductDraft && mouse) {
       const a = ductDraft.pts.at(-1), b = typedEnd(a, ductDraft), pts = Math.hypot(b[0] - a[0], b[1] - a[1]) > 1 ? [...ductDraft.pts, b] : ductDraft.pts;
-      if (pts.length > 1) s += `<g class="pl-scale" opacity=".85">${ductSVG({ pts, w: opt.dw, hatch: opt.dhatch }, k, DRAFT)}</g>`;
+      if (pts.length > 1) s += `<g class="pl-scale" opacity=".85">${ductSVG({ pts, w: opt.dw, hatch: opt.dhatch, curve: opt.dcurve }, k, DRAFT)}</g>`;
       s += ductDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
       if (pts.length > ductDraft.pts.length) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]), deg = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI; s += label(b, `${ductDraft.field === "len" && ductDraft.len ? `[${ductDraft.len}]` : P.fmtLen(L)} mm  ${ductDraft.field === "ang" ? `[${ductDraft.ang}]` : num(((deg % 360) + 360) % 360)}°`); }
     }
@@ -761,7 +761,7 @@ export function makePlan(c) {
   }
   function finishDuct() {
     const pts = ductDraft?.pts ?? []; ductDraft = null;
-    if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "duct", layer: sh().alay, pts, w: opt.dw, hatch: opt.dhatch }, id))); }
+    if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "duct", layer: sh().alay, pts, w: opt.dw, hatch: opt.dhatch, curve: opt.dcurve }, id))); }
     renderOverlay(); updateHint();
   }
   // Form abschliessen (leer: verwerfen), das Werkzeug bleibt für die nächste
@@ -945,7 +945,7 @@ export function makePlan(c) {
   // ---------- Rechte Leiste ----------
   const sel1 = (k, opts, cur, label) => `<div class="field"><label>${label}</label><select data-plf="${k}">${opts.map(([v, l]) => `<option value="${v}"${String(v) === String(cur) ? " selected" : ""}>${R.esc(l)}</option>`).join("")}</select></div>`;
   const inp = (k, label, v, attr = 'data-plf') => `<div class="field"><label>${label}</label><input type="text" inputmode="decimal" ${attr}="${k}" value="${R.esc(v)}" autocomplete="off"></div>`;
-  const LINE_FORMS = [["0", "gerade (Ecken)"], ["1", "geschwungen"]];
+  const LINE_FORMS = [["0", "gerade (Ecken)"], ["1", "geschwungen"]], DUCT_FORMS = [["0", "gerade (Ecken)"], ["1", "Bogen"]]; // Kanal im Bogen (CJ 28.10.2026)
   const layerOpts = () => sh().layers.map((l) => [l.id, l.name]);
   const del1 = () => `<div class="row"><button class="btn outline small danger" data-act="del">${R.icons.trash.replace("<svg", '<svg width="16" height="16"')}Löschen</button></div>`;
   // Farbe (5.100): Felder für Leitungen und Symbole der Wahl, «Vorgabe» nimmt die eigene Farbe weg
@@ -1029,7 +1029,7 @@ export function makePlan(c) {
         + (it.lo ? `<div class="row"><button class="btn outline small" data-plact="lores">Beschriftung zurücksetzen</button></div>` : "") + copyRow() + del1();
     }
     if (it?.type === "duct") return head("Kanal/Trasse", `${P.fmtLen(it.w)} mm, ${(P.ductLen(it) / 1000).toFixed(2).replace(".", ",")} m`) + dwField(P.fmtLen(it.w), "data-plf")
-      + sel1("hatch", P.HATCHES, it.hatch ?? "kreuz", "Schraffur") + `<div class="field"><label>Beschriftung (z. B. Kabelrinne 300)</label><input type="text" data-plf="txt" value="${R.esc(it.txt ?? "")}" autocomplete="off" spellcheck="false"></div>`
+      + sel1("hatch", P.HATCHES, it.hatch ?? "kreuz", "Schraffur") + sel1("lc", DUCT_FORMS, it.curve ? "1" : "0", "Form") + `<div class="field"><label>Beschriftung (z. B. Kabelrinne 300)</label><input type="text" data-plf="txt" value="${R.esc(it.txt ?? "")}" autocomplete="off" spellcheck="false"></div>`
       + (it.txt ? tfField([it]) : "") + colField([it]).replace("<label>Farbe", "<label>Schraffur") + ecolField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
       + note(`${it.pts.length} Punkte, Länge der Mittellinie ${P.fmtLen(P.ductLen(it))} mm. Griffe an den Punkten ziehen (Fang wie bei Wänden, Shift 0/45/90°), Ziehen am Kanal verschiebt ihn.`) + copyRow() + del1();
     if (it?.type === "shape") return head(P.SHAPE_KINDS[it.k], shapeInfo(it))
@@ -1065,8 +1065,8 @@ export function makePlan(c) {
       + note("Fang an den Anschlusspunkten der Symbole und am Raster (nicht an Wänden und anderen Leitungen), Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
     else if (S.tool === "pl-ader") h += head("Neue Aderzahl", "Klick auf eine Leitung") + aderField(opt.atxt, "data-plo")
       + note("Kurzer Querstrich über die Leitung, die Zahl steht darüber. Ziffern 1 bis 9 wählen die Zahl, frei z. B. 5x1.5. Strich und Text in der Farbe der Leitung.");
-    else if (S.tool === "pl-duct") h += head("Neuer Kanal", "Klick setzt Punkte, Enter beendet") + dwField(P.fmtLen(opt.dw), "data-plo") + sel1("dhatch", P.HATCHES, opt.dhatch, "Schraffur").replace("data-plf", "data-plo") + ductLayerHint()
-      + note(`Zahlentasten 1 bis 9 wählen die Breite (${P.DUCT_WS.join(", ")} mm), solange kein Punkt gesetzt ist; danach tippen sie die Länge wie bei der Wand (Tab = Winkel, Enter setzt). Fang wie bei Wänden, Shift 0/45/90°, Alt ohne Fang. Doppelklick, Enter ohne Eingabe oder Esc beendet, Rücktaste nimmt den letzten Punkt weg. Schraffur gelb, Kanten rot, am Kanal änderbar.`);
+    else if (S.tool === "pl-duct") h += head("Neuer Kanal", "Klick setzt Punkte, Enter beendet") + dwField(P.fmtLen(opt.dw), "data-plo") + sel1("dhatch", P.HATCHES, opt.dhatch, "Schraffur").replace("data-plf", "data-plo") + sel1("dcurve", DUCT_FORMS, opt.dcurve ? "1" : "0", "Form").replace("data-plf", "data-plo") + ductLayerHint()
+      + note(`Zahlentasten 1 bis 9 wählen die Breite (${P.DUCT_WS.join(", ")} mm), solange kein Punkt gesetzt ist; danach tippen sie die Länge wie bei der Wand (Tab = Winkel, Enter setzt). Fang wie bei Wänden, Shift 0/45/90°, Alt ohne Fang. Doppelklick, Enter ohne Eingabe oder Esc beendet, Rücktaste nimmt den letzten Punkt weg. Bogen: glatte Kurve wie die geschwungene Leitung, die Punkte ziehen die Kurve an. Schraffur gelb, Kanten rot mit Querstrich an den Enden, am Kanal änderbar.`);
     else if (shapeKey(S.tool)) { const kk = shapeKey(S.tool); h += head(`Neue${kk === "line" ? " Linie" : kk === "rect" ? "s Rechteck" : "r Kreis"}`, "Klick Anfang, Klick Ende, oder ziehen") + shapeFields(null) + layerHint(SHAPE_LAYER, "Formen")
       + note(`${kk === "line" ? "Länge tippen (Tab = Winkel)" : kk === "rect" ? "Breite tippen, x oder Tab, Höhe tippen (Seite nach dem Zeiger, Shift = Quadrat)" : "Radius tippen (Klick = Mitte)"}, Enter setzt. Echte Masse in mm (345 cm, 3,45 m). Fang an Wänden, Symbolen und Ecken, nicht an Leitungen; Shift 0/45/90°, Alt ohne Fang. Esc bricht ab.`); }
     else if (S.tool === "pl-dim") h += head("Neues Mass", "Zwei Punkte, dann Lage") + `<label class="check"><input type="checkbox" data-plo="ctrl"${opt.ctrl ? " checked" : ""}> Kontrollmass (Diagonale: Ist, optional Soll)</label>` + note("Punkte auf beiden Enden einer Wand = Mass an der Wand: Eintippen ändert die Wand.");
@@ -1090,6 +1090,7 @@ export function makePlan(c) {
       else if (k === "ctrl" || k === "ap" || k === "m") { opt[k] = t.checked; renderOverlay(); }
       else if (k === "lkind") { opt.lkind = t.value; updateHint(); }
       else if (k === "lcurve") { opt.lcurve = t.value === "1"; updateHint(); }
+      else if (k === "dcurve") { opt.dcurve = t.value === "1"; renderOverlay(); updateHint(); }
       else if (k === "atxt") { const v = t.value.trim().slice(0, 20); if (v) opt.atxt = v; }
       else if (k === "dw") { const v = P.parseLen(t.value); if (v > 0 && v <= P.DUCT_MAX) opt.dw = v; else toast(`Breite 1 bis ${P.DUCT_MAX} mm.`, "error"); }
       else if (k === "side") { opt.side = Number(t.value) < 0 ? -1 : Number(t.value) > 0 ? 1 : 0; if (draft) { draft.side = opt.side || 1; draft.auto = opt.side === 0; } }

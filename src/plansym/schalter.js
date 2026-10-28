@@ -23,7 +23,7 @@ export const SCHALTER = /* @__PURE__ */ (() => [
   S("SCH6", "Schalter Sch. 6 (Kreuz)", "licht", "Schalter", sw([25, 155, 205, 335].flatMap((d) => lever(d, 1, SC[1], LEV, true, 1.05))), { wall: true, h: 110, ap: true, r: 3.9 }),
   S("TASTER", "Drucktaster", "licht", "Schalter", sw((() => { const a = lpt(0, SR, SC[1]), e = lpt(0, SR + 2.4, SC[1]); return [L(...a, ...e), L(e[0], e[1] + 0.85, e[0], e[1] - 0.85)]; })()), { wall: true, h: 110, ap: true }),
   S("DIMMER", "Lichtregler (Dimmer)", "licht", "Schalter", sw([...lever(0, 0), (() => { const a = lpt(0, SR + 0.7, SC[1]); return tri(a, add2(a, 1.7, -0.57), add2(a, 1.13, -1.13)); })()]), { wall: true, h: 110, ap: true }),
-  // Storenschalter wie CJs Bild (28.10.2026): Kreis mit innerem Kreis, Hebel waagrecht zu einem kurzen Stiel, Dreieck auf und ab
-  S("STOREN", "Storenschalter", "kraft", "Schalter", sw([C(0, SC[1], 0.95), L(SR, SC[1], 2.7, SC[1]), L(2.7, SC[1] - 0.45, 2.7, SC[1] + 0.45), tri([1.95, SC[1] + 0.45], [3.45, SC[1] + 0.45], [2.7, SC[1] + 1.5]), tri([1.95, SC[1] - 0.45], [3.45, SC[1] - 0.45], [2.7, SC[1] - 1.5])]), { wall: true, h: 110, ap: true }),
+  // Storenschalter wie CJs Bild (28.10.2026): einfacher Kreis (der Ring gehört zum Storentaster, CJ 28.10.2026), Hebel waagrecht zu einem kurzen Stiel, Dreieck auf und ab
+  S("STOREN", "Storenschalter", "kraft", "Schalter", sw([L(SR, SC[1], 2.7, SC[1]), L(2.7, SC[1] - 0.45, 2.7, SC[1] + 0.45), tri([1.95, SC[1] + 0.45], [3.45, SC[1] + 0.45], [2.7, SC[1] + 1.5]), tri([1.95, SC[1] - 0.45], [3.45, SC[1] - 0.45], [2.7, SC[1] - 1.5])]), { wall: true, h: 110, ap: true }),
   S("SCH_LAMPE", "Schalter mit Signallampe", "licht", "Schalter", sw([...X(SC[0], SC[1], SR * 0.7), ...lever()]), { wall: true, h: 110 }),
 ])();

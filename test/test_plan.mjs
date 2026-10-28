@@ -312,7 +312,11 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   const hw = (o) => tx({ key: "VERWEIS", fu: "UV EG", nr: "11X4", ...o });
   for (const r of [0, 180]) assert.ok(hw({ r })[0].s === "UV EG" && hw({ r })[0].at[1] > hw({ r })[1].at[1], `oben bleibt oben (r ${r})`);
   const rp = P.itemDef({ key: "VERWEIS", fu: "UV EG", nr: "11X4", r: 0 }, 50).parts;
-  assert.ok(rp.some((q) => q[0] === "l" && q[1] === 0 && q[2] === 0) && rp.filter((q) => q[0] === "l").length === 2, "Linie zum Ziel und Trennstrich");
+  assert.ok(!rp.some((q) => q[0] === "l" && q[1] === 0 && q[2] === 0) && rp.filter((q) => q[0] === "l").length === 1, "ohne Zeiger (Vorgabe seit 28.10.2026): nur Trennstrich");
+  const rz = P.itemDef({ key: "VERWEIS", fu: "UV EG", nr: "11X4", r: 0, zg: true }, 50).parts;
+  assert.ok(rz.some((q) => q[0] === "l" && q[1] === 0 && q[2] === 0) && rz.filter((q) => q[0] === "l").length === 2, "mit Zeiger (zg): Linie zum Ziel und Trennstrich");
+  assert.deepStrictEqual([c({ key: "VERWEIS", zg: true }).zg, c({ key: "VERWEIS", zg: false }).zg, c({ key: "STD", zg: true }).zg], [true, undefined, undefined], "zg nur am Verweis, nur wenn an");
+  assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "VERWEIS", at: [0, 0], r: 0, zg: true }])], 33)))).version, 33, "Verweis mit Zeiger: Version 33");
   // alte Pläne (bis Version 23): vorausgefüllte Höhe 110 an Steckdosen und 200 an Wandleuchten fällt weg
   const old = M.parseModel(file([plan([{ id: 50, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 110 }, { id: 51, type: "sym", layer: "bg", key: "LED_W", at: [0, 0], r: 0, h: 200 }, { id: 52, type: "sym", layer: "bg", key: "STD", at: [0, 0], r: 0, h: 120 }])], 23)).sheets[0].items;
   assert.deepStrictEqual(old.map((i) => i.h), [undefined, undefined, 120], "alte Vorgabehöhen weg, eigene bleibt");

@@ -177,7 +177,7 @@ export function cleanPlanObj(it, id) {
     if (str(it.txt, 60)) o.txt = str(it.txt, 60);
     if (def.ap && it.ap === true) o.ap = true;
     if (it.m === true) o.m = true; // gespiegelt (Taste S, CJ 28.10.2026), nur gespeichert, wenn gespiegelt
-    if (def.ref) { if (str(it.fu, 20)) o.fu = str(it.fu, 20); if (str(it.nr, 20)) o.nr = str(it.nr, 20); }
+    if (def.ref) { if (str(it.fu, 20)) o.fu = str(it.fu, 20); if (str(it.nr, 20)) o.nr = str(it.nr, 20); if (it.zg === true) o.zg = true; } // zg: Zeiger zum Ziel (CJ 28.10.2026: nur auf Wunsch)
     const lo = cleanLo(it.lo); if (lo) o.lo = lo;
     const z = sizeOf(it.key); if (z) for (const f of ["w", "t"]) if (z[f] !== undefined && isNum(it[f]) && it[f] >= 10 && it[f] <= 20000 && Math.round(it[f]) !== z[f]) o[f] = Math.round(it[f]); // Grösse in mm, Vorgabe nicht gespeichert
     if (def.num !== undefined && str(it.num, 6) && str(it.num, 6) !== def.num) o.num = str(it.num, 6); // Zahl der Mehrfachsteckdose (CJ 26.10.2026)
@@ -241,8 +241,8 @@ export const planV31 = (sh) => sh.items.some((i) => i.type === "sym" && symDef(i
 // und Erdleitungen (ältere Stände würden sie still verwerfen bzw. zur Leitung «in Decke» machen)
 export const planV32 = (sh) => sh.items.some((i) => i.type === "shape" || symDef(i.key)?.cat === "erdung" || LINE_KINDS.slice(5).some(([k]) => k === i.kind));
 // Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31, 32 planV32, 33 planV33
-// Dateiversion 33 (CJ 28.10.2026): gespiegelte Symbole (m); ältere Stände würden das Spiegeln still verlieren
-export const planV33 = (sh) => sh.items.some((i) => i.m === true);
+// Dateiversion 33 (CJ 28.10.2026): gespiegelte Symbole (m), Verweis mit Zeiger (zg); ältere Stände würden beides still verlieren
+export const planV33 = (sh) => sh.items.some((i) => i.m === true || i.zg === true);
 export const planVer = (sh) => (planV33(sh) ? 33 : planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
 const VERSION_NOW = 33;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
@@ -672,7 +672,8 @@ function refParts(it, tf = 1) {
   const b = refBox(it, tf), r3 = (n) => Math.round(n * 1000) / 1000, x0 = b.x - b.w / 2, y0 = b.y - b.h / 2, R = 1, out = [];
   out.push(["p", `M${r3(x0 + R)},${r3(y0)}h${r3(b.w - 2 * R)}a${R} ${R} 0 0 1 ${R},${R}v${r3(b.h - 2 * R)}a${R} ${R} 0 0 1 ${-R},${R}h${r3(-(b.w - 2 * R))}a${R} ${R} 0 0 1 ${-R},${-R}v${r3(-(b.h - 2 * R))}a${R} ${R} 0 0 1 ${R},${-R}Z`, false]);
   for (let i = 1; i < b.rows.length; i++) { const y = b.y + ((b.rows.length - 1) / 2 - i + 0.5) * b.lh; out.push(["l", r3(x0), r3(y), r3(x0 + b.w), r3(y)]); } // Trennstrich zwischen den Zeilen
-  // Linie vom Ziel (0|0) zum nächsten Punkt auf dem Kastenrand
+  // Zeiger (nur auf Wunsch, zg; CJ 28.10.2026): Linie vom Ziel (0|0) zum nächsten Punkt auf dem Kastenrand
+  if (!it.zg) return out;
   const cx = Math.max(x0, Math.min(0, x0 + b.w)), cy = Math.max(y0, Math.min(0, y0 + b.h));
   const inside = cx === 0 && cy === 0, ex = inside ? b.x : cx, ey = inside ? y0 : cy;
   if (Math.hypot(ex, ey) > 0.3) out.push(["l", 0, 0, r3(ex), r3(ey)]);

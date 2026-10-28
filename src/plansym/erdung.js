@@ -32,5 +32,9 @@ export const ERDUNG = /* @__PURE__ */ (() => [
   // Verbindungen nach oben/unten wie Quelle (CJ 28.10.2026): gleiche Zeichen wie die Steigleitungen 5.110 (halber Pfeil, Ring am Ende)
   S("VERB_AUF", "Verbindung nach oben", "erdung", "Blitzschutz", [C(0, 0, 0.4), seg45(0.4, 4.2), ...half45(3.2, 4.2)], { r: 2.4, c: [1.5, 1.5] }),
   S("VERB_AB", "Verbindung nach unten", "erdung", "Blitzschutz", [C(0, 0, 0.4), seg45(-4.2, -0.4), ...half45(-1.5, -0.5)], { r: 2.4, c: [-1.5, -1.5] }),
+  // Dach (CJ 28.10.2026, Plan Runde 3): Dachständer und Antenne wie Quelle 5.130; Fangstange fehlt in der Quelle (Annahme: Ring mit Spitze, wie die Fahnenstange aber mit Dreieck)
+  S("DACHST", "Dachständer", "erdung", "Blitzschutz", [C(0, 0, 1.1), L(-2.6, 0, 2.6, 0)], { r: 2.7, edge: [-2.6, 0, 2.6, 0] }),
+  S("ANTENNE", "Antenne", "erdung", "Blitzschutz", [L(0, -1.8, 0, 0.4), L(0, 0.4, -1.1, 1.8), L(0, 0.4, 1.1, 1.8)], { r: 2 }),
+  S("FANGST", "Fangstange", "erdung", "Blitzschutz", [C(0, 0, 1.2), tri([-0.55, -0.45], [0.55, -0.45], [0, 0.75], true)], { r: 1.5 }),
   S("VERB_DURCH", "Verbindung nach oben und unten", "erdung", "Blitzschutz", [C(0, 0, 0.4), seg45(-4.2, -0.4), seg45(0.4, 4.2), ...half45(-1.5, -0.5), ...half45(3.2, 4.2)], { r: 3.2 }),
 ])();

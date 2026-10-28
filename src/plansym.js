@@ -15,11 +15,12 @@ import { LICHT } from "./plansym/licht.js";
 import { MELDER } from "./plansym/melder.js";
 import { GERAETE } from "./plansym/geraete.js";
 import { KOMMUNIKATION } from "./plansym/kommunikation.js";
+import { BUS } from "./plansym/bus.js";
 import { ALLGEMEIN } from "./plansym/allgemein.js";
 import { ERDUNG } from "./plansym/erdung.js";
 
 // Tabellen als /* @__PURE__ */-Aufrufe: so fallen sie im SchemaCAD-Bau ganz weg (v3 byte-gleich), obwohl plan.js sie importiert
-export const PLAN_SYMS = /* @__PURE__ */ (() => [...SCHALTER, ...STECKDOSEN, ...LICHT, ...MELDER, ...GERAETE, ...KOMMUNIKATION, ...ALLGEMEIN, ...ERDUNG])();
+export const PLAN_SYMS = /* @__PURE__ */ (() => [...SCHALTER, ...STECKDOSEN, ...LICHT, ...MELDER, ...GERAETE, ...KOMMUNIKATION, ...BUS, ...ALLGEMEIN, ...ERDUNG])();
 export const SYM_BY_KEY = /* @__PURE__ */ (() => new Map(PLAN_SYMS.map((s) => [s.key, s])))();
 export const SYM_GROUPS = /* @__PURE__ */ (() => [...new Set(PLAN_SYMS.map((s) => s.group))])();
 // Gemeinsamer Zugriff auf ein Plansymbol (CJ 27.10.2026): Definition zum Schlüssel oder undefined

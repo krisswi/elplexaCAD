@@ -2,8 +2,8 @@
 
 Neueste oben. Versionen nach dem Schema `Haupt.Neu.Fehler`: neue Funktionen erhöhen die mittlere Zahl, reine Fehlerbehebungen die letzte. Die Dateiversion (Feld `v` in der Projektdatei) zählt getrennt.
 
-## Unveröffentlicht
-Dateiversion 33 in elplexaCAD (Plan mit gespiegelten Symbolen, Verweis-Zeiger, Kanal-Bogen, freiem Text), 27 in SchemaCAD v3. Ältere Stände öffnen Dateien mit Dateiversion 31 bis 33 nicht.
+## 1.3.0 – 2026-10-28
+Dateiversion 33 in elplexaCAD (Plan mit gespiegelten Symbolen, Verweis-Zeiger, Kanal-Bogen, freiem Text), 27 in SchemaCAD v3. Ältere Stände öffnen Dateien mit Dateiversion 31 bis 33 nicht. Seit 1.2.0: Plan mit Kommunikations-, Erdungs-, Blitzschutz- und BUS/KNX-Symbolen, Formen, Text, Spiegeln und Kanal-Bogen; Offerte mit Schlusszusammenstellung am Anfang; `app.js` aufgeteilt (v3 45 KB kleiner).
 
 ### Plan
 - **Plan: Erdung und Blitzschutz** (Aufgaben Plan 20, Zweig `wunsch/plan-wuensche`, nur elplexaCAD, Auswahl CJ 27.10.2026): zwei neue Gruppen in der Symbolleiste, selbst gezeichnet nach der Symbolzusammenfassung (IEC 60617, 5.120 und 5.130). **Erdung/PA**: Hausanschlusskasten HAK (an der Wand, Grösse in mm, Vorgabe 400 × 150), Erdung allgemein, Potenzialausgleich, Erdungs-Anschluss, Erdungs-Klemmkasten, Schutzerde, Erdband Fe 30 × 3, Potenzialausgleichsschiene (HPAS, Fang auf allen Seiten), Erder, Tiefenerder, Mess-Trennstelle, Verbindung/Anschluss. **Blitzschutz**: Überspannungsableiter SPD, Trennfunkenstrecke, Dehnungsbogen, flexible Verbindung, Verbindung nach oben, nach unten, nach oben und unten. Drei neue Verlegearten der Leitung: Fundamenterder (Strich-Punkt-Punkt), Erdleiter (gestrichelt), Blitzschutzleitung (dick, 0,7 mm). Stückliste und Suche kennen sie. Gehört zur **Dateiversion 32** (wie die Formen). v3 unverändert (byte-gleich).

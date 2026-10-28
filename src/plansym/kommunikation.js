@@ -5,7 +5,7 @@ import { L, C, S, box, halfC } from "./teile.js";
 // ---------- Anschlüsse 5.200/5.240/5.250: Stiel von der Wand, Querstrich, zwei kurze Schenkel zum Raum (wie die Steckdose, Fang gleich) ----------
 const TSOCK = [L(0, 0, 0, 2.4), L(-1.5, 2.4, 1.5, 2.4), L(-1.5, 2.4, -1.5, 3.6), L(1.5, 2.4, 1.5, 3.6)];
 const RJ = ["p", "M-0.9,2.75L0.9,2.75L0.9,3.25L-0.9,3.25Z", true]; // IT: gefüllter Balken zwischen den Schenkeln
-const TS = { wall: true, h: 30, pin: [0, 3.6, 1.5] };
+const TS = { wall: true, h: 30, pin: [0, 3.6, 1.5], snap: [[0, 0], [1.5, 3.6], [0, 2.4], [-1.5, 3.6]] }; // Fang wie Steckdose (CJ 28.10.2026): hinten am Stiel, Schenkelenden, Querstrich
 // Sprechstellen 5.220: hoher Kasten, Lautsprecher (Kreis) oben
 const SPRECH = [...box(-1.1, -1.7, 1.1, 1.7), C(0, 0.65, 0.5)];
 

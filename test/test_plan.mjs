@@ -467,6 +467,8 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   const so = P.symSnaps({ key: "STD", at: [0, 0], r: 0 }, 50);
   assert.deepStrictEqual(so.pts, [[0, 0], [75, 195], [0, 120], [-75, 195]], "Steckdose: hinten am Stiel (CJ 28.10.2026), Bogenenden, Querstrich");
   assert.deepStrictEqual(P.symSnaps({ key: "STD", at: [0, 0], r: 0, m: true }, 50).pts, [[0, 0], [-75, 195], [0, 120], [75, 195]], "Steckdose gespiegelt");
+  assert.deepStrictEqual(P.symSnaps({ key: "IT_RJ", at: [0, 0], r: 0 }, 50).pts, [[0, 0], [75, 180], [0, 120], [-75, 180]], "IT-Dose: hinten am Stiel wie die Steckdose");
+  assert.deepStrictEqual(P.symSnaps({ key: "KOMBI", at: [0, 0], r: 0 }, 50).pts, [[0, 35], [75, 260], [0, 185], [-75, 260]], "KOMBI: hinten am Schalterkreis");
   assert.deepStrictEqual(P.symSnaps({ key: "ANSCHLUSS", at: [0, 0], r: 0 }, 50).pts, [[-70, -70]], "Anschluss Elektro: Fang am Kreis (CJ 28.10.2026)");
   for (const d of S2.PLAN_SYMS.filter((x) => ["Schalter", "Steckdosen"].includes(x.group))) assert.strictEqual(P.symSnaps({ key: d.key, at: [0, 0], r: 0 }, 50).pts.length, 4, `${d.key}: vier Fangpunkte`);
   assert.deepStrictEqual(P.symSnaps({ key: "LEUCHTE", at: [500, 500], r: 30 }, 50), { pts: [[500, 500]], segs: [] }, "Leuchte: Fang an der Mitte");

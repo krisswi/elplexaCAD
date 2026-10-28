@@ -20,6 +20,6 @@ export const STECKDOSEN = /* @__PURE__ */ (() => [
   // T13 mit USB wie Quelle: T13 und USB-Zeichen über dem Bogen (CJ 28.10.2026: höher, sonst deckt Aufputz sie zu), Schrägstrich zur Anzahl (änderbar)
   S("STD_USB", "Steckdose T13 mit USB", "kraft", "Steckdosen", [...SOCK(), ...multi("2"), T(0, 5.9, 1.1, "T13"), L(-0.85, 4.65, 0.75, 4.65), C(-0.85, 4.65, 0.18, true), tri([0.75, 4.42], [1.1, 4.65], [0.75, 4.88], true), L(-0.35, 4.65, -0.1, 5), L(-0.1, 5, 0.3, 5), L(0.05, 4.65, 0.3, 4.35), L(0.3, 4.35, 0.55, 4.35)], SO),
   S("STD_BODEN", "Bodensteckdose", "kraft", "Steckdosen", [...box(-1.8, -1.8, 1.8, 1.8), ...SOCK(0.75, -1.4625)], { pin: [0, 0, 1.8] }), // Steckdose mittig im Kasten (CJ 26.10.2026)
-  // KOMBI wie Quelle (CJ 28.10.2026): Schalterkreis so gross wie bei den Schaltern, Steckdose ohne Stiel direkt auf dem Kreis, Hebel waagrecht mit Querstrich zur Wand
-  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [C(0, SC[1], SR), L(-1.5, 3.7, 1.5, 3.7), ["p", "M-1.5,5.2A1.5 1.5 0 0 1 1.5,5.2", false], L(SR, SC[1], 3.7, SC[1]), L(3.7, SC[1], 3.7, SC[1] - 0.9)], { pin: [0, 5.2, 1.5], wall: true, h: 110, ap: true, c: [0, 3.7], r: 3.8 }),
+  // KOMBI wie Quelle (CJ 28.10.2026): Fang hinten am Schalterkreis (Wand) statt vorne in der Öffnung; Schalterkreis so gross wie bei den Schaltern, Steckdose ohne Stiel direkt auf dem Kreis, Hebel waagrecht mit Querstrich zur Wand
+  S("KOMBI", "KOMBI Gr. 1 Schalter/Steckdose", "kraft", "Steckdosen", [C(0, SC[1], SR), L(-1.5, 3.7, 1.5, 3.7), ["p", "M-1.5,5.2A1.5 1.5 0 0 1 1.5,5.2", false], L(SR, SC[1], 3.7, SC[1]), L(3.7, SC[1], 3.7, SC[1] - 0.9)], { pin: [0, 5.2, 1.5], snap: [[0, 0.7], [1.5, 5.2], [0, 3.7], [-1.5, 5.2]], wall: true, h: 110, ap: true, c: [0, 3.7], r: 3.8 }),
 ])();

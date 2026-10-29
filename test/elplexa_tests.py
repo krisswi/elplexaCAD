@@ -291,6 +291,7 @@ with sync_playwright() as p:
             srv["files"][m.group(2)] = req.post_data_buffer; srv["ftime"][m.group(2)] = datetime.now(timezone.utc).isoformat(); srv["uploads"] += 1; J({"Key": m.group(2)}); return
         if m and req.method == "GET" and m.group(2) in srv["files"]: route.fulfill(status=200, content_type="application/pdf", body=srv["files"][m.group(2)]); return
         if path in ("/rest/v1/user_settings", "/rest/v1/user_positions"): route.fulfill(status=200 if route.request.method == "GET" else 201, content_type="application/json", body="[]" if route.request.method == "GET" else ""); return  # Firmenprofil und Positionsdatenbank (Offerte Schritt 2, 3): leer
+        if path in ("/rest/v1/shares", "/rest/v1/share_releases"): J([]); return  # Pläne für den Monteur (Status in der Übersicht, PDF-Aufräumen): noch kein Link
         J({"message": "nicht gefunden"}, 404)
     b = p.chromium.launch()
     TMP = Path(tempfile.mkdtemp(prefix="elplexa_on_"))
@@ -425,6 +426,9 @@ with sync_playwright() as p:
     srv["mode"] = "offline"; page.click(".modal [data-ok]"); page.wait_for_timeout(400)
     check("Feedback offline: Meldung, Fenster und Text bleiben", page.is_visible(".modal") and page.input_value("#el-fbt") == "Testzeile" and "Keine Verbindung" in toasts() and not srv["fb"], toasts())
     srv["mode"] = "ok"; page.click(".modal [data-ok]"); page.wait_for_timeout(600)
+    for _ in range(25):  # unter Last (volle Testrunde) braucht das Senden mit Bild länger
+        if srv["fb"] and not page.is_visible(".modal"): break
+        page.wait_for_timeout(200)
     f = srv["fb"][0] if srv["fb"] else {}
     shot = srv["fbfiles"].get(f.get("screenshot_path") or "", (None, b""))
     check("Feedback gesendet: Zeile mit Art, Titel, Modul, Version, Projekt, Browser", f.get("art") == "wunsch" and f.get("titel") == "Testzeile" and f.get("beschreibung") == "Beschreibung" and f.get("app_version", "").startswith("elplexaCAD ") and f.get("modul") and f.get("projekt_id") == rid and f.get("user_agent"), f)

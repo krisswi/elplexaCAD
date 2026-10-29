@@ -36,6 +36,7 @@ def fake(route):
             return v
         J([{k.split(":")[0]: col(r, k.split(":")[-1]) for k in q["select"].split(",")} for r in sorted(rows, key=lambda r: r["updated_at"], reverse=True)]); return
     if path in ("/rest/v1/user_settings", "/rest/v1/user_positions"): route.fulfill(status=200 if route.request.method == "GET" else 201, content_type="application/json", body="[]" if route.request.method == "GET" else ""); return  # Firmenprofil und Positionsdatenbank (Offerte Schritt 2, 3): leer
+    if path in ("/rest/v1/shares", "/rest/v1/share_releases"): J([]); return  # Pläne für den Monteur (Status in der Übersicht, PDF-Aufräumen): noch kein Link
     J({"message": "nicht gefunden"}, 404)
 with sync_playwright() as p:
     b = p.chromium.launch()

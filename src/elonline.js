@@ -1,7 +1,7 @@
 // elplexaCAD: Online-Projekte, Anmeldung, Sperre ohne Anmeldung und Speichern (Datei oder online). Aus app.js ausgelagert (Umbau, 27.10.2026), Verhalten unverändert.
 // Zustand EL_S (Übersicht) und S gehören app.js. Nur im elplexaCAD-Bau benutzt.
 import { toast, confirmDialog, chooseDialog } from "./dialogs.js";
-import { cloudLogin, cloudLogout, cloudUser, projList, projSave, projSaved } from "./cloud.js";
+import { cloudLogin, cloudLogout, cloudUser, projList, projSave, projSaved, mShareAll } from "./cloud.js";
 import * as E from "./elplexa.js";
 
 export function makeOnline({ S, $, EL_S, closeEditor, docText, elAcctDraw, elHub, elName, elProj, elTabLive, markClean, markDirty, saveJson }) {
@@ -33,7 +33,7 @@ export function makeOnline({ S, $, EL_S, closeEditor, docText, elAcctDraw, elHub
     try { await fn(); } catch (err) { toast(err.message || String(err), "error"); }
     finally { EL_S.onbusy = false; if (!EL_S.hub.hidden) { elOnlineDraw(); if (elTabLive()) elHub(true, { keepFocus: true }); } }
   }
-  const elOnlineList = () => elOnline(async () => { try { const l = await projList(); if (l) { EL_S.onlist = l; EL_S.onAt = Date.now(); } EL_S.onerr = null; } catch (err) { EL_S.onerr = err.message || String(err); throw err; } });
+  const elOnlineList = () => elOnline(async () => { try { const l = await projList(); if (l) { EL_S.onlist = l; EL_S.onAt = Date.now(); try { EL_S.mshares = await mShareAll(); } catch { EL_S.mshares = null; } } EL_S.onerr = null; } catch (err) { EL_S.onerr = err.message || String(err); throw err; } }); // mshares: Status «Geteilt · Stand 3» (Monteur), still ohne Tabelle
   const elLogout = () => elOnline(async () => { await cloudLogout(); EL_S.onlist = null; EL_S.onerr = null; EL_S.autoTried = false; toast("Abgemeldet."); elAcctDraw(); });
   const elOnlineSave = () => elOnline(() => elOnlineSaveCore(false));
   // clean: über den Speichern-Knopf; der Online-Stand gilt dann als gespeichert (sonst merkt sich erst die Datei mit ⌘S den Stand)

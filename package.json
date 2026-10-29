@@ -19,6 +19,7 @@
     "esbuild": "^0.28.2",
     "jspdf": "^4.2.1",
     "pdfjs-dist": "6.4.299",
+    "qrcode-generator": "1.4.4",
     "svg2pdf.js": "^2.8.1"
   },
   "type": "module",

@@ -239,7 +239,10 @@ export async function projDelete(id) {
 export async function pdfCleanup() {
   const rows = await rest("projects?select=assets:data->assets");
   if (!rows) return 0;
-  const used = new Set(rows.flatMap((r) => Object.values(r.assets || {}).map((a) => a.sha + ".pdf")));
+  // PDF aus veröffentlichten Ständen für den Monteur bleiben, auch wenn das Projekt den Plan nicht mehr hat (Monteur-Ansicht, 28.10.2026)
+  let rel = [];
+  try { rel = (await rest("share_releases?select=assets:data->assets")) || []; } catch (err) { if (err.status !== 404 && err.status !== 400) throw err; } // Tabelle fehlt noch: wie bisher
+  const used = new Set([...rows, ...rel].flatMap((r) => Object.values(r.assets || {}).map((a) => a.sha + ".pdf")));
   const me = uid(sess), old = Date.now() - 3600e3;
   const files = (await storage("object/list/projekt-pdf", { method: "POST", body: JSON.stringify({ prefix: me, limit: 1000 }) })) || [];
   const drop = files.filter((f) => f.name.endsWith(".pdf") && !used.has(f.name) && Date.parse(f.created_at || 0) < old).map((f) => `${me}/${f.name}`);
@@ -299,3 +302,71 @@ const rpc = async (fn, args) => { const r = await call(`/rest/v1/rpc/${fn}`, { m
 export const shareNotes = (token, guest) => rpc("share_notes_list", { p_token: token, p_guest: guest });
 export const shareNoteAdd = (token, guest, n) => rpc("share_note_add", { p_token: token, p_guest: guest, p_sheet: n.sheet, p_label: n.sheet_label, p_kind: n.kind, p_x: n.x, p_y: n.y, p_w: n.w, p_h: n.h, p_text: n.text, p_author: n.author });
 export const shareNoteDelete = (token, guest, id) => rpc("share_note_delete", { p_token: token, p_guest: guest, p_id: id });
+
+// Pläne für den Monteur (CJ 28.10.2026, Migration 20261028_monteur): eigener Link je Projekt (Tabelle `shares`), «Veröffentlichen» füllt ihn
+// (p_publish), Notizen mit fester Nummer je Plan (share_notes). Planer mit Login über REST und p_*, Monteur ohne Login nur über m_* mit Schlüssel.
+// Der alte Teilen-Link (project_shares, share_open) bleibt daneben unverändert.
+export const monteurUrl = (token) => `${window.location.protocol.startsWith("http") ? window.location.origin + window.location.pathname : SHARE_ONLINE}?monteur=${token}`;
+const SH_COLS = "id,project_id,token,created_at,expires_at,revoked_at,phone,rev,pub_at,opened_at";
+// gültiger Link des Projekts (neuester) oder null; undefined = Anmeldung abgebrochen
+export async function mShareGet(projectId) {
+  const r = await rest(`shares?project_id=eq.${encodeURIComponent(projectId)}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=${SH_COLS}&order=created_at.desc&limit=1`);
+  return r === null ? undefined : r[0] || null;
+}
+// Status aller eigenen Projekte für die Übersicht: Map project_id → Link. Fragt nie nach der Anmeldung.
+export async function mShareAll() {
+  const r = await restQuiet(`shares?revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=project_id,rev,pub_at,expires_at,revoked_at&order=created_at.desc`);
+  const m = new Map(); for (const s of r || []) if (!m.has(s.project_id)) m.set(s.project_id, s);
+  return m;
+}
+export async function mShareCreate(projectId, expires_at, phone) {
+  const r = await rest(`shares?select=${SH_COLS}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ project_id: projectId, expires_at, phone }) });
+  return r?.[0] || null;
+}
+// patch: { expires_at?, phone?, revoked_at? }
+export async function mShareUpdate(id, patch) {
+  const r = await rest(`shares?id=eq.${encodeURIComponent(id)}&select=${SH_COLS}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch) });
+  return r?.[0] || null;
+}
+// zuletzt veröffentlichter Stand des Moduls ohne Inhalt: { rev, at, hash } oder null
+export async function mRelease(shareId, mod = "plan") {
+  const r = await rest(`share_releases?share_id=eq.${encodeURIComponent(shareId)}&mod=eq.${encodeURIComponent(mod)}&select=rev,at,hash:data->>hash`);
+  return r?.[0] || null;
+}
+export async function mDevices(shareId) { return (await rest(`share_devices?share_id=eq.${encodeURIComponent(shareId)}&select=seen_at`)) || []; }
+export async function mPlanerNotes(shareId) { return (await rest(`share_notes?share_id=eq.${encodeURIComponent(shareId)}&select=id,share_id,mod,sheet,nr,von,published,x,y,text,author,rev,created_at,updated_at,status,erledigt_at,antwort,antwort_at&order=sheet,nr`)) || []; }
+const prpc = async (fn, args) => { const r = await rest(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) }); return r === null ? null : r?.ok ? r : { grund: r?.grund || "fehlt" }; };
+export const mPublish = (shareId, data, mod = "plan") => prpc("p_publish", { p_share: shareId, p_mod: mod, p_data: data });
+export const mPNoteAdd = (shareId, n) => prpc("p_note_add", { p_share: shareId, p_mod: n.mod || "plan", p_sheet: n.sheet, p_x: n.x, p_y: n.y, p_text: n.text, p_author: n.author });
+export const mPNoteEdit = (id, { text = null, x = null, y = null }) => prpc("p_note_edit", { p_id: id, p_text: text, p_x: x, p_y: y });
+export const mPNoteConfirm = (id, done, antwort = null) => prpc("p_note_confirm", { p_id: id, p_done: done, p_antwort: antwort });
+export async function mPNoteDelete(id) { const r = await rest(`share_notes?id=eq.${encodeURIComponent(id)}&select=id`, { method: "DELETE", headers: { Prefer: "return=representation" } }); return r === null ? null : r.length ? { ok: true } : { grund: "fehlt" }; }
+
+// Monteur (ohne Login). Ergebnis wie die Funktion oder { net: "offline" } (keine Verbindung) bzw. { net: "schlaeft" } (Server pausiert oder nicht
+// erreichbar mit Antwort 5xx). Annahme: ohne Antwort = offline (Funkloch auf der Baustelle), 540 und 502–504 = Server schläft.
+async function mcall(path, body) {
+  let r;
+  try { r = await fetch(BASE + path, { method: "POST", headers: { apikey: KEY, "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  catch { return { net: "offline" }; }
+  if (r.status === 540 || (r.status >= 502 && r.status <= 504)) return { net: "schlaeft" };
+  const b = await r.json().catch(() => null);
+  if (!r.ok) return { net: "fehler", msg: b?.message || `Fehler ${r.status}` };
+  return b || { net: "fehler", msg: "Leere Antwort" };
+}
+export const mOpen = (token, guest, have) => mcall("/rest/v1/rpc/m_open", { p_token: token, p_guest: guest, p_have: have });
+export const mNotes = (token, guest) => mcall("/rest/v1/rpc/m_notes", { p_token: token, p_guest: guest });
+export const mNoteAdd = (token, guest, n) => mcall("/rest/v1/rpc/m_note_add", { p_token: token, p_guest: guest, p_mod: n.mod || "plan", p_sheet: n.sheet, p_nr: n.nr, p_x: n.x, p_y: n.y, p_text: n.text, p_author: n.author, p_rev: n.rev });
+export const mNoteEdit = (token, id, { text = null, x = null, y = null }) => mcall("/rest/v1/rpc/m_note_edit", { p_token: token, p_id: id, p_text: text, p_x: x, p_y: y });
+export const mNoteDelete = (token, id) => mcall("/rest/v1/rpc/m_note_delete", { p_token: token, p_id: id });
+// PDF-Pläne des veröffentlichten Stands: signierte Adressen (Edge Function monteur-pdf, 5 min), dann die Dateien. Ergebnis { sha: ArrayBuffer } oder { net }.
+export async function mPdfs(token, shas) {
+  if (!shas.length) return {};
+  const p = await mcall("/functions/v1/monteur-pdf", { token });
+  if (p.net || !p.ok) return p.net ? p : { net: "fehler", msg: p.grund || "PDF" };
+  const out = {};
+  for (const sha of shas) {
+    if (!p.urls?.[sha]) continue;
+    try { const res = await fetch(p.urls[sha]); if (res.ok) out[sha] = await res.arrayBuffer(); } catch { return { net: "offline" }; }
+  }
+  return out;
+}

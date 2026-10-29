@@ -11,6 +11,7 @@ import { loadProfil } from "./profil.js";
 import { fromBase64 } from "./pdfbg.js";
 import { cloudUser, monteurUrl, mShareGet, mShareCreate, mShareUpdate, mRelease, mDevices, mPlanerNotes, mPublish, mPNoteAdd, mPNoteEdit, mPNoteConfirm, mPNoteDelete } from "./cloud.js";
 import * as K from "./monteur-kern.js";
+import { modName, modOf } from "./model.js";
 
 const ICON = {
   go: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
@@ -39,9 +40,11 @@ export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, s
   const planSheets = () => S.doc.sheets.filter((sh) => sh.kind === "plan");
   const sid = (sh) => String(sh.sid);
   const shOf = (key) => planSheets().find((sh) => sid(sh) === key);
-  const shName = (sh) => K.planTitle(sh.meta.TITEL || sheetLabel(sh, S.doc.sheets.indexOf(sh)));
-  const pickKey = () => `elplexacad.mpick.${M.share?.id}`;
-  const picked = () => { const p = M.share ? ls.get(pickKey()) : null; const all = planSheets(); return Array.isArray(p) ? all.filter((sh) => p.includes(sid(sh))) : all; };
+  // Name wie in der Projektübersicht (monteur-kern.js sheetTitle)
+  const shName = (sh) => { const id = modOf(sh); return K.sheetTitle({ mod: S.doc.mods?.[id]?.name, def: modName(S.doc, id), title: sh.meta.TITEL, label: sheetLabel(sh, S.doc.sheets.indexOf(sh)), many: planSheets().filter((x) => modOf(x) === id).length > 1 }); };
+  // Gemerkt werden die abgewählten Pläne: neue Pläne und Module sind von selbst dabei (vorher fehlten sie nach einer Auswahl)
+  const pickKey = () => `elplexacad.mskip.${M.share?.id}`;
+  const picked = () => { const p = M.share ? ls.get(pickKey()) : null; const all = planSheets(); return Array.isArray(p) ? all.filter((sh) => !p.includes(sid(sh))) : all; };
   const seenKey = () => `elplexacad.mseen.${M.share?.id}`;
   const active = () => isPlan() && !S.shared && !!cloudUser() && !(EL_S.hub && !EL_S.hub.hidden); // nur angemeldet: ohne Konto gibt es keinen Link, die Leiste läge nur über der Zeichnung
   const myName = () => String(cloudUser() || "").split("@")[0] || "Planer"; // Annahme: Name der Planer-Notiz = Konto ohne @…
@@ -74,7 +77,7 @@ export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, s
   function markSeen(ids) { const seen = ls.get(seenKey()) || {}; for (const id of ids) { const n = M.notes.find((x) => x.id === id); if (n) seen[n.id] = n.updated_at; } ls.set(seenKey(), seen); seeNew(); drawHint(); }
 
   // ---------- Zustand neben «Veröffentlichen» ----------
-  function stateHash() { return K.fingerprint(JSON.stringify([S.doc.project?.name, picked().map((sh) => [sh.sid, sh.meta, sh.items, sh.bg, sh.bgOff, sh.bgOp, sh.layers, sh.paper, sh.pmid, sh.tf, sh.bom])])); }
+  function stateHash() { return K.fingerprint(JSON.stringify([S.doc.project?.name, picked().map((sh) => [sh.sid, shName(sh), sh.meta, sh.items, sh.bg, sh.bgOff, sh.bgOp, sh.layers, sh.paper, sh.pmid, sh.tf, sh.bom])])); }
   let syncT = null;
   const sync = () => { clearTimeout(syncT); syncT = setTimeout(draw, 300); };
   function draw() {
@@ -323,7 +326,7 @@ export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, s
   }
   const dlgState = { exp: "keep", end: "", phone: "" };
   function dialogHTML() {
-    const s = M.share, st = K.shareStatus(s), all = planSheets(), on = new Set(picked().map(sid)), allOn = on.size === all.length;
+    const s = M.share, st = K.shareStatus(s), all = planSheets(), on = new Set(picked().map(sid)), allOn = !Array.isArray(M.share ? ls.get(pickKey()) : null);
     const exp = s ? `<option value="keep"${dlgState.exp === "keep" ? " selected" : ""}>Wie bisher · bis ${K.fmtDay(s.expires_at, true)}</option>` : "";
     const d = (n) => K.fmtDay(Date.now() + n * 864e5, true);
     const left = `<div><span class="lab">Projekt</span><div class="el-mproj">${esc(S.doc.project?.name || "Projekt")}<span>Plan-Modul · ${all.length ? all.map(shName).map(esc).join(", ") : "noch keine Pläne"} · ohne Login, lesen und Notizen setzen</span></div></div>
@@ -362,8 +365,8 @@ export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, s
     const expOf = () => (dlgState.exp === "end" ? K.expiryOf("end", dlgState.end) : K.expiryOf(dlgState.exp === "keep" ? "30" : dlgState.exp));
     const change = (e) => {
       const t = e.target;
-      if (t.matches("[data-mall]")) { ls.set(pickKey(), t.checked ? null : planSheets().map(sid)); redraw(); draw(); }
-      else if (t.matches("[data-mpk]")) { const on = new Set(picked().map(sid)); if (t.checked) on.add(t.dataset.mpk); else on.delete(t.dataset.mpk); ls.set(pickKey(), planSheets().map(sid).filter((x) => on.has(x))); redraw(); draw(); }
+      if (t.matches("[data-mall]")) { ls.set(pickKey(), t.checked ? null : []); redraw(); draw(); } // «Alle» aus: Liste zeigen, alle noch gewählt
+      else if (t.matches("[data-mpk]")) { const on = new Set(picked().map(sid)); if (t.checked) on.add(t.dataset.mpk); else on.delete(t.dataset.mpk); ls.set(pickKey(), planSheets().map(sid).filter((x) => !on.has(x))); redraw(); draw(); }
       else if (t.matches("[data-mexp]")) { dlgState.exp = t.value; if (t.value !== "end" && t.value !== "keep") patch({ expires_at: expOf() }); else redraw(); }
       else if (t.matches("[data-mend]")) { dlgState.end = t.value; const x = expOf(); if (x) patch({ expires_at: x }); else toast("Das Datum liegt zurück.", "error"); }
       else if (t.matches("[data-mtel]")) { dlgState.phone = t.value.trim().slice(0, 30); patch({ phone: dlgState.phone }); }

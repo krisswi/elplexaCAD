@@ -15,7 +15,14 @@ export const nextNr = (notes, sheet) => Math.max(0, ...notes.filter((n) => n.she
 // Plantitel im Schieber: ohne «Plan» am Anfang («Plan EG» → «EG», «Plan» allein → bleibt)
 export function planTitle(s) {
   const t = String(s ?? "").trim(), r = t.replace(/^plan\b[\s:·–-]*/i, "").trim();
-  return r || t;
+  return r && !/^\d+$/.test(r) ? r : t; // «Plan 2» bleibt (nur eine Nummer)
+}
+// Name eines Plans für den Monteur (CJ 29.10.2026: wie in der Projektübersicht). mod = eigener Modulname (leer = Standard), def = Standardname
+// des Moduls («Plan», «Plan 2»), title = Blatttitel, label = «Plan 3», many = das Modul hat mehrere Pläne.
+// Ein Plan im Modul: eigener Modulname, sonst Blatttitel, sonst Standardname. Mehrere: Blatttitel, sonst Modulname · Blattnummer.
+export function sheetTitle({ mod, def, title, label, many }) {
+  const m = String(mod || "").trim(), t = String(title || "").trim();
+  return planTitle(many ? t || `${m || def} · ${label}` : m || t || def);
 }
 
 // Datum und Zeit für Band und Notizen (Schweizer Schreibweise, Ortszeit)

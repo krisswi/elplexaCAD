@@ -511,17 +511,25 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 
 /* Pläne für den Monteur, Seite Planer (elmonteur.js, CJ 28.10.2026): Leiste «Veröffentlichen» oben rechts im Plan-Modul, Hinweis neue Notiz,
    Marken der Notizen (Planer dunkelgrün, Monteure braunorange, unveröffentlicht gestrichelt, erledigt grau), Menü nach langem Drücken, Fenster «Link für Monteur». */
-#el-mpub { position: absolute; top: 10px; right: 12px; z-index: 4; display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 12px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 12px; box-shadow: 0 4px 14px rgba(23,33,43,.12); max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: flex-end; }
-#el-mpub .btn { min-height: 40px; display: inline-flex; align-items: center; gap: 6px; }
+#el-mteilen { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+#el-mteilen svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+#el-mteilen .el-mcnt { min-width: 18px; height: 18px; font-size: 12px; padding: 0 5px; }
+.el-mdot { width: 8px; height: 8px; border-radius: 50%; background: #B45309; box-shadow: 0 0 0 2px #F6E3D3; }
+@media (max-width: 760px) { #el-mteilen .lbl, #el-mteilen .caret { display: none; } }
+#el-mpub { position: fixed; z-index: 60; width: 260px; max-width: calc(100vw - 16px); box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 12px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 12px; box-shadow: 0 10px 30px rgba(23,33,43,.18); }
+#el-mpub[hidden] { display: none; }
+#el-mpub .btn { min-height: 40px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; }
+#el-mpub .btn[data-mp="pub"] { justify-content: center; }
+#el-mpub kbd { margin-left: auto; }
 #el-mpub .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
 #el-mpub .btn[aria-pressed="true"] { background: var(--el-dark); color: #fff; }
 #el-mpub kbd { font: 600 12px/1 inherit; padding: 2px 5px; border: 1px solid currentColor; border-radius: 4px; opacity: .7; }
-.el-mp-st { display: grid; text-align: right; font-size: 14px; line-height: 1.25; color: var(--muted, #5B665A); white-space: nowrap; margin-right: 4px; }
+.el-mp-st { display: grid; font-size: 14px; line-height: 1.3; color: var(--muted, #5B665A); margin: 0 2px 4px; }
 .el-mp-st b { color: var(--ink); font-weight: 600; }
 .el-mp-st.hot b, .el-mp-st .warn { color: #6B4400; }
 .el-mhot { background: #B45309; color: #fff; border-color: #B45309; box-shadow: 0 0 0 3px #F6E3D3; }
 .el-mcnt { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #B45309; color: #fff; font-size: 14px; font-weight: 700; display: inline-grid; place-items: center; }
-#el-mhint { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 5; width: min(640px, calc(100% - 28px)); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 14px; background: #fff; border: 1px solid var(--panel-line); box-shadow: 0 10px 30px rgba(27,31,26,.2); }
+#el-mhint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5; width: min(640px, calc(100% - 28px)); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 14px; background: #fff; border: 1px solid var(--panel-line); box-shadow: 0 10px 30px rgba(27,31,26,.2); }
 .el-mh-ic { width: 40px; height: 40px; border-radius: 12px; background: #F6E3D3; color: #B45309; display: grid; place-items: center; flex: none; }
 .el-mh-ic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
 .el-mh-t { flex: 1; min-width: 0; font-size: 15px; line-height: 1.3; }

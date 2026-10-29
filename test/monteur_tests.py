@@ -121,6 +121,8 @@ with sync_playwright() as p:
         return ctx, page
     def key(page, k, **o):
         page.evaluate("([k, o]) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o }))", [k, o]); page.wait_for_timeout(120)
+    def teilen(page):  # Feld unter dem Knopf «Teilen» öffnen (Kopfzeile neben Exportieren)
+        if not page.is_visible("#el-mpub"): page.click("#el-mteilen"); page.wait_for_timeout(150)
     def calls(fn): return [c for c in srv["calls"] if c == fn]
     def mk_box(page, id):  # Mitte und Breite der Marke einer Notiz (Monteur-Ansicht)
         return page.evaluate("(id) => { const r = document.querySelector(`.mo-mk[data-id='${id}']`)?.getBoundingClientRect(); return r ? [r.x + r.width / 2, r.y + r.height / 2, Math.round(r.width)] : [0, 0, 0]; }", id)
@@ -132,7 +134,9 @@ with sync_playwright() as p:
     check("Übersicht: Online-Projekt «Nicht geteilt»", "Nicht geteilt" in tile, tile)
     page.click(f'#el-hub [data-elonline="{PID}"]'); page.wait_for_timeout(600); projektansicht(page)
     page.click("#el-tile-plan"); page.wait_for_timeout(500)
-    check("Plan-Modul: Leiste «Veröffentlichen» sichtbar", page.is_visible("#el-mpub") and "Veröffentlichen" in page.inner_text("#el-mpub"), page.inner_text("#el-mpub") if page.query_selector("#el-mpub") else "")
+    check("Plan-Modul: Knopf «Teilen» neben Exportieren, Feld zu", page.is_visible("#el-mteilen") and not page.is_visible("#el-mpub") and page.evaluate("document.querySelector('#el-mteilen').nextElementSibling?.matches('.menuwrap')"))
+    teilen(page)
+    check("Klick «Teilen»: Feld mit «Veröffentlichen»", page.is_visible("#el-mpub") and "Veröffentlichen" in page.inner_text("#el-mpub"), page.inner_text("#el-mpub"))
     check("Plan-Modul: noch nicht geteilt", "Nicht geteilt" in page.inner_text("#el-mpub"))
     page.click('#el-mpub [data-mp="link"]'); page.wait_for_timeout(400)
     m = page.inner_text(".modal")
@@ -150,20 +154,23 @@ with sync_playwright() as p:
     check("Ablauf 7 Tage: in der Datenbank geändert", srv["shares"][0]["expires_at"][:10] == "2026-11-04" or srv["shares"][0]["expires_at"] > "2026-10-28", srv["shares"][0]["expires_at"])
     page.screenshot(path=str(OUT / "m1_link_fuer_monteur.png"))
     page.click(".modal [data-c]"); page.wait_for_timeout(200)
+    check("Ohne Veröffentlichen: Punkt am Knopf «Teilen»", page.query_selector("#el-mteilen .el-mdot") is not None)
+    teilen(page)
     check("Ohne Veröffentlichen: hervorgehoben «Noch nicht veröffentlicht»", "Noch nicht veröffentlicht" in page.inner_text("#el-mpub") and page.query_selector("#el-mpub .el-mhot"))
     page.click('#el-mpub [data-mp="pub"]'); page.wait_for_timeout(800)
     d = srv["pub"][-1] if srv["pub"] else {}
     check("Veröffentlichen: zwei Plan-Blätter mit Titel ohne «Plan», Seite als SVG, Stückliste", [s["title"] for s in d.get("sheets", [])] == ["EG", "OG"] and d["sheets"][0]["svg"].startswith("<svg") and d["sheets"][0]["bom"] and d["sheets"][0]["bom"][0]["n"] == 2, [s.get("title") for s in d.get("sheets", [])])
     check("Veröffentlichen: Schriftfeld mit Index 1", ">1<" in d["sheets"][0]["svg"])
     check("Veröffentlichen: ohne Zeit, Preise, andere Module", not any(k in json.dumps(d) for k in ('"time"', '"auto"', '"of"', '"prices"')))
-    check("Zustand: «Veröffentlicht …, Stand 1»", "Stand 1" in page.inner_text("#el-mpub") and "Veröffentlicht" in page.inner_text("#el-mpub") and not page.query_selector("#el-mpub .el-mhot"), page.inner_text("#el-mpub"))
+    check("Zustand: «Veröffentlicht …, Stand 1»", "Stand 1" in page.inner_text("#el-mpub") and "Veröffentlicht" in page.inner_text("#el-mpub") and not page.query_selector("#el-mpub .el-mhot") and not page.query_selector("#el-mteilen .el-mdot"), page.inner_text("#el-mpub"))
+    key(page, "Escape"); check("Esc schliesst das Feld", not page.is_visible("#el-mpub"))
     # Planer-Notiz mit N
     key(page, "n"); box = page.locator("#svg").bounding_box()
     page.mouse.click(box["x"] + box["width"] * 0.45, box["y"] + box["height"] * 0.5); page.wait_for_timeout(400)
     page.fill("#modal-root [data-mt]", "Steckdosen Küche auf 115 cm."); page.click("#modal-root [data-ok]"); page.wait_for_timeout(500)
     check("Notiz (N): beim Server angelegt, Nummer 1", calls("p_note_add") and srv["notes"][0]["nr"] == 1 and srv["notes"][0]["sheet"] == "11", srv["notes"])
     check("Notiz: Marke gestrichelt (noch nicht veröffentlicht)", page.query_selector("#el-mnotes .el-mk.pl.unpub") is not None)
-    st = page.inner_text("#el-mpub")
+    teilen(page); st = page.inner_text("#el-mpub")
     check("Zustand: «1 Notiz noch nicht veröffentlicht», hervorgehoben", "1 Notiz noch nicht veröffentlicht" in st and page.query_selector("#el-mpub .el-mhot"), st)
     # Monteur-Notiz kommt: Hinweis, Bestätigen mit Antwort
     srv["notes"].append({"id": "m-x", "mod": "plan", "sheet": "11", "nr": 2, "von": "monteur", "published": True, "x": 2500, "y": 2000, "text": "Steckdose hinter dem Sofa versetzen?", "author": "Marco", "guest": "g-marco", "rev": 1,
@@ -171,7 +178,8 @@ with sync_playwright() as p:
     page.evaluate("document.dispatchEvent(new Event('visibilitychange'))"); page.wait_for_timeout(600)
     h = page.inner_text("#el-mhint") if page.is_visible("#el-mhint") else ""
     check("Hinweis oben «Neue Notiz von Marco, EG, Nr. 2»", "Neue Notiz von Marco, EG, Nr. 2" in h, h)
-    check("Zähler am Plan-Modul: 1 offene Monteur-Notiz", page.inner_text("#el-mpub .el-mcnt").strip() == "1")
+    teilen(page); page.screenshot(path=str(OUT / "m1b_teilen_offen.png")); key(page, "Escape")
+    check("Zähler am Knopf «Teilen»: 1 offene Monteur-Notiz", page.inner_text("#el-mteilen .el-mcnt").strip() == "1")
     page.screenshot(path=str(OUT / "m2_planer_hinweis.png"))
     page.click('#el-mhint [data-mh="ok"]'); page.wait_for_timeout(300)
     page.fill("#modal-root [data-mans]", "Ja, 60 cm nach links."); page.click("#modal-root [data-ok]"); page.wait_for_timeout(500)
@@ -184,12 +192,12 @@ with sync_playwright() as p:
     check("Rechtsklick auf Nummer: Dorthin, Bearbeiten, Löschen", page.is_visible("#el-mmenu") and all(t in page.inner_text("#el-mmenu") for t in ("Dorthin", "Bearbeiten", "Löschen")), page.inner_text("#el-mmenu"))
     key(page, "Escape")
     # Fenster: Notizen je Plan
-    page.click('#el-mpub [data-mp="link"]'); page.wait_for_timeout(500)
+    teilen(page); page.click('#el-mpub [data-mp="link"]'); page.wait_for_timeout(500)
     m = page.inner_text(".modal")
     check("Fenster: Notizen je Plan mit Status und Antwort", "Notizen je Plan" in m and "bestätigt" in m and "Antwort: Ja, 60 cm nach links." in m and "noch nicht veröffentlicht" in m, m)
     check("Fenster: zuletzt geöffnet / Geräte", "Noch nie geöffnet" in m or "Zuletzt geöffnet" in m)
     page.click(".modal [data-c]"); page.wait_for_timeout(200)
-    page.click('#el-mpub [data-mp="pub"]'); page.wait_for_timeout(800)
+    teilen(page); page.click('#el-mpub [data-mp="pub"]'); page.wait_for_timeout(800)
     check("Zweites Veröffentlichen: Stand 2, Planer-Notiz sichtbar", srv["shares"][0]["rev"] == 2 and srv["notes"][0]["published"] and not page.query_selector("#el-mnotes .el-mk.unpub"), srv["shares"][0])
     page.click("#el-crumb .el-back") if page.query_selector("#el-crumb .el-back") else None
     page.click("#el-nav-projekte"); page.wait_for_timeout(200); page.click('#el-hub [data-elact="onlist"]'); page.wait_for_timeout(500)

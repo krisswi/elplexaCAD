@@ -19,14 +19,17 @@ const ICON = {
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
   ok: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>',
   bubble: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>',
 };
 const POLL = 30e3, HOLD = 500;
 const ls = { get: (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ohne Speicher */ } } };
 
 export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, switchSheet, sheetLabel, pointerPos, toWorld, elLogin, elSaveOnline, isPlan }) {
-  const M = { pid: null, share: undefined, pub: null, notes: [], tool: null, busy: false, hash: "", timer: null, hint: null, hidden: new Set(), flash: null, open: null, devices: null };
+  const M = { panel: false, pid: null, share: undefined, pub: null, notes: [], tool: null, busy: false, hash: "", timer: null, hint: null, hidden: new Set(), flash: null, open: null, devices: null };
   const world = $("#world");
-  const bar = document.createElement("div"); bar.id = "el-mpub"; bar.setAttribute("role", "toolbar"); bar.setAttribute("aria-label", "Pläne für den Monteur"); bar.hidden = true; stage.appendChild(bar);
+  // CJ 29.10.2026: Leiste nicht mehr über der Zeichnung, sondern Knopf «Teilen» in der Kopfzeile neben Exportieren (Punkt = nicht veröffentlicht), Klick öffnet das Feld
+  const tbtn = document.createElement("button"); tbtn.className = "btn outline"; tbtn.id = "el-mteilen"; tbtn.type = "button"; tbtn.hidden = true; tbtn.setAttribute("aria-haspopup", "dialog"); tbtn.setAttribute("aria-expanded", "false"); tbtn.setAttribute("aria-controls", "el-mpub");
+  const bar = document.createElement("div"); bar.id = "el-mpub"; bar.setAttribute("role", "dialog"); bar.setAttribute("aria-label", "Pläne für den Monteur"); bar.hidden = true; document.body.appendChild(bar);
   const hintEl = document.createElement("div"); hintEl.id = "el-mhint"; hintEl.hidden = true; hintEl.setAttribute("role", "status"); stage.appendChild(hintEl);
   const menu = document.createElement("div"); menu.id = "el-mmenu"; menu.setAttribute("role", "menu"); menu.hidden = true; stage.appendChild(menu);
   const tst = document.createElement("div"); tst.id = "el-mtoast"; tst.setAttribute("role", "status"); stage.appendChild(tst);
@@ -76,18 +79,28 @@ export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, s
   const sync = () => { clearTimeout(syncT); syncT = setTimeout(draw, 300); };
   function draw() {
     const on = active();
-    bar.hidden = !on; if (!on) { hintEl.hidden = true; menu.hidden = true; layer.innerHTML = ""; return; }
+    const mw = document.querySelector("#topbar .menuwrap"); if (mw && tbtn.nextElementSibling !== mw) mw.before(tbtn);
+    tbtn.hidden = !on; if (!on) M.panel = false;
+    bar.hidden = !M.panel; tbtn.setAttribute("aria-expanded", String(M.panel)); if (!on) { hintEl.hidden = true; menu.hidden = true; layer.innerHTML = ""; return; }
     if (proj() !== M.pid) { load(); poll(); }
     M.hash = stateHash();
     const unpub = vis().filter((n) => n.von === "planer" && !n.published).length, open = vis().filter((n) => n.von === "monteur" && n.status === "offen").length;
     const st = !proj() ? { hot: false, lines: ["Nicht geteilt"], sub: "Für den Monteur zuerst online speichern" } : M.share === undefined ? { hot: false, lines: [cloudUser() ? "Link wird geladen …" : "Nicht angemeldet"], sub: "" } : !M.share ? { hot: false, lines: ["Nicht geteilt"], sub: "Noch kein Link für Monteur" } : K.pubState(M.pub, M.hash, unpub);
+    const dot = st.hot && M.share;
+    tbtn.title = `Pläne für den Monteur: ${st.lines.join(", ")}${open ? `, ${open} offene Notizen der Monteure` : ""}`;
+    tbtn.innerHTML = `${ICON.share}<span class="lbl">Teilen</span>${open ? `<span class="el-mcnt">${open}</span>` : dot ? '<i class="el-mdot" aria-hidden="true"></i>' : ""}<span class="caret" aria-hidden="true">▾</span>`;
+    if (M.panel) { const r = tbtn.getBoundingClientRect(); bar.style.top = `${r.bottom + 6}px`; bar.style.right = `${Math.max(8, window.innerWidth - r.right)}px`; }
     bar.innerHTML = `<div class="el-mp-st${st.hot ? " hot" : ""}"><b>${esc(st.lines[0])}</b>${st.lines[1] ? `<span class="warn">${esc(st.lines[1])}</span>` : st.sub ? `<span>${esc(st.sub)}</span>` : ""}</div>`
       + `<button class="btn outline" data-mp="note" aria-pressed="${M.tool === "add"}" title="Notiz für den Monteur setzen (N)"${M.share ? "" : " disabled"}>${ICON.bubble}<span>Notiz</span><kbd>N</kbd></button>`
       + `<button class="btn outline" data-mp="link" title="Link für Monteur: Ablauf, Telefon, QR-Code, Notizen">Link für Monteur …${open ? `<span class="el-mcnt" title="${open} offene Notizen der Monteure">${open}</span>` : ""}</button>`
       + `<button class="btn ${st.hot && M.share ? "el-mhot" : "primary"}" data-mp="pub"${M.busy ? " disabled" : ""} title="Plan-Blätter für den Monteur veröffentlichen (ohne Zeit, Preise, andere Module)">Veröffentlichen</button>`;
     drawHint(); drawNotes();
   }
-  bar.addEventListener("click", (e) => { const b = e.target.closest("[data-mp]"); if (!b || b.disabled) return; ({ note: () => setTool(M.tool === "add" ? null : "add"), link: () => dialog(), pub: () => publish() })[b.dataset.mp](); });
+  const panel = (v) => { M.panel = v; if (v) { draw(); bar.querySelector("[data-mp=pub]")?.focus(); } else { bar.hidden = true; tbtn.setAttribute("aria-expanded", "false"); } }; // zu ohne neu zeichnen: sonst geht der Klick ausserhalb verloren
+  tbtn.addEventListener("click", () => panel(!M.panel));
+  document.addEventListener("pointerdown", (e) => { if (M.panel && !e.target.closest?.("#el-mpub, #el-mteilen")) panel(false); }, true);
+  window.addEventListener("resize", () => { if (M.panel) draw(); });
+  bar.addEventListener("click", (e) => { const b = e.target.closest("[data-mp]"); if (!b || b.disabled) return; if (b.dataset.mp !== "pub") panel(false); ({ note: () => setTool(M.tool === "add" ? null : "add"), link: () => dialog(), pub: () => publish() })[b.dataset.mp](); });
 
   // ---------- Veröffentlichen ----------
   async function sha256(bytes) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join(""); }
@@ -162,7 +175,7 @@ export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, s
   // Zeiger: Marke kurz = dorthin und Text, lange (0,5 s, Ring) oder Rechtsklick = Menü; Werkzeug Notiz: Stelle wählen
   let hold = null;
   stage.addEventListener("pointerdown", (e) => {
-    if (e.target.closest?.("#el-mpub, #el-mhint, #el-mmenu, #el-mtoast")) { e.stopPropagation(); return; } // eigene Knöpfe: nicht die Zeichenfläche (setPointerCapture schluckt sonst den Klick)
+    if (e.target.closest?.("#el-mhint, #el-mmenu, #el-mtoast")) { e.stopPropagation(); return; } // eigene Knöpfe: nicht die Zeichenfläche (setPointerCapture schluckt sonst den Klick)
     if (!active()) return;
     const mk = e.target.closest?.("[data-mnote],[data-mcl]");
     if (mk && !M.tool) {
@@ -295,8 +308,9 @@ export function makeMonteurPlaner({ S, $, EL_S, stage, applyView, renderSheet, s
   // Taste N: Notiz setzen, Esc bricht ab (Plan-Modul, Tastenkürzel-Index)
   function key(e) {
     if (!active()) return false;
+    if (e.key === "Escape" && M.panel) { panel(false); tbtn.focus(); return true; }
     if (e.key === "Escape" && (M.tool || !menu.hidden || M.open)) { setTool(null); closeMenu(); M.open = null; drawNotes(); return true; }
-    if ((e.key === "n" || e.key === "N") && !e.altKey && !e.shiftKey) { if (!M.share) { toast("Zuerst einen Link für Monteur erstellen (Knopf «Link für Monteur …»)."); return true; } setTool(M.tool === "add" ? null : "add"); return true; }
+    if ((e.key === "n" || e.key === "N") && !e.altKey && !e.shiftKey) { if (!M.share) { toast("Zuerst einen Link für Monteur erstellen (oben «Teilen», dann «Link für Monteur …»)."); return true; } setTool(M.tool === "add" ? null : "add"); return true; }
     return false;
   }
 

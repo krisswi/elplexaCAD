@@ -25,6 +25,15 @@ assert.strictEqual(K.planTitle("plan: OG 1"), "OG 1");
 assert.strictEqual(K.planTitle("Plan"), "Plan");
 assert.strictEqual(K.planTitle("Planung Küche"), "Planung Küche", "nur das Wort Plan am Anfang");
 assert.strictEqual(K.planTitle("  UG "), "UG");
+assert.strictEqual(K.planTitle("Plan 2"), "Plan 2", "nur Nummer: «Plan» bleibt");
+// Name für den Monteur wie in der Projektübersicht (CJ 29.10.2026)
+const T = (o) => K.sheetTitle({ def: "Plan", label: "Plan 1", ...o });
+assert.strictEqual(T({ mod: "Plan EG", title: "" }), "EG", "Modulname aus der Übersicht");
+assert.strictEqual(T({ mod: "Elektro UG", title: "Plan 1" }), "Elektro UG", "Modulname vor Blatttitel");
+assert.strictEqual(T({ title: "Plan OG" }), "OG", "ohne Modulnamen: Blatttitel");
+assert.strictEqual(T({ def: "Plan 2" }), "Plan 2", "ohne alles: Standardname");
+assert.strictEqual(T({ mod: "EG", title: "Küche", many: true }), "Küche", "mehrere Pläne: Blatttitel");
+assert.strictEqual(T({ mod: "EG", label: "Plan 3", many: true }), "EG · Plan 3", "mehrere ohne Titel: Modul · Blatt");
 
 // Warteschlange: neu, bearbeiten, löschen; ungesendete Notiz bearbeiten ändert nur den Eintrag
 const srvNotes = [{ id: "s1", sheet: "1", nr: 1, von: "monteur", text: "alt", x: 0, y: 0, mine: true, status: "offen" }, { id: "s2", sheet: "1", nr: 2, von: "planer", text: "P", x: 1, y: 1, mine: false, status: "offen" }];

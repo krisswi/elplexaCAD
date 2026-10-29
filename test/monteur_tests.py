@@ -25,7 +25,7 @@ WALLS = lambda: [{"id": 5, "type": "wall", "layer": "bg", "a": [0, 0], "b": [500
                  {"id": 9, "type": "sym", "layer": "bg", "key": "STD", "at": [1000, 150], "r": 0}, {"id": 10, "type": "sym", "layer": "bg", "key": "STD", "at": [2000, 150], "r": 0}]
 PLAN = lambda sid, t: {"kind": "plan", "sid": sid, "meta": {"BLATT": str(sid - 10), "TITEL": t}, "paper": {"size": "A3", "quer": True, "den": 50}, "layers": [{"id": "bg", "name": "Hintergrund", "show": True, "lock": False}], "alay": "bg", "items": WALLS()}
 DATA = {"format": "schemacad", "version": 33, "active": 0, "nextId": 100, "project": {"name": "EFH Monteur", "status": "In Arbeit", "meta": {"OBJEKT": "Bauweg 2"}},
-        "sheets": [PLAN(11, "Plan EG"), PLAN(12, "Plan OG")]}
+        "sheets": [PLAN(11, "Plan EG"), {**PLAN(12, "Plan OG"), "items": WALLS() + [{"id": 11, "type": "wall", "layer": "bg", "a": [5000, 0], "b": [40000, 0], "d": 150}]}]}
 srv = {"shares": [], "rel": None, "notes": [], "dev": [], "calls": [], "pub": [], "grund": None, "offline": False, "sleep": False}
 
 def nr_for(sheet, want):  # wie sh_nr
@@ -153,6 +153,11 @@ with sync_playwright() as p:
     page.select_option(".modal [data-mexp]", "7"); page.wait_for_timeout(300)
     check("Ablauf 7 Tage: in der Datenbank geändert", srv["shares"][0]["expires_at"][:10] == "2026-11-04" or srv["shares"][0]["expires_at"] > "2026-10-28", srv["shares"][0]["expires_at"])
     page.screenshot(path=str(OUT / "m1_link_fuer_monteur.png"))
+    page.click(".modal [data-mall]"); page.wait_for_timeout(200)
+    check("«Alle Pläne» aus: Liste mit beiden Plänen, beide gewählt", page.evaluate("[...document.querySelectorAll('.modal [data-mpk]')].map((x) => x.checked)") == [True, True])
+    page.click('.modal [data-mpk="12"]'); page.wait_for_timeout(200)
+    check("OG abgewählt: gemerkt wird nur das Abgewählte (neue Pläne kommen von selbst dazu)", page.evaluate(f"localStorage.getItem('elplexacad.mskip.{srv['shares'][0]['id']}')") == '["12"]')
+    page.click(".modal [data-mall]"); page.wait_for_timeout(200)
     page.click(".modal [data-c]"); page.wait_for_timeout(200)
     check("Ohne Veröffentlichen: Punkt am Knopf «Teilen»", page.query_selector("#el-mteilen .el-mdot") is not None)
     teilen(page)
@@ -161,6 +166,8 @@ with sync_playwright() as p:
     d = srv["pub"][-1] if srv["pub"] else {}
     check("Veröffentlichen: zwei Plan-Blätter mit Titel ohne «Plan», Seite als SVG, Stückliste", [s["title"] for s in d.get("sheets", [])] == ["EG", "OG"] and d["sheets"][0]["svg"].startswith("<svg") and d["sheets"][0]["bom"] and d["sheets"][0]["bom"][0]["n"] == 2, [s.get("title") for s in d.get("sheets", [])])
     check("Veröffentlichen: Schriftfeld mit Index 1", ">1<" in d["sheets"][0]["svg"])
+    t0, t1 = d["sheets"][0]["tr"], d["sheets"][1]["tr"]
+    check("Ganzer Plan auf der Seite: EG mittig 1:50, OG (40 m breit) mittig und kleiner", t0["den"] == 50 and abs(t0["mx"] - 2500) < 1 and t1["den"] > 50 and abs(t1["mx"] - 20000) < 1, [t0, t1])
     check("Veröffentlichen: ohne Zeit, Preise, andere Module", not any(k in json.dumps(d) for k in ('"time"', '"auto"', '"of"', '"prices"')))
     check("Zustand: «Veröffentlicht …, Stand 1»", "Stand 1" in page.inner_text("#el-mpub") and "Veröffentlicht" in page.inner_text("#el-mpub") and not page.query_selector("#el-mpub .el-mhot") and not page.query_selector("#el-mteilen .el-mdot"), page.inner_text("#el-mpub"))
     key(page, "Escape"); check("Esc schliesst das Feld", not page.is_visible("#el-mpub"))

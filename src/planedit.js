@@ -113,7 +113,7 @@ export function makePlan(c) {
   const unionBox = (a, b) => (a && b ? { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) } : a || b);
   function centerOf(S0) {
     if (S0.pmid) return S0.pmid;
-    const b = P.contentBox(S0) || (S0.bg ? bgBox(S0.bg) : null); // ohne Objekte die Mitte des PDF-Plans
+    const b = unionBox(P.contentBox(S0), bgShown(S0) ? bgBox(S0.bg) : null) || (S0.bg ? bgBox(S0.bg) : null); // Mitte von Objekten und PDF-Plan zusammen (CJ 29.10.2026, vorher nur Objekte: Plan lag auf einer Seite)
     return b ? [Math.round((b.x0 + b.x1) / 20) * 10, Math.round((b.y0 + b.y1) / 20) * 10] : [0, 0];
   }
   // Papier in Welt-mm: Ursprung der Seite so, dass die Mitte des Planfelds auf center() liegt
@@ -579,8 +579,13 @@ export function makePlan(c) {
   // Veröffentlichen für den Monteur (CJ 28.10.2026, elmonteur.js): Planseite wie im Druck, Schriftfeld mit Index = Stand und Datum des Stands.
   // PDF-Plan nur als Verweis (data-msha, data-mpage): die Monteur-Ansicht setzt das Bild aus der PDF in der Offline-Kopie ein. tr: Welt ↔ Seite.
   // Stückliste wie im Druck (bomOf), mit kleinem Symbol. Ohne Zeit, Preise und andere Module.
+  // CJ 29.10.2026: für den Monteur immer der ganze Plan (Objekte und PDF-Plan) auf der Seite, mittig; passt er nicht aufs Papier, kleiner
+  // (grösserer Massstab im Plankopf), der Monteur zoomt selbst. Die Druckmitte (pmid) gilt hier nicht.
   function releaseSheet(S0, i, meta) {
-    const p = P.paperOf(S0), a = printArea(p), [mx, my] = centerOf(S0), cx = (a.x0 + a.x1) / 2, cy = (a.y0 + a.y1) / 2, id = `mclip${i}`, [w, h] = paperSize(p);
+    const p0 = P.paperOf(S0), a = printArea(p0), box = unionBox(P.contentBox(S0), bgShown(S0) ? bgBox(S0.bg) : null);
+    const fit = box ? Math.max((box.x1 - box.x0) / (a.x1 - a.x0), (box.y1 - box.y0) / (a.y1 - a.y0)) * 1.04 : 0;
+    const p = fit > p0.den ? { ...p0, den: Math.ceil(fit / 10) * 10 } : p0;
+    const [mx, my] = box ? [(box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2] : centerOf(S0), cx = (a.x0 + a.x1) / 2, cy = (a.y0 + a.y1) / 2, id = `mclip${i}`, [w, h] = paperSize(p);
     let bg = "", ref = null;
     if (bgShown(S0)) {
       const b = S0.bg, k = mmPerPt(b), [fu, fv] = fixOf(b), tr = `${b.rot ? `rotate(${b.rot}) ` : ""}translate(${f(-fu * k)} ${f(fv * k)}) scale(${k} ${-k})`, as = S.doc.assets?.[b.asset];

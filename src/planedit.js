@@ -323,7 +323,7 @@ export function makePlan(c) {
     impSave(r.symMap, r.colMap);
     let pre;
     try { pre = IM.prepareImport(rd.o, pi.i, r.symMap, r.colMap); } catch (err) { toast(`Import nicht möglich: ${err.message}`, "error"); return; }
-    const skip = pre.skipped ? ` ${pre.skipped} unbekannte ${pre.skipped === 1 ? "Symbol" : "Symbole"} übersprungen.` : "";
+    const skip = pre.skipped ? ` ${pre.skipped} ${pre.skipped === 1 ? "unbekanntes Symbol" : "unbekannte Symbole"} übersprungen.` : "";
     if (r.ziel === "new") { // ohne Fixpunkt: Nullpunkt der Datei = Nullpunkt des Plans; Papier, Textgrösse und PDF-Plan (mit «Hintergrund») kommen mit
       const src = pre.sheet, b = r.ids.has("bg") && src.bg?.asset ? pre.assets[src.bg.asset] : null;
       let aid = null;

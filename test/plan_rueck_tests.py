@@ -71,7 +71,7 @@ with sync_playwright() as p:
 
     # Grundriss-Werkzeuge nur auf Hintergrund
     page.click('[data-plact="ladd"]'); page.wait_for_timeout(150); page.click(".modal [data-ok]"); page.wait_for_timeout(150)
-    check("Neue Ebene aktiv: Wand, Tür/Fenster, Mass weg, Leitung bleibt", page.locator('[data-tool="pl-wall"], [data-tool="pl-open"], [data-tool="pl-dim"]').count() == 0 and page.locator('[data-tool="pl-line"]').count() == 1)
+    check("Neue Ebene aktiv: Wand, Tür/Fenster, Mass weg, Leitung bleibt", page.locator('[data-tool="pl-wall"], [data-plact="o:tuer"], [data-tool="pl-dim"]').count() == 0 and page.locator('[data-tool="pl-line"]').count() == 1)
     page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click("#pl-row-bg"); page.wait_for_timeout(100)
     check("Zurück auf Hintergrund: Grundriss-Werkzeuge wieder da", page.locator('[data-tool="pl-wall"]').count() == 1)
 

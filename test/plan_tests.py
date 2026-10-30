@@ -75,12 +75,18 @@ with sync_playwright() as p:
     check("Gehrung: Ecken ohne Stirnseite (alle Wände verbunden)", page.evaluate("window.__schemacad.model.items.filter((i) => i.type === 'wall').length") == 4)
 
     # ---------- Tür und Fenster ----------
-    key("o"); page.select_option('[data-plo="okind"]', "tuer"); click(1000, 0)
-    page.select_option('[data-plo="okind"]', "fenster"); click(2000, 3000)
+    pr = lambda a: page.get_attribute(f'[data-plact="{a}"]', "aria-pressed") == "true"
+    key("o"); check("Taste O: Knopf Tür", pr("o:tuer") and not pr("o:fenster")); click(1000, 0)
+    key("o"); check("Nochmal O: Knopf Fenster", pr("o:fenster") and not pr("o:tuer")); click(2000, 3000)
     ops = of("opening")
     check("Tür auf Wand 1 (900 mm, Höhe 2000), Fenster auf Wand 3 (1200 mm, Höhe 1500)", len(ops) == 2 and ops[0]["wall"] == W1 and ops[0]["kind"] == "tuer" and ops[0]["w"] == 900 and abs(ops[0]["t"] - 550) <= 10 and ops[0].get("h") == 2000
           and ops[1]["wall"] == W3 and ops[1]["kind"] == "fenster" and ops[1]["w"] == 1200 and ops[1].get("h") == 1500, ops)
     T, F = ops[0]["id"], ops[1]["id"]
+    # Tür setzen mit Tab (Anschlag) und R (Aufgehrichtung), CJ 30.10.2026
+    page.click('[data-plact="o:tuer"]'); key("Tab"); key("r"); click(3000, 0)
+    d = of("opening")[-1]
+    check("Tab und R: Tür mit Band rechts, Aufgehrichtung gewechselt", len(of("opening")) == 3 and d["kind"] == "tuer" and d["hinge"] == "r" and d.get("side") == -1, d)
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(100); key("Tab"); key("r")
 
     # ---------- Öffnung über Griff breiter ziehen ----------
     key("v"); click(1000, 0)
@@ -137,7 +143,7 @@ with sync_playwright() as p:
     check("Ebene «Installation» angelegt und aktiv", [l["name"] for l in ly] == ["Hintergrund", "Installation"] and M()["alay"] == ly[1]["id"], ly)
     LI = ly[1]["id"]
     # Grundriss-Werkzeuge nur auf der Ebene Hintergrund: Wand zeichnen dort, dann der Ebene Installation zuweisen
-    check("Auf Ebene Installation keine Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 0 and page.locator('[data-tool="pl-open"]').count() == 0 and page.locator('[data-tool="pl-dim"]').count() == 0 and page.locator('[data-tool="pl-line"]').count() == 1)
+    check("Auf Ebene Installation keine Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 0 and page.locator('[data-plact="o:tuer"]').count() == 0 and page.locator('[data-tool="pl-dim"]').count() == 0 and page.locator('[data-tool="pl-line"]').count() == 1)
     blur(); key("w"); check("Taste W auf Installation: Hinweis, kein Werkzeug", "nur auf der Ebene Hintergrund" in page.inner_text("#toasts") and M().get("alay") == LI)
     page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click("#pl-row-bg"); page.wait_for_timeout(100)
     check("Auf Hintergrund wieder Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 1)

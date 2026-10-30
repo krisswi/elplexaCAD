@@ -19,6 +19,7 @@ const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe n
 const ICON = {
   wall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v6H3z"/><path d="M6 15l6-6M11 15l6-6M16 15l5-5"/></svg>',
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h5M17 18h5"/><path d="M7 18V8"/><path d="M7 8a10 10 0 0110 10"/></svg>',
+  window: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9h4M18 9h4M2 15h4M18 15h4"/><path d="M6 9h12v6H6z"/><path d="M6 12h12"/></svg>', // Fenster in der Wand: Rahmen und Glas (CJ 30.10.2026)
   line: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18L10 8h10"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>',
   ader: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18C9 18 13 10 21 10"/><path d="M10.5 11.5l3 4.5"/><path d="M13 5.5h3l-2 3"/></svg>',
   duct: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v10h16V9"/><path d="M2.5 6h19"/><circle cx="8.5" cy="15" r="2"/><circle cx="15.5" cy="15" r="2"/></svg>', // Querschnitt Kanal mit Deckel und Kabeln (CJ 30.10.2026: im Raster sonst wie die Wand)
@@ -43,7 +44,7 @@ export function makePlan(c) {
   const den = () => P.paperOf(sh()).den;
   // Einstellungen für neue Objekte (nur in der Sitzung): Wanddicke (letzte gemerkt), Material, Wandseite (0 automatisch nach der ersten Kurve, 1 links der Zeichenrichtung, −1 rechts), Öffnung, Kontrollmass
   const grpOpen = new Set(); // aufgeklappte Symbolgruppen links, nur für die Sitzung (Start immer zu)
-  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, dcurve: false, dw: P.DUCT_W, dhatch: "kreuz", multi: false, free: false, ap: false, m: false, refCol: null, atxt: P.ADER_DEF, scol: "#000000", slw: P.SHAPE_LW, sd: false, sfill: null }; // scol, slw, sd, sfill: Darstellung der nächsten Form // atxt = Text der nächsten Aderzahl; refCol = Farbe des nächsten Verweises (null = Vorgabe); sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A), m = gespiegelt (Taste S); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
+  const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", hinge: "l", oside: 1, ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, dcurve: false, dw: P.DUCT_W, dhatch: "kreuz", multi: false, free: false, ap: false, m: false, refCol: null, atxt: P.ADER_DEF, scol: "#000000", slw: P.SHAPE_LW, sd: false, sfill: null }; // scol, slw, sd, sfill: Darstellung der nächsten Form // atxt = Text der nächsten Aderzahl; refCol = Farbe des nächsten Verweises (null = Vorgabe); sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A), m = gespiegelt (Taste S); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
   let shapeDraft = null; // Form im Entstehen: { k, a, v1, v2, field (1 oder 2), press (Maustaste unten seit dem Anfang), moved }
   let ductDraft = null; // Kanal im Entstehen: { pts, len, ang, field } (Länge und Winkel tippen wie bei der Wand)
@@ -526,7 +527,7 @@ export function makePlan(c) {
   function openPreview() {
     const w = P.hitPlan(sh(), pickable().filter((i) => i.type === "wall"), [raw.x, raw.y], tol());
     if (!w) return null;
-    const ww = Math.min(opt.ow[opt.okind], P.wallLen(w)), o = { kind: opt.okind, w: ww, t: Math.max(0, Math.min(P.wallLen(w) - ww, Math.round(P.along(w, [raw.x, raw.y]) - ww / 2))), hinge: "l", side: 1, h: OPEN_HV[opt.okind] };
+    const ww = Math.min(opt.ow[opt.okind], P.wallLen(w)), o = { kind: opt.okind, w: ww, t: Math.max(0, Math.min(P.wallLen(w) - ww, Math.round(P.along(w, [raw.x, raw.y]) - ww / 2))), hinge: opt.hinge, side: opt.oside, h: OPEN_HV[opt.okind] }; // Anschlag (Tab) und Aufgehrichtung (R) der nächsten Tür
     return { w, o };
   }
 
@@ -843,15 +844,15 @@ export function makePlan(c) {
   const PL_GRUND = [
     { act: "pdf", icon: ICON.pdf, t: () => (sh().bg?.asset ? "Neuer Planstand" : "PDF-Plan laden") }, { act: "scale", icon: ICON.scale, t: "Massstab eingeben", pdf: true },
     { id: "pl-measure", icon: ICON.measure, t: "Massstab messen", pdf: true }, { id: "pl-fix", icon: ICON.fix, t: "Fixpunkt setzen", pdf: true }, { id: "pl-rotate", icon: ICON.rotate, t: "Plan drehen", pdf: true },
-    { id: "pl-wall", icon: ICON.wall, t: "Wand", k: "W" }, { id: "pl-open", icon: ICON.open, t: "Tür, Fenster", s: "Tür/Fenster", k: "O" }, { id: "pl-dim", icon: R.icons.dim, t: "Mass", k: "B" },
+    { id: "pl-wall", icon: ICON.wall, t: "Wand", k: "W" }, { act: "o:tuer", tool: "pl-open", icon: ICON.open, t: "Tür", k: "O" }, { act: "o:fenster", tool: "pl-open", icon: ICON.window, t: "Fenster", k: "O" }, { id: "pl-dim", icon: R.icons.dim, t: "Mass", k: "B" },
   ];
   const keyed = [...PL_GRUND, ...PL_TOOLS].filter((x) => x.id && /^[A-Z]$/.test(x.k ?? ""));
   const TOOL_KEYS = Object.fromEntries(keyed.map((x) => [x.k.toLowerCase(), x.id]));
-  const KEYS_HINT = keyed.filter((x) => x.id !== "select" && x.id !== "hand").map((x) => `${x.k} ${x.s ?? x.t}`).join(", ");
-  const GRUND_TOOLS = PL_GRUND.filter((x) => x.id).map((x) => x.id);
+  const KEYS_HINT = keyed.filter((x) => x.id !== "select" && x.id !== "hand").map((x) => `${x.k} ${x.s ?? x.t}`).join(", ") + ", O Tür/Fenster";
+  const GRUND_TOOLS = PL_GRUND.filter((x) => x.id || x.tool).map((x) => x.id ?? x.tool); // Tür und Fenster (CJ 30.10.2026): eigene Knöpfe, ein Werkzeug pl-open
   // Grundriss-Werkzeuge (Wand, Tür/Fenster, Mass) gibt es nur auf der Ebene Hintergrund (ohne sie auf der einzigen Ebene)
   const grundOn = () => sh().alay === "bg" || !P.layerById(sh(), "bg");
-  const toolShown = (id) => !GRUND_TOOLS.includes(id) || (grundOn() && (!PL_GRUND.find((x) => x.id === id).pdf || !!sh().bg?.asset));
+  const toolShown = (id) => !GRUND_TOOLS.includes(id) || (grundOn() && (!PL_GRUND.find((x) => (x.id ?? x.tool) === id).pdf || !!sh().bg?.asset));
   function key(e, mod) {
     const k = e.key;
     if (mod) {
@@ -908,11 +909,18 @@ export function makePlan(c) {
     if (bgDraft && k === "Escape") { bgDraft = null; renderOverlay(); updateHint(); return true; }
     if (dimDraft && k === "Escape") { dimDraft = null; renderOverlay(); updateHint(); return true; }
     if (k.toLowerCase() === "x" && S.tool === "pl-wall" && !e.altKey) { opt.side = -(draft?.side ?? (opt.side || 1)); if (draft) { draft.side = opt.side; draft.auto = false; } renderRight(); renderOverlay(); updateHint(); return true; } // Wandseite wechseln
+    if (S.tool === "pl-open" && !e.altKey && (k === "Tab" || k.toLowerCase() === "r")) { // Tür setzen: Tab = Anschlag, R = Aufgehrichtung (CJ 30.10.2026)
+      if (k === "Tab") opt.hinge = opt.hinge === "r" ? "l" : "r"; else opt.oside = -opt.oside;
+      renderOverlay(); updateHint(); return true;
+    }
+    if (k.toLowerCase() === "o" && !e.altKey) { if (!grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Unten in der Leiste die Ebene wechseln."); return true; } if (S.tool === "pl-open") opt.okind = opt.okind === "fenster" ? "tuer" : "fenster"; setTool("pl-open"); renderLeft(); return true; } // O: Tür, nochmal O: Fenster
     if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Unten in der Leiste die Ebene wechseln."); return true; } setTool(t); return true; }
     if (k.toLowerCase() === "p" && !e.altKey) { bgToggle(); return true; } // PDF-Plan ein/aus (Tastenkürzel-Index)
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
       const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym" || i.type === "text"), fs = sel().filter((i) => i.type === "shape" && i.k !== "circle");
       if (S.tool === "pl-sym") { opt.symR = (opt.symR + step) % 360; renderOverlay(); return true; }
+      const ds = sel().filter((i) => i.type === "opening" && (i.kind === "tuer" || i.kind === "schiebe"));
+      if (ds.length && !ys.length && !fs.length) { change(() => { for (const d of ds) d.side = -(d.side ?? 1); }); return true; } // gewählte Tür: Aufgehrichtung wechseln
       if (ys.length || fs.length) { change(() => { for (const y of ys) { const r = ((y.r ?? 0) + step) % 360; if (r || y.type === "sym") y.r = r; else delete y.r; } for (const x of fs) P.rotateShape(x, step); }); return true; } // Formen um die eigene Mitte
       return true;
     }
@@ -941,7 +949,7 @@ export function makePlan(c) {
   // ---------- Linke Leiste: Werkzeuge und Ebenen ----------
   // Symbolraster (CJ 30.10.2026): nur Symbole, Titel und Taste im Tooltip; kein natives title (sonst doppelt). Kein <section>, die Symbolsuche blendet Sections aus
   const toolBtn = (x) => {
-    const t = typeof x.t === "function" ? x.t() : x.t, on = x.id ? S.tool === x.id : opt[x.act];
+    const t = typeof x.t === "function" ? x.t() : x.t, on = x.id ? S.tool === x.id : x.tool ? S.tool === x.tool && (opt.okind === "fenster") === (x.act === "o:fenster") : opt[x.act];
     return `<button class="tool" ${x.id ? `data-tool="${x.id}"` : `data-plact="${x.act}"`}${on !== undefined ? ` aria-pressed="${on}"` : ""} aria-label="${t}"${x.k ? ` aria-keyshortcuts="${x.k === "⌘" ? "Meta" : x.k === "⌥" ? "Alt" : x.k}" data-tipk="${x.k}"` : ""} data-tip="${t}">${x.icon}</button>`;
   };
   function leftHTML() {
@@ -1033,6 +1041,7 @@ export function makePlan(c) {
   async function leftAct(b) {
     const S0 = sh(), id = b.dataset.layer, a = b.dataset.plact;
     if (a === "pdf") { loadPdf(); return; }
+    if (a.startsWith("o:")) { opt.okind = a.slice(2); setTool("pl-open"); renderLeft(); return; } // Tür, Fenster
     if (a === "bgshow") { bgToggle(); return; }
     if (a === "scale") { enterScale(); return; }
     if (a === "free") { opt.free = !opt.free; S.alt = opt.free; renderLeft(); mod(); updateHint(); return; }
@@ -1205,6 +1214,7 @@ export function makePlan(c) {
       else if (k === "dw") { const v = P.parseLen(t.value); if (v > 0 && v <= P.DUCT_MAX) opt.dw = v; else toast(`Breite 1 bis ${P.DUCT_MAX} mm.`, "error"); }
       else if (k === "side") { opt.side = Number(t.value) < 0 ? -1 : Number(t.value) > 0 ? 1 : 0; if (draft) { draft.side = opt.side || 1; draft.auto = opt.side === 0; } }
       else opt[k] = t.value;
+      if (k === "okind") renderLeft(); // Knopf Tür oder Fenster
       renderRight(); renderOverlay(); updateHint(); return true;
     }
     if (t.dataset.plp !== undefined) { // Fenster Druck: Papier, Ausrichtung, Massstab
@@ -1282,7 +1292,7 @@ export function makePlan(c) {
 
   function hint() {
     if (S.tool === "pl-wall") return draft ? `Wand: Länge tippen (Innenkante, z. B. 3450 oder 3,45 m), Tab = Winkel tippen, Enter setzt, oder klicken. Shift 0/45/90°, orange Linie = Ausrichtung (Rechteck schliessen), Alt ohne Fang, X wechselt die Wandseite, Klick auf den Anfang schliesst, Esc beendet.${draft.len || draft.ang ? `  Eingabe: ${draft.len || "–"} mm, ${draft.ang || "–"}°` : ""}` : `Wand: Klick setzt den Anfang der Innenkante (Wandecken, Wandflächen, Ausrichtung und Raster rasten ein, Alt frei). Die Wand liegt ${opt.side === 0 ? "automatisch aussen (nach der ersten Kurve)" : opt.side > 0 ? "links der Zeichenrichtung" : "rechts der Zeichenrichtung"}, X wechselt. Dicke und Material rechts.`;
-    if (S.tool === "pl-open") return `Öffnung: Klick auf eine Wand setzt ${P.OPENINGS.find(([k]) => k === opt.okind)[1]} (${P.fmtLen(opt.ow[opt.okind])} mm) mittig auf den Klick. Art und Breite rechts.`;
+    if (S.tool === "pl-open") return `${P.OPENINGS.find(([k]) => k === opt.okind)[1]}: Klick auf eine Wand setzt sie (${P.fmtLen(opt.ow[opt.okind])} mm) mittig auf den Klick.${opt.okind === "tuer" ? ` Tab wechselt den Anschlag (Band ${opt.hinge === "r" ? "rechts" : "links"}), R die Aufgehrichtung.` : opt.okind === "schiebe" ? " R wechselt die Seite." : ""} O wechselt Tür/Fenster, Art und Breite rechts.`;
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
     if (S.tool === "pl-sym") return `Symbol: Klick setzt ${symDef(opt.sym).label}${symDef(opt.sym).ap ? ` ${opt.ap ? "AP" : "UP"}` : ""}. ${symDef(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."}${symDef(opt.sym).ap ? " A wechselt AP/UP." : ""} S spiegelt. Esc oder V beendet.`;
     if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt${opt.lcurve ? ", geschwungen" : ""}). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;

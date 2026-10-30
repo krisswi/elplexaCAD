@@ -5,7 +5,7 @@ description: Alten Elektroplan (Foto, Scan, PDF) als elplexaCAD-Plan aufbereiten
 
 # Plan aufbereiten (Scan → .elplexa.json)
 
-Hochdeutsch, kurz. Ergebnis: eine Datei je Stockwerk, die elplexaCAD ohne Fehler öffnet, dazu ein Prüfbild und ein kurzer Bericht.
+Hochdeutsch, kurz. Ergebnis: eine Datei je Stockwerk (Dateiversion 34 mit Räumen), die elplexaCAD ohne Fehler öffnet und CJ im Plan über den Knopf «Import» lädt, dazu ein Prüfbild und ein kurzer Bericht.
 
 ## Fragen-Regel (gilt in jedem Schritt)
 Bei jeder Unklarheit **zuerst AskUserQuestion**, nie still raten. Je Frage 2–3 Hypothesen, die empfohlene zuerst (mit «(Empfohlen)»). Mehrere Fragen in einem Aufruf bündeln (höchstens 4). Typische Anlässe:
@@ -33,9 +33,9 @@ Antworten, die eine Übersetzung festlegen, sofort in `docs/symbol-uebersetzung.
    - Ecken prüfen: die Kette (z. B. 10.00) muss im entzerrten Bild genau auf 0 und 10 landen. Ein Messfehler an einer Ecke verschiebt die ganze Seite.
    - **Massketten gehen vor dem Bild.** Wo bemasst, Koordinaten aus den Ketten rechnen; Faltungen und Fotoverzerrung machen das Bild in der Mitte bis 20 cm ungenau. Vom Bild nur Unbemasstes (Lage von Innenwänden, Symbolen, Leitungen).
    - Zielgenauigkeit ±10 cm; erreichte Genauigkeit im Bericht nennen (aus Ketten ±2 cm, vom Bild abgelesen ±20 cm).
-4. **Aufnahme schreiben** (JSON im Scratchpad, Aufbau unten): zuerst Grundriss, dann Apparate, Leitungen, Beschriftung. Praktisch: ein kleines Python-Skript im Scratchpad mit Helfern `wall()`, `op()`, `sym()`, `line()`, `text()`, das die Aufnahme schreibt (ids = Stelle + 1, Öffnungen verweisen auf die Rückgabe von `wall()`).
+4. **Aufnahme schreiben** (JSON im Scratchpad, Aufbau unten): zuerst Grundriss, dann Apparate, Leitungen, Beschriftung. Praktisch: ein kleines Python-Skript im Scratchpad mit Helfern `wall()`, `op()`, `room()`, `sym()`, `line()`, `text()`, das die Aufnahme schreibt (ids = Stelle + 1, Öffnungen verweisen auf die Rückgabe von `wall()`).
 5. **Leitungen frei führen** (CJ 30.10.2026: Leitungen möglichst nicht über andere Symbole): `PATH=$HOME/.local/node/bin:$PATH node .claude/skills/plan-aufbereiten/umfahren.mjs <aufnahme.json> [abstand_mm]` setzt Leitungsenden vom Symbolmittelpunkt auf den Anschlusspunkt des Symbols (Pin, Rand der Dose), schiebt Stützpunkte um fremde Symbole herum und meldet, was übrig bleibt. Übrige Stellen (enge Gruppen) in der Aufnahme von Hand neu legen oder ein Symbol leicht verschieben, dann erneut laufen lassen, bis «Keine Leitung über fremden Symbolen». Auch Kamin und Schächte umfahren (prüft das Skript nicht).
-6. **Datei erzeugen:** `PATH=$HOME/.local/node/bin:$PATH node .claude/skills/plan-aufbereiten/schreiben.mjs <aufnahme.json> <ausgabe.elplexa.json>`. Das Skript liest über `parseModel`, schreibt über `serializeModel`, bricht ab, wenn Objekte beim Einlesen wegfallen oder der Rundlauf nicht gleich ist, und schreibt nie ins Repo.
+6. **Datei erzeugen:** `PATH=$HOME/.local/node/bin:$PATH node .claude/skills/plan-aufbereiten/schreiben.mjs <aufnahme.json> <ausgabe.elplexa.json>`. Das Skript liest über `parseModel`, schreibt über `serializeModel`, bricht ab, wenn Objekte beim Einlesen wegfallen, der Rundlauf nicht gleich ist oder die Räume nicht stimmen (siehe «Räume»), und schreibt nie ins Repo.
 7. **Prüfen im Browser:** `dist/ElplexaCAD.html` muss gebaut sein (`npm run build`, wird nicht committet). `python3 .claude/skills/plan-aufbereiten/pruefen.py <datei> <bild.png>` öffnet die Datei, passt den Plan ein und speichert ein Bild. Bild selbst ansehen (Read), mit dem Scan vergleichen (Wände deckungsgleich? Masse stimmen? Symbole am richtigen Ort?), korrigieren, dann **Bild CJ zeigen** (SendUserFile). Für die Vorschau an CJ: `pruefen.py … 1700x2200` (gross, Hochformat), Plan ausschneiden und mit `nebeneinander.py` neben den entzerrten Scan stellen; beides in den Ausgabeordner legen.
 8. **Bericht** an CJ: Datei und Pfad, Massstab und Genauigkeit, Anzahl Objekte je Ebene, offene Punkte und Annahmen.
 9. **Zurückschreiben:** Was beim Aufbereiten unklar war oder neu gelernt wurde, in diesen Skill (Abschnitt «Erfahrungen») und Übersetzungen in die Tabelle.
@@ -46,10 +46,10 @@ Mindestens vier Ebenen (CJ 30.10.2026):
 
 | id | Name | Inhalt | Zustand |
 |---|---|---|---|
-| `bg` | Hintergrund | Wände, Öffnungen, Masse (Grundriss) | gesperrt (`lock: true`) |
+| `bg` | Hintergrund | Wände, Öffnungen, Masse, Räume (Grundriss) | gesperrt (`lock: true`) |
 | `app` | Apparate | Symbole (`sym`) | **aktiv** (`alay`) |
 | `ltg` | Leitungen | Leitungen (`line`), Kanäle (`duct`), Aderzahl hängt an der Leitung | |
-| `txt` | Beschriftung | Texte, Raumnamen | |
+| `txt` | Beschriftung | Texte (Raumnamen nicht, die sind Räume auf `bg`) | |
 | `offen` | Offen (unklar) | Verweise «?» auf noch unklare Zeichen | nur wenn nötig, CJ löscht sie nach Klärung |
 
 Je nach Plan weitere Ebenen-Paare für Gewerke, z. B. `erda`/`erdl` «Erdung Apparate»/«Erdung Leitungen», `bma`/`bml` «Brandmelde Apparate»/«Brandmelde Leitungen». Welche, fragt der Skill bei Schritt 2 (Hypothesen aus dem, was auf dem Plan ist).
@@ -67,17 +67,22 @@ Je nach Plan weitere Ebenen-Paare für Gewerke, z. B. `erda`/`erdl` «Erdung App
 - **Mass** `{ type: "dim", layer: "bg", a, b, off, ref? }`: `off` = Abstand der Masslinie in mm (Vorzeichen = Seite).
 - **Symbol** `{ type: "sym", layer: "app", key, at, r, h?, txt? }`: `key` aus `src/plansym/*.js` (Liste `PLAN_SYMS`), `r` Drehung in Grad. Wandsymbole: `at` auf der Wandfläche, Symbol zeigt nach +y in den Raum (mit `r` drehen).
 - **Leitung** `{ type: "line", layer: "ltg", pts, kind, col?, curve? }`: `kind` aus `LINE_KINDS` (`decke`, `boden`, `wand`, …), `col` nur wenn von Blau abweichend, Farben aus `PLAN_COLS`.
+- **Raum** `{ type: "room", layer: "bg", at, name, tf?, na? }`: Raumname, `at` = Mitte der Beschriftung und bestimmt den Raum (muss innerhalb der Wände liegen), `name` höchstens 40 Zeichen. Die Fläche rechnet die App aus den Wänden und zeigt sie darunter (`na: true` = ohne Fläche). Keine Grenze angeben.
 - **Text** `{ type: "text", layer: "txt", at, txt, r?, col?, tf? }`.
 
-## Raumnamen (vorläufig)
-Das Format hat noch kein Raumobjekt (Entscheid im Bau-Chat, Schritt 4). Bis dahin: Raumname als `text` auf `txt` in der Raummitte. **Anpassen, sobald das Raumformat steht** (dann Raumobjekt mit Grenze statt Text, Aufnahme und schreiben.mjs nachführen).
+## Räume (seit Dateiversion 34, CJ 30.10.2026)
+Die App erkennt geschlossene Räume selbst aus den Wänden (`src/planraum.js`): Mittellinien aller Wände, Türen, Fenster und Durchgänge gelten als geschlossen, T-Stösse zählen, wenn das Wandende auf der Mittellinie oder Innenkante der anderen Wand liegt (Abstand höchstens halbe Dicke). Lose Enden fallen weg, Flächen unter 0,3 m² sind kein Raum. Jeder erkannte Raum ohne Raumobjekt bekommt in der App sofort «Raum n».
+- Darum für jeden Raum mit Namen im Scan ein `room` auf `bg` in die Raummitte setzen, mit dem Namen aus dem Scan (z. B. «Küche», «Zimmer 1»). Räume ohne Namen im Scan (Schacht, Reduit) trotzdem benennen oder CJ fragen, sonst heissen sie «Raum n».
+- `schreiben.mjs` rechnet die Räume wie die App und meldet unter `raeume`: `ohneName` (mit Vorschlag `at` und Fläche), `ausserhalb` (Name liegt in keinem Raum: Wand offen, Ecke nicht genau gleich oder Name ausserhalb) und `doppelt` (zwei Namen im selben Raum: Trennwand fehlt). Dann bricht es ab. Erst Wände schliessen bzw. Namen setzen; offene Grundrisse, die bewusst ein Raum sind, mit `--raum-offen` durchlassen und im Bericht nennen.
+- Die Flächen aus `benannt` mit Flächenangaben im Scan vergleichen (wenn vorhanden): grosse Abweichung = Wand falsch gelesen.
+- Der Import nimmt Räume mit. Beim Ziel «In offenen Plan» landet der Grundriss samt Räumen nur dann auf «Hintergrund», wenn dieser leer ist.
 
 ## Symbole und Farben
 Übersetzung alt → neu steht in `docs/symbol-uebersetzung.md`. Nur Zuordnungen von dort verwenden. Fehlt eine Zeile: AskUserQuestion (Hypothesen = passende `key` aus `PLAN_SYMS` bzw. Farben aus `PLAN_COLS`), Antwort sofort als neue Zeile eintragen und in diesem Zweig committen (Tabelle enthält keine Kundendaten, nur Symbolarten).
 
 ## Prüfliste vor der Abgabe
 - `umfahren.mjs`: «Keine Leitung über fremden Symbolen».
-- `schreiben.mjs`: `verloren: 0`, `rundlauf: true`.
+- `schreiben.mjs`: `verloren: 0`, `rundlauf: true`, unter `raeume` keine `ohneName`, `ausserhalb`, `doppelt` (oder bewusst `--raum-offen`, im Bericht genannt).
 - `pruefen.py`: keine Fehler, Objektzahl wie Aufnahme, Ebenen in der richtigen Reihenfolge, Nullpunkt (roter Kreis) an der Aussenecke unten links.
 - Bild mit dem Scan verglichen, Abweichungen im Bericht.
 - Nichts im Repo ausser Skill und Tabelle (`git status`).
@@ -85,6 +90,7 @@ Das Format hat noch kein Raumobjekt (Entscheid im Bau-Chat, Schritt 4). Bis dahi
 ## Stand
 - **30.10.2026:** erstes EG fertig zum Testen (173 Objekte, 4 Ebenen, Dateiversion 33), CJ testet den Upload. Arbeitsdateien (Aufnahme-Skript, entzerrtes Bild, Scan-Seiten OG/EG/UG) liegen bei CJ unter `~/Documents/elplexaCAD-Aufbereitet/<Projekt>-<Stockwerk>-Arbeit/`, nicht im Repo. Weiterarbeiten: Aufnahme-Skript dort anpassen, dann Schritte 5–7.
 - Offen am EG: einzelne Symbole und Verweise «in der Luft» (siehe Erfahrungen). OG und UG noch nicht aufbereitet.
+- **30.10.2026, später:** Skill auf Räume umgestellt (Dateiversion 34, Zweig `wunsch/plan-import` hier eingeführt). Das EG hat noch Raumnamen als `text` auf `txt`: im Aufnahme-Skript in `room` auf `bg` umwandeln, dann Schritte 6–7.
 
 ## Erfahrungen
 Wird nach jedem aufbereiteten Plan ergänzt.

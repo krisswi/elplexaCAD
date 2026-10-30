@@ -26,20 +26,22 @@ function lineX(p, u, q, v) {
 
 // Ebener Graph der Mittellinien: Knoten [x, y], Kanten { u, v, d }
 function wallGraph(walls) {
-  const segs = walls.map((w) => ({ a: [...w.a], b: [...w.b], d: w.d, cuts: [0, 1] }));
+  const segs = walls.map((w) => ({ a: [...w.a], b: [...w.b], d: w.d, cuts: [] }));
   for (const s of segs) for (const e of ["a", "b"]) for (const t of segs) {
     if (t === s) continue;
     const u = sub(t.b, t.a), L2 = dot(u, u), tt = dot(sub(s[e], t.a), u) / L2;
     if (tt <= 1e-6 || tt >= 1 - 1e-6) continue;
     const q = add(t.a, u, tt);
-    if (len(sub(q, s[e])) <= t.d / 2 + NODE_TOL) { s[e] = q; t.cuts.push(tt); break; }
+    if (len(sub(q, s[e])) <= t.d / 2 + NODE_TOL) { s[e] = q; t.cuts.push(q); break; }
   }
+  // Teilungen als Punkte, nicht als Anteil der Länge: wird die geteilte Wand danach selbst noch gezogen, bleibt die Teilung am Stosspunkt (EG 30.10.2026)
   const nodes = [], node = (p) => { let i = nodes.findIndex((n) => len(sub(n, p)) <= NODE_TOL); if (i < 0) { i = nodes.length; nodes.push(p); } return i; };
   const edges = [], seen = new Set();
   for (const s of segs) {
-    const u = sub(s.b, s.a), ts = [...new Set(s.cuts)].sort((x, y) => x - y);
-    for (let i = 1; i < ts.length; i++) {
-      const a = node(add(s.a, u, ts[i - 1])), b = node(add(s.a, u, ts[i])), k = a < b ? `${a}|${b}` : `${b}|${a}`;
+    const u = sub(s.b, s.a), L2 = dot(u, u), at = (p) => dot(sub(p, s.a), u) / L2;
+    const ps = [s.a, ...s.cuts.filter((p) => at(p) > 1e-6 && at(p) < 1 - 1e-6), s.b].sort((p, q) => at(p) - at(q));
+    for (let i = 1; i < ps.length; i++) {
+      const a = node(ps[i - 1]), b = node(ps[i]), k = a < b ? `${a}|${b}` : `${b}|${a}`;
       if (a !== b && !seen.has(k)) { seen.add(k); edges.push({ u: a, v: b, d: s.d }); }
     }
   }

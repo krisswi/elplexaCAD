@@ -27,6 +27,12 @@ for (const x of f) close(x.area, (2 - 0.075 - 0.05) * 2.85, "je 1,875 × 2,85 m"
 // Zwischenwand endet an der Innenkante der Aussenwand (nicht auf der Mittellinie): gleich
 f = RM.roomFaces([...box(), W([2000, 75], [2000, 2925], 100)]);
 assert.strictEqual(f.length, 2, "T-Stoss an der Innenkante");
+// Wand ragt in die Nachbarwand und wird selbst an ihrem anderen Ende verschoben (EG 30.10.2026): die Teilung bleibt am Stosspunkt
+// H endet in V (wird auf V gezogen, V geteilt), danach wird V oben auf die Aussenwand gezogen. Früher rutschte die Teilung um ~3 mm mit.
+f = RM.roomFaces([...box(), W([0, 1500], [2050, 1500]), W([2000, 1425], [2000, 2940], 120)]);
+assert.strictEqual(f.length, 2, "gegenseitiger T-Stoss, V danach verschoben");
+f = RM.roomFaces([...box(), W([2000, 1425], [2000, 2940], 120), W([0, 1500], [2050, 1500])]);
+assert.strictEqual(f.length, 2, "gleich, andere Reihenfolge");
 // loses Wandstück im Raum stört nicht
 f = RM.roomFaces([...box(), W([1000, 1000], [1000, 2000])]);
 assert.strictEqual(f.length, 1, "loses Ende fällt weg");

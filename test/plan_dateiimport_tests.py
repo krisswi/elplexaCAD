@@ -1,5 +1,5 @@
 # UI-Test Plan-Import (CJ 30.10.2026, nur elplexaCAD): Knopf «Import», Datei (.elplexa.json) laden, Dialog mit Ebenen, unbekannte Symbole
-# und Farben zuordnen (im Browser gemerkt), Fixpunkt per Maus mit Fang und R, Enter übernimmt (ein Rückgängig-Schritt), Esc bricht ab,
+# und Farben zuordnen (im Browser gemerkt), Fixpunkt per Maus mit Fang (Alt schaltet um), Ziehen und R, Enter übernimmt (ein Rückgängig-Schritt), Esc bricht ab,
 # defekte Datei ändert nichts, «Als neuer Plan». Vorher: node build.mjs elplexa. Aufruf: python3 test/plan_dateiimport_tests.py [Bild.png]
 # Testdatei entsteht hier (erfunden, keine Kundendaten).
 import sys, tempfile, json, math
@@ -116,6 +116,24 @@ with sync_playwright() as p:
     check("Werkzeugtasten ruhen während der Vorschau", M()["items"] == json.loads(before)[-1]["items"] and page.locator(".pl-imppv").count() == 1)
     key("Escape"); page.wait_for_timeout(100)
     check("Esc bricht ab, nichts verändert", page.locator(".pl-imppv").count() == 0 and page.evaluate("JSON.stringify(window.__schemacad.doc.sheets)") == before)
+
+    # ---------- Alt schaltet den Fang aus, Ziehen verschiebt den gesetzten Nullpunkt ----------
+    imp_wand = lambda: [w for w in of("wall") if w["layer"] != W0[0]["layer"]]
+    importiere(FILE); page.click("#modal-root [data-ok]"); page.wait_for_timeout(200)
+    page.keyboard.down("Alt"); page.mouse.move(*at(4003, 4), steps=4); page.mouse.click(*at(4003, 4)); page.keyboard.up("Alt"); page.wait_for_timeout(100)
+    key("Enter"); page.wait_for_timeout(200)
+    ws = imp_wand()
+    check("Alt: kein Fang am Wandende", len(ws) == 2 and not near(ws[0]["a"], [4000, 0], 2) and near(ws[0]["a"], [4003, 4], 8), [w["a"] for w in ws])
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(200)
+    importiere(FILE); page.click("#modal-root [data-ok]"); page.wait_for_timeout(200)
+    page.mouse.move(*at(1000, 1000), steps=4); page.mouse.down(); page.mouse.move(*at(2000, 1500), steps=8); page.mouse.up()
+    page.mouse.move(*at(500, 500), steps=4); page.wait_for_timeout(100)  # nach dem Loslassen bleibt der Nullpunkt stehen
+    check("Hinweis: Nullpunkt gesetzt, Ziehen verschiebt", "Ziehen verschiebt" in page.inner_text("#hint"), page.inner_text("#hint"))
+    key("Enter"); page.wait_for_timeout(200)
+    ws = imp_wand()
+    check("Ziehen verschiebt den Nullpunkt", len(ws) == 2 and near(ws[0]["a"], [2000, 1500]) and near(ws[0]["b"], [5000, 1500]), [(w["a"], w["b"]) for w in ws])
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(200)
+    check("Rückgängig: wieder Ausgangsplan", page.evaluate("JSON.stringify(window.__schemacad.doc.sheets)") == before)
 
     # ---------- Als neuer Plan ----------
     n0 = page.evaluate("window.__schemacad.doc.sheets.filter((s) => s.kind === 'plan').length")

@@ -10,11 +10,19 @@ Neu = `key` aus `src/plansym/*.js` (`PLAN_SYMS`), Leitungsart aus `LINE_KINDS`, 
 | Kreis mit senkrechtem Strich an der Wand | `STD` | Apparate | mit «3f» daneben = `STD3` | 30.10.2026 |
 | zwei übereinander stehende Kreise mit kleinem Strich (neben Türen) | `KOMBI` | Apparate | Kombination Schalter/Steckdose | 30.10.2026 |
 | gefülltes Dreieck | `VERWEIS` | Apparate | Verweis auf die Hauptverteilung, Text «HV», Richtung wie im Scan | 30.10.2026 |
-| Kreis mit Schrägstrich oder Strahlen, im Korridor (Entrée, Eingang, Vorraum) | `LEUCHTE_EB` | Apparate | Einbauleuchte | 30.10.2026 |
+| leerer Kreis, Kreis mit Schrägstrich oder Strahlen, im Korridor (Entrée, Eingang, Vorraum) | `LEUCHTE_EB` | Apparate | Einbauleuchte | 30.10.2026 |
 | Kreis mit waagrechtem Strich (viele Leitungen gehen ab) | `DOSE` | Apparate | Abzweigdose | 30.10.2026 |
 | drei übereinander stehende Kreise mit Haken | 3 × `SCH0` | Apparate | drei Schalter untereinander | 30.10.2026 |
-| grünes Kästchen mit Schrägstrich, grüne Zeichen | `TEL_STD` | Apparate | Telefon | 30.10.2026 |
+| grünes Kästchen mit Schrägstrich | `TEL_STD` | Apparate | Telefon | 30.10.2026 |
 | orange «TV», «UKW» | `RTV_STD` | Apparate | Antenne/TV | 30.10.2026 |
+| Kreis mit Schrägstrich und Pfeil (bei Tür) | `DIMMER` | Apparate | Lichtregler | 30.10.2026 |
+| Kreis mit V an der Wand (WC, «Lp») | `LEUCHTE_W` | Apparate | Wandleuchte; zwei Kreise darüber = `KOMBI` («Stdd») | 30.10.2026 |
+| Kreis mit «5» (braun) | `KLINGEL` | Apparate | Gong, Sonnerie | 30.10.2026 |
+| einzelner Kreis mit Haken | `SCH0` | Apparate | Schalter (wie die drei übereinander) | 30.10.2026 |
+| grosser Kreis mit Kreuz an der Wand, aussen | `LEUCHTE_W` | Apparate | Aussenleuchte; Text wie im Scan (z. B. «Lp Dübel») | 30.10.2026 |
+| grünes Kästchen «GS» (Eingang, Garage) | `AMTSVERT` | Apparate | Anschlusskasten Swisscom (BEP), Text «BEP Swisscom»; Symbol als Annahme gewählt | 30.10.2026 |
+| Gruppe Kreise/Kästchen mit «Schaltuhr» | `SCH0` + `DOSE` | Apparate | Schalter und Abzweigdose, Hinweis als Text | 30.10.2026 |
+| Kreis mit Strich, Leitung zu Querstrich (Garage) | `FL` | Apparate | FL-Armatur (Balkenleuchte) | 30.10.2026 |
 | Kreis mit Schrägstrich, im Zimmer | `LEUCHTE` | Apparate | Deckenleuchte; Typangabe (z. B. «Kugel EB 3226W») als `txt` | 30.10.2026 |
 
 ## Leitungen (Strichart)

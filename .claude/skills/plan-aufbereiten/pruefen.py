@@ -1,15 +1,17 @@
 # Skill plan-aufbereiten: .elplexa.json in dist/ElplexaCAD.html öffnen, Plan einpassen, Bild speichern.
-# Aufruf (im Repo, vorher gebaut): python3 .claude/skills/plan-aufbereiten/pruefen.py datei.elplexa.json bild.png
+# Aufruf (im Repo, vorher gebaut): python3 .claude/skills/plan-aufbereiten/pruefen.py datei.elplexa.json bild.png [BxH]
+# BxH = Fenstergrösse (Vorgabe 1600x1000), z. B. 2400x3000 für eine grosse Vorschau im Hochformat.
 # Meldet Fehler der Seite und die Zahl der Objekte, die die App geladen hat.
 import sys, json
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[3]
 src, png = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
+vw, vh = map(int, (sys.argv[3] if len(sys.argv) > 3 else "1600x1000").split("x"))
 errors = []
 with sync_playwright() as p:
     b = p.chromium.launch()
-    page = b.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=2)  # scharf genug für Ausschnitte
+    page = b.new_page(viewport={"width": vw, "height": vh}, device_scale_factor=2)  # scharf genug für Ausschnitte
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")

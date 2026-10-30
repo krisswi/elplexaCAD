@@ -127,7 +127,7 @@ const isOff = () => S.model.kind === "offerte"; // Offerte (offedit.js, CJ 26.10
 const isPlan = () => S.model.kind === "plan"; // Plan (planedit.js, nur elplexaCAD, CJ 23.10.2026): immer als ELPLEXA && isPlan(), fällt im v3-Bau weg
 // Plan (nur elplexaCAD): eigene Bedienung, app.js leitet Zeiger, Tasten und Leisten weiter
 let MP = null; // Pläne für den Monteur (elmonteur.js), wird unten bei den elplexaCAD-Teilen angelegt
-const PL = ELPLEXA ? makePlan({ S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, renderSheet, updateHint, fitView, applyView, pushUndo, snapshot, markDirty, nextId, formDialog, confirmDialog, chooseDialog, openModal, sheetLabel, workCount: () => workCount(), download: (...a) => download(...a),
+const PL = ELPLEXA ? makePlan({ S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, renderSheet, updateHint, fitView, applyView, pushUndo, snapshot, markDirty, nextId, formDialog, confirmDialog, chooseDialog, openModal, sheetLabel, workCount: () => workCount(), addPlan: (fill) => addPlan(undefined, fill), download: (...a) => download(...a),
   leftEl, rightEl, popEl: $("#pv-pop"), hidePop: () => pvPop?.hide(false), viewBox: () => { const r = stage.getBoundingClientRect(), a = toWorld(0, r.height), b = toWorld(r.width, 0); return { x0: a.x, y0: a.y, x1: b.x, y1: b.y }; } }) : null;
 function toWorld(sx, sy) { return { x: (sx - S.view.x) / S.view.z, y: H - (sy - S.view.y) / S.view.z }; }
 function toScreen(x, y) { return { x: S.view.x + x * S.view.z, y: S.view.y + (H - y) * S.view.z }; }
@@ -194,7 +194,7 @@ function pushUndo(snap = snapshot()) {
   updateUndoButtons();
 }
 function change(fn, { panel = true } = {}) { if (ELPLEXA && S.shared) return; const snap = snapshot(); fn(); pushUndo(snap); afterChange(panel); }
-function afterChange(panel = true) { const cur = S.model; splitWandlerDoc(S.doc); T.ensureDeck(S.doc, T.loadFirm(), { shift: false }); S.active = Math.max(0, S.doc.sheets.indexOf(cur)); renumberAll(S.doc); markDirty(); renderSheetBar(); renderItems(); renderOverlay(); if (panel) renderRight(); }
+function afterChange(panel = true) { if (ELPLEXA && isPlan()) PL.sync(); /* Räume aus den Wänden (planraum.js) */ const cur = S.model; splitWandlerDoc(S.doc); T.ensureDeck(S.doc, T.loadFirm(), { shift: false }); S.active = Math.max(0, S.doc.sheets.indexOf(cur)); renumberAll(S.doc); markDirty(); renderSheetBar(); renderItems(); renderOverlay(); if (panel) renderRight(); }
 function restore(json) {
   const k0 = S.model.kind;
   const o = JSON.parse(json);
@@ -440,7 +440,7 @@ function renderLeftBody() {
   if (isOff()) { leftEl.innerHTML = OF.leftHTML(S.model.of); return; }
   if (isDispo()) { leftEl.innerHTML = dispoLeftHTML(); return; }
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
-  if (ELPLEXA && isPlan()) { leftEl.innerHTML = PL.leftHTML(); return; }
+  if (ELPLEXA && isPlan()) { const l = $("#left"), y = l.scrollTop; leftEl.innerHTML = PL.leftHTML(); l.scrollTop = y; return; } // Scrollstand bleibt (CJ 30.10.2026)
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
   if (isPrinzip()) { leftEl.innerHTML = prinzipLeftHTML(h); return; }
   for (const t of [...TOOLS, ...SHAPE_TOOLS.filter((t) => !t.hidden)]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)
@@ -901,6 +901,7 @@ function syncKind() {
   $("#mag-on").closest("label").style.display = isDispo() || isPv() || isDeck() || isPrinzip() || ELPLEXA && isPlan() ? "none" : ""; // Feldmitte: nur Schema (Spalten im Rahmen)
   $("#grid-on").closest("label").style.display = $("#grid-size").style.display = isDeck() ? "none" : ""; // Titelseite, Inhalt: nichts zu zeichnen
   $("#btn-handover").hidden = !isDispo();
+  if (ELPLEXA) { const ib = $("#el-plimport"); if (ib) ib.hidden = !isPlan(); } // Plan-Import (CJ 30.10.2026), Knopf entsteht mit der Kopfleiste
   renderPvBar();
   $("#dims-on").closest("label").style.display = isDispo() ? "" : "none";
   ofView.hidden = !isOff(); document.body.classList.toggle("is-offerte", isOff()); // Offerte: Tabelle über der Zeichenfläche, Raster und Zoom ausgeblendet (style.css)
@@ -963,13 +964,15 @@ function addPrinzip(v) {
   afterSheetChange(k0);
 }
 // Plan (nur elplexaCAD, CJ 23.10.2026): leeres Blatt im offenen Plan-Modul, Ebene «Hintergrund», A3 quer 1:50, eigene sid (Notizen im Teilen-Link)
-function addPlan(v) {
+// fill: füllt das neue Blatt im selben Rückgängig-Schritt (Import «Als neuer Plan», planedit.js)
+function addPlan(v, fill) {
   setTool("select");
   const k0 = S.model.kind;
   v = varIn("plan", v);
   change(() => {
     const sh = setVar(newPlanSheet(newSheet("plan")), v);
     sh.sid = nextId(); sh.meta.BLATT = String(maxNo("plan") + 1);
+    fill?.(sh);
     S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
   });
   afterSheetChange(k0, { fit: true }); // CJ 24.10.2026: neuer Plan eingepasst, nicht mit Zoom/Ausschnitt des vorigen Plans (lag dort, wo die Maus beim Zoomen war)
@@ -2086,6 +2089,7 @@ onPanel("click", (e) => {
   ({ autowire: autoWire, pzwire: () => one && pzWire(one), rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, dupsheet: duplicateSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
 });
 
+if (ELPLEXA) PL.barInit($("#sheetbar"), (b) => (holdMenu.open && holdMenu.anchorId() === b.id ? holdMenu.hide() : holdOpen(b, "pl:#list"))); // Plan: aktive Ebene in der Blattleiste, Klick = Liste
 let addHeld = false, addTimer = 0; // langes Drücken auf + öffnet die Auswahl statt ein Blatt anzulegen
 $("#sheetbar").addEventListener("click", (e) => {
   const step = e.target.closest("[data-step]"), ofs = e.target.closest("[data-ofstep]"), ofm = e.target.closest("[data-ofkap], [data-ofplus]");
@@ -2232,22 +2236,24 @@ function holdHTML(k) {
     + `<div class="ctx-head">Art der Leitung</div>` + Object.entries(WIRE_KINDS).map(([v, o]) => holdMi(`k:${v}`, o.label, v === S.wireKind)).join("");
   if (k === "text") return `<div class="ctx-head">Text: Drehung</div>` + [0, 90, 180, 270].map((v) => holdMi(`r:${v}`, `${v}°`, (S.textR || 0) === v)).join("")
     + `<div class="ctx-head">Ausrichtung</div>` + [["", "Links"], ["c", "Mittig"], ["r", "Rechts"]].map(([v, l]) => holdMi(`a:${v}`, l, (S.textAl || "") === v)).join("");
+  if (k.startsWith("pl:")) return PL.holdHTML(k.slice(3)); // Ebene in der Blattleiste (planedit.js)
   if (k === "star") return `<div class="ctx-head">Markierte Blätter (★)</div>` + pinned().map((i) => holdMi(`go:${i}`, `${sheetLabel(S.doc.sheets[i], i)}${S.doc.sheets[i].meta.TITEL && !T.isDeck(S.doc.sheets[i]) ? ` · ${S.doc.sheets[i].meta.TITEL}` : ""}`, i === S.active)).join("");
   return holdMi("save", "Speichern", false, "In die geöffnete Datei (⌘S)") + holdMi("as", "Speichern unter …", false, "Neue Datei wählen (⇧⌘S)");
 }
-function holdOpen(el) {
-  const k = el.dataset.hold;
+function holdOpen(el, k = el.dataset.hold) {
+  if (el.closest("#hold-menu")) { el = $("#pl-lay-cur") || el; holdMenu.hide(false); } // Zeile der Ebenenliste: Menü an der Leiste
   if (k === "export") { exportMenu.show(el); return; }
   holdEl.dataset.k = k; holdEl.setAttribute("aria-label", k === "save" ? "Speichern" : el.textContent.trim());
   holdEl.innerHTML = holdHTML(k); holdMenu.show(el);
   const r = el.getBoundingClientRect(); // unten kein Platz (Blattleiste): über dem Knopf
-  if (holdEl.getBoundingClientRect().bottom > innerHeight - 8) holdEl.style.top = `${Math.max(8, r.top - 4 - holdEl.offsetHeight)}px`;
+  if (holdEl.getBoundingClientRect().bottom > innerHeight - 8 || holdEl.scrollHeight > holdEl.clientHeight + 1) { holdEl.style.maxHeight = `${Math.max(160, r.top - 12)}px`; holdEl.style.top = `${Math.max(8, r.top - 4 - holdEl.offsetHeight)}px`; } // makeMenu kürzt nach unten: über dem Knopf wieder ganz
 }
 holdEl.addEventListener("click", (e) => {
   const a = e.target.closest("[data-hact]")?.dataset.hact; if (!a) return;
   const [t, v] = a.split(":");
   if (t === "save" || t === "as") { saveJson(t === "as"); return; }
   if (t === "go") { switchSheet(Number(v)); return; }
+  if (t === "pl") { if (PL.holdAct(a.slice(3), holdEl.dataset.k.slice(3))) { holdEl.innerHTML = holdHTML(holdEl.dataset.k); (holdEl.querySelector(`[data-hact="${a}"]`) || holdEl.querySelector(".mi"))?.focus(); } return; } // Liste bleibt offen, Fokus darin (Esc schliesst)
   if (t === "b") S.bundleN = Number(v); else if (t === "k") S.wireKind = v; else if (t === "r") S.textR = Number(v); else if (t === "a") S.textAl = v;
   const tool = t === "b" || t === "k" ? "wire" : "text";
   if (S.tool !== tool) setTool(tool); else { renderRight(); renderOverlay(); updateHint(); }
@@ -2550,6 +2556,7 @@ function elSheetBar() {
     if (keep) document.getElementById(keep)?.focus();
     return;
   }
+  if (isPlan() && idx.length === 1) { $("#sheetbar").innerHTML = mod + PL.barHTML() + starBtn(); if (keep) document.getElementById(keep)?.focus(); return; } // Plan: Ebenen statt Blätter (CJ 30.10.2026)
   $("#sheetbar").innerHTML = mod
     + `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt im Modul (Bild auf)" aria-label="Vorheriges Blatt"${pos <= 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Blätter dieses Moduls (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${pos + 1} von ${idx.length}</span><span class="caret" aria-hidden="true">▾</span></button>`
@@ -2614,7 +2621,9 @@ function elBarInit() {
   ss.innerHTML = `<span class="el-okdot" id="el-okdot"></span><span id="el-savetxt"></span>`; ss.prepend($("#dirty"));
   const sp2 = document.createElement("div"); sp2.className = "spacer";
   const right = document.createElement("div"); right.className = "el-right";
-  right.append(chip, $("#btn-save"), ss, $("#topbar .menuwrap"));
+  const imp = document.createElement("button"); imp.className = "btn"; imp.id = "el-plimport"; imp.type = "button"; imp.hidden = !isPlan(); imp.title = "Stockwerk aus einer .elplexa.json in diesen Plan oder als neuen Plan importieren";
+  imp.innerHTML = `<span class="ic" data-ic="open">${R.icons.open}</span><span class="lbl">Import</span>`; imp.addEventListener("click", () => PL.importPlan()); // Plan-Import (CJ 30.10.2026), nur im Plan sichtbar (syncKind)
+  right.append(chip, imp, $("#btn-save"), ss, $("#topbar .menuwrap"));
   r2.append($("#btn-left"), tabs, tsel, fc, $("#pv-bar"), $("#doc-bar"), $("#btn-handover"), sp2, right, $("#btn-right"));
   for (const x of [...tb.children]) if (x !== r1 && x !== r2 && !x.matches(".spacer")) r2.insertBefore(x, sp2); // was sonst noch in der Leiste liegt (ausgeblendete Knöpfe)
   tb.querySelector(":scope > .spacer")?.remove();

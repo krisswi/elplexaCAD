@@ -75,12 +75,18 @@ with sync_playwright() as p:
     check("Gehrung: Ecken ohne Stirnseite (alle Wände verbunden)", page.evaluate("window.__schemacad.model.items.filter((i) => i.type === 'wall').length") == 4)
 
     # ---------- Tür und Fenster ----------
-    key("o"); page.select_option('[data-plo="okind"]', "tuer"); click(1000, 0)
-    page.select_option('[data-plo="okind"]', "fenster"); click(2000, 3000)
+    pr = lambda a: page.get_attribute(f'[data-plact="{a}"]', "aria-pressed") == "true"
+    key("o"); check("Taste O: Knopf Tür", pr("o:tuer") and not pr("o:fenster")); click(1000, 0)
+    key("o"); check("Nochmal O: Knopf Fenster", pr("o:fenster") and not pr("o:tuer")); click(2000, 3000)
     ops = of("opening")
     check("Tür auf Wand 1 (900 mm, Höhe 2000), Fenster auf Wand 3 (1200 mm, Höhe 1500)", len(ops) == 2 and ops[0]["wall"] == W1 and ops[0]["kind"] == "tuer" and ops[0]["w"] == 900 and abs(ops[0]["t"] - 550) <= 10 and ops[0].get("h") == 2000
           and ops[1]["wall"] == W3 and ops[1]["kind"] == "fenster" and ops[1]["w"] == 1200 and ops[1].get("h") == 1500, ops)
     T, F = ops[0]["id"], ops[1]["id"]
+    # Tür setzen mit Tab (Anschlag) und R (Aufgehrichtung), CJ 30.10.2026
+    page.click('[data-plact="o:tuer"]'); key("Tab"); key("r"); click(3000, 0)
+    d = of("opening")[-1]
+    check("Tab und R: Tür mit Band rechts, Aufgehrichtung gewechselt", len(of("opening")) == 3 and d["kind"] == "tuer" and d["hinge"] == "r" and d.get("side") == -1, d)
+    page.keyboard.press("Meta+z"); page.wait_for_timeout(100); key("Tab"); key("r")
 
     # ---------- Öffnung über Griff breiter ziehen ----------
     key("v"); click(1000, 0)
@@ -137,9 +143,9 @@ with sync_playwright() as p:
     check("Ebene «Installation» angelegt und aktiv", [l["name"] for l in ly] == ["Hintergrund", "Installation"] and M()["alay"] == ly[1]["id"], ly)
     LI = ly[1]["id"]
     # Grundriss-Werkzeuge nur auf der Ebene Hintergrund: Wand zeichnen dort, dann der Ebene Installation zuweisen
-    check("Auf Ebene Installation keine Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 0 and page.locator('[data-tool="pl-open"]').count() == 0 and page.locator('[data-tool="pl-dim"]').count() == 0 and page.locator('[data-tool="pl-line"]').count() == 1)
+    check("Auf Ebene Installation keine Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 0 and page.locator('[data-plact="o:tuer"]').count() == 0 and page.locator('[data-tool="pl-dim"]').count() == 0 and page.locator('[data-tool="pl-line"]').count() == 1)
     blur(); key("w"); check("Taste W auf Installation: Hinweis, kein Werkzeug", "nur auf der Ebene Hintergrund" in page.inner_text("#toasts") and M().get("alay") == LI)
-    page.click('[data-plact="alay"][data-layer="bg"]'); page.wait_for_timeout(100)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click("#pl-row-bg"); page.wait_for_timeout(100)
     check("Auf Hintergrund wieder Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 1)
     old_ids = {w["id"] for w in of("wall")}
     blur(); key("w"); click(2000, 75); keys("1500"); key("Tab"); keys("90"); key("Enter"); key("Escape")
@@ -148,14 +154,30 @@ with sync_playwright() as p:
     IW = iw[0]["id"]
     blur(); key("v"); click(1925, 900); page.select_option('[data-plf="layer"]', LI); page.wait_for_timeout(100)
     check("Innenwand wählbar, Ebene Installation zugewiesen", sel() == [IW] and item(IW)["layer"] == LI, sel())
-    page.click(f'[data-plact="alay"][data-layer="{LI}"]'); page.wait_for_timeout(100)
-    page.click(f'[data-plact="lock"][data-layer="{LI}"]'); page.wait_for_timeout(100)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click(f"#pl-row-{LI}"); page.wait_for_timeout(100)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click(f'#pl-row-{LI}', button="right"); page.wait_for_timeout(120); page.click('[data-hact="pl:lock"]'); page.wait_for_timeout(100)
     check("Ebene gesperrt, Auswahl aufgehoben", next(l for l in M()["layers"] if l["id"] == LI)["lock"] is True and IW not in sel())
     click(1925, 900); check("Gesperrte Wand nicht wählbar", sel() == [], sel())
     blur(); key("l"); click(3000, 1000)
     check("Zeichnen auf gesperrter Ebene: Hinweis", "gesperrt" in page.inner_text("#toasts"))
-    key("Escape"); page.click('[data-plact="alay"][data-layer="bg"]'); page.wait_for_timeout(100)
+    key("Escape"); page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click("#pl-row-bg"); page.wait_for_timeout(100)
     check("Aktive Ebene wieder Hintergrund", M()["alay"] == "bg")
+    # Ebenen in der Blattleiste unten (CJ 30.10.2026): nur die aktive, Klick = Liste nach oben (ziehen, Auge), Schloss neben dem Plus
+    check("Leiste: aktive Ebene «2 von 2», Schloss und Plus", "Hintergrund" in page.inner_text("#pl-lay-cur") and "2 von 2" in page.inner_text("#pl-lay-cur") and page.locator("#pl-lock").count() == 1 and page.locator("#pl-lay-add").count() == 1)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(150)
+    check("Liste: oben zuoberst", page.evaluate("[...document.querySelectorAll('#hold-menu .pl-row')].map(e => e.dataset.layer)") == [LI, "bg"])
+    ra, rb = page.locator(f"#pl-row-{LI}").bounding_box(), page.locator("#pl-row-bg").bounding_box()
+    page.mouse.move(ra["x"] + 40, ra["y"] + ra["height"] / 2); page.mouse.down()
+    for k in range(1, 9): page.mouse.move(ra["x"] + 40, ra["y"] + ra["height"] / 2 + (rb["y"] + rb["height"] - 4 - ra["y"] - ra["height"] / 2) * k / 8); page.wait_for_timeout(20)
+    page.mouse.up(); page.wait_for_timeout(150)
+    check("Ziehen: Installation zuunterst, Liste offen, aktive Ebene bleibt", [l["id"] for l in M()["layers"]] == [LI, "bg"] and M()["alay"] == "bg" and page.is_visible("#hold-menu"), M()["layers"])
+    page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(100)
+    check("Rückgängig: Reihenfolge zurück", [l["id"] for l in M()["layers"]] == ["bg", LI])
+    page.click("#pl-lay-cur"); page.wait_for_timeout(150); page.click(f'#hold-menu [data-hact="pl:eye:{LI}"]'); page.wait_for_timeout(100)
+    check("Auge in der Liste: Ebene ausgeblendet, Liste bleibt offen, Hintergrund aktiv", next(l for l in M()["layers"] if l["id"] == LI)["show"] is False and M()["alay"] == "bg" and page.is_visible(f"#pl-row-{LI}"))
+    page.keyboard.press("Escape"); page.click("#pl-lock"); page.wait_for_timeout(100)
+    check("Schloss sperrt die angezeigte Ebene", M()["layers"][0]["lock"] is True and page.get_attribute("#pl-lock", "aria-pressed") == "true")
+    for _ in range(2): page.keyboard.press("Meta+z"); page.wait_for_timeout(100)
     blur(); key("v")
 
     # ---------- Schritt 2: Elektrosymbole ----------
@@ -314,12 +336,14 @@ with sync_playwright() as p:
     # ---------- Speichern / Laden ohne Datenverlust ----------
     dateien_leeren(page) # die PDFs oben hätten die Datei auf Version 30 gehoben
     d1 = D()
-    check("Datei: Version 23 (Plan mit geschwungenen Leitungen, Vorgabe seit 26.10.2026)", d1["version"] == 23, d1["version"])
+    rm = [i for s in d1["sheets"] if s.get("kind") == "plan" for i in s["items"] if i["type"] == "room"]
+    check("Küche als Raum erkannt: «Raum 1» auf dem Hintergrund (CJ 30.10.2026)", [(r["name"], r["layer"]) for r in rm] == [("Raum 1", "bg")], rm)
+    check("Datei: Version 34 (Plan mit Raum, seit 30.10.2026; vorher 23 mit geschwungenen Leitungen)", d1["version"] == 34, d1["version"])
     blur()
     with page.expect_download() as dl: page.keyboard.press("Shift+Meta+s")
     out = OUT / "plan_rundlauf.elplexa.json"; dl.value.save_as(str(out)); page.wait_for_timeout(300)
     raw = json.loads(out.read_text())
-    check("Gespeichert: Version 23, zwei Pläne", raw["version"] == 23 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
+    check("Gespeichert: Version 34, zwei Pläne", raw["version"] == 34 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
     blur()
     with page.expect_file_chooser() as fc:
         page.keyboard.press("Meta+o"); page.wait_for_timeout(300)
@@ -339,7 +363,7 @@ with sync_playwright() as p:
     with page.expect_file_chooser() as fc: page.keyboard.press("Meta+o")
     fc.value.set_files(str(out)); page.wait_for_timeout(600)
     msg = page.inner_text("body")
-    check("v3: Datei mit Plan abgelehnt (seit Version 25 am Blatt)", page.evaluate("window.__schemacad.doc.sheets.every((s) => s.kind !== 'plan')") and "nur elplexaCAD" in msg, msg[-300:])
+    check("v3: Datei mit Plan abgelehnt (seit Version 25 am Blatt)", page.evaluate("window.__schemacad.doc.sheets.every((s) => s.kind !== 'plan')") and ("nur elplexaCAD" in msg or "neueren Version" in msg), msg[-300:])  # seit Version 34 (Räume) meldet v3 die neuere Version
     page.close()
     b.close()
 

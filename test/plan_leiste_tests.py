@@ -131,7 +131,7 @@ with sync_playwright() as p:
     check("⌘-Klick nimmt wieder weg", page.evaluate("window.__schemacad.sel") == [so[0]["id"]], page.evaluate("window.__schemacad.sel"))
     page.keyboard.down("Control"); pick(so[1]); page.keyboard.up("Control")
     check("Ctrl-Klick wie ⌘ (Windows)", len(page.evaluate("window.__schemacad.sel")) == 2)
-    check("Knopf Mehrfachwahl zeigt ⌘", "⌘" in page.inner_text('[data-plact="multi"]') and "⌘-Klick" in page.inner_text("#hint"), page.inner_text("#hint"))
+    check("Knopf Mehrfachwahl zeigt ⌘", page.get_attribute('[data-plact="multi"]', "data-tipk") == "⌘" and "⌘-Klick" in page.inner_text("#hint"), page.inner_text("#hint"))
     print("Bild:", OUT / "plan_verweis.png")
     check("keine Fehler in der Konsole", not errors, errors)
     b.close()

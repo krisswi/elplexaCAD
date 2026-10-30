@@ -121,10 +121,10 @@ with sync_playwright() as p:
     key("v")
 
     # Ebene sperren: Kanal nicht wählbar
-    page.click(f'[data-plact="lock"][data-layer="{act["id"]}"]'); page.wait_for_timeout(80)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click(f'#pl-row-{act["id"]}', button="right"); page.wait_for_timeout(120); page.click('[data-hact="pl:lock"]'); page.wait_for_timeout(80)
     page.mouse.click(*at(1000, y0 - 2200 + 60)); page.wait_for_timeout(60)
     check("Gesperrte Ebene: Kanal nicht wählbar", page.evaluate("[...window.__schemacad.sel]") == [])
-    page.click(f'[data-plact="lock"][data-layer="{act["id"]}"]'); page.wait_for_timeout(80)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click(f'#pl-row-{act["id"]}', button="right"); page.wait_for_timeout(120); page.click('[data-hact="pl:lock"]'); page.wait_for_timeout(80)
 
     key("f"); page.wait_for_timeout(150)
     page.screenshot(path=str(OUT / "plan_kanal.png"))

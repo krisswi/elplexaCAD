@@ -65,7 +65,7 @@ Zuerst die passende Zeile, nur diese Dateien lesen. In `src/app.js` nie ganz les
 | Anmeldung, Online-Projekte, Speichern (Datei/online) | `elonline.js`, `cloud.js` |
 | Projektübersicht, Projektdaten, GWR, Adresssuche | `elhub.js`, `gwr.js`, Anzeige in `elplexa.js` |
 | Kopfleiste, Blattleiste, Tabs, Projektaktionen, Tasten der Übersicht | `app.js` (Abschnitt «elplexaCAD»), `elplexa.js` |
-| Plan | `plan.js`, `planedit.js`, `plansym.js` |
+| Plan | `plan.js`, `planedit.js`, `plansym.js`, Import `planimport.js`, Räume `planraum.js` |
 | PV-Strangplan | `pv.js`, `pvedit.js`, `pvtab.js` |
 | Disposition | `dispo.js`, `dispoedit.js` |
 | Symbole (Schema) | `symbols.js`, `prinzipsym.js` |

@@ -52,7 +52,7 @@ with sync_playwright() as p:
     key("i"); check("Taste I: Linie", pressed("pl-sline") and "Linie" in page.inner_text("#hint"))
     key("q"); check("Taste Q: Rechteck", pressed("pl-srect"))
     key("c"); check("Taste C: Kreis", pressed("pl-scircle"))
-    key("o"); check("Taste O bleibt Tür/Fenster", pressed("pl-open"))
+    key("o"); check("Taste O bleibt Tür", page.get_attribute('[data-plact="o:tuer"]', "aria-pressed") == "true")
 
     # Grundriss: eine Wand (Innenkante 0,5000 → 4000,5000) und eine Leitung mit krummem Endpunkt, beide auf Hintergrund
     key("w"); click(0, 5000); click(4000, 5000); key("Escape")

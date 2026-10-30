@@ -24,7 +24,7 @@ const kueche = () => [
 const file = (sheets, v = 20) => JSON.stringify({ format: "schemacad", version: v, active: 0, nextId: 20, sheets, mods: { plan: { name: "EG" }, "plan:2": { name: "OG", st: "In Arbeit" } } });
 
 // Speichern/Laden gibt die Daten unverändert zurück
-assert.strictEqual(M.VERSION, 33, "elplexa liest Version 33 (gespiegelte Symbole, 28.10.2026)");
+assert.strictEqual(M.VERSION, 34, "elplexa liest Version 34 (Räume, 30.10.2026)");
 const doc = M.parseModel(file([plan(kueche()), plan([], { sid: 8, var: 2, layers: [{ id: "bg", name: "Hintergrund", show: false, lock: false }], paper: { size: "A2", quer: false, den: 20 } })]));
 const txt = M.serializeModel(doc), back = JSON.parse(txt);
 assert.strictEqual(back.version, 20, "Datei mit Plan: Version 20");
@@ -77,6 +77,8 @@ assert.strictEqual(P.itemLayer(sh, sh.items.find((i) => i.id === 5)), "bg", "Öf
 const l2 = P.addLayer(sh, "Leitungen");
 assert.deepStrictEqual([sh.layers.map((l) => l.id), sh.alay], [["bg", "l2", "l1"], "l2"], "neue Ebene über der aktiven, wird aktiv");
 assert.ok(P.moveLayer(sh, "l2", 1) && sh.layers[2].id === "l2" && !P.moveLayer(sh, "l2", 1), "Reihenfolge ändern");
+assert.ok(P.moveLayerTo(sh, "l2", 0) && sh.layers.map((l) => l.id).join() === "l2,bg,l1" && !P.moveLayerTo(sh, "l2", 0) && !P.moveLayerTo(sh, "l2", 3), "Ebene an einen Platz ziehen");
+P.moveLayerTo(sh, "l2", 2);
 assert.ok(!P.layerUsed(sh, l2.id) && P.layerUsed(sh, "l1"));
 assert.ok(P.deleteLayer(sh, "l1") && !sh.items.some((i) => i.id === 11), "Ebene samt Objekten löschen");
 while (sh.layers.length < P.MAX_LAYERS) P.addLayer(sh);
@@ -339,7 +341,7 @@ assert.ok(S2.PLAN_SYMS.every((d) => d.label && d.cat && d.group && d.parts.lengt
   assert.deepStrictEqual(b3.sheets[0].items.filter((i) => i.type === "line"), lines, "Leitungen unverändert gespeichert");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[0]])], 22)))).version, 22, "nur eine Farbe am Symbol: auch Version 22");
   assert.strictEqual(JSON.parse(M.serializeModel(M.parseModel(file([plan([...kueche(), syms[1]])], 22)))).version, 21, "Symbol ohne Farbe bleibt Version 21");
-  assert.throws(() => M.parseModel(file([plan(lines)], 34)), /neueren Version/, "Version 34 abgelehnt");
+  assert.throws(() => M.parseModel(file([plan(lines)], 35)), /neueren Version/, "Version 35 abgelehnt");
   const cl = (o) => P.cleanPlanObj({ type: "line", layer: "bg", ...o }, 1);
   assert.strictEqual(cl({ pts: [[0, 0], [0, 0.1]] }), null, "Leitung mit einem Punkt abgelehnt");
   assert.deepStrictEqual(cl({ pts: [[0, 0], [0, 0], [100, 0]], kind: "xy", col: "#0068C9" }), { id: 1, type: "line", layer: "bg", pts: [[0, 0], [100, 0]], kind: "decke" }, "doppelte Punkte weg, unbekannte Art = Decke, Farbe = Vorgabe nicht gespeichert");

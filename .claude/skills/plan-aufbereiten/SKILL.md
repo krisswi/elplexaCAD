@@ -19,7 +19,7 @@ Antworten, die eine Übersetzung festlegen, sofort in `docs/symbol-uebersetzung.
 
 ## Daten und Ablage
 - Scan und Ausgabe **nie ins Repo** (Kundendaten). Scan liegt dort, wo CJ ihn gibt.
-- Ausgabe: `~/Documents/elplexaCAD-Aufbereitet/<Projekt>-<Stockwerk>.elplexa.json`, Aufnahme und Bilder im Scratchpad.
+- Ausgabe: `~/Documents/elplexaCAD-Aufbereitet/<Projekt>-<Stockwerk>.elplexa.json`, Vorschau daneben. Aufnahme und Bilder während der Arbeit im Scratchpad, am Ende nach `…/<Projekt>-<Stockwerk>-Arbeit/` sichern (Scratchpad verschwindet mit der Sitzung).
 - Ein Stockwerk pro Datei. Mehrere Stockwerke = mehrere Dateien mit **gleichem Nullpunkt** (übereinander deckend).
 
 ## Schritte
@@ -82,6 +82,10 @@ Das Format hat noch kein Raumobjekt (Entscheid im Bau-Chat, Schritt 4). Bis dahi
 - Bild mit dem Scan verglichen, Abweichungen im Bericht.
 - Nichts im Repo ausser Skill und Tabelle (`git status`).
 
+## Stand
+- **30.10.2026:** erstes EG fertig zum Testen (173 Objekte, 4 Ebenen, Dateiversion 33), CJ testet den Upload. Arbeitsdateien (Aufnahme-Skript, entzerrtes Bild, Scan-Seiten OG/EG/UG) liegen bei CJ unter `~/Documents/elplexaCAD-Aufbereitet/<Projekt>-<Stockwerk>-Arbeit/`, nicht im Repo. Weiterarbeiten: Aufnahme-Skript dort anpassen, dann Schritte 5–7.
+- Offen am EG: einzelne Symbole und Verweise «in der Luft» (siehe Erfahrungen). OG und UG noch nicht aufbereitet.
+
 ## Erfahrungen
 Wird nach jedem aufbereiteten Plan ergänzt.
 
@@ -100,5 +104,6 @@ Wird nach jedem aufbereiteten Plan ergänzt.
 - Abzweigdosen zuerst finden, sie sind die Knoten: Kreise, von denen viele Leitungen ausgehen. In der Aufnahme als Variablen (`D_kue = (x, y)`) führen und jede Leitung von dort zum Apparat ziehen.
 - Gleiches Zeichen in anderer Form: Kreis mit **langem** Querstrich und vielen Leitungen = Dose, Kreis mit **kurzem** Strich und Leuchtentyp daneben = Einbauleuchte. Typangabe im Scan (EB …) entscheidet.
 - Leitungen enden im Scan oft in der Symbolmitte; in elplexaCAD sieht das wie «über das Symbol» aus. Darum Enden immer auf den Anschlusspunkt (umfahren.mjs). In engen Gruppen (WC, Schalterbatterien) hilft es, Symbole 5–10 cm auseinanderzuziehen.
+- **Symbole nicht in der Luft** (CJ 30.10.2026, noch offen): Wandsymbole (Steckdose, Schalter, Kombi, Wandleuchte) mit `at` genau auf die Wandfläche legen (Innenseite = Mittellinie ± d/2), nicht nur in die Nähe. Verweise («HV») an das Ende ihrer Leitung setzen oder die Leitung bis zum Verweis führen. Nach dem Prüfbild gezielt danach suchen; ein Prüfskript dafür fehlt noch (Idee: Abstand Wandsymbol → nächste Wandfläche > 20 mm melden).
 - Strichart übernehmen: gestrichelt im Scan → `kind: "boden"`, sonst `decke`; gerade gezeichnet → `curve` weglassen.
 - `pruefen.py` macht das Bild doppelt scharf (device_scale_factor 2), Ausschnitte mit `sips` schneiden. Überlappende Markierungen auf «Offen» auseinanderziehen.

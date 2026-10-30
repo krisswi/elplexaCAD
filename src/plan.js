@@ -22,6 +22,8 @@
 // Raum { id, type: "room", layer, at: [x, y], name, tf?, hide?, na? } (CJ 30.10.2026, Dateiversion 34): Beschriftung eines geschlossenen Raums (planraum.js erkennt
 // die Räume aus den Wänden), Mitte at (bestimmt den Raum, frei verschiebbar), Name (neu «Raum n»), Grösse ROOM_H Papier-mm × tf, darunter die Innenfläche in m².
 // hide: Beschriftung ausgeblendet (nur am Bildschirm blass), na: ohne Fläche. Liegt auf der Ebene «Hintergrund». Nicht in der Stückliste.
+// poly? (CJ 30.10.2026, Werkzeug Raum U, Dateiversion 35): Raumgrenze von Hand, mind. 3 Ecken [x, y]; gilt statt der Wände (offene Räume,
+// Teilung ohne Wand). Die Linie zeigt nur der Bildschirm, solange die Ebene «Hintergrund» aktiv ist; nie im Druck.
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
 import { symDef, PLAN_SYMS } from "./plansym.js";
@@ -240,6 +242,7 @@ export function cleanPlanObj(it, id) {
     const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
     if (it.hide === true) o.hide = true;
     if (it.na === true) o.na = true;
+    if (Array.isArray(it.poly) && it.poly.length >= 3 && it.poly.every(isPt)) o.poly = it.poly.map((p) => [r3(p[0]), r3(p[1])]);
     return o;
   }
   if (it.type === "duct") {
@@ -278,8 +281,10 @@ export const planV32 = (sh) => sh.items.some((i) => i.type === "shape" || symDef
 export const planV33 = (sh) => sh.items.some((i) => i.m === true || i.zg === true || (i.type === "duct" && i.curve === true) || i.type === "text");
 // Dateiversion 34 (CJ 30.10.2026): Räume (type "room"); ältere Stände lehnen das Objekt ab
 export const planV34 = (sh) => sh.items.some((i) => i.type === "room");
-export const planVer = (sh) => (planV34(sh) ? 34 : planV33(sh) ? 33 : planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
-const VERSION_NOW = 34;
+// Dateiversion 35 (CJ 30.10.2026): Raum mit eigener Grenze (poly); ältere Stände würden sie still verlieren
+export const planV35 = (sh) => sh.items.some((i) => i.type === "room" && i.poly);
+export const planVer = (sh) => (planV35(sh) ? 35 : planV34(sh) ? 34 : planV33(sh) ? 33 : planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
+const VERSION_NOW = 35;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 // ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
 const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
@@ -455,7 +460,7 @@ export function moveNode(sh, from, to, skip) {
 }
 // Wand oder Mass als Ganzes verschieben (Ecken bleiben mit den Nachbarn verbunden: deren Enden folgen)
 export function moveItem(sh, it, dx, dy) {
-  if (it.type === "sym" || it.type === "text" || it.type === "room") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
+  if (it.type === "sym" || it.type === "text" || it.type === "room") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; if (it.poly) it.poly = it.poly.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); return; } // Raum mit eigener Grenze: als Ganzes
   if (it.type === "line" || it.type === "duct" || (it.type === "shape" && it.k === "line")) { it.pts = it.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); return; }
   if (it.type === "shape") { it.x = r3(it.x + dx); it.y = r3(it.y + dy); return; }
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall), u = wallDir(w); it.t += dx * u[0] + dy * u[1]; clampOpening(w, it); return; }
@@ -497,6 +502,7 @@ export function pasteItems(sh, clip, dx, dy, newId) {
     if (c.type === "dim" && c.ref !== undefined) c.ref = map.get(c.ref);
     for (const k of ["a", "b", "at"]) if (c[k]) c[k] = [r3(c[k][0] + dx), r3(c[k][1] + dy)];
     if (c.pts) c.pts = c.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]);
+    if (c.poly) c.poly = c.poly.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); // Raumgrenze
     if (c.type === "shape" && c.k !== "line") { c.x = r3(c.x + dx); c.y = r3(c.y + dy); }
     const o = cleanPlanObj(c, c.id);
     if (o) out.push(o);

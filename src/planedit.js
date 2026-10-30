@@ -21,6 +21,7 @@ const OPEN_HV = { tuer: 2000, schiebe: 2000, fenster: 1500 }; // Vorgabe Höhe n
 const ICON = {
   wall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v6H3z"/><path d="M6 15l6-6M11 15l6-6M16 15l5-5"/></svg>',
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h5M17 18h5"/><path d="M7 18V8"/><path d="M7 8a10 10 0 0110 10"/></svg>',
+  room: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h11l5 5v9H4z" stroke-dasharray="3 2"/><path d="M8 12h8"/></svg>', // Raumgrenze von Hand (CJ 30.10.2026)
   window: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9h4M18 9h4M2 15h4M18 15h4"/><path d="M6 9h12v6H6z"/><path d="M6 12h12"/></svg>', // Fenster in der Wand: Rahmen und Glas (CJ 30.10.2026)
   line: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18L10 8h10"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>',
   ader: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18C9 18 13 10 21 10"/><path d="M10.5 11.5l3 4.5"/><path d="M13 5.5h3l-2 3"/></svg>',
@@ -48,6 +49,7 @@ export function makePlan(c) {
   const grpOpen = new Set(); // aufgeklappte Symbolgruppen links, nur für die Sitzung (Start immer zu)
   const opt = { d: P.WALL_D, mat: "mauer", st: P.DOPPEL.st, iso: P.DOPPEL.iso, side: 0, okind: "tuer", hinge: "l", oside: 1, ow: { ...OPEN_W }, ctrl: false, sym: "STD", symR: 0, lkind: "decke", lcurve: true, dcurve: false, dw: P.DUCT_W, dhatch: "kreuz", multi: false, free: false, ap: false, m: false, refCol: null, atxt: P.ADER_DEF, scol: "#000000", slw: P.SHAPE_LW, sd: false, sfill: null }; // scol, slw, sd, sfill: Darstellung der nächsten Form // atxt = Text der nächsten Aderzahl; refCol = Farbe des nächsten Verweises (null = Vorgabe); sym/symR: Symbol zum Setzen, Drehung ohne Wand; ap = nächstes Symbol Aufputz (Taste A), m = gespiegelt (Taste S); lkind Leitungsart, lcurve geschwungen; multi = Klick fügt zur Wahl hinzu; free = Fang aus wie Alt (Touch, CJ 24.10.2026)
   let lineDraft = null; // Leitung im Entstehen: { pts }
+  let roomDraft = null; // Raumgrenze im Entstehen: { pts } (Werkzeug Raum, CJ 30.10.2026)
   let shapeDraft = null; // Form im Entstehen: { k, a, v1, v2, field (1 oder 2), press (Maustaste unten seit dem Anfang), moved }
   let ductDraft = null; // Kanal im Entstehen: { pts, len, ang, field } (Länge und Winkel tippen wie bei der Wand)
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
@@ -80,6 +82,8 @@ export function makePlan(c) {
   const alignDirs = (u) => (u && Math.abs(u[0] * u[1]) > 1e-4 ? [...AXES, u, [-u[1], u[0]]] : AXES); // waagrecht, senkrecht und in und quer zur letzten Wand
   // Wand zeichnen: gezeichnet wird die Innenlinie. Fang an Ecken und Flächen der Wände, Ausrichtungsfang an Anfang, letztem Punkt und Ecken (Rechteck schliessen).
   const snapWall = (w, ortho) => { const fg = faces(); return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: fg, extra: draft?.pts ?? [], align: { refs: [...(draft?.pts ?? []), ...fg.corners], dirs: alignDirs(draft?.u) } }); }; // extra: Anfang und Punkte der Kette (Klick auf den Anfang schliesst)
+  // Raumgrenze: Fang wie beim Wandzeichnen (Ecken, Wandflächen, Ausrichtung), dazu die eigenen Ecken (Klick auf die erste schliesst)
+  const snapRoom = (w, ortho) => { const fg = faces(), q = roomDraft?.pts ?? []; return P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: fg, extra: q, align: { refs: [...q, ...fg.corners], dirs: AXES } }); };
   const snapDim = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, extra: faces().corners });
   // Leitung (CJ 26.10.2026): Fang nur an den Anschlusspunkten der Symbole (P.symSnaps: Schalter und Steckdosen vier Punkte am Rand, Abzweigdose alle Seiten), den eigenen Punkten (Klick auf den letzten beendet) und am Raster.
   // Kein Fang an Wänden, Massen oder anderen Leitungen, keine Ausrichtungslinien.
@@ -448,10 +452,13 @@ export function makePlan(c) {
   const rooms = (S0 = sh(), walls = S0.items.filter((i) => i.type === "wall")) => { const key = JSON.stringify(walls.map((w) => [w.a, w.b, w.d])); if (key !== roomMemo.key) roomMemo = { key, faces: RM.roomFaces(walls) }; return roomMemo.faces; };
   // Raumname, darunter die Innenfläche (fehlt ohne geschlossenen Raum oder mit na); ausgeblendet nur am Bildschirm, blass
   const roomSVG = (it, k, faces, S0 = sh(), fill = INK) => {
-    const h = P.ROOM_H * P.tfOf(it, S0) * k, fc = RM.faceOf(faces, it.at), a = fc && !it.na;
+    const h = P.ROOM_H * P.tfOf(it, S0) * k, fc = RM.roomFace(faces, it), a = fc && !it.na;
     const g = txt(it.at[0], it.at[1] + (a ? h * 0.4 : 0), it.name, h, 0, fill) + (a ? txt(it.at[0], it.at[1] - h * 0.55, RM.fmtArea(fc.area), h * 0.7, 0, fill) : "");
     return it.hide || !fc ? `<g opacity="${it.hide ? 0.3 : 0.55}">${g}</g>` : g;
   };
+  // Raumgrenze von Hand: grün gestrichelt (wie die Raumwahl), Strich in Papier-mm × Massstab
+  const ROOM_EDGE = "#2f9e58";
+  const roomEdge = (q, k) => `<path d="M${q.map(pt).join("L")}Z" fill="none" stroke="${ROOM_EDGE}" stroke-width="${f(0.3 * k)}" stroke-dasharray="${f(2.5 * k)} ${f(1.2 * k)}" stroke-linejoin="round"/>`;
   const textSVG = (it, k, fill = P.colOf(it)) => txt(it.at[0], it.at[1], it.txt, P.TEXT_H * P.tfOf(it, sh()) * k, it.r ?? 0, fill);
   // Form (CJ 27.10.2026): Strich lw in Papier-mm × Massstab, gestrichelt wie die Leitung «in Boden», Füllung unter dem Strich. stroke: eine Farbe ohne Füllung (Wahl, Vorschau).
   // Füllung halbtransparent (CJ 28.10.2026, Plan Runde 3): Grundriss und Symbole darunter bleiben sichtbar
@@ -533,6 +540,7 @@ export function makePlan(c) {
       for (const a of S0.items) if (a.type === "ader") { const ln = S0.items.find((i) => i.id === a.line); if (ln?.layer === l.id) s += aderSVG(ln, a, k, P.colOf(ln), P.tfOf(a, S0), ducts); }
       for (const y of S0.items) if (y.type === "sym" && y.layer === l.id) s += symSVG(y, k, P.colOf(y));
       for (const y of S0.items) if (y.type === "text" && y.layer === l.id) s += textSVG(y, k);
+      if (scr && grundOn()) for (const y of S0.items) if (y.type === "room" && y.poly && y.layer === l.id) s += roomEdge(y.poly, k); // eigene Grenze nur auf der Ebene Hintergrund, nie im Druck
       for (const y of S0.items) if (y.type === "room" && y.layer === l.id && (scr || !y.hide)) s += roomSVG(y, k, rooms(S0, walls), S0);
     }
     return `<g class="pl-items">${s}</g>`;
@@ -564,12 +572,13 @@ export function makePlan(c) {
       else if (it.type === "dim") { s += `<g class="pl-scale">${dimSVG(it, k, SEL)}</g>`; if (it.ref === undefined) s += grip(it.a) + grip(it.b); }
       else if (it.type === "sym") s += `<g class="pl-scale">${symSVG(it, k, SEL)}</g>`;
       else if (it.type === "text") s += textSVG(it, k, SEL);
-      else if (it.type === "room") { s += roomSVG(it, k, rooms(), sh(), SEL); const fc = RM.faceOf(rooms(), it.at); if (fc) s += `<path d="M${fc.inner.map(pt).join("L")}Z" fill="rgba(47,158,88,.06)" stroke="${SEL}" stroke-width="1" stroke-dasharray="6 4"/>`; }
+      else if (it.type === "room") { s += roomSVG(it, k, rooms(), sh(), SEL); const fc = RM.roomFace(rooms(), it); if (fc) s += `<path d="M${fc.inner.map(pt).join("L")}Z" fill="rgba(47,158,88,.06)" stroke="${SEL}" stroke-width="1" stroke-dasharray="6 4"/>`; if (it.poly && S.sel.size === 1 && grundOn()) s += it.poly.map(grip).join(""); }
       else if (it.type === "ader") { const ln = sh().items.find((i) => i.id === it.line); if (ln) s += `<g class="pl-scale">${aderSVG(ln, it, k, SEL)}</g>`; }
       else if (it.type === "duct") s += `<g class="pl-scale" opacity=".75">${ductSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
       else if (it.type === "shape") s += `<g class="pl-scale">${shapeSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? P.shapeHandles(it).map(grip).join("") : "");
       else if (it.type === "line") s += `<g class="pl-scale">${lineSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
     }
+    if (roomDraft && mouse) { const q = [...roomDraft.pts, [mouse.x, mouse.y]]; s += (q.length > 2 ? `<path d="M${q.map(pt).join("L")}Z" fill="rgba(47,158,88,.08)" stroke="none"/>` : "") + `<path d="M${q.map(pt).join("L")}" fill="none" stroke="${DRAFT}" stroke-width="1.5" stroke-dasharray="${px(6)} ${px(3)}"/>` + roomDraft.pts.map((p) => `<circle cx="${f(p[0])}" cy="${f(p[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join(""); if (q.length > 3) s += label([mouse.x, mouse.y], RM.fmtArea(RM.polyFace(q).area)); }
     if (lineDraft && mouse) s += `<g class="pl-scale" opacity=".85">${lineSVG({ kind: opt.lkind }, k, DRAFT, [...lineDraft.pts, [mouse.x, mouse.y]], opt.lcurve)}</g>` + lineDraft.pts.map((q) => `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${DRAFT}"/>`).join("");
     if (ductDraft && mouse) {
       const a = ductDraft.pts.at(-1), b = typedEnd(a, ductDraft), pts = Math.hypot(b[0] - a[0], b[1] - a[1]) > 1 ? [...ductDraft.pts, b] : ductDraft.pts;
@@ -746,6 +755,13 @@ export function makePlan(c) {
       change(() => sh().items.push(P.cleanPlanObj({ type: "ader", line: h.line.id, t: h.t, txt: opt.atxt }, id)));
       return;
     }
+    if (T === "pl-room") { // Raumgrenze (CJ 30.10.2026): Ecken klicken, Klick auf die erste Ecke, Doppelklick oder Enter schliesst
+      const p = snapRoom(w, roomDraft?.pts.at(-1)), q = [p.x, p.y]; mouse = p;
+      if (!roomDraft) { if (layerOk()) roomDraft = { pts: [q] }; }
+      else if (same(q, roomDraft.pts[0]) || same(q, roomDraft.pts.at(-1))) finishRoom();
+      else roomDraft.pts.push(q);
+      renderOverlay(); updateHint(); return;
+    }
     if (T === "pl-line") {
       const p = snapLine(w, lineDraft?.pts.at(-1)), q = [p.x, p.y]; mouse = p;
       if (!lineDraft) { if (layerOk()) lineDraft = { pts: [q] }; }
@@ -785,6 +801,7 @@ export function makePlan(c) {
     if (T === "pl-pmid") { change(() => { sh().pmid = [Math.round(w.x), Math.round(w.y)]; }); setTool("select"); c.renderSheet(); toast("Druckmitte gesetzt. Oben unter „Druck“ zurück auf automatisch."); return; }
     if (T !== "select") return;
     const one = S.sel.size === 1 ? sel()[0] : null, t = tol(), near = (p) => Math.hypot(p[0] - w.x, p[1] - w.y) <= t;
+    if (one?.type === "room" && one.poly && grundOn()) { const i = one.poly.findIndex(near); if (i >= 0) { drag = { type: "rpt", it: one, i, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; } }
     if (one?.type === "line" || one?.type === "duct") { const i = one.pts.findIndex(near); if (i >= 0) { drag = { type: "lpt", it: one, i, snap: snapshot(), started: false, sx: w.x, sy: w.y }; return; } }
     if (one && (one.type === "wall" || (one.type === "dim" && one.ref === undefined))) {
       const e2 = ["a", "b"].find((k) => near(one[k]));
@@ -817,7 +834,7 @@ export function makePlan(c) {
   function move(w, e) {
     if (imp) { if (!imp.pinned || imp.press) importAt(w, e); renderOverlay(); return; }
     raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
-    mouse = S.tool === "pl-measure" || S.tool === "pl-rotate" || S.tool === "pl-fix" ? snapBg(w, bgDraft ?? undefined) : S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-duct" ? snapDuct(w, ductDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : shapeKey(S.tool) ? snapShape(w, shapeDraft?.k === "line" ? shapeDraft.a : undefined) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
+    mouse = S.tool === "pl-measure" || S.tool === "pl-rotate" || S.tool === "pl-fix" ? snapBg(w, bgDraft ?? undefined) : S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-duct" ? snapDuct(w, ductDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : S.tool === "pl-room" ? snapRoom(w, roomDraft?.pts.at(-1)) : shapeKey(S.tool) ? snapShape(w, shapeDraft?.k === "line" ? shapeDraft.a : undefined) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
     if (shapeDraft?.press && Math.hypot(w.x - shapeDraft.a[0], w.y - shapeDraft.a[1]) * S.view.z > 3) shapeDraft.moved = true;
     const d = drag;
     if (d) {
@@ -826,6 +843,7 @@ export function makePlan(c) {
       if (d.started) {
         if (d.type === "multi") { const g = S.grid.on && !S.alt ? S.grid.size : 1, tx = Math.round((w.x - d.sx) / g) * g, ty = Math.round((w.y - d.sy) / g) * g; P.moveItems(sh(), d.items, tx - d.dx, ty - d.dy); d.dx = tx; d.dy = ty; }
         else if (d.type === "label") { const a = (d.it.r * Math.PI) / 180, dx = (w.x - d.sx) / den(), dy = (w.y - d.sy) / den(); const lo = P.cleanLo([d.lo0[0] + dx * Math.cos(a) + dy * Math.sin(a), d.lo0[1] - dx * Math.sin(a) + dy * Math.cos(a)]); if (lo) d.it.lo = lo; else delete d.it.lo; }
+        else if (d.type === "rpt") { const p = P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, faces: faces(), extra: d.it.poly.filter((_, j) => j !== d.i) }); mouse = p; d.it.poly[d.i] = [p.x, p.y]; if (!RM.inPoly(d.it.at, d.it.poly)) d.it.at = RM.polyFace(d.it.poly).lab.map(Math.round); } // Name bleibt im Raum
         else if (d.type === "lpt") { const o = d.it.pts[d.i > 0 ? d.i - 1 : 1], p = d.it.type === "duct" ? snapDuct(w, o, d.it.pts.filter((_, j) => j !== d.i), d.it) : snapLine(w, o); mouse = p; d.it.pts[d.i] = [p.x, p.y]; }
         else if (d.type === "node") { const skip = new Set(d.ends.map((x) => x.it.id)), p = P.snapPlan(sh(), visible().filter((i) => !skip.has(i.id)), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, ortho: S.shift ? otherEnd(d) : undefined }); mouse = p; P.setEnds(sh(), d.ends, [p.x, p.y]); }
         else if (d.type === "shp") { const o = d.o, fix = o.k === "line" ? o.pts[1 - d.h] : o.k === "circle" ? [o.x, o.y] : undefined, p = snapShape(w, fix, d.it); mouse = p; P.dragShapeHandle(d.it, o, d.h, [p.x, p.y]); renderRight(); }
@@ -847,6 +865,7 @@ export function makePlan(c) {
     if (shapeDraft?.press) { const done = shapeDraft.moved; shapeDraft.press = false; if (done) finishShape(); } // gezogen: Loslassen setzt das Ende
     const d = drag; drag = null;
     if (d?.type === "box") { if (d.started) { const ids = pickable().filter((i) => P.inBox(sh(), i, boxOf(d))).map((i) => i.id); S.sel = new Set([...(d.add ? S.sel : []), ...ids]); } renderRight(); renderOverlay(); return; }
+    if (d?.type === "rpt" && d.started) { const q = d.it.poly.filter((p, i, a) => !same(p, a[(i + 1) % a.length])); if (q.length >= 3) d.it.poly = q; }
     if (d?.type === "lpt" && d.started) { const q = d.it.pts.filter((p, i, a) => !i || !same(p, a[i - 1])); if (q.length >= 2) d.it.pts = q; }
     if (d?.started) { RM.syncRooms(sh(), nextId); pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); }
   }
@@ -892,6 +911,14 @@ export function makePlan(c) {
   }
   const same = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < P.EPS;
   // Leitung abschliessen (ab zwei Punkten), sonst verwerfen
+  // Raum mit eigener Grenze anlegen (mind. 3 Ecken und ROOM_MIN), Name «Raum n», Beschriftung in der Fläche, Ebene Hintergrund
+  function finishRoom() {
+    const q = (roomDraft?.pts ?? []).filter((p, i, a) => !i || !same(p, a[i - 1])); roomDraft = null;
+    if (q.length < 3 || Math.abs(RM.polyArea(q)) < RM.ROOM_MIN) { if (q.length > 1) toast("Raum: mindestens drei Ecken und eine Fläche über 0,3 m²."); renderOverlay(); updateHint(); return; }
+    const fc = RM.polyFace(q), id = nextId(), S0 = sh();
+    change(() => S0.items.push(P.cleanPlanObj({ type: "room", layer: S0.alay, at: fc.lab.map(Math.round), name: RM.nextRoomName(S0.items.filter((i) => i.type === "room")), poly: fc.poly }, id)));
+    S.sel = new Set([id]); renderRight(); renderOverlay(); updateHint();
+  }
   function finishLine() {
     const pts = lineDraft?.pts ?? []; lineDraft = null;
     if (pts.length >= 2) { const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "line", layer: sh().alay, pts, kind: opt.lkind, curve: opt.lcurve }, id))); }
@@ -924,14 +951,14 @@ export function makePlan(c) {
   function selAll() { if (S.tool !== "select") setTool("select"); S.sel = new Set(pickable().map((i) => i.id)); renderRight(); renderOverlay(); }
   // Entwurf beenden. Gibt true, wenn etwas abgebrochen wurde.
   function cancel() {
-    const had = !!(draft || dimDraft || lineDraft || bgDraft || ductDraft || shapeDraft || imp);
-    imp = null; draft = null; dimDraft = null; lineDraft = null; bgDraft = null; ductDraft = null; shapeDraft = null;
+    const had = !!(draft || dimDraft || lineDraft || roomDraft || bgDraft || ductDraft || shapeDraft || imp);
+    imp = null; draft = null; dimDraft = null; lineDraft = null; roomDraft = null; bgDraft = null; ductDraft = null; shapeDraft = null;
     return had;
   }
   function del() {
     const ids = [...S.sel];
     if (!ids.length) return;
-    const fs = rooms(), keep = sel().filter((i) => i.type === "room" && RM.faceOf(fs, i.at)); // Raumname im geschlossenen Raum: ausblenden statt löschen, sonst käme er als «Raum n» wieder
+    const fs = rooms(), keep = sel().filter((i) => i.type === "room" && !i.poly && RM.faceOf(fs, i.at)); // Raumname im geschlossenen Raum: ausblenden statt löschen, sonst käme er als «Raum n» wieder
     change(() => { for (const r of keep) r.hide = true; for (const id of ids) if (!keep.some((r) => r.id === id)) P.deleteItem(sh(), id); S.sel.clear(); });
     if (keep.length) toast(`${keep.length === 1 ? "Raumname" : `${keep.length} Raumnamen`} ausgeblendet (Räume erkennt der Plan aus den Wänden). Einblenden: Raum wählen, rechts «Beschriftung ausblenden» abwählen.`);
   }
@@ -950,6 +977,7 @@ export function makePlan(c) {
     { act: "pdf", icon: ICON.pdf, t: () => (sh().bg?.asset ? "Neuer Planstand" : "PDF-Plan laden") }, { act: "scale", icon: ICON.scale, t: "Massstab eingeben", pdf: true },
     { id: "pl-measure", icon: ICON.measure, t: "Massstab messen", pdf: true }, { id: "pl-fix", icon: ICON.fix, t: "Fixpunkt setzen", pdf: true }, { id: "pl-rotate", icon: ICON.rotate, t: "Plan drehen", pdf: true },
     { id: "pl-wall", icon: ICON.wall, t: "Wand", k: "W" }, { act: "o:tuer", tool: "pl-open", icon: ICON.open, t: "Tür", k: "O" }, { act: "o:fenster", tool: "pl-open", icon: ICON.window, t: "Fenster", k: "O" }, { id: "pl-dim", icon: R.icons.dim, t: "Mass", k: "B" },
+    { id: "pl-room", icon: ICON.room, t: "Raum", k: "U" },
   ];
   const keyed = [...PL_GRUND, ...PL_TOOLS].filter((x) => x.id && /^[A-Z]$/.test(x.k ?? ""));
   const TOOL_KEYS = Object.fromEntries(keyed.map((x) => [x.k.toLowerCase(), x.id]));
@@ -1012,6 +1040,11 @@ export function makePlan(c) {
       const as = sel().filter((i) => i.type === "ader");
       if (S.tool === "pl-ader") { opt.atxt = k; toast(`Aderzahl ${k} für die nächsten.`); renderRight(); renderOverlay(); updateHint(); return true; }
       if (S.tool === "select" && as.length) { change(() => { for (const a of as) a.txt = k; }); return true; }
+    }
+    if (roomDraft) {
+      if (k === "Enter") { finishRoom(); return true; }
+      if (k === "Escape") { roomDraft = null; renderOverlay(); updateHint(); return true; }
+      if (k === "Backspace") { roomDraft.pts.pop(); if (!roomDraft.pts.length) roomDraft = null; renderOverlay(); updateHint(); return true; }
     }
     if (lineDraft) {
       if (k === "Enter" || k === "Escape") { finishLine(); return true; }
@@ -1265,10 +1298,10 @@ export function makePlan(c) {
       + note(`Griffe ${it.k === "line" ? "an den Enden" : it.k === "rect" ? "an den Ecken (die Gegenecke bleibt)" : "auf dem Kreis ändern den Radius"}; Fang an Wänden, Symbolen und Ecken, Alt frei. Ziehen verschiebt, R dreht um 90°. Nicht in der Stückliste.`) + copyRow() + del1();
     if (sel0.length > 1 && sel0.every((i) => i.type === "shape")) return head(`${sel0.length} Formen`, "Linie, Rechteck, Kreis") + shapeFields(sel0) + sel1("mlayer", new Set(sel0.map((i) => i.layer)).size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], new Set(sel0.map((i) => i.layer)).size === 1 ? sel0[0].layer : "", "Ebene")
       + note("Ziehen an einer gewählten Form verschiebt alle, R dreht jede um ihre Mitte.") + copyRow() + del1();
-    if (it?.type === "room") { const fc = RM.faceOf(rooms(), it.at);
-      return head("Raum", fc ? `${RM.fmtArea(fc.area)} innen` : "kein geschlossener Raum") + `<div class="field"><label>Name</label><input type="text" data-plf="rname" value="${R.esc(it.name)}" autocomplete="off"></div>`
+    if (it?.type === "room") { const fc = RM.roomFace(rooms(), it);
+      return head("Raum", fc ? `${RM.fmtArea(fc.area)}${it.poly ? ", Grenze von Hand" : " innen"}` : "kein geschlossener Raum") + `<div class="field"><label>Name</label><input type="text" data-plf="rname" value="${R.esc(it.name)}" autocomplete="off"></div>`
         + tfField([it]) + `<label class="check"><input type="checkbox" data-plf="rhide"${it.hide ? " checked" : ""}> Beschriftung ausblenden</label>` + `<label class="check"><input type="checkbox" data-plf="rna"${it.na ? "" : " checked"}> Fläche zeigen</label>`
-        + sel1("layer", layerOpts(), it.layer, "Ebene") + note(fc ? "Der Plan erkennt geschlossene Räume aus den Wänden (Türen und Fenster gelten als geschlossen). Ziehen verschiebt die Beschriftung, sie bleibt beim Raum, solange sie darin liegt. Entf blendet sie aus." : "An dieser Stelle ist kein geschlossener Raum (Wände geändert). Wieder in einen Raum ziehen oder löschen.") + del1(); }
+        + sel1("layer", layerOpts(), it.layer, "Ebene") + note(it.poly ? "Grenze von Hand (Werkzeug Raum, U): gilt statt der Wände. Die grüne Linie zeigt nur die Ebene Hintergrund, im Druck fehlt sie. Ecken ziehen ändert die Grenze, Ziehen am Namen verschiebt den ganzen Raum. Entf löscht den Raum." : fc ? "Der Plan erkennt geschlossene Räume aus den Wänden (Türen und Fenster gelten als geschlossen). Ziehen verschiebt die Beschriftung, sie bleibt beim Raum, solange sie darin liegt. Entf blendet sie aus." : "An dieser Stelle ist kein geschlossener Raum (Wände geändert). Wieder in einen Raum ziehen oder löschen.") + del1(); }
     if (it?.type === "text") return head("Text", `${it.r ?? 0}°`) + `<div class="field"><label>Text</label><input type="text" data-plf="ttxt" value="${R.esc(it.txt)}" autocomplete="off"></div>`
       + tfField([it]) + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Ziehen verschiebt den Text, R dreht um 90° (Shift+R zurück), er bleibt lesbar. Pfeiltasten schieben.") + copyRow() + del1();
     if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + sel1("lc", LINE_FORMS, it.curve ? "1" : "0", "Form") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
@@ -1296,6 +1329,7 @@ export function makePlan(c) {
       + (def.ref ? colField([{ type: "sym", key: opt.sym, ...(opt.refCol ? { col: opt.refCol } : {}) }]).replaceAll("data-plcol", "data-plnewcol") + note("Nach dem Klick die Zeilen rechts eintippen. Den Kasten danach frei ziehen. Ein Zeiger zum Ziel nur auf Wunsch (Haken am gewählten Verweis).") : ""); }
     else if (S.tool === "pl-line") h += head("Neue Leitung", "Klick setzt Punkte, Enter beendet") + sel1("lkind", P.LINE_KINDS, opt.lkind, "Verlegeart").replace("data-plf", "data-plo") + sel1("lcurve", LINE_FORMS, opt.lcurve ? "1" : "0", "Form").replace("data-plf", "data-plo")
       + note("Fang an den Anschlusspunkten der Symbole und am Raster (nicht an Wänden und anderen Leitungen), Shift 0/45/90°, Alt ohne Fang. Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Geschwungen (Vorgabe): glatte Kurve, die Punkte ziehen die Kurve an (sie läuft nur durch Anfang und Ende), das erste Stück beginnt gerade. Farbe Blau (Vorgabe, später in den Einstellungen), am Objekt änderbar.");
+    else if (S.tool === "pl-room") h += head("Neuer Raum", "Ecken klicken, Enter schliesst") + note("Für offene Räume oder eine Teilung ohne Wand: Ecken der Raumgrenze klicken, Klick auf die erste Ecke, Doppelklick oder Enter schliesst. Fang an Ecken und Wandflächen, Shift 0/90°, Alt ohne Fang. Die Grenze liegt auf der Ebene Hintergrund und ist nur dort sichtbar, nie im Druck. Der Raum heisst «Raum n», Name rechts ändern.");
     else if (S.tool === "pl-text") h += head("Neuer Text", "Klick in den Plan") + note("Nach dem Klick den Text eingeben. Am gewählten Text rechts: Text, Grösse (wie die Beschriftungen, Prozent), Farbe (Vorgabe Schwarz), Ebene; R dreht um 90°.");
     else if (S.tool === "pl-ader") h += head("Neue Aderzahl", "Klick auf eine Leitung") + aderField(opt.atxt, "data-plo")
       + note("Kurzer Querstrich über die Leitung, die Zahl steht darüber. Ziffern 1 bis 9 wählen die Zahl, frei z. B. 5x1.5. Strich und Text in der Farbe der Leitung.");
@@ -1414,6 +1448,7 @@ export function makePlan(c) {
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
     if (S.tool === "pl-sym") return `Symbol: Klick setzt ${symDef(opt.sym).label}${symDef(opt.sym).ap ? ` ${opt.ap ? "AP" : "UP"}` : ""}. ${symDef(opt.sym).wall ? "Rastet an der Wand ein, Alt frei." : "R dreht um 90°."}${symDef(opt.sym).ap ? " A wechselt AP/UP." : ""} S spiegelt. Esc oder V beendet.`;
     if (S.tool === "pl-line") return lineDraft ? `Leitung: nächster Punkt per Klick (${lineDraft.pts.length} gesetzt${opt.lcurve ? ", geschwungen" : ""}). Doppelklick, Klick auf den letzten Punkt oder Enter beendet, Rücktaste nimmt den letzten Punkt weg. Shift 0/45/90°, Alt ohne Fang.` : `Leitung (${P.LINE_KINDS.find(([x]) => x === opt.lkind)[1]}): Klick setzt den Anfang. Rastet an Symbolmitten, Leitungspunkten und Wandecken ein.`;
+    if (S.tool === "pl-room") return roomDraft ? `Raum: nächste Ecke klicken (${roomDraft.pts.length} gesetzt). Klick auf die erste Ecke, Doppelklick oder Enter schliesst, Rücktaste nimmt die letzte weg, Esc bricht ab. Shift 0/90°, Alt ohne Fang.` : "Raum: erste Ecke der Raumgrenze klicken (für offene Räume oder eine Teilung ohne Wand).";
     if (S.tool === "pl-text") return "Text: Klick setzt die Mitte, danach den Text eingeben. Fang an Wänden, Symbolen und Raster, Alt ohne Fang. Esc oder V beendet.";
     if (S.tool === "pl-ader") return `Aderzahl: Klick auf eine Leitung setzt den Querstrich mit „${opt.atxt}“. Ziffern 1 bis 9 wählen die Zahl, rechts frei (z. B. 5x1.5). Esc beendet.`;
     if (S.tool === "pl-duct") return ductDraft ? `Kanal ${P.fmtLen(opt.dw)} mm: nächster Punkt per Klick oder Länge tippen (Tab = Winkel), Enter setzt (${ductDraft.pts.length} gesetzt). Enter ohne Eingabe, Doppelklick oder Esc beendet, Rücktaste nimmt zurück. Shift 0/45/90°, Alt ohne Fang.${ductDraft.len || ductDraft.ang ? `  Eingabe: ${ductDraft.len || "–"} mm, ${ductDraft.ang || "–"}°` : ""}` : `Kanal ${P.fmtLen(opt.dw)} mm (${P.HATCHES.find(([x]) => x === opt.dhatch)[1]}): Klick setzt den Anfang der Mittellinie. Zahlen 1–9 wählen die Breite (${P.DUCT_WS.join(", ")} mm). Fang wie bei Wänden.`;

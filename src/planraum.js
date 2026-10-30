@@ -104,14 +104,23 @@ export function labelPoint(q) {
 
 // Raum zur Beschriftung (Fläche, die at enthält) oder null
 export const faceOf = (faces, at) => faces.find((f) => inPoly(at, f.poly)) ?? null;
+// Raumgrenze von Hand (CJ 30.10.2026, Werkzeug Raum): Vieleck poly gilt statt der Wände, die Fläche ist die des Vielecks (keine Wanddicke)
+export function polyFace(poly) {
+  const q = polyArea(poly) < 0 ? [...poly].reverse() : poly;
+  return { poly: q, inner: q, area: polyArea(q) / 1e6, lab: labelPoint(q), own: true };
+}
+// Fläche eines Raums: eigene Grenze, sonst der erkannte Raum an der Beschriftung (oder null)
+export const roomFace = (faces, r) => (r.poly ? polyFace(r.poly) : faceOf(faces, r.at));
+// Nächster freier Name «Raum n» (n = höchste Nummer + 1)
+export const nextRoomName = (rooms) => `Raum ${Math.max(0, ...rooms.map((r) => Number(/^Raum (\d+)$/.exec(r.name)?.[1] ?? 0))) + 1}`;
 // Neue Räume beschriften: jeder erkannte Raum ohne Beschriftung bekommt «Raum n» (n = höchste Nummer + 1) auf der Ebene «Hintergrund»
-// (fehlt sie, auf der untersten). Bestehende bleiben, auch ohne Raum (Wände weg): dann ohne Fläche. Gibt die neuen Räume.
+// (fehlt sie, auf der untersten). Bestehende bleiben, auch ohne Raum (Wände weg): dann ohne Fläche. Ein Raum mit eigener Grenze, die die
+// Beschriftungsstelle des erkannten Raums enthält, deckt ihn ab (kein zusätzliches «Raum n»). Gibt die neuen Räume.
 export function syncRooms(sh, nextId) {
   const faces = roomFaces(sh.items.filter((i) => i.type === "wall")), rooms = sh.items.filter((i) => i.type === "room"), made = [];
   if (!faces.length) return made;
-  let n = Math.max(0, ...rooms.map((r) => Number(/^Raum (\d+)$/.exec(r.name)?.[1] ?? 0)));
   const layer = sh.layers.some((l) => l.id === "bg") ? "bg" : sh.layers[0].id;
-  for (const f of faces) if (!rooms.some((r) => inPoly(r.at, f.poly))) { const r = { id: nextId(), type: "room", layer, at: f.lab.map((v) => Math.round(v)), name: `Raum ${++n}` }; sh.items.push(r); made.push(r); }
+  for (const f of faces) if (!rooms.some((r) => inPoly(r.at, f.poly) || (r.poly && inPoly(f.lab, r.poly)))) { const r = { id: nextId(), type: "room", layer, at: f.lab.map((v) => Math.round(v)), name: nextRoomName(rooms) }; sh.items.push(r); rooms.push(r); made.push(r); }
   return made;
 }
 // Fläche für die Anzeige: «12,4 m²» (eine Stelle)

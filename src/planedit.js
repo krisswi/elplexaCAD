@@ -908,7 +908,7 @@ export function makePlan(c) {
     if (bgDraft && k === "Escape") { bgDraft = null; renderOverlay(); updateHint(); return true; }
     if (dimDraft && k === "Escape") { dimDraft = null; renderOverlay(); updateHint(); return true; }
     if (k.toLowerCase() === "x" && S.tool === "pl-wall" && !e.altKey) { opt.side = -(draft?.side ?? (opt.side || 1)); if (draft) { draft.side = opt.side; draft.auto = false; } renderRight(); renderOverlay(); updateHint(); return true; } // Wandseite wechseln
-    if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Links die Ebene wechseln."); return true; } setTool(t); return true; }
+    if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Rechts unten die Ebene wechseln."); return true; } setTool(t); return true; }
     if (k.toLowerCase() === "p" && !e.altKey) { bgToggle(); return true; } // PDF-Plan ein/aus (Tastenkürzel-Index)
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
       const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym" || i.type === "text"), fs = sel().filter((i) => i.type === "shape" && i.k !== "circle");
@@ -950,8 +950,20 @@ export function makePlan(c) {
     if (!toolShown(S.tool)) queueMicrotask(() => { if (sh().kind === "plan" && !toolShown(S.tool)) { cancel(); setTool("select"); } }); // ausgeblendetes Werkzeug (Ebene, PDF weg, Rückgängig): zurück zu Auswählen V
     let h = `<div class="pl-tools"><h2 class="section-title">Werkzeuge</h2><div class="pl-grid">${PL_TOOLS.map(toolBtn).join("")}</div>`
       + (grundOn() ? `<h2 class="section-title">Plan/Grundriss</h2><div class="pl-grid">${PL_GRUND.filter((x) => !x.pdf || S0.bg?.asset).map(toolBtn).join("")}</div>` : "") + `</div>`
-      + (grundOn() && S0.bg ? `<p class="note pl-bgnote">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "")
-      + `<section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`
+      + (grundOn() && S0.bg ? `<p class="note pl-bgnote">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "");
+    for (const g of SYM_GROUPS) { // Elektrosymbole (Schritt 2): Klick wählt, Klick in den Plan setzt. Gruppen zu, Klick auf den Titel klappt auf (CJ 26.10.2026)
+      const on = grpOpen.has(g);
+      h += `<section class="section pl-syms${on ? "" : " zu"}"><h2 class="section-title"><button class="pl-grp" data-plgrp="${R.esc(g)}" aria-expanded="${on}"><span class="caret" aria-hidden="true">▸</span>${R.esc(g)}</button></h2>`;
+      for (const d of PLAN_SYMS.filter((x) => x.group === g)) h += `<button class="sym" data-plsym="${d.key}" aria-pressed="${S.tool === "pl-sym" && opt.sym === d.key}"><span class="thumb">${symThumb(d)}</span><span><span class="name">${R.esc(d.label)}</span>${d.wall ? '<br><span class="sub">an der Wand</span>' : ""}</span></button>`;
+      h += `</section>`;
+    }
+    return h;
+  }
+  // Ebenen unten in der rechten Leiste (CJ 30.10.2026): immer sichtbar, einklappbar (gemerkt auf diesem Gerät)
+  let layZu = false; try { layZu = localStorage.getItem("pl-ebenen-zu") === "1"; } catch {}
+  function layersHTML() {
+    const S0 = sh();
+    let h = `<section class="pl-dock${layZu ? " zu" : ""}" aria-label="Ebenen"><h2 class="section-title"><button class="pl-grp" data-pllay aria-expanded="${!layZu}"><span class="caret" aria-hidden="true">▸</span>Ebenen<span class="pl-dockact">${R.esc(P.layerById(S0, S0.alay)?.name ?? "")}</span></button></h2><div class="pl-dockbody">`
       + (S0.bg?.asset ? `<div class="layer-row pl-bgrow${S0.bgOff ? " off" : ""}"><span class="layer-name">PDF-Plan</span>`
         + `<input type="range" min="10" max="100" step="10" value="${S0.bgOp ?? P.BG_OP}" data-plbgop aria-label="Deckkraft PDF-Plan in %" title="Deckkraft ${S0.bgOp ?? P.BG_OP} %"${S0.bgOff ? " disabled" : ""}>`
         + `<button class="layer-btn" data-plact="bgshow" data-key="show" aria-pressed="${!S0.bgOff}" title="${S0.bgOff ? "Einblenden" : "Ausblenden"} (Taste P)" aria-label="PDF-Plan: ${S0.bgOff ? "Einblenden" : "Ausblenden"}">${S0.bgOff ? ICON.eyeOff : ICON.eye}</button></div>` : "");
@@ -964,13 +976,7 @@ export function makePlan(c) {
     h += `<div class="row pl-layact"><button class="btn outline small" data-plact="up"${i >= n - 1 ? " disabled" : ""} title="Aktive Ebene nach oben (später gezeichnet)" aria-label="Aktive Ebene nach oben">↑</button><button class="btn outline small" data-plact="down"${i <= 0 ? " disabled" : ""} title="Aktive Ebene nach unten" aria-label="Aktive Ebene nach unten">↓</button>`
       + `<button class="btn outline small" data-plact="rename">Umbenennen</button><button class="btn outline small danger" data-plact="ldel"${n < 2 ? " disabled" : ""}>Löschen</button></div>`
       + `<div class="row"><button class="btn outline small" data-plact="ladd"${n >= P.MAX_LAYERS ? " disabled" : ""}>${R.icons.plus.replace("<svg", '<svg width="16" height="16"')}Ebene</button></div>`
-      + `<p class="note">${n} von ${P.MAX_LAYERS} Ebenen. Reihenfolge = Zeichenfolge, oben liegt zuoberst.</p></section>`;
-    for (const g of SYM_GROUPS) { // Elektrosymbole (Schritt 2): Klick wählt, Klick in den Plan setzt. Gruppen zu, Klick auf den Titel klappt auf (CJ 26.10.2026)
-      const on = grpOpen.has(g);
-      h += `<section class="section pl-syms${on ? "" : " zu"}"><h2 class="section-title"><button class="pl-grp" data-plgrp="${R.esc(g)}" aria-expanded="${on}"><span class="caret" aria-hidden="true">▸</span>${R.esc(g)}</button></h2>`;
-      for (const d of PLAN_SYMS.filter((x) => x.group === g)) h += `<button class="sym" data-plsym="${d.key}" aria-pressed="${S.tool === "pl-sym" && opt.sym === d.key}"><span class="thumb">${symThumb(d)}</span><span><span class="name">${R.esc(d.label)}</span>${d.wall ? '<br><span class="sub">an der Wand</span>' : ""}</span></button>`;
-      h += `</section>`;
-    }
+      + `<p class="note">${n} von ${P.MAX_LAYERS} Ebenen. Reihenfolge = Zeichenfolge, oben liegt zuoberst.</p></div></section>`;
     return h;
   }
   // Vorschau in der Palette: Symbol ohne Beschriftung, Ansicht um die Mitte
@@ -1055,7 +1061,8 @@ export function makePlan(c) {
     + `<p class="note">Gilt für Beschriftungen, Höhen, Verweise und Masse. Am gewählten Symbol, Verweis oder Mass rechts einzeln einstellbar, der Einzelwert geht vor.</p>`;
   const aderField = (v, attr, ph = "") => `<div class="field"><label>Aderzahl (Vorschlag oder frei, z. B. 5x1.5)</label><input type="text" list="pl-aders" ${attr}="atxt" value="${R.esc(v)}" placeholder="${ph}" autocomplete="off" spellcheck="false"><datalist id="pl-aders">${P.ADER_TXTS.map((x) => `<option value="${x}">`).join("")}</datalist></div>`;
   const copyRow = () => `<div class="row"><button class="btn outline small" data-plact="copy">Kopieren</button><button class="btn outline small" data-plact="dup">Duplizieren</button>${clip?.length ? `<button class="btn outline small" data-plact="paste">Einfügen</button>` : ""}</div>`;
-  function panelHTML(sel0, { head }) {
+  const panelHTML = (sel0, o) => `<div class="pl-rbody">${panelBody(sel0, o)}</div>${layersHTML()}`;
+  function panelBody(sel0, { head }) {
     const it = sel0.length === 1 ? sel0[0] : null, note = (t) => `<p class="note">${t}</p>`;
     if (it?.type === "wall") return head("Wand", P.MATS.find(([k]) => k === it.mat)[1]) + inp("len", "Länge Mittellinie in mm", P.fmtLen(P.wallLen(it))) + thickFields(it, "data-plf")
       + sel1("mat", P.MATS, it.mat, "Material") + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Länge ändern verschiebt das Ende (Griff am Ende), angeschlossene Ecken folgen. Ecken ziehen: Griff an den Enden.") + copyRow() + del1();
@@ -1290,15 +1297,15 @@ export function makePlan(c) {
     if (g) { const n = g.dataset.plgrp, on = !grpOpen.has(n); if (on) grpOpen.add(n); else grpOpen.delete(n); g.setAttribute("aria-expanded", on); g.closest("section").classList.toggle("zu", !on); return; }
     const b = e.target.closest("[data-plact]"); if (b) leftAct(b);
   });
-  c.leftEl.addEventListener("input", (e) => { // Deckkraft PDF-Plan: Vorschau beim Ziehen, gespeichert beim Loslassen (change)
+  c.rightEl.addEventListener("input", (e) => { // Deckkraft PDF-Plan: Vorschau beim Ziehen, gespeichert beim Loslassen (change)
     if (sh().kind !== "plan" || e.target.dataset.plbgop === undefined) return;
     const g = document.querySelector(".pl-bgimg"); if (g) g.setAttribute("opacity", e.target.value / 100);
   });
-  c.leftEl.addEventListener("change", (e) => {
+  c.rightEl.addEventListener("change", (e) => {
     if (sh().kind !== "plan" || e.target.dataset.plbgop === undefined) return;
     const v = Number(e.target.value), S0 = sh();
     change(() => { if (v === P.BG_OP) delete S0.bgOp; else S0.bgOp = v; });
-    c.renderSheet(); renderLeft();
+    c.renderSheet(); renderRight();
   });
   c.popEl.addEventListener("click", (e) => {
     const b = e.target.closest("[data-plact]");
@@ -1309,6 +1316,8 @@ export function makePlan(c) {
   });
   c.rightEl.addEventListener("click", (e) => {
     if (sh().kind !== "plan") return;
+    if (e.target.closest("[data-pllay]")) { layZu = !layZu; try { localStorage.setItem("pl-ebenen-zu", layZu ? "1" : "0"); } catch {} renderRight(); return; }
+    const lb = e.target.closest(".pl-dock [data-plact]"); if (lb) { leftAct(lb); return; } // Ebenen und PDF-Plan
     const sw = e.target.closest("[data-plcol]");
     if (sw) { change(() => { for (const it of sel()) P.setCol(it, sw.dataset.plcol); }); return; }
     const ec = e.target.closest("[data-plecol]"); // Kantenfarbe der Kanäle

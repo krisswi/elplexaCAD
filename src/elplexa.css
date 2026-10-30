@@ -628,3 +628,12 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 #pl-tip.on { display: flex; }
 #pl-tip kbd { color: #fff; background: transparent; border-color: rgba(255,255,255,.45); }
 @media print { #pl-tip { display: none !important; } }
+/* Plan: Ebenen unten in der rechten Leiste (CJ 30.10.2026), immer sichtbar, einklappbar. #right hat unten 20px Polster */
+#right:has(> .pl-dock) { display: flex; flex-direction: column; }
+.pl-rbody { flex: 1 0 auto; }
+.pl-dock { position: sticky; bottom: -20px; z-index: 2; margin: 16px -16px -20px; padding: 10px 16px 14px; background: var(--panel); border-top: 1px solid var(--panel-line); }
+.pl-dock .section-title { margin-bottom: 6px; }
+.pl-dock.zu .section-title { margin-bottom: 0; }
+.pl-dock.zu .pl-dockbody { display: none; }
+.pl-dockact { margin-left: auto; font-weight: 400; color: var(--faint); max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-dock .pl-dockbody { max-height: 45vh; overflow: auto; }

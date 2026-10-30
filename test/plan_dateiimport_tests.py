@@ -76,6 +76,7 @@ with sync_playwright() as p:
     page.select_option('[data-impsym="ALT_DOSE"]', "STD3")
     page.select_option('[data-impcol="#123456"]', "#d4141c")
     page.uncheck('[data-implay="txt"]')
+    page.screenshot(path=str(SHOT.with_name(SHOT.stem + "-dialog.png")))
     page.click("#modal-root [data-ok]"); page.wait_for_timeout(200)
     check("Gemerkt im Browser", page.evaluate("JSON.parse(localStorage.getItem('elplexa-plimport-map'))") == {"syms": {"ALT_DOSE": "STD3"}, "cols": {"#123456": "#d4141c"}})
 

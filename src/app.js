@@ -440,7 +440,7 @@ function renderLeftBody() {
   if (isOff()) { leftEl.innerHTML = OF.leftHTML(S.model.of); return; }
   if (isDispo()) { leftEl.innerHTML = dispoLeftHTML(); return; }
   if (isPv()) { leftEl.innerHTML = PV.leftHTML(); return; }
-  if (ELPLEXA && isPlan()) { leftEl.innerHTML = PL.leftHTML(); return; }
+  if (ELPLEXA && isPlan()) { const l = $("#left"), y = l.scrollTop; leftEl.innerHTML = PL.leftHTML(); l.scrollTop = y; return; } // Scrollstand bleibt (CJ 30.10.2026)
   let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>`;
   if (isPrinzip()) { leftEl.innerHTML = prinzipLeftHTML(h); return; }
   for (const t of [...TOOLS, ...SHAPE_TOOLS.filter((t) => !t.hidden)]) h += `<button class="tool" data-tool="${t.id}" id="tool-${t.id}" aria-pressed="${S.tool === t.id}"${HOLD_TOOLS[t.id] ? ` data-hold="${t.id}" aria-haspopup="menu" title="${HOLD_TOOLS[t.id]}"` : ""}>${R.icons[t.icon]}<span>${t.label}</span><span class="key">${t.key}</span></button>`; // Linie, Rechteck, Kreis nur im Schema (CJ 18.10.)

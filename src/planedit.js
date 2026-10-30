@@ -21,7 +21,7 @@ const ICON = {
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h5M17 18h5"/><path d="M7 18V8"/><path d="M7 8a10 10 0 0110 10"/></svg>',
   line: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18L10 8h10"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>',
   ader: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18C9 18 13 10 21 10"/><path d="M10.5 11.5l3 4.5"/><path d="M13 5.5h3l-2 3"/></svg>',
-  duct: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8h20M2 16h20"/><path d="M4 16l8-8M12 16l8-8M4 8l8 8M12 8l8 8" stroke-width="1" opacity=".6"/></svg>',
+  duct: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v10h16V9"/><path d="M2.5 6h19"/><circle cx="8.5" cy="15" r="2"/><circle cx="15.5" cy="15" r="2"/></svg>', // Querschnitt Kanal mit Deckel und Kabeln (CJ 30.10.2026: im Raster sonst wie die Wand)
   pdf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/></svg>',
   scale: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h18M3 14v3M7.5 15.5V17M12 14v3M16.5 15.5V17M21 14v3"/><path d="M7 5v6M12 6.5v.01M12 9.5v.01M16 5v6"/></svg>',
   measure: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20L20 4"/><path d="M4 15v5h5M20 9V4h-5"/></svg>',
@@ -831,10 +831,27 @@ export function makePlan(c) {
   }
 
   // ---------- Tasten ----------
-  const TOOL_KEYS = { v: "select", w: "pl-wall", o: "pl-open", b: "pl-dim", l: "pl-line", k: "pl-duct", d: "pl-ader", i: "pl-sline", q: "pl-srect", c: "pl-scircle", t: "pl-text" }; // I, Q wie im Schema; Kreis C (O = Öffnung) // CJ 27.10.2026: K = Kanal, Leitung nur noch L
-  const GRUND_TOOLS = ["pl-wall", "pl-open", "pl-dim", "pl-measure", "pl-fix", "pl-rotate"];
+  // Werkzeuge der linken Leiste (CJ 30.10.2026): eine Liste für Raster, Tooltip, Tasten und Hinweis. id = Werkzeug, act = Knopf (data-plact), s = Name im Hinweis
+  // I, Q wie im Schema; Kreis C (O = Öffnung) // CJ 27.10.2026: K = Kanal, Leitung nur noch L
+  const PL_TOOLS = [
+    { id: "select", icon: R.icons.select, t: "Auswählen", k: "V" }, { id: "hand", icon: R.icons.hand, t: "Ansicht schieben", k: "H" },
+    { act: "multi", icon: ICON.multi, t: "Mehrfachwahl", k: "⌘" }, { act: "free", icon: ICON.free, t: "Fang aus", k: "⌥" },
+    { id: "pl-line", icon: ICON.line, t: "Leitung", k: "L" }, { id: "pl-ader", icon: ICON.ader, t: "Aderzahl", k: "D" }, { id: "pl-duct", icon: ICON.duct, t: "Kanal/Trasse", s: "Kanal", k: "K" },
+    { id: "pl-sline", icon: R.icons.sline, t: "Linie", k: "I" }, { id: "pl-srect", icon: R.icons.srect, t: "Rechteck", k: "Q" }, { id: "pl-scircle", icon: R.icons.scircle, t: "Kreis", k: "C" }, { id: "pl-text", icon: R.icons.text, t: "Text", k: "T" },
+  ];
+  // Plan/Grundriss: nur auf der Ebene Hintergrund; pdf = nur mit geladenem PDF-Plan
+  const PL_GRUND = [
+    { act: "pdf", icon: ICON.pdf, t: () => (sh().bg?.asset ? "Neuer Planstand" : "PDF-Plan laden") }, { act: "scale", icon: ICON.scale, t: "Massstab eingeben", pdf: true },
+    { id: "pl-measure", icon: ICON.measure, t: "Massstab messen", pdf: true }, { id: "pl-fix", icon: ICON.fix, t: "Fixpunkt setzen", pdf: true }, { id: "pl-rotate", icon: ICON.rotate, t: "Plan drehen", pdf: true },
+    { id: "pl-wall", icon: ICON.wall, t: "Wand", k: "W" }, { id: "pl-open", icon: ICON.open, t: "Tür, Fenster", s: "Tür/Fenster", k: "O" }, { id: "pl-dim", icon: R.icons.dim, t: "Mass", k: "B" },
+  ];
+  const keyed = [...PL_GRUND, ...PL_TOOLS].filter((x) => x.id && /^[A-Z]$/.test(x.k ?? ""));
+  const TOOL_KEYS = Object.fromEntries(keyed.map((x) => [x.k.toLowerCase(), x.id]));
+  const KEYS_HINT = keyed.filter((x) => x.id !== "select" && x.id !== "hand").map((x) => `${x.k} ${x.s ?? x.t}`).join(", ");
+  const GRUND_TOOLS = PL_GRUND.filter((x) => x.id).map((x) => x.id);
   // Grundriss-Werkzeuge (Wand, Tür/Fenster, Mass) gibt es nur auf der Ebene Hintergrund (ohne sie auf der einzigen Ebene)
   const grundOn = () => sh().alay === "bg" || !P.layerById(sh(), "bg");
+  const toolShown = (id) => !GRUND_TOOLS.includes(id) || (grundOn() && (!PL_GRUND.find((x) => x.id === id).pdf || !!sh().bg?.asset));
   function key(e, mod) {
     const k = e.key;
     if (mod) {
@@ -922,20 +939,19 @@ export function makePlan(c) {
   }
 
   // ---------- Linke Leiste: Werkzeuge und Ebenen ----------
-  const toolBtn = (id, icon, label, key) => `<button class="tool" data-tool="${id}" aria-pressed="${S.tool === id}" title="${label} (Taste ${key})">${icon}<span>${label}</span><span class="key">${key}</span></button>`;
-  const bgTool = (id, icon, label) => `<button class="tool" data-tool="${id}" aria-pressed="${S.tool === id}">${icon}<span>${label}</span></button>`;
+  // Symbolraster (CJ 30.10.2026): nur Symbole, Titel und Taste im Tooltip; kein natives title (sonst doppelt). Kein <section>, die Symbolsuche blendet Sections aus
+  const toolBtn = (x) => {
+    const t = typeof x.t === "function" ? x.t() : x.t, on = x.id ? S.tool === x.id : opt[x.act];
+    return `<button class="tool" ${x.id ? `data-tool="${x.id}"` : `data-plact="${x.act}"`}${on !== undefined ? ` aria-pressed="${on}"` : ""} aria-label="${t}"${x.k ? ` aria-keyshortcuts="${x.k === "⌘" ? "Meta" : x.k === "⌥" ? "Alt" : x.k}" data-tipk="${x.k}"` : ""} data-tip="${t}">${x.icon}</button>`;
+  };
   function leftHTML() {
     const S0 = sh();
-    let h = `<section class="section"><h2 class="section-title">Werkzeuge</h2>` + toolBtn("select", R.icons.select, "Auswählen", "V") + toolBtn("hand", R.icons.hand, "Ansicht schieben", "H")
-      + `<button class="tool" data-plact="multi" aria-pressed="${opt.multi}" title="Mehrfachwahl: Klick fügt hinzu oder nimmt weg (wie ⌘-Klick)">${ICON.multi}<span>Mehrfachwahl</span><span class="key">⌘</span></button>`
-      + `<button class="tool" data-plact="free" aria-pressed="${opt.free}" title="Fang aus: frei setzen ohne Raster, Ecken und Ausrichtung (wie Alt gedrückt halten)">${ICON.free}<span>Fang aus</span><span class="key">⌥</span></button>`
-      + `</section>` + (grundOn() ? `<section class="section"><h2 class="section-title">Plan (PDF)</h2><button class="tool" data-plact="pdf">${ICON.pdf}<span>${S0.bg?.asset ? "Neuer Planstand" : "PDF-Plan laden"}</span></button>`
-        + (S0.bg?.asset ? `<button class="tool" data-plact="scale">${ICON.scale}<span>Massstab eingeben</span></button>` + bgTool("pl-measure", ICON.measure, "Massstab messen") + bgTool("pl-fix", ICON.fix, "Fixpunkt setzen") + bgTool("pl-rotate", ICON.rotate, "Plan drehen") : "")
-        + (S0.bg ? `<p class="note">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "")
-        + `</section><section class="section"><h2 class="section-title">Grundriss</h2>` + toolBtn("pl-wall", ICON.wall, "Wand", "W") + toolBtn("pl-open", ICON.open, "Tür, Fenster", "O") + toolBtn("pl-dim", R.icons.dim, "Mass", "B") + `</section>` : "")
-      + `<section class="section"><h2 class="section-title">Elektro</h2>` + toolBtn("pl-line", ICON.line, "Leitung", "L") + toolBtn("pl-ader", ICON.ader, "Aderzahl", "D") + toolBtn("pl-duct", ICON.duct, "Kanal/Trasse", "K")
-      + `</section><section class="section"><h2 class="section-title">Zeichnen</h2>` + toolBtn("pl-sline", R.icons.sline, "Linie", "I") + toolBtn("pl-srect", R.icons.srect, "Rechteck", "Q") + toolBtn("pl-scircle", R.icons.scircle, "Kreis", "C") + toolBtn("pl-text", R.icons.text, "Text", "T")
-      + `</section><section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`
+    tipHide();
+    if (!toolShown(S.tool)) queueMicrotask(() => { if (sh().kind === "plan" && !toolShown(S.tool)) { cancel(); setTool("select"); } }); // ausgeblendetes Werkzeug (Ebene, PDF weg, Rückgängig): zurück zu Auswählen V
+    let h = `<div class="pl-tools"><h2 class="section-title">Werkzeuge</h2><div class="pl-grid">${PL_TOOLS.map(toolBtn).join("")}</div>`
+      + (grundOn() ? `<h2 class="section-title">Plan/Grundriss</h2><div class="pl-grid">${PL_GRUND.filter((x) => !x.pdf || S0.bg?.asset).map(toolBtn).join("")}</div>` : "") + `</div>`
+      + (grundOn() && S0.bg ? `<p class="note pl-bgnote">${S0.bg.asset ? `${R.esc(S0.bg.name)}, Seite ${S0.bg.page}, ${S0.bg.mmPerPt ? fmtDen(denOf(S0.bg.mmPerPt)) : "Massstab fehlt"}${S0.bg.fix ? "" : ", Fixpunkt fehlt"}` : `PDF „${R.esc(S0.bg.name)}“ fehlt, bitte neu laden.`}</p>` : "")
+      + `<section class="section pl-layers"><h2 class="section-title">Ebenen</h2>`
       + (S0.bg?.asset ? `<div class="layer-row pl-bgrow${S0.bgOff ? " off" : ""}"><span class="layer-name">PDF-Plan</span>`
         + `<input type="range" min="10" max="100" step="10" value="${S0.bgOp ?? P.BG_OP}" data-plbgop aria-label="Deckkraft PDF-Plan in %" title="Deckkraft ${S0.bgOp ?? P.BG_OP} %"${S0.bgOff ? " disabled" : ""}>`
         + `<button class="layer-btn" data-plact="bgshow" data-key="show" aria-pressed="${!S0.bgOff}" title="${S0.bgOff ? "Einblenden" : "Ausblenden"} (Taste P)" aria-label="PDF-Plan: ${S0.bgOff ? "Einblenden" : "Ausblenden"}">${S0.bgOff ? ICON.eyeOff : ICON.eye}</button></div>` : "");
@@ -1229,8 +1245,41 @@ export function makePlan(c) {
     if (S.tool === "pl-fix") return "Fixpunkt: Punkt auf dem PDF-Plan klicken, der in allen Stockwerken gleich liegt (z. B. Ecke Treppenhaus). Er wird zum Nullpunkt.";
     if (S.tool === "pl-pmid") return "Druckmitte: in den Plan klicken, dort liegt die Mitte des Planfelds (Rahmen zeigt den Druckbereich). Esc bricht ab.";
     if (S.tool === "hand") return "Ziehen verschiebt die Ansicht.";
-    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "⌘-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. W Wand, O Tür/Fenster, B Mass, L Leitung, D Aderzahl, K Kanal, I/Q/C Linie/Rechteck/Kreis, R dreht Symbole und Formen, A Aufputz/Unterputz.`;
+    return `Plan: Klick wählt, ${opt.multi ? "Mehrfachwahl an: Klick fügt hinzu oder nimmt weg" : "⌘-Klick fügt hinzu"}, Rahmen ziehen wählt mehrere. Ziehen verschiebt, Griffe ziehen Ecken und Punkte. Entf löscht, ⌘C/⌘V/⌘D kopieren. ${KEYS_HINT}, R dreht Symbole und Formen, A Aufputz/Unterputz.`;
   }
+
+  // Tooltip im Symbolraster (CJ 30.10.2026): Titel und Taste nach 200 ms bei Maus und Tastaturfokus, rechts vom Knopf im Fenster.
+  // Touch: kein Hover, Langdruck zeigt den Titel und wählt das Werkzeug nicht.
+  let tipEl = null, tipT = 0, tipLong = false, tipAt = null;
+  function tipHide() { clearTimeout(tipT); tipEl?.classList.remove("on"); }
+  function tipShow(b) {
+    if (!b.isConnected) return;
+    if (!tipEl) { tipEl = document.createElement("div"); tipEl.id = "pl-tip"; tipEl.setAttribute("aria-hidden", "true"); document.body.append(tipEl); } // Vorleser: aria-label am Knopf
+    tipEl.innerHTML = `<span>${R.esc(b.dataset.tip)}</span>${b.dataset.tipk ? `<kbd>${R.esc(b.dataset.tipk)}</kbd>` : ""}`;
+    tipEl.classList.add("on");
+    const r = b.getBoundingClientRect(), w = tipEl.offsetWidth, hh = tipEl.offsetHeight;
+    const x = r.right + 6 + w <= innerWidth - 4 ? r.right + 6 : Math.max(4, r.left - 6 - w);
+    tipEl.style.left = `${x}px`; tipEl.style.top = `${Math.min(Math.max(4, r.top + (r.height - hh) / 2), innerHeight - hh - 4)}px`;
+  }
+  const tipBtn = (e) => e.target.closest?.(".pl-tools [data-tip]");
+  c.leftEl.addEventListener("pointerover", (e) => {
+    const b = tipBtn(e); if (!b || e.pointerType !== "mouse") return;
+    clearTimeout(tipT); if (tipEl?.classList.contains("on")) tipShow(b); else tipT = setTimeout(() => tipShow(b), 200);
+  });
+  c.leftEl.addEventListener("pointerout", (e) => { const b = tipBtn(e); if (b && !b.contains(e.relatedTarget)) tipHide(); });
+  c.leftEl.addEventListener("focusin", (e) => { const b = tipBtn(e); if (b?.matches(":focus-visible")) { clearTimeout(tipT); tipT = setTimeout(() => tipShow(b), 200); } });
+  c.leftEl.addEventListener("focusout", (e) => { if (tipBtn(e)) tipHide(); });
+  c.leftEl.addEventListener("pointerdown", (e) => {
+    tipHide(); tipLong = false; const b = tipBtn(e); if (!b || e.pointerType === "mouse") return;
+    tipAt = [e.clientX, e.clientY]; tipT = setTimeout(() => { tipLong = true; tipShow(b); }, 500);
+  });
+  c.leftEl.addEventListener("pointermove", (e) => { if (tipAt && !tipLong && Math.hypot(e.clientX - tipAt[0], e.clientY - tipAt[1]) > 10) { clearTimeout(tipT); tipAt = null; } });
+  const tipUp = () => { tipAt = null; if (tipLong) tipT = setTimeout(tipHide, 1500); else clearTimeout(tipT); };
+  c.leftEl.addEventListener("pointerup", tipUp); c.leftEl.addEventListener("pointercancel", tipUp);
+  c.leftEl.addEventListener("click", (e) => { if (tipLong && tipBtn(e)) { tipLong = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true); // Langdruck wählt nicht
+  c.leftEl.addEventListener("contextmenu", (e) => { if (tipBtn(e)) e.preventDefault(); });
+  document.addEventListener("scroll", tipHide, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") tipHide(); }, true);
 
   // Bedienung der Leisten (eigene Datenattribute, app.js kennt sie nicht)
   c.leftEl.addEventListener("click", (e) => {

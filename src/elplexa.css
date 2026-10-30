@@ -615,3 +615,16 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 .el-mna svg { width: 18px; height: 18px; }
 .el-mst { display: inline-block; margin-left: 6px; font-size: 13px; font-weight: 600; padding: 0 6px; border-radius: 6px; background: #F2F4F2; color: #5B665A; }
 .el-mst.on { background: #E3F1E8; color: #1F5C38; }
+
+/* Plan: Werkzeuge als Symbolraster links oben (CJ 30.10.2026), bleibt beim Scrollen der Leiste stehen. #left hat oben 14px Polster */
+.pl-tools { position: sticky; top: -14px; z-index: 2; margin: -14px -12px 14px; padding: 14px 12px 8px; background: var(--panel); border-bottom: 1px solid var(--panel-line); }
+.pl-tools .section-title { margin: 0 0 4px; }
+.pl-tools .pl-grid + .section-title { margin-top: 8px; }
+.pl-grid { display: flex; flex-wrap: wrap; gap: 2px; }
+.pl-grid .tool { flex: none; width: 36px; height: 36px; padding: 0; justify-content: center; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.pl-grid .tool svg { width: 20px; height: 20px; }
+@media (pointer: coarse) { .pl-grid .tool { width: 44px; height: 44px; } }
+#pl-tip { position: fixed; z-index: 45; display: none; align-items: center; gap: 8px; padding: 4px 6px 4px 8px; border-radius: 6px; background: var(--ink); color: #fff; font-size: 12.5px; font-weight: 500; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 14px rgba(23,33,43,.2); }
+#pl-tip.on { display: flex; }
+#pl-tip kbd { color: #fff; background: transparent; border-color: rgba(255,255,255,.45); }
+@media print { #pl-tip { display: none !important; } }

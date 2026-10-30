@@ -127,7 +127,7 @@ const isOff = () => S.model.kind === "offerte"; // Offerte (offedit.js, CJ 26.10
 const isPlan = () => S.model.kind === "plan"; // Plan (planedit.js, nur elplexaCAD, CJ 23.10.2026): immer als ELPLEXA && isPlan(), fällt im v3-Bau weg
 // Plan (nur elplexaCAD): eigene Bedienung, app.js leitet Zeiger, Tasten und Leisten weiter
 let MP = null; // Pläne für den Monteur (elmonteur.js), wird unten bei den elplexaCAD-Teilen angelegt
-const PL = ELPLEXA ? makePlan({ S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, renderSheet, updateHint, fitView, applyView, pushUndo, snapshot, markDirty, nextId, formDialog, confirmDialog, chooseDialog, openModal, sheetLabel, workCount: () => workCount(), download: (...a) => download(...a),
+const PL = ELPLEXA ? makePlan({ S, toast, change, setTool, renderItems, renderOverlay, renderRight, renderLeft, renderSheet, updateHint, fitView, applyView, pushUndo, snapshot, markDirty, nextId, formDialog, confirmDialog, chooseDialog, openModal, sheetLabel, workCount: () => workCount(), addPlan: (fill) => addPlan(undefined, fill), download: (...a) => download(...a),
   leftEl, rightEl, popEl: $("#pv-pop"), hidePop: () => pvPop?.hide(false), viewBox: () => { const r = stage.getBoundingClientRect(), a = toWorld(0, r.height), b = toWorld(r.width, 0); return { x0: a.x, y0: a.y, x1: b.x, y1: b.y }; } }) : null;
 function toWorld(sx, sy) { return { x: (sx - S.view.x) / S.view.z, y: H - (sy - S.view.y) / S.view.z }; }
 function toScreen(x, y) { return { x: S.view.x + x * S.view.z, y: S.view.y + (H - y) * S.view.z }; }
@@ -901,6 +901,7 @@ function syncKind() {
   $("#mag-on").closest("label").style.display = isDispo() || isPv() || isDeck() || isPrinzip() || ELPLEXA && isPlan() ? "none" : ""; // Feldmitte: nur Schema (Spalten im Rahmen)
   $("#grid-on").closest("label").style.display = $("#grid-size").style.display = isDeck() ? "none" : ""; // Titelseite, Inhalt: nichts zu zeichnen
   $("#btn-handover").hidden = !isDispo();
+  if (ELPLEXA) { const ib = $("#el-plimport"); if (ib) ib.hidden = !isPlan(); } // Plan-Import (CJ 30.10.2026), Knopf entsteht mit der Kopfleiste
   renderPvBar();
   $("#dims-on").closest("label").style.display = isDispo() ? "" : "none";
   ofView.hidden = !isOff(); document.body.classList.toggle("is-offerte", isOff()); // Offerte: Tabelle über der Zeichenfläche, Raster und Zoom ausgeblendet (style.css)
@@ -963,13 +964,15 @@ function addPrinzip(v) {
   afterSheetChange(k0);
 }
 // Plan (nur elplexaCAD, CJ 23.10.2026): leeres Blatt im offenen Plan-Modul, Ebene «Hintergrund», A3 quer 1:50, eigene sid (Notizen im Teilen-Link)
-function addPlan(v) {
+// fill: füllt das neue Blatt im selben Rückgängig-Schritt (Import «Als neuer Plan», planedit.js)
+function addPlan(v, fill) {
   setTool("select");
   const k0 = S.model.kind;
   v = varIn("plan", v);
   change(() => {
     const sh = setVar(newPlanSheet(newSheet("plan")), v);
     sh.sid = nextId(); sh.meta.BLATT = String(maxNo("plan") + 1);
+    fill?.(sh);
     S.doc.sheets.push(sh); S.active = S.doc.sheets.length - 1; S.sel.clear();
   });
   afterSheetChange(k0, { fit: true }); // CJ 24.10.2026: neuer Plan eingepasst, nicht mit Zoom/Ausschnitt des vorigen Plans (lag dort, wo die Maus beim Zoomen war)
@@ -2618,7 +2621,9 @@ function elBarInit() {
   ss.innerHTML = `<span class="el-okdot" id="el-okdot"></span><span id="el-savetxt"></span>`; ss.prepend($("#dirty"));
   const sp2 = document.createElement("div"); sp2.className = "spacer";
   const right = document.createElement("div"); right.className = "el-right";
-  right.append(chip, $("#btn-save"), ss, $("#topbar .menuwrap"));
+  const imp = document.createElement("button"); imp.className = "btn"; imp.id = "el-plimport"; imp.type = "button"; imp.hidden = !isPlan(); imp.title = "Stockwerk aus einer .elplexa.json in diesen Plan oder als neuen Plan importieren";
+  imp.innerHTML = `<span class="ic" data-ic="open">${R.icons.open}</span><span class="lbl">Import</span>`; imp.addEventListener("click", () => PL.importPlan()); // Plan-Import (CJ 30.10.2026), nur im Plan sichtbar (syncKind)
+  right.append(chip, imp, $("#btn-save"), ss, $("#topbar .menuwrap"));
   r2.append($("#btn-left"), tabs, tsel, fc, $("#pv-bar"), $("#doc-bar"), $("#btn-handover"), sp2, right, $("#btn-right"));
   for (const x of [...tb.children]) if (x !== r1 && x !== r2 && !x.matches(".spacer")) r2.insertBefore(x, sp2); // was sonst noch in der Leiste liegt (ausgeblendete Knöpfe)
   tb.querySelector(":scope > .spacer")?.remove();

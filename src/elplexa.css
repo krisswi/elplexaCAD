@@ -638,3 +638,7 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 .pl-row .mh { display: inline-flex; align-items: center; gap: 6px; }
 .srow .pin.pl-eye { color: var(--muted); }
 .srow .pin.pl-eye[aria-pressed="false"] { color: var(--faint); }
+/* Plan-Import (CJ 30.10.2026): Dialog mit Ebenen, Zuordnung unbekannter Symbole und Farben, Ziel */
+.modal.pl-impdlg { max-height: 85vh; overflow-y: auto; }
+.pl-impdlg .pl-imph { font-size: 14px; margin: 14px 0 6px; }
+.pl-impdlg .pl-impsw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0, 0, 0, .2); }

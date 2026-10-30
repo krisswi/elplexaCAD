@@ -12,6 +12,7 @@ import { PAPERS, paperSize, printArea, paperLabel, fmtDen, PT_MM, mmPerPt, fixOf
 import { openPdf, pageSize, toBase64, imageFor, imageReady } from "./pdfbg.js";
 import { pageSVG } from "./pvprint.js";
 import * as R from "./render.js";
+import * as IM from "./planimport.js";
 
 const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3", GUIDE = "#e08a00", FRAME = "#6b7785", PIN = "#f4c400"; // PIN: Fangpunkte der Symbole (Farbe wie der Fang an Punkten)
 const OPEN_W = { tuer: 900, fenster: 1200, durchgang: 900, schiebe: 900 }; // Vorgabe Breiten in mm (Annahme)
@@ -50,6 +51,7 @@ export function makePlan(c) {
   let ductDraft = null; // Kanal im Entstehen: { pts, len, ang, field } (Länge und Winkel tippen wie bei der Wand)
   let bgDraft = null; // Messstrecke oder Kante zum Drehen (PDF-Plan): erster Punkt [x, y]
   let clip = null, clipN = 0; // Zwischenablage (nur in der Sitzung, auch in andere Pläne): kopierte Objekte, Anzahl Einfügungen
+  let imp = null; // Import am Mauszeiger (CJ 30.10.2026): { src, ids, items, at, rot, pinned, press, skipped }
   let draft = null; // Wand im Entstehen: { a, start, len, ang, field }
   let dimDraft = null; // Mass im Entstehen: { a, b? }
   let drag = null, mouse = null, raw = null;
@@ -279,6 +281,88 @@ export function makePlan(c) {
     c.applyView(); c.renderSheet(); setTool("select");
     toast("Fixpunkt gesetzt.");
   }
+  // ---------- Import (CJ 30.10.2026): Stockwerk aus einer .elplexa.json, Dialog, Zuordnung, Fixpunkt ----------
+  const IMP_KEY = "elplexa-plimport-map"; // gemerkte Zuordnung im Browser (CJ 30.10.2026): { syms: { alt: neu }, cols: { alt: neu } }, "" = überspringen
+  const impMem = () => { try { const v = JSON.parse(localStorage.getItem(IMP_KEY) || "{}"); return { syms: v?.syms || {}, cols: v?.cols || {} }; } catch { return { syms: {}, cols: {} }; } };
+  const impSave = (syms, cols) => { const m = impMem(); try { localStorage.setItem(IMP_KEY, JSON.stringify({ syms: { ...m.syms, ...syms }, cols: { ...m.cols, ...cols } })); } catch { /* ohne Speicher: gilt nur für diesen Import */ } };
+  const symOpts = (cur) => `<option value="">überspringen (weglassen)</option>` + SYM_GROUPS.map((g) => `<optgroup label="${R.esc(g)}">${PLAN_SYMS.filter((d) => d.group === g).map((d) => `<option value="${d.key}"${d.key === cur ? " selected" : ""}>${R.esc(d.label)}</option>`).join("")}</optgroup>`).join("");
+  const colOpts = (cur) => `<option value="">überspringen (Farbe bleibt)</option>` + P.PLAN_COLS.map(([c, l]) => `<option value="${c}"${c === cur ? " selected" : ""}>${R.esc(l)}</option>`).join("");
+  // Dialog: Ebenen mit Häkchen (Anzahl Objekte), unbekannte Symbole und Farben zuordnen, Ziel. Gibt { ids, symMap, colMap, ziel } oder null.
+  function importDialog(name, rs, scan) {
+    const m = impMem(), lay = IM.layerCounts({ layers: P.cleanPlanLayers(rs.layers), items: Array.isArray(rs.items) ? rs.items : [] });
+    let body = `<p>${R.esc(name)}: ein Stockwerk. Welche Ebenen sollen übernommen werden?</p>`
+      + lay.map((l) => `<label class="check"><input type="checkbox" data-implay="${l.id}" checked> ${R.esc(l.name)} (${l.n} ${l.n === 1 ? "Objekt" : "Objekte"})${l.lock ? " · gesperrt" : ""}</label>`).join("");
+    if (scan.syms.length) body += `<h3 class="pl-imph">Unbekannte Symbole</h3><p class="note">Jedem ein Symbol zuordnen oder überspringen. Gilt für alle Vorkommen in der Datei und wird im Browser gemerkt.</p>`
+      + scan.syms.map(({ k, n }) => `<div class="field"><label>${R.esc(k || "(ohne Namen)")} (${n}×)</label><select data-impsym="${R.esc(k)}">${symOpts(m.syms[k] ?? "")}</select></div>`).join("");
+    if (scan.cols.length) body += `<h3 class="pl-imph">Unbekannte Farben</h3>`
+      + scan.cols.map(({ k, n }) => `<div class="field"><label><span class="pl-impsw" style="background:${k}"></span>${k} (${n}×)</label><select data-impcol="${k}">${colOpts(m.cols[k] ?? "")}</select></div>`).join("");
+    body += `<h3 class="pl-imph">Ziel</h3><label class="check"><input type="radio" name="impziel" data-impziel value="open" checked> In offenen Plan (neue Ebenen), danach Fixpunkt setzen</label>`
+      + `<label class="check"><input type="radio" name="impziel" data-impziel value="new"> Als neuer Plan</label>`
+      + `<div class="actions"><button class="btn outline" data-c>Abbrechen</button><button class="btn primary" data-ok>Weiter</button></div>`;
+    return c.openModal("Plan importieren", body, (b, done) => {
+      if (b.dataset.c !== undefined) { done(null); return; }
+      if (b.dataset.ok === undefined) return;
+      const root = document.querySelector("#modal-root"), all = (q) => [...root.querySelectorAll(q)];
+      const ids = new Set(all("[data-implay]").filter((x) => x.checked).map((x) => x.dataset.implay));
+      if (!ids.size) { toast("Mindestens eine Ebene wählen.", "error"); return; }
+      done({ ids, symMap: Object.fromEntries(all("[data-impsym]").map((x) => [x.dataset.impsym, x.value])), colMap: Object.fromEntries(all("[data-impcol]").map((x) => [x.dataset.impcol, x.value])), ziel: root.querySelector("[data-impziel]:checked").value });
+    }, null, "[data-ok]", "pl-impdlg");
+  }
+  async function importPlan() {
+    if (S.shared) return;
+    const file = await pickFile(".json,application/json");
+    if (!file) return;
+    let rd;
+    try { rd = IM.readImport(await file.text()); } catch (err) { toast(`Import nicht möglich: ${err.message}`, "error"); return; }
+    let pi = rd.plans[0];
+    if (rd.plans.length > 1) { const ch = await chooseDialog("Plan wählen", `Die Datei enthält ${rd.plans.length} Pläne. Welcher soll importiert werden?`, rd.plans.map((x) => ({ label: `${x.label} (${x.n} Objekte)`, x }))); if (!ch?.option) return; pi = ch.option.x; }
+    const rs = rd.o.sheets[pi.i], scan = IM.scanImport(rd.o, pi.i);
+    const r = await importDialog(file.name, rs, scan);
+    if (!r) return;
+    impSave(r.symMap, r.colMap);
+    let pre;
+    try { pre = IM.prepareImport(rd.o, pi.i, r.symMap, r.colMap); } catch (err) { toast(`Import nicht möglich: ${err.message}`, "error"); return; }
+    const skip = pre.skipped ? ` ${pre.skipped} unbekannte ${pre.skipped === 1 ? "Symbol" : "Symbole"} übersprungen.` : "";
+    if (r.ziel === "new") { // ohne Fixpunkt: Nullpunkt der Datei = Nullpunkt des Plans; Papier, Textgrösse und PDF-Plan (mit «Hintergrund») kommen mit
+      const src = pre.sheet, b = r.ids.has("bg") && src.bg?.asset ? pre.assets[src.bg.asset] : null;
+      let aid = null;
+      if (b) { aid = Object.entries(S.doc.assets || {}).find(([, a]) => a.data === b.data)?.[0]; if (!aid) { aid = "pdf" + nextId(); S.doc.assets = { ...(S.doc.assets || {}), [aid]: b }; } }
+      let res;
+      c.addPlan((ns) => {
+        res = IM.mergePlan(ns, src, r.ids, [0, 0], 0, nextId);
+        ns.paper = { ...src.paper }; if (src.tf) ns.tf = src.tf;
+        if (aid) { ns.bg = { ...src.bg, asset: aid }; for (const f0 of ["bgOp", "bgOff"]) if (src[f0] !== undefined) ns[f0] = src[f0]; }
+      });
+      toast(`Als neuer Plan importiert: ${res.items.length} Objekte auf ${res.layers.length} Ebenen.${skip} Rückgängig mit ⌘Z.`);
+      return;
+    }
+    try { IM.mergePlan(JSON.parse(JSON.stringify(sh())), pre.sheet, r.ids, [0, 0], 0, () => 0); } catch (err) { toast(err.message, "error"); return; } // Platz für die Ebenen? Sonst gleich melden, vor dem Fixpunkt
+    setTool("select");
+    const v = c.viewBox();
+    imp = { src: pre.sheet, ids: r.ids, items: IM.pickItems(pre.sheet, r.ids), at: [Math.round((v.x0 + v.x1) / 2), Math.round((v.y0 + v.y1) / 2)], rot: 0, pinned: false, press: false, skip };
+    renderOverlay(); updateHint();
+    toast("Nullpunkt der Datei (Aussenecke unten links) setzen: Klick oder ziehen, R dreht, Enter übernimmt, Esc bricht ab.");
+  }
+  const snapImp = (w) => P.snapPlan(sh(), visible(), [w.x, w.y], { grid: S.grid.on ? S.grid.size : 0, tol: tol(), alt: S.alt, faces: faces() });
+  function importAt(w, e) { if (e) S.alt = e.altKey || opt.free; const p = snapImp(w); imp.at = [p.x, p.y]; mouse = p; }
+  // Enter: ein Rückgängig-Schritt, importierte Objekte (wählbare) bleiben gewählt
+  function commitImport() {
+    const { src, ids, at, rot, skip } = imp;
+    imp = null;
+    let res;
+    try { change(() => { res = IM.mergePlan(sh(), src, ids, at, rot, nextId); }); } catch (err) { toast(err.message, "error"); renderOverlay(); updateHint(); return; }
+    setTool("select");
+    S.sel = new Set(res.items.filter((i) => !P.hangs(i) && P.isPickable(sh(), i)).map((i) => i.id));
+    renderLeft(); renderRight(); renderOverlay();
+    toast(`Importiert: ${res.items.length} Objekte auf ${res.layers.length} Ebenen${rot ? `, gedreht ${rot}°` : ""}.${skip} Rückgängig mit ⌘Z.`);
+  }
+  function importSVG(z) {
+    const S0 = { ...sh(), layers: imp.src.layers.filter((l) => imp.ids.has(l.id)).map((l) => ({ ...l, show: true })), items: IM.placeItems(JSON.parse(JSON.stringify(imp.items)), imp.at, imp.rot) };
+    const [x, y] = imp.at, a = (imp.rot * Math.PI) / 180, L = 40 / z, ax = (d) => [x + Math.cos(a + d) * L, y + Math.sin(a + d) * L];
+    return `<g opacity=".5" pointer-events="none" class="pl-imppv">${itemsSVG(S0)}</g>`
+      + `<g pointer-events="none" class="pl-impfix"><path d="M${pt([x, y])}L${pt(ax(0))}M${pt([x, y])}L${pt(ax(Math.PI / 2))}" stroke="#d4141c" stroke-width="2" fill="none"/><circle cx="${f(x)}" cy="${f(y)}" r="${f(6 / z)}" fill="none" stroke="#d4141c" stroke-width="2"/></g>`;
+  }
+
   // Fang für Messen, Fixpunkt, Drehen: Ecken und Flächen der Wände, sonst frei (kein Raster, der PDF-Plan hat sein eigenes)
   const snapBg = (w, ortho) => P.snapPlan(sh(), visible(), [w.x, w.y], { tol: tol(), alt: S.alt, ortho: S.shift ? ortho : undefined, faces: faces() });
   // Vor dem Druck: Bilder der PDF-Pläne fertig rendern (files.js printSheets)
@@ -517,6 +601,7 @@ export function makePlan(c) {
     if (S.tool === "pl-ader" && raw) { const h = lineAt([raw.x, raw.y]); if (h) s += `<g class="pl-scale" opacity=".85">${aderSVG(h.line, { t: h.t, txt: opt.atxt }, k, DRAFT)}</g>`; }
     if (S.tool === "pl-open" && raw) { const pv = openPreview(); if (pv) s += `<g class="pl-scale">${openingSVG(pv.w, pv.o, k, DRAFT)}</g>`; }
     s += pinsSVG(z);
+    if (imp) s += importSVG(z); // Vorschau des Imports, Nullpunkt mit x- und y-Richtung
     if (mouse?.guides) s += mouse.guides.map(([q, r]) => `<path d="M${pt(q)}L${pt(r)}" stroke="${GUIDE}" stroke-width="1" stroke-dasharray="${px(6)} ${px(4)}" fill="none"/><circle cx="${f(q[0])}" cy="${f(q[1])}" r="${px(3)}" fill="${GUIDE}"/>`).join("");
     if (mouse && S.tool !== "select" && S.tool !== "hand" && S.tool !== "pl-sym") s += `<circle cx="${f(mouse.x)}" cy="${f(mouse.y)}" r="${px(mouse.snap && mouse.snap !== "grid" ? 5 : 3)}" fill="${mouse.snap === "end" ? "#f4c400" : mouse.snap === "align" ? GUIDE : "#fff"}" stroke="${DRAFT}" stroke-width="1.5"/>`;
     return s;
@@ -611,6 +696,7 @@ export function makePlan(c) {
     const id = nextId(); change(() => sh().items.push(P.cleanPlanObj({ type: "text", layer: sh().alay, at, txt: r[0] }, id)));
   }
   function down(w, e) {
+    if (imp) { imp.pinned = true; imp.press = true; importAt(w, e); renderOverlay(); updateHint(); return; } // Klick setzt den Nullpunkt, Ziehen verschiebt ihn
     raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
     const T = S.tool;
     if (T === "pl-wall") {
@@ -715,6 +801,7 @@ export function makePlan(c) {
     renderRight(); renderOverlay();
   }
   function move(w, e) {
+    if (imp) { if (!imp.pinned || imp.press) importAt(w, e); renderOverlay(); return; }
     raw = w; S.shift = e.shiftKey; S.alt = e.altKey || opt.free;
     mouse = S.tool === "pl-measure" || S.tool === "pl-rotate" || S.tool === "pl-fix" ? snapBg(w, bgDraft ?? undefined) : S.tool === "pl-line" ? snapLine(w, lineDraft?.pts.at(-1)) : S.tool === "pl-duct" ? snapDuct(w, ductDraft?.pts.at(-1)) : S.tool === "pl-wall" ? snapWall(w, draft?.a) : shapeKey(S.tool) ? snapShape(w, shapeDraft?.k === "line" ? shapeDraft.a : undefined) : S.tool === "pl-dim" ? snapDim(w, dimDraft?.b ? undefined : dimDraft?.a) : snapAt(w);
     if (shapeDraft?.press && Math.hypot(w.x - shapeDraft.a[0], w.y - shapeDraft.a[1]) * S.view.z > 3) shapeDraft.moved = true;
@@ -742,6 +829,7 @@ export function makePlan(c) {
   const otherEnd = (d) => { const it = d.ends[0]?.it; return it ? it[d.ends[0].e === "a" ? "b" : "a"] : undefined; };
   const boxOf = (d) => ({ x0: Math.min(d.sx, d.ex), y0: Math.min(d.sy, d.ey), x1: Math.max(d.sx, d.ex), y1: Math.max(d.sy, d.ey) });
   function up() {
+    if (imp) { imp.press = false; return; }
     if (shapeDraft?.press) { const done = shapeDraft.moved; shapeDraft.press = false; if (done) finishShape(); } // gezogen: Loslassen setzt das Ende
     const d = drag; drag = null;
     if (d?.type === "box") { if (d.started) { const ids = pickable().filter((i) => P.inBox(sh(), i, boxOf(d))).map((i) => i.id); S.sel = new Set([...(d.add ? S.sel : []), ...ids]); } renderRight(); renderOverlay(); return; }
@@ -755,6 +843,7 @@ export function makePlan(c) {
   }
   let lastLab = null; // letzter Druck auf eine Beschriftung (Doppelklick, das dblclick-Ereignis kommt nach dem Neuzeichnen nicht an)
   function tap(w) {
+    if (imp) { imp.pinned = true; importAt(w); renderOverlay(); updateHint(); return; }
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], 14 / S.view.z);
     if (opt.multi && hit) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; } else S.sel = hit ? new Set([hit.id]) : new Set();
     renderRight(); renderOverlay();
@@ -821,8 +910,8 @@ export function makePlan(c) {
   function selAll() { if (S.tool !== "select") setTool("select"); S.sel = new Set(pickable().map((i) => i.id)); renderRight(); renderOverlay(); }
   // Entwurf beenden. Gibt true, wenn etwas abgebrochen wurde.
   function cancel() {
-    const had = !!(draft || dimDraft || lineDraft || bgDraft || ductDraft || shapeDraft);
-    draft = null; dimDraft = null; lineDraft = null; bgDraft = null; ductDraft = null; shapeDraft = null;
+    const had = !!(draft || dimDraft || lineDraft || bgDraft || ductDraft || shapeDraft || imp);
+    imp = null; draft = null; dimDraft = null; lineDraft = null; bgDraft = null; ductDraft = null; shapeDraft = null;
     return had;
   }
   function del() {
@@ -855,6 +944,12 @@ export function makePlan(c) {
   const toolShown = (id) => !GRUND_TOOLS.includes(id) || (grundOn() && (!PL_GRUND.find((x) => (x.id ?? x.tool) === id).pdf || !!sh().bg?.asset));
   function key(e, mod) {
     const k = e.key;
+    if (imp) { // Import: R dreht, Enter übernimmt, Esc bricht ab; Werkzeugtasten und ⌘-Kürzel ruhen, Leertaste, F und Zoom bleiben
+      if (k === "Escape") { imp = null; renderOverlay(); updateHint(); toast("Import abgebrochen."); return true; }
+      if (k === "Enter") { commitImport(); return true; }
+      if (!mod && k.toLowerCase() === "r" && !e.altKey) { imp.rot = (imp.rot + (e.shiftKey ? 270 : 90)) % 360; renderOverlay(); updateHint(); return true; }
+      return mod ? !["+", "-", "=", "0"].includes(k) : k.length === 1 && !" f+-=".includes(k.toLowerCase());
+    }
     if (mod) {
       const m = k.toLowerCase();
       if (m === "a") { selAll(); return true; }
@@ -1291,6 +1386,7 @@ export function makePlan(c) {
   const printLabel = () => { const p = P.paperOf(sh()); return { text: `${paperLabel(p)} ${fmtDen(p.den)}`, warn: false }; };
 
   function hint() {
+    if (imp) return `Import: ${imp.pinned ? "Nullpunkt gesetzt, Ziehen verschiebt ihn" : "Nullpunkt der Datei (Aussenecke unten links) am Mauszeiger, Klick setzt ihn"}. R dreht um 90° (jetzt ${imp.rot}°), Alt schaltet den Fang um. Enter übernimmt, Esc bricht ab.`;
     if (S.tool === "pl-wall") return draft ? `Wand: Länge tippen (Innenkante, z. B. 3450 oder 3,45 m), Tab = Winkel tippen, Enter setzt, oder klicken. Shift 0/45/90°, orange Linie = Ausrichtung (Rechteck schliessen), Alt ohne Fang, X wechselt die Wandseite, Klick auf den Anfang schliesst, Esc beendet.${draft.len || draft.ang ? `  Eingabe: ${draft.len || "–"} mm, ${draft.ang || "–"}°` : ""}` : `Wand: Klick setzt den Anfang der Innenkante (Wandecken, Wandflächen, Ausrichtung und Raster rasten ein, Alt frei). Die Wand liegt ${opt.side === 0 ? "automatisch aussen (nach der ersten Kurve)" : opt.side > 0 ? "links der Zeichenrichtung" : "rechts der Zeichenrichtung"}, X wechselt. Dicke und Material rechts.`;
     if (S.tool === "pl-open") return `${P.OPENINGS.find(([k]) => k === opt.okind)[1]}: Klick auf eine Wand setzt sie (${P.fmtLen(opt.ow[opt.okind])} mm) mittig auf den Klick.${opt.okind === "tuer" ? ` Tab wechselt den Anschlag (Band ${opt.hinge === "r" ? "rechts" : "links"}), R die Aufgehrichtung.` : opt.okind === "schiebe" ? " R wechselt die Seite." : ""} O wechselt Tür/Fenster, Art und Breite rechts.`;
     if (S.tool === "pl-dim") return dimDraft?.b ? "Mass: Klick setzt die Lage der Masslinie. Esc bricht ab." : dimDraft ? "Mass: zweiten Punkt klicken. Shift 0/45/90°. Esc bricht ab." : `Mass: ersten Punkt klicken (Ecken rasten ein).${opt.ctrl ? " Kontrollmass: Ist und Soll." : ""}`;
@@ -1381,5 +1477,5 @@ export function makePlan(c) {
 
   // Alt oder Shift gedrückt oder losgelassen: Fangpunkt unter dem Zeiger neu berechnen
   const mod = () => { if (raw) move(raw, { shiftKey: S.shift, altKey: S.alt }); };
-  return { mod, sheetSVG, itemsSVG, overlaySVG, bounds, hint, leftHTML, panelHTML, barHTML, barInit, holdHTML, holdAct, popHTML, printLabel, down, move, up, tap, key, del, cancel, grid, pickable };
+  return { mod, sheetSVG, itemsSVG, overlaySVG, bounds, hint, leftHTML, panelHTML, barHTML, barInit, holdHTML, holdAct, popHTML, printLabel, down, move, up, tap, key, del, cancel, grid, pickable, importPlan };
 }

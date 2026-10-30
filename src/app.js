@@ -2086,6 +2086,7 @@ onPanel("click", (e) => {
   ({ autowire: autoWire, pzwire: () => one && pzWire(one), rotate: rotateSelected, dup: duplicateSelected, del: deleteSelected, base: insertBase, feed: addFeed, addrail: addRail, align: () => alignSelected(b.dataset.m), delsheet: deleteSheet, dupsheet: duplicateSheet, gotitle: () => switchSheet(S.doc.sheets.indexOf(T.titleOf(S.doc))), golegend: () => { S.legSel = one?.id ?? null; switchSheet(S.doc.sheets.length - 1); }, relink: () => one && changeLink(one), unlink: () => one && change(() => unlinkRef(S.doc, one)), autorail: () => addAutoRails(one, Number(b.dataset.n), Number(b.dataset.p)), handover: handOver, gosrc: () => { const i = S.doc.sheets.findIndex((sh) => sh.kind === "dispo" && sh.sid === one?.src); if (i >= 0) switchSheet(i); } })[b.dataset.act]?.();
 });
 
+if (ELPLEXA) PL.barInit($("#sheetbar"), (b) => (holdMenu.open && holdMenu.anchorId() === b.id ? holdMenu.hide() : holdOpen(b, "pl:#list"))); // Plan: aktive Ebene in der Blattleiste, Klick = Liste
 let addHeld = false, addTimer = 0; // langes Drücken auf + öffnet die Auswahl statt ein Blatt anzulegen
 $("#sheetbar").addEventListener("click", (e) => {
   const step = e.target.closest("[data-step]"), ofs = e.target.closest("[data-ofstep]"), ofm = e.target.closest("[data-ofkap], [data-ofplus]");
@@ -2232,22 +2233,24 @@ function holdHTML(k) {
     + `<div class="ctx-head">Art der Leitung</div>` + Object.entries(WIRE_KINDS).map(([v, o]) => holdMi(`k:${v}`, o.label, v === S.wireKind)).join("");
   if (k === "text") return `<div class="ctx-head">Text: Drehung</div>` + [0, 90, 180, 270].map((v) => holdMi(`r:${v}`, `${v}°`, (S.textR || 0) === v)).join("")
     + `<div class="ctx-head">Ausrichtung</div>` + [["", "Links"], ["c", "Mittig"], ["r", "Rechts"]].map(([v, l]) => holdMi(`a:${v}`, l, (S.textAl || "") === v)).join("");
+  if (k.startsWith("pl:")) return PL.holdHTML(k.slice(3)); // Ebene in der Blattleiste (planedit.js)
   if (k === "star") return `<div class="ctx-head">Markierte Blätter (★)</div>` + pinned().map((i) => holdMi(`go:${i}`, `${sheetLabel(S.doc.sheets[i], i)}${S.doc.sheets[i].meta.TITEL && !T.isDeck(S.doc.sheets[i]) ? ` · ${S.doc.sheets[i].meta.TITEL}` : ""}`, i === S.active)).join("");
   return holdMi("save", "Speichern", false, "In die geöffnete Datei (⌘S)") + holdMi("as", "Speichern unter …", false, "Neue Datei wählen (⇧⌘S)");
 }
-function holdOpen(el) {
-  const k = el.dataset.hold;
+function holdOpen(el, k = el.dataset.hold) {
+  if (el.closest("#hold-menu")) { el = $("#pl-lay-cur") || el; holdMenu.hide(false); } // Zeile der Ebenenliste: Menü an der Leiste
   if (k === "export") { exportMenu.show(el); return; }
   holdEl.dataset.k = k; holdEl.setAttribute("aria-label", k === "save" ? "Speichern" : el.textContent.trim());
   holdEl.innerHTML = holdHTML(k); holdMenu.show(el);
   const r = el.getBoundingClientRect(); // unten kein Platz (Blattleiste): über dem Knopf
-  if (holdEl.getBoundingClientRect().bottom > innerHeight - 8) holdEl.style.top = `${Math.max(8, r.top - 4 - holdEl.offsetHeight)}px`;
+  if (holdEl.getBoundingClientRect().bottom > innerHeight - 8 || holdEl.scrollHeight > holdEl.clientHeight + 1) { holdEl.style.maxHeight = `${Math.max(160, r.top - 12)}px`; holdEl.style.top = `${Math.max(8, r.top - 4 - holdEl.offsetHeight)}px`; } // makeMenu kürzt nach unten: über dem Knopf wieder ganz
 }
 holdEl.addEventListener("click", (e) => {
   const a = e.target.closest("[data-hact]")?.dataset.hact; if (!a) return;
   const [t, v] = a.split(":");
   if (t === "save" || t === "as") { saveJson(t === "as"); return; }
   if (t === "go") { switchSheet(Number(v)); return; }
+  if (t === "pl") { if (PL.holdAct(a.slice(3), holdEl.dataset.k.slice(3))) { holdEl.innerHTML = holdHTML(holdEl.dataset.k); (holdEl.querySelector(`[data-hact="${a}"]`) || holdEl.querySelector(".mi"))?.focus(); } return; } // Liste bleibt offen, Fokus darin (Esc schliesst)
   if (t === "b") S.bundleN = Number(v); else if (t === "k") S.wireKind = v; else if (t === "r") S.textR = Number(v); else if (t === "a") S.textAl = v;
   const tool = t === "b" || t === "k" ? "wire" : "text";
   if (S.tool !== tool) setTool(tool); else { renderRight(); renderOverlay(); updateHint(); }
@@ -2550,6 +2553,7 @@ function elSheetBar() {
     if (keep) document.getElementById(keep)?.focus();
     return;
   }
+  if (isPlan() && idx.length === 1) { $("#sheetbar").innerHTML = mod + PL.barHTML() + starBtn(); if (keep) document.getElementById(keep)?.focus(); return; } // Plan: Ebenen statt Blätter (CJ 30.10.2026)
   $("#sheetbar").innerHTML = mod
     + `<button class="sheettab nav" data-step="-1" title="Vorheriges Blatt im Modul (Bild auf)" aria-label="Vorheriges Blatt"${pos <= 0 ? " disabled" : ""}>‹</button>`
     + `<button class="sheettab cur" id="sheet-cur" data-gosheet aria-haspopup="dialog" aria-expanded="${!!open}" title="Blätter dieses Moduls (G). Rechtsklick oder gedrückt halten: Duplizieren, Löschen" data-ctx="${a}"><span class="cl">${sh.pin ? "★ " : ""}${R.esc(sheetLabel(sh, a))}</span>${sh.meta.TITEL && !T.isDeck(sh) ? `<span class="ct">${R.esc(sh.meta.TITEL)}</span>` : ""}<span class="of">${pos + 1} von ${idx.length}</span><span class="caret" aria-hidden="true">▾</span></button>`

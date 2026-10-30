@@ -83,6 +83,13 @@ export function deleteLayer(sh, id) {
   syncDims(sh);
   return true;
 }
+// Ebene an den Platz i (Zeichenfolge, 0 = zuunterst), Ziehen in der Leiste
+export function moveLayerTo(sh, id, i) {
+  const j = sh.layers.findIndex((l) => l.id === id);
+  if (j < 0 || i < 0 || i >= sh.layers.length || i === j) return false;
+  sh.layers.splice(i, 0, ...sh.layers.splice(j, 1));
+  return true;
+}
 // Reihenfolge: dir −1 = nach unten (früher gezeichnet), +1 = nach oben
 export function moveLayer(sh, id, dir) {
   const i = sh.layers.findIndex((l) => l.id === id), j = i + dir;

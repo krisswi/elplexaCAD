@@ -628,12 +628,13 @@ body.el-shared :is(.el-nav, .el-helpbtn, #el-ptabs, #el-tabsel, #el-daychip, #el
 #pl-tip.on { display: flex; }
 #pl-tip kbd { color: #fff; background: transparent; border-color: rgba(255,255,255,.45); }
 @media print { #pl-tip { display: none !important; } }
-/* Plan: Ebenen unten in der rechten Leiste (CJ 30.10.2026), immer sichtbar, einklappbar. #right hat unten 20px Polster */
-#right:has(> .pl-dock) { display: flex; flex-direction: column; }
-.pl-rbody { flex: 1 0 auto; }
-.pl-dock { position: sticky; bottom: -20px; z-index: 2; margin: 16px -16px -20px; padding: 10px 16px 14px; background: var(--panel); border-top: 1px solid var(--panel-line); }
-.pl-dock .section-title { margin-bottom: 6px; }
-.pl-dock.zu .section-title { margin-bottom: 0; }
-.pl-dock.zu .pl-dockbody { display: none; }
-.pl-dockact { margin-left: auto; font-weight: 400; color: var(--faint); max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pl-dock .pl-dockbody { max-height: 45vh; overflow: auto; }
+/* Plan: aktive Ebene in der Blattleiste unten (CJ 30.10.2026), Klick = Liste nach oben, Schloss neben dem Plus */
+.sheettab.pl-cur { -webkit-touch-callout: none; user-select: none; }
+.sheettab.pl-cur svg, .pl-row svg { flex: none; fill: none; stroke: currentColor; stroke-width: 2; }
+.sheettab.pl-cur.off .cl, .pl-row.off .mh { opacity: .5; text-decoration: line-through; }
+.sheettab.pl-lockbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+.sheettab.pl-lockbtn[aria-pressed="true"] { color: var(--ink); background: var(--hover); }
+.pl-row .mi { -webkit-touch-callout: none; user-select: none; touch-action: none; }
+.pl-row .mh { display: inline-flex; align-items: center; gap: 6px; }
+.srow .pin.pl-eye { color: var(--muted); }
+.srow .pin.pl-eye[aria-pressed="false"] { color: var(--faint); }

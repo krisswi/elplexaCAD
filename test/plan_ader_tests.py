@@ -89,7 +89,7 @@ with sync_playwright() as p:
     check("erneut messen: alte Strecke wieder sichtbar", meas() == 1, meas())
     key("Escape"); key("v")
     check("Werkzeug gewechselt: wieder weg", meas() == 0)
-    page.click('[data-plact="bgshow"]'); page.wait_for_timeout(100)  # PDF-Plan ausblenden, damit die Bilder ruhig sind
+    page.click("#pl-lay-cur"); page.wait_for_timeout(150); page.click('#hold-menu .pl-pdfrow .pin'); page.keyboard.press("Escape"); page.wait_for_timeout(100)  # PDF-Plan ausblenden, damit die Bilder ruhig sind
 
     # ---------- 6. Drei Schalter aneinander ----------
     grp = {"SCH0": "Schalter", "SCH3": "Schalter", "SCH6": "Schalter", "TASTER": "Schalter", "STD": "Steckdosen", "STD2": "Steckdosen"}

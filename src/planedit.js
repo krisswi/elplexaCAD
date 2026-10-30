@@ -908,7 +908,7 @@ export function makePlan(c) {
     if (bgDraft && k === "Escape") { bgDraft = null; renderOverlay(); updateHint(); return true; }
     if (dimDraft && k === "Escape") { dimDraft = null; renderOverlay(); updateHint(); return true; }
     if (k.toLowerCase() === "x" && S.tool === "pl-wall" && !e.altKey) { opt.side = -(draft?.side ?? (opt.side || 1)); if (draft) { draft.side = opt.side; draft.auto = false; } renderRight(); renderOverlay(); updateHint(); return true; } // Wandseite wechseln
-    if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Rechts unten die Ebene wechseln."); return true; } setTool(t); return true; }
+    if (TOOL_KEYS[k.toLowerCase()] && !e.altKey) { const t = TOOL_KEYS[k.toLowerCase()]; if (GRUND_TOOLS.includes(t) && !grundOn()) { toast("Grundriss-Werkzeuge gibt es nur auf der Ebene Hintergrund. Unten in der Leiste die Ebene wechseln."); return true; } setTool(t); return true; }
     if (k.toLowerCase() === "p" && !e.altKey) { bgToggle(); return true; } // PDF-Plan ein/aus (Tastenkürzel-Index)
     if (k.toLowerCase() === "r" && !e.altKey) { // Drehen um 90° (Shift: zurück): beim Setzen das nächste Symbol, sonst das gewählte
       const step = e.shiftKey ? 270 : 90, ys = sel().filter((i) => i.type === "sym" || i.type === "text"), fs = sel().filter((i) => i.type === "shape" && i.k !== "circle");
@@ -959,25 +959,71 @@ export function makePlan(c) {
     }
     return h;
   }
-  // Ebenen unten in der rechten Leiste (CJ 30.10.2026): immer sichtbar, einklappbar (gemerkt auf diesem Gerät)
-  let layZu = false; try { layZu = localStorage.getItem("pl-ebenen-zu") === "1"; } catch {}
-  function layersHTML() {
+  // ---------- Ebenen in der Blattleiste unten (CJ 30.10.2026) ----------
+  // Ein Plan pro Modul: die Leiste zeigt statt des Blatts die aktive Ebene, wie «Blatt 58 · 1 von 12». Klick klappt die Liste
+  // nach oben auf (oben = zuoberst, ziehen ordnet um, Auge je Zeile, PDF-Plan zuunterst), ‹ › wechselt, Schloss und + daneben.
+  // Rechtsklick oder gedrückt halten (Klick-Regel, app.js holdOpen) auf Ebene oder Zeile: Menü; PDF-Plan als «#pdf», keine Ebenen-id.
+  const ic14 = (s) => s.replace("<svg", '<svg width="14" height="14"');
+  const topDown = () => [...sh().layers].reverse();
+  function barHTML() {
+    const S0 = sh(), L = topDown(), n = L.length, i = L.findIndex((l) => l.id === S0.alay), l = L[i];
+    return `<button class="sheettab nav" data-plact="lstep" data-d="-1" title="Ebene darüber" aria-label="Ebene darüber"${i <= 0 ? " disabled" : ""}>‹</button>`
+      + `<button class="sheettab cur pl-cur${l.show ? "" : " off"}" id="pl-lay-cur" data-plact="llist" data-hold="pl:${l.id}" aria-haspopup="menu" aria-expanded="false" title="Aktive Ebene, neue Objekte landen hier. Klick: alle Ebenen. Rechtsklick oder gedrückt halten: Menü">${l.show ? "" : ic14(ICON.eyeOff)}<span class="cl">${R.esc(l.name)}</span><span class="of">${i + 1} von ${n}</span><span class="caret" aria-hidden="true">▾</span></button>`
+      + `<button class="sheettab nav" data-plact="lstep" data-d="1" title="Ebene darunter" aria-label="Ebene darunter"${i >= n - 1 ? " disabled" : ""}>›</button>`
+      + `<button class="sheettab add pl-lockbtn" id="pl-lock" data-plact="lock" data-layer="${l.id}" aria-pressed="${l.lock}" title="${l.lock ? "Ebene entsperren" : "Ebene sperren (nicht wählbar, Fang bleibt)"}" aria-label="${R.esc(l.name)}: ${l.lock ? "Entsperren" : "Sperren"}">${l.lock ? ICON.lock : ICON.unlock}</button>`
+      + `<button class="sheettab add" id="pl-lay-add" data-plact="ladd"${n >= P.MAX_LAYERS ? " disabled" : ""} title="Neue Ebene über der aktiven (${n} von ${P.MAX_LAYERS})" aria-label="Neue Ebene">${R.icons.plus}</button>`;
+  }
+  const holdMi = (act, t, on = false, sub = "", dis = false) => `<button class="mi${on ? " on" : ""}" role="menuitem" data-hact="pl:${act}" tabindex="-1"${dis ? " disabled" : ""}><span class="mt"><span class="mh">${R.esc(t)}</span>${sub ? `<span class="ms">${R.esc(sub)}</span>` : ""}</span></button>`;
+  const eyeBtn = (act, on, name) => `<button class="pin pl-eye" data-hact="pl:${act}" tabindex="-1" aria-pressed="${on}" title="${on ? "Ausblenden" : "Einblenden"}" aria-label="${R.esc(name)}: ${on ? "Ausblenden" : "Einblenden"}">${ic14(on ? ICON.eye : ICON.eyeOff)}</button>`;
+  function holdHTML(id) {
     const S0 = sh();
-    let h = `<section class="pl-dock${layZu ? " zu" : ""}" aria-label="Ebenen"><h2 class="section-title"><button class="pl-grp" data-pllay aria-expanded="${!layZu}"><span class="caret" aria-hidden="true">▸</span>Ebenen<span class="pl-dockact">${R.esc(P.layerById(S0, S0.alay)?.name ?? "")}</span></button></h2><div class="pl-dockbody">`
-      + (S0.bg?.asset ? `<div class="layer-row pl-bgrow${S0.bgOff ? " off" : ""}"><span class="layer-name">PDF-Plan</span>`
-        + `<input type="range" min="10" max="100" step="10" value="${S0.bgOp ?? P.BG_OP}" data-plbgop aria-label="Deckkraft PDF-Plan in %" title="Deckkraft ${S0.bgOp ?? P.BG_OP} %"${S0.bgOff ? " disabled" : ""}>`
-        + `<button class="layer-btn" data-plact="bgshow" data-key="show" aria-pressed="${!S0.bgOff}" title="${S0.bgOff ? "Einblenden" : "Ausblenden"} (Taste P)" aria-label="PDF-Plan: ${S0.bgOff ? "Einblenden" : "Ausblenden"}">${S0.bgOff ? ICON.eyeOff : ICON.eye}</button></div>` : "");
-    for (const l of [...S0.layers].reverse()) { // oben = zuletzt gezeichnet
-      const btn = (k, on, icon, label) => `<button class="layer-btn" data-plact="${k}" data-layer="${l.id}" data-key="${k}" aria-pressed="${on}" title="${label}" aria-label="${R.esc(l.name)}: ${label}">${icon}</button>`;
-      h += `<div class="layer-row${l.show ? "" : " off"}${l.id === S0.alay ? " active" : ""}"><button class="layer-name" data-plact="alay" data-layer="${l.id}" aria-pressed="${l.id === S0.alay}" title="Aktive Ebene: neue Objekte landen hier">${R.esc(l.name)}</button>`
-        + btn("show", l.show, l.show ? ICON.eye : ICON.eyeOff, l.show ? "Ausblenden" : "Einblenden") + btn("lock", l.lock, l.lock ? ICON.lock : ICON.unlock, l.lock ? "Entsperren" : "Sperren (nicht wählbar, Fang bleibt)") + `</div>`;
-    }
-    const i = S0.layers.findIndex((l) => l.id === S0.alay), n = S0.layers.length;
-    h += `<div class="row pl-layact"><button class="btn outline small" data-plact="up"${i >= n - 1 ? " disabled" : ""} title="Aktive Ebene nach oben (später gezeichnet)" aria-label="Aktive Ebene nach oben">↑</button><button class="btn outline small" data-plact="down"${i <= 0 ? " disabled" : ""} title="Aktive Ebene nach unten" aria-label="Aktive Ebene nach unten">↓</button>`
-      + `<button class="btn outline small" data-plact="rename">Umbenennen</button><button class="btn outline small danger" data-plact="ldel"${n < 2 ? " disabled" : ""}>Löschen</button></div>`
-      + `<div class="row"><button class="btn outline small" data-plact="ladd"${n >= P.MAX_LAYERS ? " disabled" : ""}>${R.icons.plus.replace("<svg", '<svg width="16" height="16"')}Ebene</button></div>`
-      + `<p class="note">${n} von ${P.MAX_LAYERS} Ebenen. Reihenfolge = Zeichenfolge, oben liegt zuoberst.</p></div></section>`;
-    return h;
+    if (id === "#list") return `<div class="ctx-head">Ebenen, oben liegt zuoberst</div>` + topDown().map((l) => `<div class="srow pl-row${l.show ? "" : " off"}" data-layer="${l.id}"><button class="mi${l.id === S0.alay ? " on" : ""}" role="menuitem" id="pl-row-${l.id}" data-hact="pl:go:${l.id}" data-hold="pl:${l.id}" tabindex="-1"${l.id === S0.alay ? ' aria-current="true"' : ""}><span class="mt"><span class="mh">${l.lock ? ic14(ICON.lock) : ""}${R.esc(l.name)}</span></span></button>${eyeBtn(`eye:${l.id}`, l.show, l.name)}</div>`).join("")
+      + (S0.bg?.asset ? `<div class="srow pl-row pl-pdfrow${S0.bgOff ? " off" : ""}"><button class="mi" role="menuitem" id="pl-row-pdf" data-hact="pl:bgshow" data-hold="pl:#pdf" tabindex="-1"><span class="mt"><span class="mh">PDF-Plan</span><span class="ms">Deckkraft ${S0.bgOp ?? P.BG_OP} %, Taste P</span></span></button>${eyeBtn("bgshow", !S0.bgOff, "PDF-Plan")}</div>` : "");
+    if (id === "#pdf") { const op = S0.bgOp ?? P.BG_OP; return `<div class="ctx-head">PDF-Plan</div>` + holdMi("bgshow", S0.bgOff ? "Einblenden" : "Ausblenden", false, "Taste P")
+      + `<div class="ctx-head">Deckkraft</div>` + [20, 40, 60, 80, 100].map((v) => holdMi(`op:${v}`, `${v} %`, v === op, v === P.BG_OP ? "Vorgabe" : "")).join(""); }
+    const l = P.layerById(S0, id); if (!l) return "";
+    return `<div class="ctx-head">${R.esc(l.name)}</div>` + holdMi(`eye:${l.id}`, l.show ? "Ausblenden" : "Einblenden") + holdMi("lock", l.lock ? "Entsperren" : "Sperren", false, l.lock ? "" : "Nicht wählbar, Fang bleibt")
+      + holdMi("rename", "Umbenennen …") + holdMi("ldel", "Löschen …", false, "", S0.layers.length < 2);
+  }
+  // Menü-Aktion; true = die offene Liste neu zeichnen (Auge in der Zeile lässt sie offen)
+  function holdAct(a, id) {
+    const S0 = sh(), [t, v] = a.split(":");
+    if (t === "op") { const n = Number(v); change(() => { if (n === P.BG_OP) delete S0.bgOp; else S0.bgOp = n; }); c.renderSheet(); return false; }
+    if (t === "go") { leftAct({ dataset: { plact: "alay", layer: v } }); return false; }
+    if (t === "eye") { leftAct({ dataset: { plact: "show", layer: v } }); return id === "#list"; }
+    leftAct({ dataset: { plact: a, layer: id.startsWith("#") ? undefined : id } });
+    return a === "bgshow" && id === "#list";
+  }
+  let lDrag = null; // { id, y, on, to, after } Zeile der Ebenenliste ziehen; { just } schluckt den Klick danach
+  function barInit(bar, list) {
+    bar.addEventListener("click", (e) => {
+      if (sh().kind !== "plan") return; const b = e.target.closest("[data-plact]"); if (!b) return;
+      if (b.dataset.plact === "llist") { list(b); return; }
+      if (b.dataset.plact === "lstep") { const L = topDown(), l = L[L.findIndex((x) => x.id === sh().alay) + Number(b.dataset.d)]; if (l) leftAct({ dataset: { plact: "alay", layer: l.id } }); return; }
+      leftAct(b);
+    });
+    const menu = () => document.getElementById("hold-menu");
+    const clear = () => menu().querySelectorAll(".drag-src, .drop-above, .drop-below").forEach((x) => x.classList.remove("drag-src", "drop-above", "drop-below"));
+    document.addEventListener("pointerdown", (e) => { const r = e.target.closest?.("#hold-menu .pl-row[data-layer] .mi"); lDrag = r && e.button === 0 && sh().kind === "plan" ? { id: r.closest(".pl-row").dataset.layer, y: e.clientY, on: false } : null; });
+    document.addEventListener("pointermove", (e) => {
+      const d = lDrag; if (!d || d.just) return;
+      if (!d.on && Math.abs(e.clientY - d.y) > 6) { d.on = true; document.getElementById(`pl-row-${d.id}`)?.closest(".pl-row").classList.add("drag-src"); }
+      if (!d.on) return;
+      const t = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("#hold-menu .pl-row[data-layer]");
+      menu().querySelectorAll(".drop-above, .drop-below").forEach((x) => x.classList.remove("drop-above", "drop-below"));
+      d.to = t && t.dataset.layer !== d.id ? t.dataset.layer : null;
+      if (d.to) { const r = t.getBoundingClientRect(); d.after = e.clientY > r.top + r.height / 2; t.classList.add(d.after ? "drop-below" : "drop-above"); }
+    });
+    document.addEventListener("pointerup", () => {
+      const d = lDrag; if (!d || d.just) return; lDrag = null; if (!d.on) return;
+      clear(); lDrag = { just: true }; setTimeout(() => { lDrag = null; }, 0);
+      if (!d.to) return;
+      const S0 = sh(), L = topDown().map((l) => l.id).filter((x) => x !== d.id), pos = L.indexOf(d.to) + (d.after ? 1 : 0); // pos von oben
+      change(() => P.moveLayerTo(S0, d.id, S0.layers.length - 1 - pos), { panel: false });
+      menu().innerHTML = holdHTML("#list"); document.getElementById(`pl-row-${d.id}`)?.focus();
+    });
+    document.addEventListener("pointercancel", () => { if (lDrag && !lDrag.just) { lDrag = null; clear(); } });
+    document.addEventListener("click", (e) => { if (lDrag?.just) { e.stopPropagation(); e.preventDefault(); } }, true); // nach dem Ziehen: Liste bleibt offen, Ebene nicht aktiv
   }
   // Vorschau in der Palette: Symbol ohne Beschriftung, Ansicht um die Mitte
   function symThumb(d) {
@@ -995,9 +1041,9 @@ export function makePlan(c) {
     if (a === "show" || a === "lock") { change(() => { const l = P.layerById(S0, id); l[a] = !l[a]; if (!P.isPickable(S0, { layer: id })) S.sel = new Set([...S.sel].filter((x) => P.isPickable(S0, S0.items.find((i) => i.id === x)))); }); renderLeft(); return; }
     if (a === "up" || a === "down") { change(() => P.moveLayer(S0, S0.alay, a === "up" ? 1 : -1)); renderLeft(); return; }
     if (a === "ladd") { const r = await c.formDialog("Neue Ebene", "Name der Ebene, z. B. Steckdosen, Licht, Leitungen.", [{ label: "Name", value: `Ebene ${S0.layers.length + 1}` }], "Anlegen"); if (r) { change(() => P.addLayer(S0, r[0])); setTool(S.tool); } return; }
-    if (a === "rename") { const l = actLayer(), r = await c.formDialog("Ebene umbenennen", "", [{ label: "Name", value: l.name }], "Übernehmen"); if (r && r[0].trim()) { change(() => { l.name = r[0].trim().slice(0, 40); }); renderLeft(); } return; }
+    if (a === "rename") { const l = P.layerById(S0, id) ?? actLayer(), r = await c.formDialog("Ebene umbenennen", "", [{ label: "Name", value: l.name }], "Übernehmen"); if (r && r[0].trim()) { change(() => { l.name = r[0].trim().slice(0, 40); }); renderLeft(); } return; }
     if (a === "ldel") {
-      const l = actLayer(), n = S0.items.filter((i) => !P.hangs(i) && i.layer === l.id).length;
+      const l = P.layerById(S0, id) ?? actLayer(), n = S0.items.filter((i) => !P.hangs(i) && i.layer === l.id).length;
       if (n && !(await c.confirmDialog("Ebene löschen?", `„${l.name}“ enthält ${n} ${n === 1 ? "Objekt" : "Objekte"}. Sie werden mit der Ebene gelöscht (Rückgängig mit ⌘Z).`, "Löschen"))) return;
       change(() => { P.deleteLayer(S0, l.id); S.sel = new Set([...S.sel].filter((x) => S0.items.some((i) => i.id === x))); }); setTool(S.tool);
     }
@@ -1061,8 +1107,7 @@ export function makePlan(c) {
     + `<p class="note">Gilt für Beschriftungen, Höhen, Verweise und Masse. Am gewählten Symbol, Verweis oder Mass rechts einzeln einstellbar, der Einzelwert geht vor.</p>`;
   const aderField = (v, attr, ph = "") => `<div class="field"><label>Aderzahl (Vorschlag oder frei, z. B. 5x1.5)</label><input type="text" list="pl-aders" ${attr}="atxt" value="${R.esc(v)}" placeholder="${ph}" autocomplete="off" spellcheck="false"><datalist id="pl-aders">${P.ADER_TXTS.map((x) => `<option value="${x}">`).join("")}</datalist></div>`;
   const copyRow = () => `<div class="row"><button class="btn outline small" data-plact="copy">Kopieren</button><button class="btn outline small" data-plact="dup">Duplizieren</button>${clip?.length ? `<button class="btn outline small" data-plact="paste">Einfügen</button>` : ""}</div>`;
-  const panelHTML = (sel0, o) => `<div class="pl-rbody">${panelBody(sel0, o)}</div>${layersHTML()}`;
-  function panelBody(sel0, { head }) {
+  function panelHTML(sel0, { head }) {
     const it = sel0.length === 1 ? sel0[0] : null, note = (t) => `<p class="note">${t}</p>`;
     if (it?.type === "wall") return head("Wand", P.MATS.find(([k]) => k === it.mat)[1]) + inp("len", "Länge Mittellinie in mm", P.fmtLen(P.wallLen(it))) + thickFields(it, "data-plf")
       + sel1("mat", P.MATS, it.mat, "Material") + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Länge ändern verschiebt das Ende (Griff am Ende), angeschlossene Ecken folgen. Ecken ziehen: Griff an den Enden.") + copyRow() + del1();
@@ -1297,16 +1342,6 @@ export function makePlan(c) {
     if (g) { const n = g.dataset.plgrp, on = !grpOpen.has(n); if (on) grpOpen.add(n); else grpOpen.delete(n); g.setAttribute("aria-expanded", on); g.closest("section").classList.toggle("zu", !on); return; }
     const b = e.target.closest("[data-plact]"); if (b) leftAct(b);
   });
-  c.rightEl.addEventListener("input", (e) => { // Deckkraft PDF-Plan: Vorschau beim Ziehen, gespeichert beim Loslassen (change)
-    if (sh().kind !== "plan" || e.target.dataset.plbgop === undefined) return;
-    const g = document.querySelector(".pl-bgimg"); if (g) g.setAttribute("opacity", e.target.value / 100);
-  });
-  c.rightEl.addEventListener("change", (e) => {
-    if (sh().kind !== "plan" || e.target.dataset.plbgop === undefined) return;
-    const v = Number(e.target.value), S0 = sh();
-    change(() => { if (v === P.BG_OP) delete S0.bgOp; else S0.bgOp = v; });
-    c.renderSheet(); renderRight();
-  });
   c.popEl.addEventListener("click", (e) => {
     const b = e.target.closest("[data-plact]");
     if (!b || sh().kind !== "plan") return;
@@ -1316,8 +1351,6 @@ export function makePlan(c) {
   });
   c.rightEl.addEventListener("click", (e) => {
     if (sh().kind !== "plan") return;
-    if (e.target.closest("[data-pllay]")) { layZu = !layZu; try { localStorage.setItem("pl-ebenen-zu", layZu ? "1" : "0"); } catch {} renderRight(); return; }
-    const lb = e.target.closest(".pl-dock [data-plact]"); if (lb) { leftAct(lb); return; } // Ebenen und PDF-Plan
     const sw = e.target.closest("[data-plcol]");
     if (sw) { change(() => { for (const it of sel()) P.setCol(it, sw.dataset.plcol); }); return; }
     const ec = e.target.closest("[data-plecol]"); // Kantenfarbe der Kanäle
@@ -1338,5 +1371,5 @@ export function makePlan(c) {
 
   // Alt oder Shift gedrückt oder losgelassen: Fangpunkt unter dem Zeiger neu berechnen
   const mod = () => { if (raw) move(raw, { shiftKey: S.shift, altKey: S.alt }); };
-  return { mod, sheetSVG, itemsSVG, overlaySVG, bounds, hint, leftHTML, panelHTML, popHTML, printLabel, down, move, up, tap, key, del, cancel, grid, pickable };
+  return { mod, sheetSVG, itemsSVG, overlaySVG, bounds, hint, leftHTML, panelHTML, barHTML, barInit, holdHTML, holdAct, popHTML, printLabel, down, move, up, tap, key, del, cancel, grid, pickable };
 }

@@ -77,6 +77,8 @@ assert.strictEqual(P.itemLayer(sh, sh.items.find((i) => i.id === 5)), "bg", "Öf
 const l2 = P.addLayer(sh, "Leitungen");
 assert.deepStrictEqual([sh.layers.map((l) => l.id), sh.alay], [["bg", "l2", "l1"], "l2"], "neue Ebene über der aktiven, wird aktiv");
 assert.ok(P.moveLayer(sh, "l2", 1) && sh.layers[2].id === "l2" && !P.moveLayer(sh, "l2", 1), "Reihenfolge ändern");
+assert.ok(P.moveLayerTo(sh, "l2", 0) && sh.layers.map((l) => l.id).join() === "l2,bg,l1" && !P.moveLayerTo(sh, "l2", 0) && !P.moveLayerTo(sh, "l2", 3), "Ebene an einen Platz ziehen");
+P.moveLayerTo(sh, "l2", 2);
 assert.ok(!P.layerUsed(sh, l2.id) && P.layerUsed(sh, "l1"));
 assert.ok(P.deleteLayer(sh, "l1") && !sh.items.some((i) => i.id === 11), "Ebene samt Objekten löschen");
 while (sh.layers.length < P.MAX_LAYERS) P.addLayer(sh);

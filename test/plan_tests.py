@@ -139,7 +139,7 @@ with sync_playwright() as p:
     # Grundriss-Werkzeuge nur auf der Ebene Hintergrund: Wand zeichnen dort, dann der Ebene Installation zuweisen
     check("Auf Ebene Installation keine Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 0 and page.locator('[data-tool="pl-open"]').count() == 0 and page.locator('[data-tool="pl-dim"]').count() == 0 and page.locator('[data-tool="pl-line"]').count() == 1)
     blur(); key("w"); check("Taste W auf Installation: Hinweis, kein Werkzeug", "nur auf der Ebene Hintergrund" in page.inner_text("#toasts") and M().get("alay") == LI)
-    page.click('[data-plact="alay"][data-layer="bg"]'); page.wait_for_timeout(100)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click("#pl-row-bg"); page.wait_for_timeout(100)
     check("Auf Hintergrund wieder Grundriss-Werkzeuge", page.locator('[data-tool="pl-wall"]').count() == 1)
     old_ids = {w["id"] for w in of("wall")}
     blur(); key("w"); click(2000, 75); keys("1500"); key("Tab"); keys("90"); key("Enter"); key("Escape")
@@ -148,14 +148,30 @@ with sync_playwright() as p:
     IW = iw[0]["id"]
     blur(); key("v"); click(1925, 900); page.select_option('[data-plf="layer"]', LI); page.wait_for_timeout(100)
     check("Innenwand wählbar, Ebene Installation zugewiesen", sel() == [IW] and item(IW)["layer"] == LI, sel())
-    page.click(f'[data-plact="alay"][data-layer="{LI}"]'); page.wait_for_timeout(100)
-    page.click(f'[data-plact="lock"][data-layer="{LI}"]'); page.wait_for_timeout(100)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click(f"#pl-row-{LI}"); page.wait_for_timeout(100)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click(f'#pl-row-{LI}', button="right"); page.wait_for_timeout(120); page.click('[data-hact="pl:lock"]'); page.wait_for_timeout(100)
     check("Ebene gesperrt, Auswahl aufgehoben", next(l for l in M()["layers"] if l["id"] == LI)["lock"] is True and IW not in sel())
     click(1925, 900); check("Gesperrte Wand nicht wählbar", sel() == [], sel())
     blur(); key("l"); click(3000, 1000)
     check("Zeichnen auf gesperrter Ebene: Hinweis", "gesperrt" in page.inner_text("#toasts"))
-    key("Escape"); page.click('[data-plact="alay"][data-layer="bg"]'); page.wait_for_timeout(100)
+    key("Escape"); page.click("#pl-lay-cur"); page.wait_for_timeout(120); page.click("#pl-row-bg"); page.wait_for_timeout(100)
     check("Aktive Ebene wieder Hintergrund", M()["alay"] == "bg")
+    # Ebenen in der Blattleiste unten (CJ 30.10.2026): nur die aktive, Klick = Liste nach oben (ziehen, Auge), Schloss neben dem Plus
+    check("Leiste: aktive Ebene «2 von 2», Schloss und Plus", "Hintergrund" in page.inner_text("#pl-lay-cur") and "2 von 2" in page.inner_text("#pl-lay-cur") and page.locator("#pl-lock").count() == 1 and page.locator("#pl-lay-add").count() == 1)
+    page.click("#pl-lay-cur"); page.wait_for_timeout(150)
+    check("Liste: oben zuoberst", page.evaluate("[...document.querySelectorAll('#hold-menu .pl-row')].map(e => e.dataset.layer)") == [LI, "bg"])
+    ra, rb = page.locator(f"#pl-row-{LI}").bounding_box(), page.locator("#pl-row-bg").bounding_box()
+    page.mouse.move(ra["x"] + 40, ra["y"] + ra["height"] / 2); page.mouse.down()
+    for k in range(1, 9): page.mouse.move(ra["x"] + 40, ra["y"] + ra["height"] / 2 + (rb["y"] + rb["height"] - 4 - ra["y"] - ra["height"] / 2) * k / 8); page.wait_for_timeout(20)
+    page.mouse.up(); page.wait_for_timeout(150)
+    check("Ziehen: Installation zuunterst, Liste offen, aktive Ebene bleibt", [l["id"] for l in M()["layers"]] == [LI, "bg"] and M()["alay"] == "bg" and page.is_visible("#hold-menu"), M()["layers"])
+    page.keyboard.press("Escape"); page.keyboard.press("Meta+z"); page.wait_for_timeout(100)
+    check("Rückgängig: Reihenfolge zurück", [l["id"] for l in M()["layers"]] == ["bg", LI])
+    page.click("#pl-lay-cur"); page.wait_for_timeout(150); page.click(f'#hold-menu [data-hact="pl:eye:{LI}"]'); page.wait_for_timeout(100)
+    check("Auge in der Liste: Ebene ausgeblendet, Liste bleibt offen, Hintergrund aktiv", next(l for l in M()["layers"] if l["id"] == LI)["show"] is False and M()["alay"] == "bg" and page.is_visible(f"#pl-row-{LI}"))
+    page.keyboard.press("Escape"); page.click("#pl-lock"); page.wait_for_timeout(100)
+    check("Schloss sperrt die angezeigte Ebene", M()["layers"][0]["lock"] is True and page.get_attribute("#pl-lock", "aria-pressed") == "true")
+    for _ in range(2): page.keyboard.press("Meta+z"); page.wait_for_timeout(100)
     blur(); key("v")
 
     # ---------- Schritt 2: Elektrosymbole ----------

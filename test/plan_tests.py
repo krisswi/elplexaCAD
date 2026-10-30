@@ -336,12 +336,14 @@ with sync_playwright() as p:
     # ---------- Speichern / Laden ohne Datenverlust ----------
     dateien_leeren(page) # die PDFs oben hätten die Datei auf Version 30 gehoben
     d1 = D()
-    check("Datei: Version 23 (Plan mit geschwungenen Leitungen, Vorgabe seit 26.10.2026)", d1["version"] == 23, d1["version"])
+    rm = [i for s in d1["sheets"] if s.get("kind") == "plan" for i in s["items"] if i["type"] == "room"]
+    check("Küche als Raum erkannt: «Raum 1» auf dem Hintergrund (CJ 30.10.2026)", [(r["name"], r["layer"]) for r in rm] == [("Raum 1", "bg")], rm)
+    check("Datei: Version 34 (Plan mit Raum, seit 30.10.2026; vorher 23 mit geschwungenen Leitungen)", d1["version"] == 34, d1["version"])
     blur()
     with page.expect_download() as dl: page.keyboard.press("Shift+Meta+s")
     out = OUT / "plan_rundlauf.elplexa.json"; dl.value.save_as(str(out)); page.wait_for_timeout(300)
     raw = json.loads(out.read_text())
-    check("Gespeichert: Version 23, zwei Pläne", raw["version"] == 23 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
+    check("Gespeichert: Version 34, zwei Pläne", raw["version"] == 34 and [s.get("kind") for s in raw["sheets"]].count("plan") == 2)
     blur()
     with page.expect_file_chooser() as fc:
         page.keyboard.press("Meta+o"); page.wait_for_timeout(300)
@@ -361,7 +363,7 @@ with sync_playwright() as p:
     with page.expect_file_chooser() as fc: page.keyboard.press("Meta+o")
     fc.value.set_files(str(out)); page.wait_for_timeout(600)
     msg = page.inner_text("body")
-    check("v3: Datei mit Plan abgelehnt (seit Version 25 am Blatt)", page.evaluate("window.__schemacad.doc.sheets.every((s) => s.kind !== 'plan')") and "nur elplexaCAD" in msg, msg[-300:])
+    check("v3: Datei mit Plan abgelehnt (seit Version 25 am Blatt)", page.evaluate("window.__schemacad.doc.sheets.every((s) => s.kind !== 'plan')") and ("nur elplexaCAD" in msg or "neueren Version" in msg), msg[-300:])  # seit Version 34 (Räume) meldet v3 die neuere Version
     page.close()
     b.close()
 

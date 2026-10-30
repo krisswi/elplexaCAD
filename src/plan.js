@@ -19,6 +19,9 @@
 // d gestrichelt, fill Füllfarbe (nur Rechteck und Kreis, fehlt = keine). Nicht in der Stückliste.
 // Text { id, type: "text", layer, at: [x, y], txt, r?, col?, tf? } (CJ 28.10.2026, Plan Runde 3, Dateiversion 33): freier Text (Taste T), Mitte at,
 // Grösse TEXT_H Papier-mm × tf, r Drehung in Grad (lesbar, steht nie auf dem Kopf), col Vorgabe schwarz. Nicht in der Stückliste.
+// Raum { id, type: "room", layer, at: [x, y], name, tf?, hide?, na? } (CJ 30.10.2026, Dateiversion 34): Beschriftung eines geschlossenen Raums (planraum.js erkennt
+// die Räume aus den Wänden), Mitte at (bestimmt den Raum, frei verschiebbar), Name (neu «Raum n»), Grösse ROOM_H Papier-mm × tf, darunter die Innenfläche in m².
+// hide: Beschriftung ausgeblendet (nur am Bildschirm blass), na: ohne Fläche. Liegt auf der Ebene «Hintergrund». Nicht in der Stückliste.
 // col (Leitung und Symbol): Farbe nach 5.100, gespeichert nur wenn von der Vorgabe abweichend (Symbol: Kategorie, Leitung: LINE_COL).
 import { PAPERS, orthoDir, segX, cleanPmid } from "./pv.js";
 import { symDef, PLAN_SYMS } from "./plansym.js";
@@ -106,8 +109,9 @@ export const DOPPEL = { st: 120, iso: 80 };
 export const doppelD = (st, iso) => 2 * st + iso;
 export const OPENINGS = [["tuer", "Tür"], ["fenster", "Fenster"], ["durchgang", "Durchgang"], ["schiebe", "Schiebetür"]];
 export const OPEN_H = new Set(["tuer", "fenster", "schiebe"]); // Arten mit Feld «Höhe» (CJ 23.10.2026)
-export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct", "ader", "shape", "text"]);
+export const PLAN_ITEMS = new Set(["wall", "opening", "dim", "sym", "line", "duct", "ader", "shape", "text", "room"]);
 export const TEXT_H = 2.5; // freier Text: Höhe in Papier-mm (× tf)
+export const ROOM_H = 3.5; // Raumname: Höhe in Papier-mm (× tf), die Fläche darunter 0,7-mal so gross
 // Leitungsarten (Symbolzusammenfassung 5.110). Strichmuster in Papier-mm (× Massstab), flex = durchgezogen mit Welle je Abschnitt.
 export const LINE_KINDS = [["decke", "in Decke (durchgezogen)"], ["boden", "in Boden (gestrichelt)"], ["wand", "in Wand (Strich-Punkt)"], ["doppel", "in Doppeldecke (Strich-kurz-kurz)"], ["flex", "flexibel (Welle)"],
   ["fund", "Fundamenterder (verlegt im Beton)"], ["erdl", "Erdleiter (verlegt im Erdreich)"], ["blitz", "Blitzschutzleitung (sichtbar verlegt)"]];
@@ -230,6 +234,14 @@ export function cleanPlanObj(it, id) {
     const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
     return o;
   }
+  if (it.type === "room") {
+    if (!isPt(it.at)) return null;
+    const o = { id, type: "room", layer: String(it.layer ?? ""), at: [it.at[0], it.at[1]], name: String(it.name ?? "").trim().slice(0, 40) || "Raum" };
+    const tf = cleanTf(it.tf); if (tf !== undefined) o.tf = tf;
+    if (it.hide === true) o.hide = true;
+    if (it.na === true) o.na = true;
+    return o;
+  }
   if (it.type === "duct") {
     const pts = (Array.isArray(it.pts) ? it.pts : []).filter(isPt).map((p) => [p[0], p[1]]).filter((p, i, a) => !i || !same(p, a[i - 1]));
     if (pts.length < 2 || !isNum(it.w) || it.w <= 0) return null;
@@ -264,8 +276,10 @@ export const planV32 = (sh) => sh.items.some((i) => i.type === "shape" || symDef
 // Dateiversion eines Planblatts: 20 Plan (23.10.2026), 21 mit Symbolen, 22 mit Leitungen oder Farben, 23 mit PDF-Hintergrund oder geschwungener Leitung (24.10.2026), 24 planV24, 28 planV28, 29 planV29, 30 planV30, 31 planV31, 32 planV32, 33 planV33
 // Dateiversion 33 (CJ 28.10.2026): gespiegelte Symbole (m), Verweis mit Zeiger (zg); ältere Stände würden beides still verlieren
 export const planV33 = (sh) => sh.items.some((i) => i.m === true || i.zg === true || (i.type === "duct" && i.curve === true) || i.type === "text");
-export const planVer = (sh) => (planV33(sh) ? 33 : planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
-const VERSION_NOW = 33;
+// Dateiversion 34 (CJ 30.10.2026): Räume (type "room"); ältere Stände lehnen das Objekt ab
+export const planV34 = (sh) => sh.items.some((i) => i.type === "room");
+export const planVer = (sh) => (planV34(sh) ? 34 : planV33(sh) ? 33 : planV32(sh) ? 32 : planV31(sh) ? 31 : planV30(sh) ? 30 : planV29(sh) ? 29 : planV28(sh) ? 28 : planV24(sh) ? 24 : sh.bg || sh.items.some((i) => i.curve) ? 23 : sh.items.some((i) => i.type === "line" || i.col !== undefined) ? 22 : sh.items.some((i) => i.type === "sym") ? 21 : 20);
+const VERSION_NOW = 34;
 export const BG_OP = 60; // Deckkraft des PDF-Plans in %: blass, damit der Elektroplan hervortritt (wie Stringplan)
 // ver: Dateiversion. Bis 23 trugen Steckdosen (110) und Wandleuchten (200) ihre Vorgabehöhe fest eingetragen; sie fällt weg (CJ 26.10.2026: keine vorausgefüllte Höhe)
 const OLD_H = { STD: 110, STD3: 110, STD_T15: 110, STD_USB: 110, LEUCHTE_W: 200, LEUCHTE_WEB: 200, LED_W: 200 };
@@ -441,7 +455,7 @@ export function moveNode(sh, from, to, skip) {
 }
 // Wand oder Mass als Ganzes verschieben (Ecken bleiben mit den Nachbarn verbunden: deren Enden folgen)
 export function moveItem(sh, it, dx, dy) {
-  if (it.type === "sym" || it.type === "text") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
+  if (it.type === "sym" || it.type === "text" || it.type === "room") { it.at = [r3(it.at[0] + dx), r3(it.at[1] + dy)]; return; }
   if (it.type === "line" || it.type === "duct" || (it.type === "shape" && it.k === "line")) { it.pts = it.pts.map((p) => [r3(p[0] + dx), r3(p[1] + dy)]); return; }
   if (it.type === "shape") { it.x = r3(it.x + dx); it.y = r3(it.y + dy); return; }
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall), u = wallDir(w); it.t += dx * u[0] + dy * u[1]; clampOpening(w, it); return; }
@@ -460,7 +474,7 @@ export function moveItems(sh, items, dx, dy) {
   const ends = nodes.map((p) => nodeEnds(sh, p)); // erst alle Enden sammeln, dann setzen (sonst fallen verschobene Ecken auf andere)
   ends.forEach((es, i) => { for (const { it, e } of es) it[e] = [r3(nodes[i][0] + dx), r3(nodes[i][1] + dy)]; });
   for (const it of items) {
-    if (it.type === "sym" || it.type === "line" || it.type === "duct" || it.type === "shape" || it.type === "text") moveItem(sh, it, dx, dy);
+    if (it.type === "sym" || it.type === "line" || it.type === "duct" || it.type === "shape" || it.type === "text" || it.type === "room") moveItem(sh, it, dx, dy);
     else if (hangs(it) && !ids.has(hostId(it))) moveItem(sh, it, dx, dy);
   }
   fixOpenings(sh);
@@ -498,7 +512,7 @@ export function inBox(sh, it, b) {
   if (it.type === "line" || it.type === "duct") return it.pts.every(ins);
   if (it.type === "shape") { const q = shapeBox(it); return ins([q.x0, q.y0]) && ins([q.x1, q.y1]); }
   if (it.type === "sym") return ins(symCenter(it, paperOf(sh).den));
-  if (it.type === "text") return ins(it.at);
+  if (it.type === "text" || it.type === "room") return ins(it.at);
   if (it.type === "opening") { const w = sh.items.find((x) => x.id === it.wall); return !!w && ins(add(w.a, wallDir(w), it.t + it.w / 2)); }
   if (it.type === "ader") { const l = sh.items.find((x) => x.id === it.line); return !!l && ins(aderAt(l, it.t).p); }
   return false;
@@ -603,6 +617,7 @@ export function hitPlan(sh, items, p, tol) {
     if (s >= o.t - tol && s <= o.t + o.w + tol && q <= w.d / 2 + tol) return o;
   }
   for (const d of items) if (d.type === "dim") { const [a, b] = dimLine(d); if (distSeg(p, a, b) <= tol) return d; }
+  for (const it of [...items].reverse()) if (it.type === "room" && hitText({ at: it.at, txt: it.name }, p, k * ROOM_H * tfOf(it, sh), tol + (it.na ? 0 : k * ROOM_H * tfOf(it, sh) * 0.8))) return it; // Name, darunter die Fläche; nach den Massen (Diagonale durch die Raummitte)
   let best = null, bd = Infinity;
   for (const w of items) if (w.type === "wall") { const dd = distSeg(p, w.a, w.b); if (dd <= w.d / 2 + tol && dd < bd) { bd = dd; best = w; } }
   return best;
@@ -763,7 +778,7 @@ export const along = (w, p) => dot(sub(p, w.a), wallDir(w));
 // Umgebendes Rechteck aller Objekte (null ohne Objekte)
 export function contentBox(sh) {
   const k = paperOf(sh).den;
-  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(linePts(i), i.w)) : i.type === "shape" ? (({ x0, y0, x1, y1 }) => [[x0, y0], [x1, y1]])(shapeBox(i)) : i.type === "text" ? [i.at] : []));
+  const pts = sh.items.flatMap((i) => (i.type === "sym" ? (({ r }, c) => [add(c, [r * k, r * k]), add(c, [-r * k, -r * k])])(itemDef(i, k), symCenter(i, k)) : i.type === "wall" ? [add(i.a, [i.d, i.d]), add(i.a, [-i.d, -i.d]), add(i.b, [i.d, i.d]), add(i.b, [-i.d, -i.d])] : i.type === "dim" ? dimLine(i).slice(0, 2).concat([i.a, i.b]) : i.type === "line" ? linePts(i) : i.type === "duct" ? (({ L, R }) => [...L, ...R])(ductSides(linePts(i), i.w)) : i.type === "shape" ? (({ x0, y0, x1, y1 }) => [[x0, y0], [x1, y1]])(shapeBox(i)) : i.type === "text" || i.type === "room" ? [i.at] : []));
   if (!pts.length) return null;
   return { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
 }

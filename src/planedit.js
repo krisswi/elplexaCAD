@@ -13,6 +13,7 @@ import { openPdf, pageSize, toBase64, imageFor, imageReady } from "./pdfbg.js";
 import { pageSVG } from "./pvprint.js";
 import * as R from "./render.js";
 import * as IM from "./planimport.js";
+import * as RM from "./planraum.js";
 
 const INK = "#000000", SEL = "#2f9e58", DRAFT = "#2f6db3", GUIDE = "#e08a00", FRAME = "#6b7785", PIN = "#f4c400"; // PIN: Fangpunkte der Symbole (Farbe wie der Fang an Punkten)
 const OPEN_W = { tuer: 900, fenster: 1200, durchgang: 900, schiebe: 900 }; // Vorgabe Breiten in mm (Annahme)
@@ -442,6 +443,15 @@ export function makePlan(c) {
     return s;
   }
   // Freier Text (CJ 28.10.2026, Plan Runde 3): Mitte at, Höhe TEXT_H Papier-mm × tf, lesbar gedreht
+  // Räume (CJ 30.10.2026): erkannte Flächen je Wandstand einmal rechnen
+  let roomMemo = { key: "", faces: [] };
+  const rooms = (S0 = sh(), walls = S0.items.filter((i) => i.type === "wall")) => { const key = JSON.stringify(walls.map((w) => [w.a, w.b, w.d])); if (key !== roomMemo.key) roomMemo = { key, faces: RM.roomFaces(walls) }; return roomMemo.faces; };
+  // Raumname, darunter die Innenfläche (fehlt ohne geschlossenen Raum oder mit na); ausgeblendet nur am Bildschirm, blass
+  const roomSVG = (it, k, faces, S0 = sh(), fill = INK) => {
+    const h = P.ROOM_H * P.tfOf(it, S0) * k, fc = RM.faceOf(faces, it.at), a = fc && !it.na;
+    const g = txt(it.at[0], it.at[1] + (a ? h * 0.4 : 0), it.name, h, 0, fill) + (a ? txt(it.at[0], it.at[1] - h * 0.55, RM.fmtArea(fc.area), h * 0.7, 0, fill) : "");
+    return it.hide || !fc ? `<g opacity="${it.hide ? 0.3 : 0.55}">${g}</g>` : g;
+  };
   const textSVG = (it, k, fill = P.colOf(it)) => txt(it.at[0], it.at[1], it.txt, P.TEXT_H * P.tfOf(it, sh()) * k, it.r ?? 0, fill);
   // Form (CJ 27.10.2026): Strich lw in Papier-mm × Massstab, gestrichelt wie die Leitung «in Boden», Füllung unter dem Strich. stroke: eine Farbe ohne Füllung (Wahl, Vorschau).
   // Füllung halbtransparent (CJ 28.10.2026, Plan Runde 3): Grundriss und Symbole darunter bleiben sichtbar
@@ -501,7 +511,9 @@ export function makePlan(c) {
     const q = snapAt(p);
     return { at: [q.x, q.y], r: r0 };
   }
-  function itemsSVG(S0 = sh()) {
+  // scr: Bildschirm (ohne Blatt aufgerufen) zeigt ausgeblendete Raumnamen blass, Druck und Vorschau lassen sie weg
+  function itemsSVG(S0, scr = !S0) {
+    S0 ??= sh();
     const k = P.paperOf(S0).den, walls = S0.items.filter((i) => i.type === "wall"), ops = S0.items.filter((i) => i.type === "opening");
     const shapes = new Map(P.wallShapes(walls, ops).map((x) => [x.id, x])), byId = new Map(walls.map((w) => [w.id, w]));
     let s = patterns(k);
@@ -521,6 +533,7 @@ export function makePlan(c) {
       for (const a of S0.items) if (a.type === "ader") { const ln = S0.items.find((i) => i.id === a.line); if (ln?.layer === l.id) s += aderSVG(ln, a, k, P.colOf(ln), P.tfOf(a, S0), ducts); }
       for (const y of S0.items) if (y.type === "sym" && y.layer === l.id) s += symSVG(y, k, P.colOf(y));
       for (const y of S0.items) if (y.type === "text" && y.layer === l.id) s += textSVG(y, k);
+      for (const y of S0.items) if (y.type === "room" && y.layer === l.id && (scr || !y.hide)) s += roomSVG(y, k, rooms(S0, walls), S0);
     }
     return `<g class="pl-items">${s}</g>`;
   }
@@ -551,6 +564,7 @@ export function makePlan(c) {
       else if (it.type === "dim") { s += `<g class="pl-scale">${dimSVG(it, k, SEL)}</g>`; if (it.ref === undefined) s += grip(it.a) + grip(it.b); }
       else if (it.type === "sym") s += `<g class="pl-scale">${symSVG(it, k, SEL)}</g>`;
       else if (it.type === "text") s += textSVG(it, k, SEL);
+      else if (it.type === "room") { s += roomSVG(it, k, rooms(), sh(), SEL); const fc = RM.faceOf(rooms(), it.at); if (fc) s += `<path d="M${fc.inner.map(pt).join("L")}Z" fill="rgba(47,158,88,.06)" stroke="${SEL}" stroke-width="1" stroke-dasharray="6 4"/>`; }
       else if (it.type === "ader") { const ln = sh().items.find((i) => i.id === it.line); if (ln) s += `<g class="pl-scale">${aderSVG(ln, it, k, SEL)}</g>`; }
       else if (it.type === "duct") s += `<g class="pl-scale" opacity=".75">${ductSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? (it.curve ? `<path d="M${it.pts.map(pt).join("L")}" fill="none" stroke="${SEL}" stroke-width="1" stroke-dasharray="${px(4)} ${px(3)}" opacity=".6"/>` : "") + it.pts.map(grip).join("") : "");
       else if (it.type === "shape") s += `<g class="pl-scale">${shapeSVG(it, k, SEL)}</g>` + (S.sel.size === 1 ? P.shapeHandles(it).map(grip).join("") : "");
@@ -795,7 +809,7 @@ export function makePlan(c) {
     const hit = P.hitPlan(sh(), pickable(), [w.x, w.y], t), more = add || opt.multi;
     if (!hit) { if (!more) S.sel = new Set(); drag = { type: "box", sx: w.x, sy: w.y, ex: w.x, ey: w.y, add: more, started: false }; renderRight(); renderOverlay(); return; } // Rahmen ziehen
     if (more) { const s0 = new Set(S.sel); if (s0.has(hit.id)) s0.delete(hit.id); else s0.add(hit.id); S.sel = s0; renderRight(); renderOverlay(); return; } // ⌘-Klick: dazu oder weg
-    if ((S.sel.has(hit.id) && S.sel.size > 1) || hit.type === "line" || hit.type === "duct" || hit.type === "shape" || hit.type === "text") { if (!S.sel.has(hit.id)) S.sel = new Set([hit.id]); drag = { type: "multi", items: sel(), sx: w.x, sy: w.y, dx: 0, dy: 0, started: false, snap: snapshot() }; renderRight(); renderOverlay(); return; }
+    if ((S.sel.has(hit.id) && S.sel.size > 1) || hit.type === "line" || hit.type === "duct" || hit.type === "shape" || hit.type === "text" || hit.type === "room") { if (!S.sel.has(hit.id)) S.sel = new Set([hit.id]); drag = { type: "multi", items: sel(), sx: w.x, sy: w.y, dx: 0, dy: 0, started: false, snap: snapshot() }; renderRight(); renderOverlay(); return; }
     S.sel = new Set([hit.id]);
     drag = { type: "move", it: hit, sx: w.x, sy: w.y, started: false, snap: snapshot(), ...(hit.type === "wall" ? { ea: P.nodeEnds(sh(), hit.a), eb: P.nodeEnds(sh(), hit.b), a0: [...hit.a], b0: [...hit.b] } : hit.type === "opening" ? { t0: hit.t } : hit.type === "sym" ? { at0: [...hit.at], r0: hit.r } : { off0: hit.off }) };
     renderRight(); renderOverlay();
@@ -834,7 +848,7 @@ export function makePlan(c) {
     const d = drag; drag = null;
     if (d?.type === "box") { if (d.started) { const ids = pickable().filter((i) => P.inBox(sh(), i, boxOf(d))).map((i) => i.id); S.sel = new Set([...(d.add ? S.sel : []), ...ids]); } renderRight(); renderOverlay(); return; }
     if (d?.type === "lpt" && d.started) { const q = d.it.pts.filter((p, i, a) => !i || !same(p, a[i - 1])); if (q.length >= 2) d.it.pts = q; }
-    if (d?.started) { pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); }
+    if (d?.started) { RM.syncRooms(sh(), nextId); pushUndo(d.snap); markDirty(); renderItems(); renderOverlay(); renderRight(); }
   }
   // Beschriftung unter dem Zeiger: zuerst am gewählten Symbol, sonst das zuletzt gesetzte
   function labelAt(w, t) {
@@ -917,7 +931,9 @@ export function makePlan(c) {
   function del() {
     const ids = [...S.sel];
     if (!ids.length) return;
-    change(() => { for (const id of ids) P.deleteItem(sh(), id); S.sel.clear(); });
+    const fs = rooms(), keep = sel().filter((i) => i.type === "room" && RM.faceOf(fs, i.at)); // Raumname im geschlossenen Raum: ausblenden statt löschen, sonst käme er als «Raum n» wieder
+    change(() => { for (const r of keep) r.hide = true; for (const id of ids) if (!keep.some((r) => r.id === id)) P.deleteItem(sh(), id); S.sel.clear(); });
+    if (keep.length) toast(`${keep.length === 1 ? "Raumname" : `${keep.length} Raumnamen`} ausgeblendet (Räume erkennt der Plan aus den Wänden). Einblenden: Raum wählen, rechts «Beschriftung ausblenden» abwählen.`);
   }
 
   // ---------- Tasten ----------
@@ -1249,6 +1265,10 @@ export function makePlan(c) {
       + note(`Griffe ${it.k === "line" ? "an den Enden" : it.k === "rect" ? "an den Ecken (die Gegenecke bleibt)" : "auf dem Kreis ändern den Radius"}; Fang an Wänden, Symbolen und Ecken, Alt frei. Ziehen verschiebt, R dreht um 90°. Nicht in der Stückliste.`) + copyRow() + del1();
     if (sel0.length > 1 && sel0.every((i) => i.type === "shape")) return head(`${sel0.length} Formen`, "Linie, Rechteck, Kreis") + shapeFields(sel0) + sel1("mlayer", new Set(sel0.map((i) => i.layer)).size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], new Set(sel0.map((i) => i.layer)).size === 1 ? sel0[0].layer : "", "Ebene")
       + note("Ziehen an einer gewählten Form verschiebt alle, R dreht jede um ihre Mitte.") + copyRow() + del1();
+    if (it?.type === "room") { const fc = RM.faceOf(rooms(), it.at);
+      return head("Raum", fc ? `${RM.fmtArea(fc.area)} innen` : "kein geschlossener Raum") + `<div class="field"><label>Name</label><input type="text" data-plf="rname" value="${R.esc(it.name)}" autocomplete="off"></div>`
+        + tfField([it]) + `<label class="check"><input type="checkbox" data-plf="rhide"${it.hide ? " checked" : ""}> Beschriftung ausblenden</label>` + `<label class="check"><input type="checkbox" data-plf="rna"${it.na ? "" : " checked"}> Fläche zeigen</label>`
+        + sel1("layer", layerOpts(), it.layer, "Ebene") + note(fc ? "Der Plan erkennt geschlossene Räume aus den Wänden (Türen und Fenster gelten als geschlossen). Ziehen verschiebt die Beschriftung, sie bleibt beim Raum, solange sie darin liegt. Entf blendet sie aus." : "An dieser Stelle ist kein geschlossener Raum (Wände geändert). Wieder in einen Raum ziehen oder löschen.") + del1(); }
     if (it?.type === "text") return head("Text", `${it.r ?? 0}°`) + `<div class="field"><label>Text</label><input type="text" data-plf="ttxt" value="${R.esc(it.txt)}" autocomplete="off"></div>`
       + tfField([it]) + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene") + note("Ziehen verschiebt den Text, R dreht um 90° (Shift+R zurück), er bleibt lesbar. Pfeiltasten schieben.") + copyRow() + del1();
     if (it?.type === "line") return head("Leitung", P.LINE_KINDS.find(([k]) => k === it.kind)[1]) + sel1("lk", P.LINE_KINDS, it.kind, "Verlegeart") + sel1("lc", LINE_FORMS, it.curve ? "1" : "0", "Form") + colField([it]) + sel1("layer", layerOpts(), it.layer, "Ebene")
@@ -1262,7 +1282,7 @@ export function makePlan(c) {
     if (sel0.length > 1) {
       const n = (t) => sel0.filter((i) => i.type === t).length, parts = [["wall", "Wände"], ["opening", "Öffnungen"], ["dim", "Masse"], ["sym", "Symbole"], ["line", "Leitungen"], ["ader", "Aderzahlen"], ["duct", "Kanäle"], ["shape", "Formen"], ["text", "Texte"]].filter(([t]) => n(t)).map(([t, l]) => `${n(t)} ${l}`);
       const cols = sel0.filter(P.hasCol), lays = new Set(sel0.filter((i) => !P.hangs(i)).map((i) => i.layer));
-      const tfs = sel0.filter((i) => i.type === "sym" || i.type === "dim" || i.type === "ader" || i.type === "text" || (i.type === "duct" && i.txt)), ds = sel0.filter((i) => i.type === "duct");
+      const tfs = sel0.filter((i) => i.type === "sym" || i.type === "dim" || i.type === "ader" || i.type === "text" || i.type === "room" || (i.type === "duct" && i.txt)), ds = sel0.filter((i) => i.type === "duct");
       return head(`${sel0.length} Objekte`, parts.join(", ")) + (tfs.length ? tfField(tfs) : "") + (cols.length ? colField(cols) : note("Farbe nur für Leitungen, Symbole, Kanäle, Formen und Texte; Mauern, Öffnungen und Masse bleiben schwarz.")) + (ds.length ? ecolField(ds) : "")
         + (lays.size ? sel1("mlayer", lays.size === 1 ? layerOpts() : [["", "– verschieden –"], ...layerOpts()], lays.size === 1 ? [...lays][0] : "", "Ebene") : "")
         + note("Ziehen an einem gewählten Objekt verschiebt alle, Pfeiltasten schieben. ⌘-Klick oder Mehrfachwahl nimmt einzelne weg.") + copyRow() + del1();
@@ -1321,7 +1341,7 @@ export function makePlan(c) {
     if (t.dataset.pltf !== undefined) { // Textgrösse: gesamt (plan) oder an der Wahl (sel)
       const v = t.value.trim(), n = Number(v.replace(",", ".").replace("%", "")) / 100, plan = t.dataset.pltf === "plan";
       if ((v || plan) && !(n >= P.TF_MIN && n <= P.TF_MAX)) { toast(`Textgrösse ${pct(P.TF_MIN)} bis ${pct(P.TF_MAX)} %.`, "error"); renderRight(); return true; }
-      const f0 = Math.round(n * 100) / 100, its = sel().filter((i) => i.type === "sym" || i.type === "dim" || i.type === "duct" || i.type === "ader" || i.type === "text");
+      const f0 = Math.round(n * 100) / 100, its = sel().filter((i) => i.type === "sym" || i.type === "dim" || i.type === "duct" || i.type === "ader" || i.type === "text" || i.type === "room");
       if (plan) change(() => { if (f0 === 1) delete S0.tf; else S0.tf = f0; });
       else if (its.length) change(() => { for (const i of its) if (v) i.tf = f0; else delete i.tf; });
       return true;
@@ -1332,6 +1352,8 @@ export function makePlan(c) {
     if (k === "mlayer") { if (P.layerById(S0, v)) change(() => { for (const x of sel()) if (!P.hangs(x)) x.layer = v; }); else renderRight(); return true; }
     if (k === "atxt") { const t0 = v.trim().slice(0, 20), as = sel().filter((i) => i.type === "ader"); if (t0 && as.length) change(() => { for (const a of as) a.txt = t0; }); else renderRight(); return true; }
     if (k === "lk") { change(() => { it.kind = v; }); return true; }
+    if (k === "rname") { const t0 = v.trim().slice(0, 40); if (t0) change(() => { it.name = t0; }); else renderRight(); return true; }
+    if (k === "rhide" || k === "rna") { const on = k === "rhide" ? t.checked : !t.checked, f0 = k === "rhide" ? "hide" : "na"; change(() => { if (on) it[f0] = true; else delete it[f0]; }); return true; } // Häkchen «Fläche zeigen» an = na weg
     if (k === "ttxt") { const t0 = v.trim().slice(0, 200); if (t0) change(() => { it.txt = t0; }); else renderRight(); return true; }
     if (k === "lc") { change(() => { if (v === "1") it.curve = true; else delete it.curve; }); return true; }
     if (it.type === "shape" && ["slen", "sw", "sh", "sr"].includes(k)) {
@@ -1477,5 +1499,5 @@ export function makePlan(c) {
 
   // Alt oder Shift gedrückt oder losgelassen: Fangpunkt unter dem Zeiger neu berechnen
   const mod = () => { if (raw) move(raw, { shiftKey: S.shift, altKey: S.alt }); };
-  return { mod, sheetSVG, itemsSVG, overlaySVG, bounds, hint, leftHTML, panelHTML, barHTML, barInit, holdHTML, holdAct, popHTML, printLabel, down, move, up, tap, key, del, cancel, grid, pickable, importPlan };
+  return { mod, sheetSVG, itemsSVG, overlaySVG, bounds, hint, leftHTML, panelHTML, barHTML, barInit, holdHTML, holdAct, popHTML, printLabel, down, move, up, tap, key, del, cancel, grid, pickable, importPlan, sync: () => RM.syncRooms(sh(), nextId) };
 }

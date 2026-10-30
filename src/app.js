@@ -194,7 +194,7 @@ function pushUndo(snap = snapshot()) {
   updateUndoButtons();
 }
 function change(fn, { panel = true } = {}) { if (ELPLEXA && S.shared) return; const snap = snapshot(); fn(); pushUndo(snap); afterChange(panel); }
-function afterChange(panel = true) { const cur = S.model; splitWandlerDoc(S.doc); T.ensureDeck(S.doc, T.loadFirm(), { shift: false }); S.active = Math.max(0, S.doc.sheets.indexOf(cur)); renumberAll(S.doc); markDirty(); renderSheetBar(); renderItems(); renderOverlay(); if (panel) renderRight(); }
+function afterChange(panel = true) { if (ELPLEXA && isPlan()) PL.sync(); /* Räume aus den Wänden (planraum.js) */ const cur = S.model; splitWandlerDoc(S.doc); T.ensureDeck(S.doc, T.loadFirm(), { shift: false }); S.active = Math.max(0, S.doc.sheets.indexOf(cur)); renumberAll(S.doc); markDirty(); renderSheetBar(); renderItems(); renderOverlay(); if (panel) renderRight(); }
 function restore(json) {
   const k0 = S.model.kind;
   const o = JSON.parse(json);

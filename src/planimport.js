@@ -67,6 +67,7 @@ export function placeItems(items, at = [0, 0], rot = 0) {
   for (const it of items) {
     if (it.type === "wall" || it.type === "dim") { it.a = tp(it.a); it.b = tp(it.b); }
     else if (it.type === "sym" || it.type === "text") { it.at = tp(it.at); tr(it); }
+    else if (it.type === "room") it.at = tp(it.at); // Raumname bleibt waagrecht
     else if (it.type === "line" || it.type === "duct") it.pts = it.pts.map(tp);
     else if (it.type === "shape") {
       if (it.k === "line") it.pts = it.pts.map(tp);

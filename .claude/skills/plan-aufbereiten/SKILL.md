@@ -23,10 +23,17 @@ Antworten, die eine Übersetzung festlegen, sofort in `docs/symbol-uebersetzung.
 - Ein Stockwerk pro Datei. Mehrere Stockwerke = mehrere Dateien mit **gleichem Nullpunkt** (übereinander deckend).
 
 ## Schritte
-1. **Plan lesen.** Bild/PDF ansehen (PDF: Seite als Bild, Skill `pdf`). Festhalten: Stockwerk, Massketten, Aussenmasse, Wände, Öffnungen, Symbole, Leitungen, Farben, Texte, Raumnamen. Was unsicher ist, als Frage notieren.
-2. **Rückfragen** (Fragen-Regel), bevor Koordinaten entstehen.
-3. **Massstab und Nullpunkt.** Nullpunkt (0|0) = **Aussenecke unten links** des Gebäudes, x nach rechts, y nach oben, alles in mm. Massstab aus den Massangaben ableiten (lange Aussenmasse bevorzugen, mehrere Ketten gegenprüfen), nicht aus dem gedruckten Massstab allein. Zielgenauigkeit ±10 cm; erreichte Genauigkeit (grösste Abweichung zwischen Ketten) im Bericht nennen.
-4. **Aufnahme schreiben** (JSON im Scratchpad, Aufbau unten): zuerst Grundriss, dann Apparate, Leitungen, Beschriftung.
+1. **Plan lesen.** Bild/PDF ansehen. Festhalten: Stockwerk, Massketten, Aussenmasse, Wände, Öffnungen, Symbole, Leitungen, Farben, Texte, Raumnamen. Was unsicher ist, als Frage notieren.
+   - PDF mit gescannten Seiten: Bilder ohne Umrechnen herausziehen (pypdf: XObject mit `/DCTDecode` = JPEG, Rohdaten als `.jpg` schreiben). pdftoppm und PIL fehlen hier.
+   - Ausschnitte in Vollauflösung ansehen (`sips -c H B --cropOffset Y X`, Reihenfolge **Y vor X**); die Übersicht allein reicht für Symbole nicht.
+   - Liegt der Scan in iCloud Drive (`~/Library/Mobile Documents/…`), verweigert macOS den Zugriff: CJ bitten, ihn in einen normalen Ordner zu legen.
+2. **Rückfragen** (Fragen-Regel), bevor Koordinaten entstehen. Ausschnitt des Scans mitschicken (SendUserFile), damit CJ sieht, welches Zeichen gemeint ist. Mehrere Runden zu je 4 Fragen sind normal.
+3. **Massstab und Nullpunkt.** Nullpunkt (0|0) = **Aussenecke unten links** des Gebäudes, x nach rechts, y nach oben, alles in mm.
+   - Pixel der vier Aussenecken im Scan ablesen (Raster mit Pixelzahlen hilft), dann `python3 .claude/skills/plan-aufbereiten/entzerren.py` (bilinear auf die Aussenmasse aus den Ketten, Ausgabe mit Meter-Raster) und mit `kachel.py` Ausschnitte nach Weltkoordinaten schneiden. So lassen sich Wände und Symbole direkt in Metern ablesen.
+   - Ecken prüfen: die Kette (z. B. 10.00) muss im entzerrten Bild genau auf 0 und 10 landen. Ein Messfehler an einer Ecke verschiebt die ganze Seite.
+   - **Massketten gehen vor dem Bild.** Wo bemasst, Koordinaten aus den Ketten rechnen; Faltungen und Fotoverzerrung machen das Bild in der Mitte bis 20 cm ungenau. Vom Bild nur Unbemasstes (Lage von Innenwänden, Symbolen, Leitungen).
+   - Zielgenauigkeit ±10 cm; erreichte Genauigkeit im Bericht nennen (aus Ketten ±2 cm, vom Bild abgelesen ±20 cm).
+4. **Aufnahme schreiben** (JSON im Scratchpad, Aufbau unten): zuerst Grundriss, dann Apparate, Leitungen, Beschriftung. Praktisch: ein kleines Python-Skript im Scratchpad mit Helfern `wall()`, `op()`, `sym()`, `line()`, `text()`, das die Aufnahme schreibt (ids = Stelle + 1, Öffnungen verweisen auf die Rückgabe von `wall()`).
 5. **Datei erzeugen:** `PATH=$HOME/.local/node/bin:$PATH node .claude/skills/plan-aufbereiten/schreiben.mjs <aufnahme.json> <ausgabe.elplexa.json>`. Das Skript liest über `parseModel`, schreibt über `serializeModel`, bricht ab, wenn Objekte beim Einlesen wegfallen oder der Rundlauf nicht gleich ist, und schreibt nie ins Repo.
 6. **Prüfen im Browser:** `dist/ElplexaCAD.html` muss gebaut sein (`npm run build`, wird nicht committet). `python3 .claude/skills/plan-aufbereiten/pruefen.py <datei> <bild.png>` öffnet die Datei, passt den Plan ein und speichert ein Bild. Bild selbst ansehen (Read), mit dem Scan vergleichen (Wände deckungsgleich? Masse stimmen? Symbole am richtigen Ort?), korrigieren, dann **Bild CJ zeigen** (SendUserFile).
 7. **Bericht** an CJ: Datei und Pfad, Massstab und Genauigkeit, Anzahl Objekte je Ebene, offene Punkte und Annahmen.
@@ -42,6 +49,7 @@ Mindestens vier Ebenen (CJ 30.10.2026):
 | `app` | Apparate | Symbole (`sym`) | **aktiv** (`alay`) |
 | `ltg` | Leitungen | Leitungen (`line`), Kanäle (`duct`), Aderzahl hängt an der Leitung | |
 | `txt` | Beschriftung | Texte, Raumnamen | |
+| `offen` | Offen (unklar) | Verweise «?» auf noch unklare Zeichen | nur wenn nötig, CJ löscht sie nach Klärung |
 
 Je nach Plan weitere Ebenen-Paare für Gewerke, z. B. `erda`/`erdl` «Erdung Apparate»/«Erdung Leitungen», `bma`/`bml` «Brandmelde Apparate»/«Brandmelde Leitungen». Welche, fragt der Skill bei Schritt 2 (Hypothesen aus dem, was auf dem Plan ist).
 
@@ -73,4 +81,15 @@ Das Format hat noch kein Raumobjekt (Entscheid im Bau-Chat, Schritt 4). Bis dahi
 - Nichts im Repo ausser Skill und Tabelle (`git status`).
 
 ## Erfahrungen
-(wird nach jedem aufbereiteten Plan ergänzt)
+Wird nach jedem aufbereiteten Plan ergänzt.
+
+**30.10.2026, erstes EG (Scan, Handeinträge rot/grün/blau/orange, keine Legende)**
+- Alte Pläne haben oft keine Legende, die Elektro-Zeichen sind von Hand. Ohne Tabelle ist jedes Symbol eine Frage; zwei Fragerunden reichten für die häufigen Zeichen. Seltene Zeichen nicht einzeln fragen, sondern als `VERWEIS` mit `fu: "?"`, `nr: <kurze Beschreibung>` auf eine eigene Ebene «Offen (unklar)» legen und CJ als Liste geben (CJ 30.10.2026: «Alles, Unklares markiert»).
+- Gleiches Zeichen, andere Bedeutung je Raum: Leuchten im Korridor = Einbau (`LEUCHTE_EB`), im Zimmer = Decke (`LEUCHTE`). Tabelle hat dafür eine Spalte Raum/Bemerkung.
+- Aussenwand «12,5 + 8 + 12,5» = `mat: "doppel"`, `st: 125`, `iso: 80` (d = 330, wird vom Format aus den Schichten gerechnet; ein anderes `d` wird überschrieben).
+- Wandsymbole: `at` auf der Wandfläche, `r` so, dass +y in den Raum zeigt: Wand unten `0`, oben `180`, links `-90`, rechts `90`.
+- Tür: `side` 1 = links der Wand von a nach b. Für Aussenwände im Uhrzeigersinn um das Haus (unten nach rechts, oben nach links) ist innen immer `side: 1`; Ergebnis im Prüfbild am Bogen kontrollieren.
+- Masse: `off` hat das Vorzeichen der Seite links von a→b. Senkrechte Kette a unten → b oben mit `off > 0` liegt links aussen.
+- Garagentor und Treppen kennt das Format nicht: Tor als `durchgang`, Treppe nur als Wände. Kamin als kurze dicke Wand (`d` = Kantenlänge, `beton`).
+- Massketten über Öffnungen sind Rohbaumasse; Feinkette (12 | 90 | 12 …) gibt Rahmen und Lichtmass, Breite der Öffnung = Lichtmass.
+- `pruefen.py` macht das Bild doppelt scharf (device_scale_factor 2), Ausschnitte mit `sips` schneiden. Überlappende Markierungen auf «Offen» auseinanderziehen.

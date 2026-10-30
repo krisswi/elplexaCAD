@@ -9,7 +9,7 @@ src, png = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
 errors = []
 with sync_playwright() as p:
     b = p.chromium.launch()
-    page = b.new_page(viewport={"width": 1600, "height": 1000})
+    page = b.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=2)  # scharf genug für Ausschnitte
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; delete window.showDirectoryPicker;")

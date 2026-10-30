@@ -94,4 +94,8 @@ Wird nach jedem aufbereiteten Plan ergänzt.
 - Massketten über Öffnungen sind Rohbaumasse; Feinkette (12 | 90 | 12 …) gibt Rahmen und Lichtmass, Breite der Öffnung = Lichtmass.
 - Antworten von CJ sind oft anders als alle Hypothesen («das braune ist der Gong», «Anschlusskasten Swisscom BEP»). Farbe gehört zur Bedeutung: in der Frage die Farbe des Zeichens nennen. Passt kein Symbol genau, das nächstliegende wählen, den Begriff von CJ als `txt` setzen und in der Tabelle als Annahme kennzeichnen.
 - Nach den Rückfragen war die Ebene «Offen» leer; dann die Ebene ganz weglassen.
+- **Leitungen nicht aus der Übersicht schätzen** (CJ: «Leitungsführung gar nicht gut, Symbole fehlen»). Vorgehen, das funktioniert hat: entzerrtes Bild in Kacheln von 3,5 × 3,5 m schneiden (`kachel.py`), jede Kachel einzeln lesen und jede Leitung mit Anfang, 2–3 Stützpunkten und Ende in Weltkoordinaten notieren; Leitungen über Kachelgrenzen an der Grenze weiterverfolgen.
+- Abzweigdosen zuerst finden, sie sind die Knoten: Kreise, von denen viele Leitungen ausgehen. In der Aufnahme als Variablen (`D_kue = (x, y)`) führen und jede Leitung von dort zum Apparat ziehen.
+- Gleiches Zeichen in anderer Form: Kreis mit **langem** Querstrich und vielen Leitungen = Dose, Kreis mit **kurzem** Strich und Leuchtentyp daneben = Einbauleuchte. Typangabe im Scan (EB …) entscheidet.
+- Strichart übernehmen: gestrichelt im Scan → `kind: "boden"`, sonst `decke`; gerade gezeichnet → `curve` weglassen.
 - `pruefen.py` macht das Bild doppelt scharf (device_scale_factor 2), Ausschnitte mit `sips` schneiden. Überlappende Markierungen auf «Offen» auseinanderziehen.

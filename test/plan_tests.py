@@ -327,7 +327,7 @@ with sync_playwright() as p:
     check("Haken Stückliste aus: Blattfeld bom false", M().get("bom") is False)
     with page.expect_download() as dl: page.click('[data-plact="bomcsv"]')
     csv = Path(dl.value.path()).read_text(encoding="utf-8")
-    check("Stückliste als CSV", csv.startswith("Gruppe;Symbol;Anzahl") and "Steckdosen;Steckdose T13 (Schutzkontakt), UP;" in csv, csv[:120])
+    check("Stückliste als CSV (Plan mit Raum: Spalte Raum, Total)", csv.startswith("Raum;Gruppe;Symbol;Anzahl") and "Raum 1;Steckdosen;Steckdose T13 (Schutzkontakt), UP;" in csv and "Total;Steckdosen;Steckdose T13 (Schutzkontakt), UP;" in csv, csv[:120])
     page.keyboard.press("Escape"); page.wait_for_timeout(100)
     key("0"); page.wait_for_timeout(200)
     page.click("#el-tile-plan [data-elpdf]"); pp = pdf_pages()

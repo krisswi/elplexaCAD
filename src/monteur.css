@@ -127,6 +127,7 @@ html.mo-on body > *:not(#mo-root):not(#toasts):not(#modal-root) { display: none 
 .mo-list th { text-align: left; font-size: 14px; font-weight: 600; color: var(--muted); padding: 6px 4px; border-bottom: 1px solid var(--line); }
 .mo-list td { padding: 9px 4px; border-bottom: 1px solid var(--hover); vertical-align: top; }
 .mo-list tr.mo-rh th { color: var(--ink); font-size: 15px; padding-top: 16px; }
+.mo-list tr.mo-rr th { color: var(--ink); font-size: 17px; padding-top: 22px; border-bottom: 2px solid var(--ink); }
 .mo-n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mo-sym { width: 34px; }
 #mo-root .mo-sym svg { width: 26px; height: 26px; display: block; stroke: none; fill: none; }

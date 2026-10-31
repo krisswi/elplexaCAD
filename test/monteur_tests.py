@@ -24,8 +24,8 @@ WALLS = lambda: [{"id": 5, "type": "wall", "layer": "bg", "a": [0, 0], "b": [500
                  {"id": 7, "type": "wall", "layer": "bg", "a": [5000, 4000], "b": [0, 4000], "d": 150}, {"id": 8, "type": "wall", "layer": "bg", "a": [0, 4000], "b": [0, 0], "d": 150},
                  {"id": 9, "type": "sym", "layer": "bg", "key": "STD", "at": [1000, 150], "r": 0}, {"id": 10, "type": "sym", "layer": "bg", "key": "STD", "at": [2000, 150], "r": 0}]
 PLAN = lambda sid, t: {"kind": "plan", "sid": sid, "meta": {"BLATT": str(sid - 10), "TITEL": t}, "paper": {"size": "A3", "quer": True, "den": 50}, "layers": [{"id": "bg", "name": "Hintergrund", "show": True, "lock": False}], "alay": "bg", "items": WALLS()}
-DATA = {"format": "schemacad", "version": 33, "active": 0, "nextId": 100, "project": {"name": "EFH Monteur", "status": "In Arbeit", "meta": {"OBJEKT": "Bauweg 2"}},
-        "sheets": [PLAN(11, "Plan EG"), {**PLAN(12, "Plan OG"), "items": WALLS() + [{"id": 11, "type": "wall", "layer": "bg", "a": [5000, 0], "b": [40000, 0], "d": 150}]}]}
+DATA = {"format": "schemacad", "version": 34, "active": 0, "nextId": 100, "project": {"name": "EFH Monteur", "status": "In Arbeit", "meta": {"OBJEKT": "Bauweg 2"}},
+        "sheets": [{**PLAN(11, "Plan EG"), "items": WALLS() + [{"id": 12, "type": "room", "layer": "bg", "at": [2500, 2000], "name": "Wohnen"}]}, {**PLAN(12, "Plan OG"), "items": WALLS() + [{"id": 11, "type": "wall", "layer": "bg", "a": [5000, 0], "b": [40000, 0], "d": 150}]}]}
 srv = {"shares": [], "rel": None, "notes": [], "dev": [], "calls": [], "pub": [], "grund": None, "offline": False, "sleep": False}
 
 def nr_for(sheet, want):  # wie sh_nr
@@ -288,6 +288,8 @@ with sync_playwright() as p:
     page.click('.mo-sheet [data-s="close"]'); page.wait_for_timeout(400)
     page.click('.mo-bar [data-v="list"]'); page.wait_for_timeout(200)
     check("Stückliste je Plan", page.is_visible(".mo-list") and "Stückliste EG" in page.inner_text(".mo-list") and "2" in page.inner_text(".mo-list table"))
+    ml = page.inner_text(".mo-list")
+    check("Stückliste nach Räumen: «Wohnen» mit Fläche, dann «Total» mit Gruppe", ml.index("Wohnen") < ml.index("Total") < ml.index("Steckdosen") and "18,7 m²" in ml and "sobald im Grundriss" not in ml, ml)
     page.click('.mo-bar [data-v="plan"]')
     # Server schläft: Kopie bleibt lesbar
     srv["sleep"] = True; page.reload(); page.wait_for_timeout(1500)

@@ -92,7 +92,8 @@ Die App erkennt geschlossene Räume selbst aus den Wänden (`src/planraum.js`): 
 
 ## Stand
 - **30.10.2026:** erstes EG fertig zum Testen (173 Objekte, 4 Ebenen, Dateiversion 33), CJ testet den Upload. Arbeitsdateien (Aufnahme-Skript, entzerrtes Bild, Scan-Seiten OG/EG/UG) liegen bei CJ unter `~/Documents/elplexaCAD-Aufbereitet/<Projekt>-<Stockwerk>-Arbeit/`, nicht im Repo. Weiterarbeiten: Aufnahme-Skript dort anpassen, dann Schritte 5–7.
-- **30.10.2026, später:** Skill auf Räume umgestellt (Dateiversion 34). EG neu: 5 Räume (Wohnen mit Entrée, Eingang, Küche, Essen als offener Raum, diese Namen bleiben Text), Verweise am Leitungsende, Schalter an der Treppe auf Wände gesetzt, grünes Zeichen mitten im Wohnen weggelassen (CJ). Bewusst: Schalter Treppe oben auf dem 12 cm-Wandkopf, die äusseren zwei ragen darüber (`lage.mjs` meldet 58, 60). OG und UG noch nicht aufbereitet.
+- **30.10.2026, später:** Skill auf Räume umgestellt (Dateiversion 34). EG neu: 5 Räume (Wohnen mit Entrée, Eingang, Küche, Essen als offener Raum, diese Namen bleiben Text), Verweise am Leitungsende, Schalter an der Treppe auf Wände gesetzt, grünes Zeichen mitten im Wohnen weggelassen (CJ). Bewusst: Schalter Treppe oben auf dem 12 cm-Wandkopf, die äusseren zwei ragen darüber (`lage.mjs` meldet 58, 60). UG noch nicht aufbereitet.
+- **30.10.2026, abends:** OG fertig (111 Objekte, 4 Ebenen, 6 Räume, Dateiversion 34), Importtest im Dev-Stand «Als neuer Plan» und «In offenen Plan» ohne Fehler. Bewusst offen: Leitung zur Estrichluke, Antennenleitungen «n. Standort Antenne», Bagno-Therm-Anschluss ohne Leitung.
 
 ## Erfahrungen
 Wird nach jedem aufbereiteten Plan ergänzt.
@@ -115,4 +116,11 @@ Wird nach jedem aufbereiteten Plan ergänzt.
 - **Symbole nicht in der Luft** (CJ 30.10.2026): Wandsymbole (Steckdose, Schalter, Kombi, Wandleuchte) mit `at` genau auf die Wandfläche legen (Innenseite = Mittellinie ± d/2), nicht nur in die Nähe; `lage.mjs` findet die Stellen. Schaltergruppen im Scan stehen oft frei neben einem Wandende oder an einer Wand, die nur dünn gezeichnet ist: fragen, ob Wand ergänzen, auf den Wandkopf oder an die nächste Wand.
 - Räume schliessen: Innenwände an der Mittellinie der Nachbarwand enden lassen (T-Stoss) oder genau auf deren Endpunkt (Ecke). Ragt eine Wand in die Nachbarwand und wird diese danach selbst noch auf eine dritte Wand gezogen, galt der Raum bis zum Fix `fix/raum-t-stoss` (30.10.2026) als offen; ohne den Fix die Wand auf den gemeinsamen Eckpunkt setzen. Fehlt danach noch ein Raum, ist meist eine Wand zu kurz (endet vor der Nachbarwand). Offene Wohnbereiche (Entrée, Küche, Essen ohne Wand) sind ein Raum: ein `room`, die übrigen Namen als `text`.
 - Strichart übernehmen: gestrichelt im Scan → `kind: "boden"`, sonst `decke`; gerade gezeichnet → `curve` weglassen.
+**30.10.2026, OG (Dachgeschoss, gleicher Scan)**
+- Nullpunkt OG = EG: Aussenecken im Scan gleich ablesen, dann mit Treppe und Kamin gegenprüfen (müssen über dem EG liegen).
+- Giebelfronten mit Pfosten und Glas sind nur dünn gezeichnet: leichte Wand 20 cm (`leicht`) auf derselben Mittellinie wie die 33er-Ecken, Öffnungen aus der Pfostenkette (CJ).
+- Wandsymbole an schrägen Wänden: `at` auf die Wandfläche (Abstand d/2 senkrecht zur Mittellinie), `r` = −135 / 135 / ±45; `lage.mjs` schlägt nur 0/90/180 vor. Zwei Symbole nicht zu nah setzen: `umfahren.mjs` zieht die Enden auf die Anschlusspunkte, eine Leitung dazwischen wird sonst zum Punkt und `schreiben.mjs` bricht ab («defektes Objekt»).
+- `umfahren.mjs` hängt ein Leitungsende an das nächste Symbol: zwei Verweise im Abstand < 30 cm landen auf demselben. Verweise mindestens 40 cm auseinander.
+- Höhenangaben («180 afB», «auf 30») als `txt` am Symbol.
+- Importtest: Skript im Scratchpad öffnet EG, klickt `#el-plimport`, wählt OG, prüft beide Ziele über `window.__schemacad.doc`.
 - `pruefen.py` macht das Bild doppelt scharf (device_scale_factor 2), Ausschnitte mit `sips` schneiden. Überlappende Markierungen auf «Offen» auseinanderziehen.

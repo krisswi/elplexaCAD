@@ -232,13 +232,16 @@ export function startMonteur(token) {
       if (url && V.key?.endsWith(`|${s.sid}`)) im.setAttribute("href", url);
     }
   }
+  // Mit Räumen (Zeilen mit room, CJ 31.10.2026): je Raum ein Kopf mit Fläche, Zeilen ohne Gruppen; im «Total» Gruppen wie bisher
   function bomHTML(s) {
-    let g0 = null, rows = "";
+    let g0 = null, r0 = null, rows = "";
+    const byRoom = (s.bom || []).some((r) => r.room !== undefined);
     for (const r of s.bom || []) {
-      if (r.group !== g0) { rows += `<tr class="mo-rh"><th colspan="3">${esc(r.group)}</th></tr>`; g0 = r.group; }
+      if (byRoom && r.room !== r0) { rows += `<tr class="mo-rr"><th colspan="2">${esc(r.room)}</th><th class="mo-n">${esc(r.area || "")}</th></tr>`; r0 = r.room; g0 = null; }
+      if ((!byRoom || r.room === "Total") && r.group !== g0) { rows += `<tr class="mo-rh"><th colspan="3">${esc(r.group)}</th></tr>`; g0 = r.group; }
       rows += `<tr><td class="mo-sym">${r.sym || ""}</td><td>${esc(r.label)}</td><td class="mo-n">${r.m != null ? `${String(r.m.toFixed(2)).replace(".", ",")} m` : r.n}</td></tr>`;
     }
-    return `<h3>Stückliste ${esc(s.title)}</h3><div class="mo-lsub">ganzer Plan · Stand ${esc(stampOf())}</div>${rows ? `<table><thead><tr><th></th><th>Material</th><th class="mo-n">Menge</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="mo-lnote">Keine Symbole in diesem Plan.</p>`}<p class="mo-lnote">Je Raum gegliedert, sobald im Grundriss Räume angegeben sind.</p>`;
+    return `<h3>Stückliste ${esc(s.title)}</h3><div class="mo-lsub">ganzer Plan · Stand ${esc(stampOf())}</div>${rows ? `<table><thead><tr><th></th><th>Material</th><th class="mo-n">Menge</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="mo-lnote">Keine Symbole in diesem Plan.</p>`}${byRoom ? "" : `<p class="mo-lnote">Je Raum gegliedert, sobald im Grundriss Räume angegeben sind.</p>`}`;
   }
 
   // ---------- Planfläche: Zoom, Verschieben, Wischen, Marken ----------

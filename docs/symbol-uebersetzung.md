@@ -26,6 +26,15 @@ Neu = `key` aus `src/plansym/*.js` (`PLAN_SYMS`), Leitungsart aus `LINE_KINDS`, 
 | Gruppe Kreise/Kästchen mit «Schaltuhr» | `SCH0` + `DOSE` | Apparate | Schalter und Abzweigdose, Hinweis als Text | 30.10.2026 |
 | Kreis mit Strich, Leitung zu Querstrich (Garage) | `FL` | Apparate | FL-Armatur (Balkenleuchte) | 30.10.2026 |
 | Kreis mit Schrägstrich, im Zimmer | `LEUCHTE` | Apparate | Deckenleuchte; Typangabe (z. B. «Kugel EB 3226W») als `txt` | 30.10.2026 |
+| Kästchen, zu dem viele Leitungen führen (Vorraum) | `DOSE` | Apparate | Abzweigdose wie die Kreise mit vielen Leitungen | 30.10.2026 |
+| Punkt am Wandkopf, an dem viele Leitungen zusammenlaufen, ohne Zeichen | `DOSE` | Apparate | Abzweigdose (Knoten) | 30.10.2026 |
+| zwei übereinander stehende Kreise mit Haken am Wandkopf (Treppe), grau umkreist | `KOMBI` | Apparate | grauer Kreis nur Markierung | 30.10.2026 |
+| grünes leeres Kästchen | `TEL_STD` | Apparate | Telefon (grüne Leitung) | 30.10.2026 |
+| blaues Zickzack an der Wand, «Res AN f. Bagno Therm» | `GERAET` | Apparate | Reserve-Geräteanschluss (Handtuchradiator), Text als `txt` | 30.10.2026 |
+| Kreis mit Λ oder V an der Wand mit «180 afB» | `LEUCHTE_W` | Apparate | Wandleuchte, Höhe als `txt` («180») | 30.10.2026 |
+| Kreis mit Schrägstrich an schräger Wand mit «3f» | `STD3` | Apparate | Strich senkrecht zur Wand; Höhe als `txt` (z. B. «30»), wenn CJ sie nennt | 30.10.2026 |
+| zwei parallele rote Striche an der Wand (Bad) | `SPIEGEL` | Apparate | Spiegelschrank mit Leuchte | 30.10.2026 |
+| gefülltes Dreieck mit «Res. n. Estrich» | `VERWEIS` | Apparate | `fu` = «Res. n. Estrich» (Reserve nach Estrich) | 30.10.2026 |
 
 ## Leitungen (Strichart)
 

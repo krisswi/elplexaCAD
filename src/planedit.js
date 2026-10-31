@@ -649,11 +649,14 @@ export function makePlan(c) {
       + `<g clip-path="url(#${id})"><g class="pl-print" transform="translate(${f(cx)} ${f(cy)}) scale(${1 / p.den}) translate(${f(-mx)} ${f(-my)})">${bgImg(S0, () => {})}${keepW(itemsSVG(S0))}</g></g>`;
     return [pageSVG(p, S0.meta, info(p), inner), ...(S0.bom === false ? [] : bomPages(S0, c.sheetLabel(S0, i)))];
   }
-  // Stückliste: A4 hoch, Symbol (Farbe der Vorgabe), Bezeichnung, Anzahl, nach Gruppen; ohne Symbole keine Seite
+  // Stückliste: A4 hoch, Symbol (Farbe der Vorgabe), Bezeichnung, Anzahl, nach Gruppen; ohne Symbole keine Seite.
+  // Mit Räumen (CJ 31.10.2026): erst je Raum ein Block (Name, Fläche, Zeilen ohne Gruppen), dann «Total» nach Gruppen wie bisher.
   function bomPages(S0, name) {
     const rows = P.bomOf(S0);
     if (!rows.length) return [];
-    const p = { size: "A4", quer: false }, a = printArea(p), RH = 6.5, x0 = a.x0 + 6, x1 = a.x1 - 6, lines = [];
+    const p = { size: "A4", quer: false }, a = printArea(p), RH = 6.5, x0 = a.x0 + 6, x1 = a.x1 - 6, lines = [], br = RM.bomRooms(S0);
+    for (const b of br?.blocks ?? []) lines.push({ room: b.name, area: b.area }, ...b.rows);
+    if (br) lines.push({ room: "Total" });
     let g0 = null;
     for (const r of rows) { if (r.group !== g0) { lines.push({ head: r.group }); g0 = r.group; } lines.push(r); }
     const per = Math.floor((a.y1 - a.y0 - 30) / RH), pages = [], total = rows.reduce((s, r) => s + (r.duct ? 0 : r.n), 0), dm = rows.reduce((s, r) => s + (r.m ?? 0), 0);
@@ -664,6 +667,7 @@ export function makePlan(c) {
       s += `<line x1="${f(x0)}" y1="${f(y - 2.5)}" x2="${f(x1)}" y2="${f(y - 2.5)}" stroke="${INK}" stroke-width="0.35"/>`;
       for (const r of lines.slice(j, j + per)) {
         y -= RH;
+        if (r.room) { s += txt(x0, y, r.room, 3.8, 0, INK, "start") + (r.area !== undefined ? txt(x1, y, RM.fmtArea(r.area), 3, 0, INK, "end") : "") + `<line x1="${f(x0)}" y1="${f(y - RH / 2)}" x2="${f(x1)}" y2="${f(y - RH / 2)}" stroke="${INK}" stroke-width="0.25"/>`; continue; }
         if (r.head) { s += txt(x0, y, r.head, 3.2, 0, INK, "start"); continue; }
         if (r.duct) { // Kanal: kurzes Stück in Vorgabefarben, Länge statt Anzahl
           s += ductSVG({ pts: [[x0 + 2, y], [x0 + 10, y]], w: 3 }, 1, undefined, 1) + txt(x0 + 16, y, `${r.label} (${r.n} Stück)`, 3, 0, INK, "start") + txt(x1, y, mtxt(r.m), 3, 0, INK, "end");
@@ -679,11 +683,13 @@ export function makePlan(c) {
     return pages;
   }
   function bomCsv() {
-    const rows = P.bomOf(sh());
+    const rows = P.bomOf(sh()), br = RM.bomRooms(sh());
     if (!rows.length) { toast("Keine Symbole oder Kanäle auf sichtbaren Ebenen."); return; }
-    c.download(`${c.sheetLabel(sh(), S.active).replace(/[\\/:*?"<>|]+/g, "-")}_Stückliste.csv`, P.bomCsv(rows), "text/csv");
+    c.download(`${c.sheetLabel(sh(), S.active).replace(/[\\/:*?"<>|]+/g, "-")}_Stückliste.csv`, P.bomCsv(br ? bomFlat(br) : rows), "text/csv");
     toast("Stückliste als CSV in den Download-Ordner geladen.");
   }
+  // Stückliste nach Räumen als eine Liste: Zeilen mit room (Raumname, zum Schluss «Total»)
+  const bomFlat = (br) => [...br.blocks.flatMap((b) => b.rows.map((r) => ({ ...r, room: b.name, area: b.area }))), ...br.total.map((r) => ({ ...r, room: "Total" }))];
   S.planPages = printPages; // files.js buildPrint (nur elplexaCAD)
   // Veröffentlichen für den Monteur (CJ 28.10.2026, elmonteur.js): Planseite wie im Druck, Schriftfeld mit Index = Stand und Datum des Stands.
   // PDF-Plan nur als Verweis (data-msha, data-mpage): die Monteur-Ansicht setzt das Bild aus der PDF in der Offline-Kopie ein. tr: Welt ↔ Seite.
@@ -703,10 +709,11 @@ export function makePlan(c) {
     }
     const inner = `<clipPath id="${id}"><rect x="${f(a.x0)}" y="${f(a.y0)}" width="${f(a.x1 - a.x0)}" height="${f(a.y1 - a.y0)}"/></clipPath>`
       + `<g clip-path="url(#${id})"><g class="pl-print" transform="translate(${f(cx)} ${f(cy)}) scale(${1 / p.den}) translate(${f(-mx)} ${f(-my)})">${bg}${keepW(itemsSVG(S0))}</g></g>`;
-    const bom = P.bomOf(S0).map((r) => {
-      if (r.duct) return { group: r.group, label: `${r.label} (${r.n} Stück)`, m: r.m, sym: `<svg viewBox="0 -3 12 6">${ductSVG({ pts: [[1, 0], [11, 0]], w: 3 }, 1, undefined, 1)}</svg>` };
+    const br = RM.bomRooms(S0), bom = (br ? bomFlat(br) : P.bomOf(S0)).map((r) => {
+      const at = r.room !== undefined ? { room: r.room, ...(r.area !== undefined ? { area: RM.fmtArea(r.area) } : {}) } : {}; // Raum: Name und Fläche als Text
+      if (r.duct) return { ...at, group: r.group, label: `${r.label} (${r.n} Stück)`, m: r.m, sym: `<svg viewBox="0 -3 12 6">${ductSVG({ pts: [[1, 0], [11, 0]], w: 3 }, 1, undefined, 1)}</svg>` };
       const def = symDef(r.key), k = Math.min(1, 2.6 / def.r);
-      return { group: r.group, label: r.label, n: r.n, sym: `<svg viewBox="-3 -3 6 6"><g transform="scale(1 -1)">${symSVG({ key: r.key, at: [-def.c[0] * k, -def.c[1] * k], r: 0, ap: r.ap }, k, P.defCol({ type: "sym", key: r.key }), 1)}</g></svg>` };
+      return { ...at, group: r.group, label: r.label, n: r.n, sym: `<svg viewBox="-3 -3 6 6"><g transform="scale(1 -1)">${symSVG({ key: r.key, at: [-def.c[0] * k, -def.c[1] * k], r: 0, ap: r.ap }, k, P.defCol({ type: "sym", key: r.key }), 1)}</g></svg>` };
     });
     return { svg: pageSVG(p, meta, info(p), inner), w, h, tr: { cx, cy, den: p.den, mx, my }, bg: ref, bom };
   }

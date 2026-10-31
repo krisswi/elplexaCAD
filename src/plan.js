@@ -754,18 +754,20 @@ export function labelHit(it, k, p, tol, fmtH, tf = 1) {
 // Stückliste (Schritt 4, CJ 24.10.2026): Anzahl je Symbol auf sichtbaren Ebenen, Reihenfolge wie die Palette. Leitungen zählen nicht.
 // Symbole mit Aufputz-Variante getrennt nach UP und AP (CJ 26.10.2026), UP zuerst. Danach Kanäle je Breite (CJ 27.10.2026): Anzahl und
 // Gesamtlänge m in Metern (Mittellinie, echte mm der Welt, also unabhängig vom Druckmassstab), schmal zuerst.
-export function bomOf(sh) {
+// pick: nur diese Objekte zählen (Stückliste je Raum, planraum.js bomRooms).
+export function bomOf(sh, pick = () => true) {
   const n = new Map(), id = (key, ap) => `${key}${ap ? ":ap" : ""}`, ducts = new Map();
-  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it)) { const k = id(it.key, it.ap && symDef(it.key).ap); n.set(k, (n.get(k) ?? 0) + 1); }
-  for (const it of sh.items) if (it.type === "duct" && isVisible(sh, it)) { const d = ducts.get(it.w) ?? { n: 0, mm: 0 }; d.n++; d.mm += ductLen(it); ducts.set(it.w, d); }
+  for (const it of sh.items) if (it.type === "sym" && isVisible(sh, it) && pick(it)) { const k = id(it.key, it.ap && symDef(it.key).ap); n.set(k, (n.get(k) ?? 0) + 1); }
+  for (const it of sh.items) if (it.type === "duct" && isVisible(sh, it) && pick(it)) { const d = ducts.get(it.w) ?? { n: 0, mm: 0 }; d.n++; d.mm += ductLen(it); ducts.set(it.w, d); }
   return PLAN_SYMS.flatMap((d) => (d.ap ? [false, true] : [false]).filter((ap) => n.has(id(d.key, ap)))
     .map((ap) => ({ key: d.key, label: d.ap ? `${d.label}, ${ap ? "AP" : "UP"}` : d.label, group: d.group, n: n.get(id(d.key, ap)), ...(ap ? { ap } : {}) })))
     .concat([...ducts].sort((x, y) => x[0] - y[0]).map(([w, d]) => ({ key: `duct:${w}`, duct: w, label: `Kanal ${fmtLen(w)} mm`, group: "Kanäle", n: d.n, m: Math.round(d.mm / 10) / 100 })));
 }
 // CSV wie die übrigen Listen: Semikolon, Text in Anführungszeichen wenn nötig. Mit Kanälen eine Spalte «Länge m» (Dezimalkomma).
+// Zeilen mit room (Stückliste nach Räumen): vorne eine Spalte «Raum».
 export function bomCsv(rows) {
-  const q = (s) => (/[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s), m = rows.some((r) => r.m !== undefined);
-  return [`Gruppe;Symbol;Anzahl${m ? ";Länge m" : ""}`, ...rows.map((r) => `${q(r.group)};${q(r.label)};${r.n}${m ? `;${r.m !== undefined ? r.m.toFixed(2).replace(".", ",") : ""}` : ""}`)].join("\r\n") + "\r\n";
+  const q = (s) => (/[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s), m = rows.some((r) => r.m !== undefined), rm = rows.some((r) => r.room !== undefined);
+  return [`${rm ? "Raum;" : ""}Gruppe;Symbol;Anzahl${m ? ";Länge m" : ""}`, ...rows.map((r) => `${rm ? `${q(r.room ?? "")};` : ""}${q(r.group)};${q(r.label)};${r.n}${m ? `;${r.m !== undefined ? r.m.toFixed(2).replace(".", ",") : ""}` : ""}`)].join("\r\n") + "\r\n";
 }
 // Wandsymbol einrasten: nächste Wandfläche innerhalb reach (mm ab Fläche). Gibt { at, r, wall } (r: Symbol steht senkrecht zur Fläche, in den
 // Raum auf der Seite von p) oder null.

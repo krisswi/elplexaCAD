@@ -4,6 +4,7 @@
 // Kreuzungen ohne Endpunkt teilen nicht (Annahme: Wände stossen an Ecken oder T-Stössen). Lose Enden fallen weg, dann bilden die kleinsten Umläufe
 // gegen den Uhrzeigersinn die Räume. Fläche = Innenfläche: jede Kante um die halbe Dicke ihrer Wand nach innen versetzt.
 // Raumobjekt in plan.js (type "room"); at bestimmt den Raum. Neue Räume heissen «Raum n» (nächste freie Nummer), bestehende behalten Name und Lage.
+import { bomOf, symCenter, paperOf } from "./plan.js";
 const sub = (p, q) => [p[0] - q[0], p[1] - q[1]], add = (p, v, k = 1) => [p[0] + v[0] * k, p[1] + v[1] * k];
 const dot = (u, v) => u[0] * v[0] + u[1] * v[1], len = (v) => Math.hypot(v[0], v[1]);
 export const ROOM_MIN = 0.3e6; // mm²: kleinere Innenflächen (Schlitz zwischen zwei Wänden) sind kein Raum
@@ -125,3 +126,18 @@ export function syncRooms(sh, nextId) {
 }
 // Fläche für die Anzeige: «12,4 m²» (eine Stelle)
 export const fmtArea = (a) => `${(Math.round(a * 10) / 10).toFixed(1).replace(".", ",")} m²`;
+// Stückliste nach Räumen (CJ 31.10.2026): ein Symbol gehört zum Raum, in dessen Fläche seine Mitte liegt; eigene Grenzen vor erkannten Räumen.
+// Alle Räume mit Fläche zählen, auch ausgeblendete. Blöcke nach Name (Zahlen richtig), Räume ohne Symbole fallen weg, danach «Ohne Raum».
+// Kanäle nur im Total. Gibt { blocks: [{ name, area, rows }], total } oder null (keine Räume mit Fläche: Liste wie bisher).
+export function bomRooms(sh) {
+  const faces = roomFaces(sh.items.filter((i) => i.type === "wall"));
+  const rs = sh.items.filter((i) => i.type === "room").map((r) => ({ r, fc: roomFace(faces, r) })).filter((x) => x.fc).sort((x, y) => !!y.r.poly - !!x.r.poly);
+  if (!rs.length) return null;
+  const k = paperOf(sh).den, home = new Map();
+  for (const it of sh.items) if (it.type === "sym") home.set(it, rs.find((x) => inPoly(symCenter(it, k), x.fc.poly)) ?? null);
+  const sym = (it) => it.type === "sym";
+  const blocks = [...rs].sort((x, y) => x.r.name.localeCompare(y.r.name, "de", { numeric: true }))
+    .map((x) => ({ name: x.r.name, area: x.fc.area, rows: bomOf(sh, (it) => sym(it) && home.get(it) === x) }))
+    .concat([{ name: "Ohne Raum", rows: bomOf(sh, (it) => sym(it) && !home.get(it)) }]).filter((b) => b.rows.length);
+  return { blocks, total: bomOf(sh) };
+}

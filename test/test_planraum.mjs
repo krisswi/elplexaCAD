@@ -132,4 +132,34 @@ const src2 = { layers: sh.layers, alay: "bg", items: [{ id: 9, type: "room", lay
 const tg2 = { layers: [{ id: "bg", name: "Hintergrund", show: true, lock: false }], alay: "bg", items: [], paper: { size: "A3", quer: true, den: 50 } };
 const g2 = I.mergePlan(tg2, src2, new Set(["bg"]), [0, 0], 90, nextId).items[0];
 assert.deepStrictEqual(g2.poly, [[0, 0], [0, 1000], [-1000, 1000]], "Import: Grenze gedreht");
+// ---------- Stückliste nach Räumen (CJ 31.10.2026) ----------
+{
+  const L2 = [{ id: "bg", name: "Hintergrund", show: false, lock: false }, { id: "l1", name: "Elektro", show: true, lock: false }]; // Raum zählt auch bei ausgeblendetem Hintergrund
+  const S = (key, at, ap) => ({ id: ++id, type: "sym", layer: "l1", key, at, r: 0, ...(ap ? { ap } : {}) });
+  const sb = { kind: "plan", layers: L2, alay: "l1", paper: { size: "A3", quer: true, den: 50 }, items: [...box(), W([2000, 0], [2000, 3000], 100),
+    { id: 500, type: "room", layer: "bg", at: [1000, 1500], name: "Raum 10" }, { id: 501, type: "room", layer: "bg", at: [3000, 1500], name: "Raum 2", hide: true },
+    { id: 502, type: "room", layer: "bg", at: [3000, 2500], name: "Bad", poly: [[2100, 2000], [3900, 2000], [3900, 2900], [2100, 2900]] }, // eigene Grenze im erkannten Raum 2
+    { id: 503, type: "room", layer: "bg", at: [9000, 9000], name: "Leer" }, // ohne Fläche: zählt nicht
+    S("STD", [500, 500]), S("STD", [600, 500], true), S("LEUCHTE", [1000, 1000]), S("STD", [3000, 1000]), S("LEUCHTE", [3000, 2500]), S("STD", [8000, 500]),
+    { id: ++id, type: "duct", layer: "l1", pts: [[500, 200], [3500, 200]], w: 200 }] };
+  const br = RM.bomRooms(sb);
+  assert.deepStrictEqual(br.blocks.map((b) => [b.name, b.rows.map((r) => [r.label, r.n])]), [
+    ["Bad", [["Leuchte an Decke", 1]]],
+    ["Raum 2", [["Steckdose T13 (Schutzkontakt), UP", 1]]],
+    ["Raum 10", [["Steckdose T13 (Schutzkontakt), UP", 1], ["Steckdose T13 (Schutzkontakt), AP", 1], ["Leuchte an Decke", 1]]],
+    ["Ohne Raum", [["Steckdose T13 (Schutzkontakt), UP", 1]]]], "Blöcke nach Name, eigene Grenze vor erkanntem Raum, UP/AP getrennt, Kanal nicht je Raum, leere Räume weg");
+  close(br.blocks[0].area, 1.8 * 0.9, "Fläche der eigenen Grenze");
+  close(br.blocks[1].area, 1.875 * 2.85, "Fläche des erkannten Raums");
+  assert.strictEqual(br.blocks[3].area, undefined, "Ohne Raum: keine Fläche");
+  assert.deepStrictEqual(br.total, P.bomOf(sb), "Total wie bisher, mit Kanal");
+  assert.ok(br.total.some((r) => r.duct === 200), "Kanal im Total");
+  const flat = [...br.blocks.flatMap((b) => b.rows.map((r) => ({ ...r, room: b.name }))), ...br.total.map((r) => ({ ...r, room: "Total" }))];
+  const csv = P.bomCsv(flat).split("\r\n");
+  assert.strictEqual(csv[0], "Raum;Gruppe;Symbol;Anzahl;Länge m", "CSV: Spalte Raum vorne");
+  assert.strictEqual(csv[1], "Bad;Leuchten;Leuchte an Decke;1;", "CSV: Zeile mit Raum");
+  assert.ok(csv.includes("Total;Kanäle;Kanal 200 mm;1;3,00"), "CSV: Kanal im Total");
+  assert.strictEqual(RM.bomRooms({ ...sb, items: sb.items.filter((i) => i.type !== "room") }), null, "ohne Räume: Liste wie heute");
+  sb.layers[1].show = false;
+  assert.deepStrictEqual(RM.bomRooms(sb).blocks, [], "ausgeblendete Symbole zählen nicht");
+}
 console.log("test_planraum: alles ok");
